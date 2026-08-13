@@ -5,8 +5,12 @@ interface Props {
   title: string;
   description: string;
   fetchedAt?: number;
+  /** Surface-separation variant. Review-only: these are served under /ui/ and are
+   *  robots-disallowed, absent from every sitemap, and noindexed. */
+  variant?: "panelled" | "seamless" | "framed";
+  noindex?: boolean;
 }
-const { title, description, fetchedAt } = Astro.props;
+const { title, description, fetchedAt, variant, noindex } = Astro.props;
 const path = Astro.url.pathname;
 const isActive = (href: string) => (href === "/" ? path === "/" : path === href || path.startsWith(href + "/"));
 
@@ -33,7 +37,7 @@ const schema = {
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{title}</title>
     <meta name="description" content={description} />
-    <link rel="canonical" href={new URL(path, SITE.url).href} />
+    {noindex ? <meta name="robots" content="noindex,nofollow" /> : <link rel="canonical" href={new URL(path, SITE.url).href} />}
     <script type="application/ld+json" set:html={JSON.stringify(schema)} />
     <style is:global>
       /* ==========================================================================
@@ -163,11 +167,9 @@ const schema = {
       /* --- topbar end cluster ---------------------------------------------------
          The right corner is a control cluster, the way YouTube, Drive and Gemini
          anchor theirs: a fixed 40px control height, 8px gaps, right-aligned, with
-         its right padding equal to the topbar's. Today it holds one control. When
-         Telegram alerts create a real identity (chat_id — no email, no password),
-         the account entry appends here as a second 40px control and nothing else
-         in the shell changes: topbar height, search geometry and every layout
-         below are independent of this cluster's contents.
+         its right padding equal to the topbar's. Freshness + account, both real
+         controls — the account entry is a plain anchor to a page that exists, not
+         a modal trigger and not a disabled teaser.
          ------------------------------------------------------------------------- */
       .topbar__end { margin-left: auto; display: flex; align-items: center; gap: 8px; flex: 0 0 auto; height: 40px; }
       .freshness {
@@ -178,6 +180,13 @@ const schema = {
       }
       .freshness svg { color: var(--text-faint); flex: 0 0 15px; }
       .freshness time { color: var(--text); font-variant-numeric: tabular-nums; }
+      .account {
+        flex: 0 0 40px; width: 40px; height: 40px; display: grid; place-items: center;
+        border-radius: var(--r-pill); color: var(--text-dim); text-decoration: none;
+        background: var(--surface-2); border: 1px solid var(--border-soft);
+      }
+      .account:hover { background: var(--surface-3); color: var(--text); }
+      .account[aria-current="page"] { background: var(--accent-fill); border-color: transparent; color: var(--accent); }
 
       .page { padding: 8px 24px 80px; max-width: 1320px; }
 
@@ -287,6 +296,71 @@ const schema = {
       footer a { text-decoration: none; }
       footer a:hover { color: var(--text); }
 
+      /* ==========================================================================
+         SURFACE-SEPARATION VARIANTS  (review-only, served under /ui/)
+         These change ONE thing: how regions are separated from each other. No token
+         is redefined, no type size, weight, spacing step, component or accent moves.
+         Where a variant needs more air, it takes an existing step of the scale.
+         ========================================================================== */
+
+      /* --- /ui/1 PANELLED: discrete objects on a surface ------------------------ */
+      .v-panelled { padding: 12px; gap: 12px; }
+      .v-panelled .col { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+      .v-panelled .rail {
+        border: 1px solid var(--border-soft); border-radius: var(--r-md);
+        top: 12px; height: calc(100vh - 24px);
+      }
+      .v-panelled .topbar {
+        background: var(--surface-1); border: 1px solid var(--border-soft);
+        border-radius: var(--r-md); top: 12px;
+      }
+      .v-panelled .page {
+        background: var(--surface-1); border: 1px solid var(--border-soft);
+        border-radius: var(--r-md); padding: 20px 24px 32px; flex: 1 0 auto;
+      }
+      /* On a surface-1 page the inner cards need the next step up, or they vanish. */
+      .v-panelled .card, .v-panelled .panel, .v-panelled .empty, .v-panelled .banner { background: var(--surface-2); }
+      .v-panelled .tbl th { background: var(--surface-3); }
+      .v-panelled footer { border-top: 0; margin-top: 40px; }
+
+      /* --- /ui/2 SEAMLESS: one continuous surface, spacing does the work -------- */
+      .v-seamless .rail, .v-seamless .topbar { background: var(--bg); border: 0; }
+      .v-seamless .card, .v-seamless .panel, .v-seamless .empty,
+      .v-seamless .banner, .v-seamless .freshness, .v-seamless .account {
+        background: transparent; border-color: transparent;
+      }
+      .v-seamless .empty__icon, .v-seamless .nav-item__soon { background: transparent; }
+      .v-seamless .search input { background: transparent; border-color: transparent; }
+      .v-seamless .search input:hover { background: transparent; }
+      /* Focus is interaction, not separation — it must stay visible or the field
+         becomes un-keyboardable. This is the one fill the variant keeps. */
+      .v-seamless .search input:focus { background: var(--surface-2); }
+      .v-seamless .tbl th { background: transparent; border-bottom: 0; padding-bottom: 4px; }
+      .v-seamless .tbl td { border-bottom: 0; }
+      .v-seamless .tbl tbody tr:hover { background: transparent; color: var(--text); }
+      .v-seamless footer { border-top: 0; }
+      /* With every line gone, the remaining separators are air and alignment. */
+      .v-seamless .page { padding-top: 16px; }
+      .v-seamless .cards { gap: 28px; }
+      .v-seamless .tbl td { padding-top: 10px; padding-bottom: 10px; }
+      .v-seamless .empty { padding: 0; max-width: 680px; }
+      .v-seamless .banner { padding: 0; margin: 20px 0 12px; }
+      .v-seamless h2.section { margin-top: 48px; }
+
+      /* --- /ui/3 FRAMED: ambient chrome, one content card (Vercel / Linear) ----- */
+      .v-framed .rail { background: transparent; }
+      /* The bar keeps a fill matching the page so scrolled content cannot run under
+         it — visually "no fill", functionally still an occluder. */
+      .v-framed .topbar { background: var(--bg); border: 0; }
+      .v-framed .page {
+        background: var(--surface-1); border: 1px solid var(--border-soft);
+        border-radius: var(--r-md); margin: 0 24px 24px; padding: 24px;
+        min-height: calc(100vh - var(--topbar-h) - 24px);
+      }
+      .v-framed .card, .v-framed .panel, .v-framed .empty, .v-framed .banner { background: var(--surface-2); }
+      .v-framed .tbl th { background: var(--surface-3); }
+      .v-framed footer { border-top: 0; margin-top: 40px; }
+
       /* --- mobile: same anchors, re-laid-out. Never a second DOM copy. --- */
       .tabbar { display: none; }
       @media (max-width: 900px) {
@@ -294,7 +368,10 @@ const schema = {
         .rail { display: none; }
         .topbar { padding: 0 16px; }
         .page { padding: 8px 16px calc(var(--tabbar-h) + 32px); }
-        .freshness { padding: 8px 10px; }
+        /* Narrow viewports drop the relative timestamp and keep the clock, so the
+           cluster stays two even 40px controls instead of one wide pill + one round. */
+        .freshness { padding: 0; width: 40px; justify-content: center; gap: 0; }
+        .freshness span { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
         .tabbar {
           display: grid; grid-auto-flow: column; grid-auto-columns: 1fr;
           position: fixed; inset-inline: 0; bottom: 0; height: var(--tabbar-h); z-index: 20;
@@ -306,7 +383,7 @@ const schema = {
     </style>
   </head>
   <body>
-    <div class:list={["app", { "is-collapsed": collapsed }]}>
+    <div class:list={["app", { "is-collapsed": collapsed }, variant && `v-${variant}`]}>
       <!-- ONE nav element. The mobile bar below reuses these same anchors via CSS. -->
       <nav class="rail" aria-label="Main">
         <div class="rail__top">
@@ -340,7 +417,7 @@ const schema = {
         ))}
       </nav>
 
-      <div>
+      <div class="col">
         <header class="topbar">
           <div class="search">
             <label class="vh" for="q">Search</label>
@@ -358,7 +435,10 @@ const schema = {
                 <span>Updated <time datetime={new Date(fetchedAt!).toISOString()}>{ageMin === 0 ? "just now" : `${ageMin} min ago`}</time></span>
               </div>
             )}
-            {/* Account entry mounts here — see .topbar__end. */}
+            <a class="account" href="/account" title="Account" aria-current={path === "/account" ? "page" : undefined}>
+              <svg width="19" height="19" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="10" cy="7.2" r="3" /><path d="M4.3 16.2a5.9 5.9 0 0 1 11.4 0" /></svg>
+              <span class="vh">Account</span>
+            </a>
           </div>
         </header>
 

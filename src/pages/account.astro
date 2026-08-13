@@ -1,0 +1,90 @@
+---
+import Base from "../layouts/Base.astro";
+
+// A real page behind a real control. No modal, no waitlist form, no email capture —
+// the honest thing to put behind an account button before accounts exist is a plain
+// description of what the account will be, and the current status said outright.
+const title = "Account | Basis";
+const description =
+  "How identity will work on Basis: a Telegram chat_id and nothing else — no email, no password, no wallet connection. What an account will store, what it will never store, and the current status.";
+---
+
+<Base title={title} description={description}>
+  <div class="page-head">
+    <h1>Account</h1>
+    <p>What an account here will be, what it will hold, and where it currently stands.</p>
+  </div>
+
+  <div class="empty" style="margin-bottom:28px">
+    <div class="empty__icon" aria-hidden="true">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 6.5v4" /><path d="M10 13.4h.01" /><circle cx="10" cy="10" r="7.25" /></svg>
+    </div>
+    <div class="empty__body">
+      <p class="empty__title">There are no accounts yet</p>
+      <p class="empty__text">
+        Nothing on this site requires signing in, and there is nothing to sign into. Accounts
+        arrive with funding alerts, and not before — an account with nothing to deliver is a
+        database of strangers, which is a liability rather than a feature.
+      </p>
+      <p class="empty__meta">Every page, number and tool here works without one.</p>
+    </div>
+  </div>
+
+  <h2 class="section">How identity will work</h2>
+  <p class="prose">
+    Alerts need somewhere to arrive. That delivery channel is the account — there is no second
+    identity layered on top of it. You will message a Telegram bot; Telegram hands this site a
+    numeric <code>chat_id</code>; that number is the account.
+  </p>
+  <p class="prose">
+    That is the whole mechanism. There is no email address, no password, no password reset, no
+    session cookie to steal, no OAuth provider, and no wallet connection or signature. A site
+    that never accepts a password cannot leak one, and a site that never asks for a wallet
+    signature cannot be phished for a wallet signature.
+  </p>
+
+  <h2 class="section">What an account will store</h2>
+  <div class="panel" style="max-width:720px">
+    <table class="tbl">
+      <thead><tr><th>Field</th><th>Why it exists</th></tr></thead>
+      <tbody>
+        <tr><td><code>chat_id</code></td><td>Where the alert is delivered. This is the entire identity.</td></tr>
+        <tr><td>Watched contracts</td><td>Which symbols you asked to be alerted about.</td></tr>
+        <tr><td>Alert rules</td><td>The threshold and direction that trigger a message.</td></tr>
+        <tr><td>Timestamps</td><td>When a rule was set, and when it last fired, so you are not messaged twice.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="section">What it will never store</h2>
+  <p class="prose">
+    No email address. No password or hash of one. No wallet address, and no connection to a
+    wallet. No exchange API keys — this site reads public market data and has no reason to touch
+    an exchange account, so it will never ask for the keys to one. No name, no phone number, no
+    IP-based profile, and no third-party analytics tied to your identity.
+  </p>
+  <p class="prose">
+    Positions are not stored either. The <a href="/tools/liquidation-price">liquidation calculator</a>
+    computes in the page from numbers you type; those numbers are not sent anywhere and not
+    recorded. Your <a href="/watchlist">pinned contracts</a> are kept in this browser's local
+    storage today and stay that way — an account is for delivering alerts, not for following you
+    between devices.
+  </p>
+
+  <h2 class="section">Current status</h2>
+  <p class="prose">
+    Not built. The alert pipeline it depends on is being assembled — funding snapshots are already
+    being collected on a schedule, which is the same data an alert would fire from, and the
+    <a href="/">sign-flip feed</a> on the homepage shows how far along that collection is. When
+    alerts ship, this page becomes the place you connect Telegram, and this section says so
+    instead.
+  </p>
+  <p class="section-note">
+    Until then this button leads here and nowhere else. There is no waitlist to join and no email
+    box to fill in, because there is nothing yet worth collecting an address for.
+  </p>
+
+  <style>
+    h2.section { margin-top: 32px; }
+  </style>
+</Base>

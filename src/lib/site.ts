@@ -74,4 +74,5 @@ export const FOOTER_LINKS = [
   { href: "/methodology", label: "Methodology" },
   { href: "/methodology/liquidations", label: "Why no liquidation totals" },
   { href: "/data-sources", label: "Data sources" },
+  { href: "/account", label: "Account" },
 ];
