@@ -16,8 +16,8 @@ const BLOCKED = ["CCBot", "Omgilibot", "Omgili", "Diffbot", "ImagesiftBot", "Pet
 export const GET: APIRoute = () =>
   new Response(
     [
-      ...CITATION_BOTS.map((b) => `User-agent: ${b}\nAllow: /\nDisallow: /watchlist\nDisallow: /ui/\n`),
-      `User-agent: *\nAllow: /\nDisallow: /watchlist\nDisallow: /ui/\n`,
+      ...CITATION_BOTS.map((b) => `User-agent: ${b}\nAllow: /\nDisallow: /watchlist\n`),
+      `User-agent: *\nAllow: /\nDisallow: /watchlist\n`,
       ...BLOCKED.map((b) => `User-agent: ${b}\nDisallow: /\n`),
       `Sitemap: ${SITE.url}/sitemap-index.xml\n`,
     ].join("\n"),

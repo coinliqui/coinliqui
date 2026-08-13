@@ -1,11 +1,192 @@
 ---
 import Base from "../layouts/Base.astro";
-import HomeBody from "../components/HomeBody.astro";
-import { loadHome } from "../lib/home-view.ts";
+import { getSnapshot } from "../lib/hyperliquid.ts";
+import { pct, usd, paysClass, paysArrow, paysLabel, LEGEND } from "../lib/funding.ts";
+import { readFlips, describeCoverage } from "../lib/flips.ts";
 
-const { snap, flips, title, description } = await loadHome((Astro.locals as any)?.runtime?.env);
+const env = (Astro.locals as any)?.runtime?.env;
+const snap = await getSnapshot(env?.SNAPSHOT);
+const flips = await readFlips(env?.DB, 24);
+
+// Empty-state figures are computed on the server so the panel paints complete at first
+// byte — the progress bar never animates in from zero.
+const utc = (ms: number) => new Date(ms).toISOString().slice(0, 16).replace("T", " ") + " UTC";
+const coveredH = flips.status === "warming" ? Math.floor(flips.hours) : 24;
+const flipProgress = Math.min(100, Math.round((coveredH / 24) * 100));
+
+const byApr = [...snap.perps].filter((p) => Number.isFinite(p.hlApr)).sort((a, b) => b.hlApr - a.hlApr);
+const richest = byApr[0];
+const cheapest = byApr[byApr.length - 1];
+const widest = [...snap.perps].filter((p) => p.aprSpread != null).sort((a, b) => (b.aprSpread ?? 0) - (a.aprSpread ?? 0))[0];
+const totalOi = snap.perps.reduce((s, p) => s + (Number.isFinite(p.oiNotional) ? p.oiNotional : 0), 0);
+const totalVol = snap.perps.reduce((s, p) => s + (Number.isFinite(p.dayNtlVlm) ? p.dayNtlVlm : 0), 0);
+const btc = snap.perps.find((p) => p.symbol === "BTC");
+const maxOi = Math.max(...snap.perps.map((p) => p.oiNotional || 0), 1);
+const top = snap.perps.slice(0, 15);
+const stamp = new Date(snap.fetchedAt).toISOString().slice(0, 16).replace("T", " ") + " UTC";
+
+// The dated sentence is the most citable element on the site. Numbers are set in the
+// text colour at medium weight; the prose around them is dim — so it reads as a sentence,
+// not as a wall of bold.
+const parts: [string, boolean][] = [
+  ["Open interest across ", false], [String(snap.perps.length), true],
+  [" perpetual contracts is ", false], [usd(totalOi), true],
+  [", on ", false], [usd(totalVol), true],
+  [" of 24-hour volume. Funding is most expensive on ", false], [richest?.symbol ?? "—", true],
+  [" at ", false], [richest ? pct(richest.hlApr) : "—", true],
+  [" a year. The widest gap between venues is ", false], [widest?.symbol ?? "—", true],
+  [", ", false], [widest?.aprSpread != null ? pct(widest.aprSpread) : "—", true], [".", false],
+];
+
+const title = "Basis — perpetual funding, normalised";
+const description =
+  "Funding rates across Hyperliquid, Binance and Bybit annualised so they are comparable, open interest, and a tier-correct liquidation price calculator.";
 ---
 
 <Base title={title} description={description} fetchedAt={snap.fetchedAt}>
-  <HomeBody snap={snap} flips={flips} />
+  <div class="page-head">
+      <p class="crumb">{stamp}</p>
+      <h1 class="lede">{parts.map(([t, n]) => (n ? <b>{t}</b> : <span>{t}</span>))}</h1>
+      <p>Venues settle funding on different intervals, so their quoted rates are not comparable. Every rate here is annualised. <a class="link" href="/methodology">How it is computed →</a></p>
+    </div>
+
+    <div class="cards">
+      <a class="card" href="/funding">
+        <div class="card__label">Widest venue gap</div>
+        <div class="card__value">{widest?.aprSpread != null ? pct(widest.aprSpread) : "—"}</div>
+        <div class="card__meta">{widest?.symbol ?? "—"} · across three venues</div>
+      </a>
+      <a class="card" href={richest ? `/funding/${richest.symbol.toLowerCase()}` : "/funding"}>
+        <div class="card__label">Most expensive funding</div>
+        <div class:list={["card__value", richest && paysClass(richest.hlApr)]}>{richest ? pct(richest.hlApr) : "—"}</div>
+        <div class="card__meta">{richest?.symbol ?? "—"} · {richest ? paysLabel(richest.hlApr) : ""}</div>
+      </a>
+      <a class="card" href={cheapest ? `/funding/${cheapest.symbol.toLowerCase()}` : "/funding"}>
+        <div class="card__label">Most negative funding</div>
+        <div class:list={["card__value", cheapest && paysClass(cheapest.hlApr)]}>{cheapest ? pct(cheapest.hlApr) : "—"}</div>
+        <div class="card__meta">{cheapest?.symbol ?? "—"} · {cheapest ? paysLabel(cheapest.hlApr) : ""}</div>
+      </a>
+      <a class="card" href="/open-interest">
+        <div class="card__label">Open interest</div>
+        <div class="card__value">{usd(totalOi)}</div>
+        <div class="card__meta">{snap.perps.length} contracts{btc ? ` · BTC ${usd(btc.markPx, 0)}` : ""}</div>
+      </a>
+    </div>
+
+    <div class="banner">
+      <div>
+        <div class="banner__title">Liquidation price calculator</div>
+        <div class="banner__sub">Real maintenance-margin tiers. The formula most calculators use is wrong by the maintenance fraction.</div>
+      </div>
+      <a class="btn btn--primary" href="/tools/liquidation-price">Open calculator</a>
+    </div>
+
+    <h2 class="section">Funding sign flips</h2>
+    <p class="section-note">The side paying to hold the position reversed, in the last 24 hours.</p>
+    {flips.status === "ready" && flips.rows.length > 0 ? (
+      <div class="panel">
+        <table class="tbl">
+          <thead><tr><th>Contract</th><th>Venue</th><th class="num">Was</th><th class="num">Now</th><th class="num">Flipped</th></tr></thead>
+          <tbody>
+            {flips.rows.map((f) => (
+              <tr>
+                <td class="sym"><a href={`/funding/${f.symbol.toLowerCase()}`}>{f.symbol}</a></td>
+                <td class="dim">{f.venue}</td>
+                <td class:list={["num", paysClass(f.prevApr)]}>{pct(f.prevApr)}</td>
+                <td class:list={["num", paysClass(f.apr)]}>{pct(f.apr)}</td>
+                <td class="num faint">{new Date(f.at).toISOString().slice(11, 16)} UTC</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    ) : flips.status === "warming" ? (
+      <div class="empty">
+        <div class="empty__icon" aria-hidden="true">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="10" r="7.25" /><path d="M10 5.5v4.7l3 2" /></svg>
+        </div>
+        <div class="empty__body">
+          <p class="empty__title">Collecting funding history</p>
+          <p class="empty__text">
+            A flip needs two readings to compare, so this feed reports nothing until the window
+            covers a full 24 hours. That way an empty list means <em>no contract flipped</em>,
+            rather than <em>we have not been watching long enough to say</em>.
+          </p>
+          {/* A 0% bar reads as "nothing is happening". Before the first snapshot there is
+              genuinely no progress to draw, so the sentence below carries the state instead. */}
+          {flips.since > 0 && (
+            <div class="empty__track" role="progressbar" aria-valuenow={flipProgress} aria-valuemin="0" aria-valuemax="100" aria-label="Funding history collected">
+              <div class="empty__fill" style={`width:${flipProgress}%`}></div>
+            </div>
+          )}
+          <p class="empty__meta">
+            {flips.since > 0 ? (
+              <><b>{coveredH}</b> of 24 hours collected · started <b>{utc(flips.since)}</b> · first flips appear after <b>{utc(flips.since + 86_400_000)}</b></>
+            ) : (
+              <>Snapshots are taken every <b>5 minutes</b>. The first flip can be reported <b>24 hours</b> after the first snapshot lands.</>
+            )}
+          </p>
+        </div>
+      </div>
+    ) : flips.status === "ready" ? (
+      <div class="empty">
+        <div class="empty__icon" aria-hidden="true">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="10" r="7.25" /><path d="m6.8 10.2 2.2 2.2 4.2-4.6" /></svg>
+        </div>
+        <div class="empty__body">
+          <p class="empty__title">No flips in the last 24 hours</p>
+          <p class="empty__text">
+            Every contract kept the same side paying across all three venues for the full window.
+            This is a result, not a gap — the feed is live and has the history to say so.
+          </p>
+          <p class="empty__meta">Window <b>{utc(Date.now() - 86_400_000)}</b> → <b>{utc(Date.now())}</b></p>
+        </div>
+      </div>
+    ) : (
+      <div class="empty">
+        <div class="empty__icon" aria-hidden="true">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 6.5v4" /><path d="M10 13.4h.01" /><circle cx="10" cy="10" r="7.25" /></svg>
+        </div>
+        <div class="empty__body">
+          <p class="empty__title">Flip feed unavailable here</p>
+          <p class="empty__text">{describeCoverage(flips)}</p>
+          <p class="empty__meta">Every other figure on this page is live and unaffected.</p>
+        </div>
+      </div>
+    )}
+
+    <h2 class="section">Funding by contract</h2>
+    <p class="legend">{LEGEND} — colour encodes the direction of payment only. Every other figure is neutral.</p>
+    <div class="panel">
+      <table class="tbl">
+        <thead>
+          <tr><th>Contract</th><th class="num">Annualised</th><th class="num">Venue gap</th><th class="num">Open interest</th><th class="num">24h volume</th></tr>
+        </thead>
+        <tbody>
+          {top.map((p) => (
+            <tr>
+              <td class="sym"><a href={`/funding/${p.symbol.toLowerCase()}`}>{p.symbol}</a></td>
+              <td class:list={["num", paysClass(p.hlApr)]}>{paysArrow(p.hlApr)} {pct(p.hlApr)}</td>
+              <td class="num">{p.aprSpread != null ? pct(p.aprSpread) : <span class="faint">—</span>}</td>
+              <td class="num">
+                <span class="magnitude">
+                  <span class="magnitude__track"><span class="magnitude__fill" style={`width:${Math.max(3, Math.round((p.oiNotional / maxOi) * 100))}%`}></span></span>
+                  <span>{usd(p.oiNotional)}</span>
+                </span>
+              </td>
+              <td class="num">{usd(p.dayNtlVlm)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+    <p class="section-note" style="margin-top:12px">
+      <a class="link" href="/funding">All {snap.perps.length} contracts with per-venue detail →</a>
+      · {snap.eligibleCount} of {snap.universeCount} contracts clear the $5M open-interest floor
+    </p>
+
+    <style>
+      .lede { font-size: 21px; line-height: 1.5; font-weight: 400; letter-spacing: -.012em; color: var(--text-dim); margin: 0 0 10px; max-width: 90ch; }
+      .lede b { font-weight: 550; color: var(--text); font-variant-numeric: tabular-nums; }
+    </style>
 </Base>

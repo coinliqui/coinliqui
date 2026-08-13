@@ -5,12 +5,8 @@ interface Props {
   title: string;
   description: string;
   fetchedAt?: number;
-  /** Surface-separation variant. Review-only: these are served under /ui/ and are
-   *  robots-disallowed, absent from every sitemap, and noindexed. */
-  variant?: "panelled" | "seamless" | "framed";
-  noindex?: boolean;
 }
-const { title, description, fetchedAt, variant, noindex } = Astro.props;
+const { title, description, fetchedAt } = Astro.props;
 const path = Astro.url.pathname;
 const isActive = (href: string) => (href === "/" ? path === "/" : path === href || path.startsWith(href + "/"));
 
@@ -37,7 +33,7 @@ const schema = {
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{title}</title>
     <meta name="description" content={description} />
-    {noindex ? <meta name="robots" content="noindex,nofollow" /> : <link rel="canonical" href={new URL(path, SITE.url).href} />}
+    <link rel="canonical" href={new URL(path, SITE.url).href} />
     <script type="application/ld+json" set:html={JSON.stringify(schema)} />
     <style is:global>
       /* ==========================================================================
@@ -102,7 +98,9 @@ const schema = {
       .app.is-collapsed { grid-template-columns: var(--rail-w-collapsed) minmax(0,1fr); }
 
       /* --- rail: comfortable rows, soft pill active state (Drive / Gemini) --- */
-      .rail { background: var(--surface-1); position: sticky; top: 0; height: 100vh; overflow-y: auto; overflow-x: hidden; padding-bottom: 24px; }
+      /* Chrome is ambient: the rail carries no fill and no border, sitting directly on
+         the page background. Only the content region is a surface. */
+      .rail { background: transparent; position: sticky; top: 0; height: 100vh; overflow-y: auto; overflow-x: hidden; padding-bottom: 24px; }
       .rail__top { display: flex; align-items: center; gap: 4px; height: var(--topbar-h); padding: 0 12px; }
       .icon-btn {
         width: 40px; height: 40px; flex: 0 0 40px; display: grid; place-items: center;
@@ -188,7 +186,14 @@ const schema = {
       .account:hover { background: var(--surface-3); color: var(--text); }
       .account[aria-current="page"] { background: var(--accent-fill); border-color: transparent; color: var(--accent); }
 
-      .page { padding: 8px 24px 80px; max-width: 1320px; }
+      /* The one surface on the page: a single large rounded card holding all content.
+         The topbar keeps a fill matching the page background so scrolled content cannot
+         run under it — visually no fill, functionally still an occluder. */
+      .page {
+        background: var(--surface-1); border: 1px solid var(--border-soft);
+        border-radius: var(--r-md); margin: 0 24px 24px; padding: 24px;
+        max-width: 1320px; min-height: calc(100vh - var(--topbar-h) - 24px);
+      }
 
       /* --- page header: spacious chrome --- */
       .page-head { margin: 8px 0 24px; }
@@ -273,7 +278,7 @@ const schema = {
       table.tbl { border-collapse: collapse; width: 100%; font-size: 13px; }
       .tbl th {
         font-size: 12px; font-weight: 500; color: var(--text-faint); text-align: left;
-        padding: 10px 14px; background: var(--surface-1); border-bottom: 1px solid var(--border-soft); white-space: nowrap;
+        padding: 10px 14px; background: var(--surface-3); border-bottom: 1px solid var(--border-soft); white-space: nowrap;
       }
       .tbl td { padding: 7px 14px; border-bottom: 1px solid var(--border-soft); }
       .tbl tbody tr:last-child td { border-bottom: 0; }
@@ -291,75 +296,10 @@ const schema = {
       .legend { font-size: 12.5px; color: var(--text-faint); margin: 0 0 10px; }
       .legend b { font-weight: 500; }
 
-      footer { margin-top: 56px; padding: 20px 0 0; border-top: 1px solid var(--border-soft); color: var(--text-faint); font-size: 13px; }
+      footer { margin-top: 40px; padding: 20px 0 0; color: var(--text-faint); font-size: 13px; }
       footer nav { display: flex; flex-wrap: wrap; gap: 8px 20px; margin-bottom: 12px; }
       footer a { text-decoration: none; }
       footer a:hover { color: var(--text); }
-
-      /* ==========================================================================
-         SURFACE-SEPARATION VARIANTS  (review-only, served under /ui/)
-         These change ONE thing: how regions are separated from each other. No token
-         is redefined, no type size, weight, spacing step, component or accent moves.
-         Where a variant needs more air, it takes an existing step of the scale.
-         ========================================================================== */
-
-      /* --- /ui/1 PANELLED: discrete objects on a surface ------------------------ */
-      .v-panelled { padding: 12px; gap: 12px; }
-      .v-panelled .col { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
-      .v-panelled .rail {
-        border: 1px solid var(--border-soft); border-radius: var(--r-md);
-        top: 12px; height: calc(100vh - 24px);
-      }
-      .v-panelled .topbar {
-        background: var(--surface-1); border: 1px solid var(--border-soft);
-        border-radius: var(--r-md); top: 12px;
-      }
-      .v-panelled .page {
-        background: var(--surface-1); border: 1px solid var(--border-soft);
-        border-radius: var(--r-md); padding: 20px 24px 32px; flex: 1 0 auto;
-      }
-      /* On a surface-1 page the inner cards need the next step up, or they vanish. */
-      .v-panelled .card, .v-panelled .panel, .v-panelled .empty, .v-panelled .banner { background: var(--surface-2); }
-      .v-panelled .tbl th { background: var(--surface-3); }
-      .v-panelled footer { border-top: 0; margin-top: 40px; }
-
-      /* --- /ui/2 SEAMLESS: one continuous surface, spacing does the work -------- */
-      .v-seamless .rail, .v-seamless .topbar { background: var(--bg); border: 0; }
-      .v-seamless .card, .v-seamless .panel, .v-seamless .empty,
-      .v-seamless .banner, .v-seamless .freshness, .v-seamless .account {
-        background: transparent; border-color: transparent;
-      }
-      .v-seamless .empty__icon, .v-seamless .nav-item__soon { background: transparent; }
-      .v-seamless .search input { background: transparent; border-color: transparent; }
-      .v-seamless .search input:hover { background: transparent; }
-      /* Focus is interaction, not separation — it must stay visible or the field
-         becomes un-keyboardable. This is the one fill the variant keeps. */
-      .v-seamless .search input:focus { background: var(--surface-2); }
-      .v-seamless .tbl th { background: transparent; border-bottom: 0; padding-bottom: 4px; }
-      .v-seamless .tbl td { border-bottom: 0; }
-      .v-seamless .tbl tbody tr:hover { background: transparent; color: var(--text); }
-      .v-seamless footer { border-top: 0; }
-      /* With every line gone, the remaining separators are air and alignment. */
-      .v-seamless .page { padding-top: 16px; }
-      .v-seamless .cards { gap: 28px; }
-      .v-seamless .tbl td { padding-top: 10px; padding-bottom: 10px; }
-      .v-seamless .empty { padding: 0; max-width: 680px; }
-      .v-seamless .banner { padding: 0; margin: 20px 0 12px; }
-      .v-seamless h2.section { margin-top: 48px; }
-
-      /* --- /ui/3 FRAMED: ambient chrome, one content card (Vercel / Linear) ----- */
-      .v-framed .rail { background: transparent; }
-      /* The bar keeps a fill matching the page so scrolled content cannot run under
-         it — visually "no fill", functionally still an occluder. */
-      .v-framed .topbar { background: var(--bg); border: 0; }
-      .v-framed .page {
-        background: var(--surface-1); border: 1px solid var(--border-soft);
-        border-radius: var(--r-md); margin: 0 24px 24px; padding: 24px;
-        min-height: calc(100vh - var(--topbar-h) - 24px);
-      }
-      .v-framed .card, .v-framed .panel, .v-framed .empty, .v-framed .banner { background: var(--surface-2); }
-      .v-framed .tbl th { background: var(--surface-3); }
-      .v-framed footer { border-top: 0; margin-top: 40px; }
 
       /* --- mobile: same anchors, re-laid-out. Never a second DOM copy. --- */
       .tabbar { display: none; }
@@ -367,7 +307,7 @@ const schema = {
         .app, .app.is-collapsed { grid-template-columns: minmax(0,1fr); }
         .rail { display: none; }
         .topbar { padding: 0 16px; }
-        .page { padding: 8px 16px calc(var(--tabbar-h) + 32px); }
+        .page { margin: 0 12px 12px; padding: 16px 14px calc(var(--tabbar-h) + 24px); min-height: 0; }
         /* Narrow viewports drop the relative timestamp and keep the clock, so the
            cluster stays two even 40px controls instead of one wide pill + one round. */
         .freshness { padding: 0; width: 40px; justify-content: center; gap: 0; }
@@ -383,7 +323,7 @@ const schema = {
     </style>
   </head>
   <body>
-    <div class:list={["app", { "is-collapsed": collapsed }, variant && `v-${variant}`]}>
+    <div class:list={["app", { "is-collapsed": collapsed }]}>
       <!-- ONE nav element. The mobile bar below reuses these same anchors via CSS. -->
       <nav class="rail" aria-label="Main">
         <div class="rail__top">
