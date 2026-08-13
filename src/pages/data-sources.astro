@@ -1,0 +1,32 @@
+---
+import Base from "../layouts/Base.astro";
+import { getSnapshot, OI_NOTIONAL_FLOOR } from "../lib/hyperliquid.ts";
+import { usd } from "../lib/funding.ts";
+const snap = await getSnapshot((Astro.locals as any)?.runtime?.env?.SNAPSHOT);
+const sources = [
+  { what: "Funding rate, per venue", ep: "POST /info {\"type\":\"predictedFundings\"}", who: "Hyperliquid", freq: "5 min" },
+  { what: "Open interest, volume, mark and oracle price, premium", ep: "POST /info {\"type\":\"metaAndAssetCtxs\"}", who: "Hyperliquid", freq: "5 min" },
+  { what: "Maintenance-margin tiers", ep: "POST /info {\"type\":\"marginTable\",\"id\":N}", who: "Hyperliquid", freq: "build time" },
+];
+---
+<Base title="Data sources | Basis" description="Every endpoint behind every number on this site, its refresh cadence, and an explicit list of what is deliberately absent." fetchedAt={snap.fetchedAt}>
+  <h1 style="margin:0 0 14px;font-size:26px;letter-spacing:-.02em">Data sources</h1>
+  <p class="prose">Every displayed figure comes from the table below and is rendered on the server before the page is sent, so it is present for readers, search crawlers and answer engines alike.</p>
+  <table class="tbl">
+    <thead><tr><th>Figure</th><th>Endpoint</th><th>Source</th><th>Refresh</th></tr></thead>
+    <tbody>{sources.map((s) => (<tr><td>{s.what}</td><td><code>{s.ep}</code></td><td>{s.who}</td><td>{s.freq}</td></tr>))}</tbody>
+  </table>
+  <h2>Coverage</h2>
+  <p class="prose">A contract is published only above {usd(OI_NOTIONAL_FLOOR)} of open interest. {snap.eligibleCount} of {snap.universeCount} contracts clear that floor today; {snap.perps.length} are published.</p>
+  <h2>What is deliberately absent</h2>
+  <ul class="prose">
+    <li><strong>Liquidation totals.</strong> Exchange feeds are throttled and any total would be understated — <a href="/methodology/liquidations">the full explanation</a>.</li>
+    <li><strong>Spot prices, market capitalisation, circulating supply.</strong> The sources that carry these do not license their display, so they are absent rather than quietly borrowed.</li>
+    <li><strong>Predicted or forecast rates.</strong> Only the venues' own published next-interval rates appear; nothing here is a model output.</li>
+  </ul>
+  <style>
+    h2 { font-size: 17px; margin: 30px 0 10px; }
+    .p { max-width: 72ch; }
+    code { background: #14181d; padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+  </style>
+</Base>

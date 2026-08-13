@@ -1,0 +1,101 @@
+---
+import Base from "../../layouts/Base.astro";
+import { getSnapshot } from "../../lib/hyperliquid.ts";
+import { pct, rawRate, settlementsPerYear, VENUE_LABEL, type Venue } from "../../lib/funding.ts";
+
+const snap = await getSnapshot((Astro.locals as any)?.runtime?.env?.SNAPSHOT);
+
+// The worked example uses TODAY'S real rates, so the explanation is never abstract.
+const example = snap.perps.find((p) => p.venues.length >= 2) ?? snap.perps[0];
+const ORDER: Venue[] = ["HlPerp", "BinPerp", "BybitPerp"];
+const rows = ORDER.map((v) => example?.venues.find((x) => x.venue === v)).filter(Boolean) as NonNullable<
+  (typeof example)["venues"][number]
+>[];
+
+const title = "Methodology — how funding rates are normalised | Basis";
+const description =
+  "Perpetual venues settle funding on different intervals, so their quoted rates are not comparable. This is how the rates on this site are annualised, and why the raw comparison everyone else publishes is wrong.";
+---
+
+<Base title={title} description={description} fetchedAt={snap.fetchedAt}>
+  <div class="page-head">
+    <h1>Methodology</h1>
+    <p>How the funding rates on this site are annualised, why the raw comparison every other site publishes is wrong, and what is deliberately absent.</p>
+  </div>
+
+  <h2>Why quoted funding rates cannot be compared</h2>
+  <p class="prose">
+    A perpetual swap has no expiry, so it is tethered to spot by a periodic payment between
+    longs and shorts called funding. Each venue quotes that payment <strong>per settlement
+    interval</strong> — and the intervals differ. Hyperliquid settles <strong>every hour</strong>.
+    Binance and Bybit settle <strong>every 4 or 8 hours</strong>, depending on the contract.
+  </p>
+  <p class="prose">
+    Placing those quoted numbers side by side, which is what essentially every funding
+    comparison does, makes the venue with the shorter interval look cheaper by exactly the
+    ratio of the intervals. It is not a rounding difference or a matter of preference; the
+    comparison is arithmetically wrong.
+  </p>
+
+  <h2>The normalisation</h2>
+  <p class="prose">
+    Every rate on this site is annualised before it is displayed:
+  </p>
+  <p class="formula">APR = quoted rate × (8760 ÷ interval hours)</p>
+  <p class="prose">
+    Simple annualisation, no compounding — funding is paid out rather than reinvested, and
+    compounding it would assume a reinvestment policy the trader may not follow. The quoted rate
+    and the interval are always shown next to the APR so the conversion can be checked.
+  </p>
+
+  {example && rows.length >= 2 && (
+    <>
+      <h2>Worked example, live right now</h2>
+      <p class="prose">Current {example.symbol} funding, as quoted and as annualised:</p>
+      <div class="panel"><table class="tbl">
+        <thead><tr><th>Venue</th><th class="num">Quoted</th><th class="num">Interval</th><th class="num">Settlements / yr</th><th class="num">APR</th></tr></thead>
+        <tbody>
+          {rows.map((f) => (
+            <tr>
+              <td>{VENUE_LABEL[f.venue]}</td>
+              <td class="num">{rawRate(f.rate)}</td>
+              <td class="num">{f.intervalHours}h</td>
+              <td class="num">{Math.round(settlementsPerYear(f.intervalHours)).toLocaleString("en-US")}</td>
+              <td class="num"><strong>{pct(f.apr)}</strong></td>
+            </tr>
+          ))}
+        </tbody>
+      </table></div>
+      <p class="section-note">
+        Read the quoted column and then the APR column. The ordering of the venues by apparent
+        cost is frequently different between the two, which is the entire point.
+      </p>
+    </>
+  )}
+
+  <h2>Coverage, and why it is capped</h2>
+  <p class="prose">
+    Hyperliquid lists <strong>{snap.universeCount}</strong> perpetual contracts.
+    <strong> {snap.eligibleCount}</strong> of them carry more than $5,000,000 of open interest,
+    and this site publishes a page for the largest <strong>{snap.perps.length}</strong> of those.
+    Contracts below the floor are not published at all rather than published with sparse or
+    misleading figures — a page that exists only to exist is worse than no page.
+  </p>
+
+  <h2>What is not here</h2>
+  <p class="prose">
+    No liquidation totals. Exchange liquidation feeds are throttled, and a total built on one
+    would be understated by an unknown factor — see
+    <a href="/methodology/liquidations">why we do not publish liquidation totals</a>.
+  </p>
+  <p class="prose">
+    No spot prices, market capitalisations or supply figures. Those would require data whose
+    licence terms do not permit publication, so they are absent rather than sourced quietly.
+    Everything displayed comes from <a href="/data-sources">the sources listed here</a>.
+  </p>
+
+  <style>
+    h2 { font-size: 16px; font-weight: 600; margin: 32px 0 10px; letter-spacing: -.01em; }
+    .formula { max-width: 72ch; padding: 12px 16px; background: var(--surface-2); border: 1px solid var(--border-soft); border-radius: 10px; font-variant-numeric: tabular-nums; }
+  </style>
+</Base>

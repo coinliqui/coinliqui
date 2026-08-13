@@ -1,0 +1,80 @@
+---
+import Base from "../../layouts/Base.astro";
+import { getSnapshot } from "../../lib/hyperliquid.ts";
+import { VENUE_LABEL, pct, usd, rawRate, paysClass, paysArrow, LEGEND, type Venue } from "../../lib/funding.ts";
+
+const snap = await getSnapshot((Astro.locals as any)?.runtime?.env?.SNAPSHOT);
+const ORDER: Venue[] = ["HlPerp", "BinPerp", "BybitPerp"];
+const rows = snap.perps
+  .map((p) => ({ p, by: new Map(p.venues.map((v) => [v.venue, v])), spread: p.aprSpread }))
+  .sort((a, b) => (b.spread ?? -Infinity) - (a.spread ?? -Infinity));
+const widest = rows[0];
+
+const title = "Crypto funding rates, normalised to APR | Basis";
+const description =
+  "Perpetual funding rates across Hyperliquid, Binance and Bybit, annualised so they are actually comparable. Venues settle on different intervals, so the quoted numbers are not.";
+---
+
+<Base title={title} description={description} fetchedAt={snap.fetchedAt}>
+  <div class="page-head">
+    <h1>Funding rates</h1>
+    <p>
+      {snap.perps.length} perpetual contracts across three venues, annualised. Hyperliquid settles
+      hourly; Binance and Bybit settle every 4 or 8 hours — so comparing the quoted numbers directly
+      makes the shorter interval look cheaper by exactly the interval ratio.
+      {widest?.spread != null && <> The widest gap right now is <strong>{widest.p.symbol}</strong> at {pct(widest.spread)} APR.</>}
+      <a class="link" href="/methodology"> How it is computed →</a>
+    </p>
+  </div>
+
+  <p class="legend">{LEGEND} — colour encodes the direction of payment only. Every other figure is neutral.</p>
+
+  <div class="panel">
+    <table class="tbl">
+      <thead>
+        <tr>
+          <th>Contract</th>
+          {ORDER.map((v) => <th class="num">{VENUE_LABEL[v]}</th>)}
+          <th class="num">Gap</th>
+          <th class="num">Open interest</th>
+          <th class="num">24h volume</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map(({ p, by, spread }) => (
+          <tr>
+            {/* One link per row — the contract only. No secondary links inside the row. */}
+            <td class="sym"><a href={`/funding/${p.symbol.toLowerCase()}`}>{p.symbol}</a></td>
+            {ORDER.map((v) => {
+              const f = by.get(v);
+              return (
+                <td class="num">
+                  {f ? (
+                    <>
+                      <span class={paysClass(f.apr)}>{pct(f.apr)}</span>
+                      <span class="raw">{rawRate(f.rate)} / {f.intervalHours}h</span>
+                    </>
+                  ) : (
+                    <span class="faint">—</span>
+                  )}
+                </td>
+              );
+            })}
+            <td class="num">{spread != null ? pct(spread) : <span class="faint">—</span>}</td>
+            <td class="num">{usd(p.oiNotional)}</td>
+            <td class="num">{usd(p.dayNtlVlm)}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+
+  <p class="section-note" style="margin-top:12px">
+    Showing {snap.perps.length} of {snap.eligibleCount} contracts above the $5M open-interest floor
+    ({snap.universeCount} exist in total). Contracts below the floor are excluded rather than shown with sparse data.
+  </p>
+
+  <style>
+    .raw { display: block; font-size: 11px; color: var(--text-faint); font-weight: 400; }
+  </style>
+</Base>

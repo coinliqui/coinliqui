@@ -1,0 +1,17 @@
+name = "basis-ingest"
+main = "worker/ingest.ts"
+compatibility_date = "2026-08-01"
+
+# Every 5 minutes. Network wait does not count toward the 10ms CPU limit; the only CPU
+# spent is JSON.parse plus the writes, which is why this fits the free tier.
+[triggers]
+crons = ["*/5 * * * *"]
+
+[[kv_namespaces]]
+binding = "SNAPSHOT"
+id = "REPLACE_WITH_KV_ID"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "basis"
+database_id = "REPLACE_WITH_D1_ID"

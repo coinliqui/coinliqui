@@ -1,0 +1,116 @@
+{
+  "3": {
+    "description": "",
+    "marginTiers": [
+      {
+        "lowerBound": 0,
+        "maxLeverage": 3
+      }
+    ]
+  },
+  "5": {
+    "description": "",
+    "marginTiers": [
+      {
+        "lowerBound": 0,
+        "maxLeverage": 5
+      }
+    ]
+  },
+  "10": {
+    "description": "",
+    "marginTiers": [
+      {
+        "lowerBound": 0,
+        "maxLeverage": 10
+      }
+    ]
+  },
+  "20": {
+    "description": "",
+    "marginTiers": [
+      {
+        "lowerBound": 0,
+        "maxLeverage": 20
+      }
+    ]
+  },
+  "51": {
+    "description": "tiered 10x",
+    "marginTiers": [
+      {
+        "lowerBound": 0,
+        "maxLeverage": 10
+      },
+      {
+        "lowerBound": 3000000,
+        "maxLeverage": 5
+      }
+    ]
+  },
+  "52": {
+    "description": "tiered 10x (2)",
+    "marginTiers": [
+      {
+        "lowerBound": 0,
+        "maxLeverage": 10
+      },
+      {
+        "lowerBound": 20000000,
+        "maxLeverage": 5
+      }
+    ]
+  },
+  "53": {
+    "description": "tiered 20x",
+    "marginTiers": [
+      {
+        "lowerBound": 0,
+        "maxLeverage": 20
+      },
+      {
+        "lowerBound": 40000000,
+        "maxLeverage": 10
+      }
+    ]
+  },
+  "54": {
+    "description": "tiered 20x (2)",
+    "marginTiers": [
+      {
+        "lowerBound": 0,
+        "maxLeverage": 20
+      },
+      {
+        "lowerBound": 70000000,
+        "maxLeverage": 10
+      }
+    ]
+  },
+  "55": {
+    "description": "tiered 25x",
+    "marginTiers": [
+      {
+        "lowerBound": 0,
+        "maxLeverage": 25
+      },
+      {
+        "lowerBound": 100000000,
+        "maxLeverage": 15
+      }
+    ]
+  },
+  "56": {
+    "description": "tiered 40x",
+    "marginTiers": [
+      {
+        "lowerBound": 0,
+        "maxLeverage": 40
+      },
+      {
+        "lowerBound": 150000000,
+        "maxLeverage": 20
+      }
+    ]
+  }
+}

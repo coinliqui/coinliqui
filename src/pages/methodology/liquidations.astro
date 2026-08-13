@@ -1,0 +1,89 @@
+---
+import Base from "../../layouts/Base.astro";
+
+const title = "Why we don't publish liquidation totals | Basis";
+const description =
+  "Exchange liquidation feeds are throttled, so published liquidation totals are systematically understated — by up to roughly 100x during the cascades that make them newsworthy. This explains the mechanism and why this site shows no total.";
+---
+
+<Base title={title} description={description}>
+  <div class="page-head">
+    <h1>Why we don't publish liquidation totals</h1>
+  </div>
+  <p class="lede">
+    Almost every crypto data site publishes a "total liquidated" figure. We do not, because the
+    feeds those numbers are built from are throttled, and the resulting understatement is largest
+    at exactly the moments the number is most quoted.
+  </p>
+
+  <h2>The mechanism</h2>
+  <p class="prose">
+    Binance's liquidation stream <code>!forceOrder@arr</code> does not emit every liquidation. Its
+    documentation states that the stream pushes a <strong>snapshot</strong>, and that
+    <em>"only the latest one liquidation order within 1000ms will be pushed"</em>, and that
+    <em>"if no liquidation happens in the interval of 1000ms, no stream will be pushed"</em>.
+  </p>
+  <p class="prose">
+    One message per symbol per second is ample when the market is quiet and one liquidation
+    arrives every few minutes. During a cascade, when dozens or hundreds of positions are closed
+    per second on a single symbol, everything except the largest one in each second is discarded.
+    A sum over that stream is therefore not a total. It is a sample, and the sampling rate falls
+    as the event gets larger.
+  </p>
+
+  <h2>The measured scale</h2>
+  <p class="prose">
+    Vetle Lunde of K33 Research put it plainly in August 2024: liquidation data from exchanges is
+    <em>"bogus and a vast underrepresentation of actual liquidation volumes in the market"</em>.
+  </p>
+  <p class="prose">
+    In October 2025 Hyperliquid's founder described the same throttling and estimated the
+    understatement at up to roughly <strong>100x</strong> during peaks. The crash of
+    <strong>10 October 2025</strong> is the clearest illustration: headline coverage reported
+    roughly <strong>$19 billion</strong> liquidated market-wide, while Hyperliquid alone — which
+    publishes complete records because it settles on-chain — accounted for
+    <strong>$10.31 billion</strong> of it. One venue cannot be 54% of a market it is not 54% of.
+    The market-wide figure was too low, not Hyperliquid's too high.
+  </p>
+
+  <h2>Why we don't simply use a better source</h2>
+  <p class="prose">
+    The obvious answer is to take liquidations from a venue that publishes them completely.
+    Hyperliquid settles on-chain, so in principle every liquidation is a public event. In practice
+    its public API exposes no market-wide liquidation feed: liquidation events are delivered only
+    inside a per-address subscription, which requires knowing in advance which address was
+    liquidated. Reconstructing the market-wide series means indexing every block, which is a
+    permanent piece of infrastructure rather than a page.
+  </p>
+  <p class="prose">
+    So the choice is between publishing a number we know is wrong, publishing one we cannot
+    produce, or publishing neither and saying why. We publish neither and say why.
+  </p>
+
+  <h2>What we do publish</h2>
+  <p class="prose">
+    Liquidation <strong>price</strong> — where a given position would be closed — is fully
+    computable, because the maintenance-margin tiers are published. That is a different quantity
+    from liquidation <strong>events</strong>, and it is genuinely useful: the formula in
+    circulation on most calculators ignores maintenance margin entirely and is wrong by the
+    maintenance fraction, which grows as position size crosses tier boundaries.
+    <a href="/tools/liquidation-price">The calculator shows both results and the gap between them →</a>
+  </p>
+
+  <h2>What would change this</h2>
+  <p class="prose">
+    A verified extraction path that yields market-wide liquidation events within the cost
+    constraints of this site, or funding sufficient to run a block indexer. Until one of those
+    exists, this page is the answer rather than a placeholder for a section.
+  </p>
+
+  <style>
+    h2 { font-size: 16px; font-weight: 600; margin: 32px 0 10px; letter-spacing: -.01em; }
+    .lede {
+      max-width: 72ch; padding: 16px 18px; margin: 0 0 8px;
+      background: var(--surface-2); border: 1px solid var(--border-soft);
+      border-left: 3px solid var(--accent); border-radius: var(--r-md);
+      color: var(--text);
+    }
+  </style>
+</Base>

@@ -1,0 +1,33 @@
+---
+import Base from "../../layouts/Base.astro";
+import { getSnapshot } from "../../lib/hyperliquid.ts";
+import { usd } from "../../lib/funding.ts";
+const snap = await getSnapshot((Astro.locals as any)?.runtime?.env?.SNAPSHOT);
+const btc = snap.perps.find((p) => p.symbol === "BTC") ?? snap.perps[0];
+// Only shipped tools are listed. There are no "coming soon" entries.
+const tools = [
+  { href: "/tools/liquidation-price", name: "Liquidation price calculator",
+    blurb: "Uses the published maintenance-margin tiers, and shows how far the common entry × (1 ∓ 1/leverage) formula is wrong.",
+    live: `${btc.symbol} mark ${usd(btc.markPx, 2)}` },
+];
+---
+<Base title="Tools | Basis" description="Calculators built on published contract parameters rather than the simplified formulas in circulation." fetchedAt={snap.fetchedAt}>
+  <h1 style="margin:0 0 6px;font-size:26px;letter-spacing:-.02em">Tools</h1>
+  <p class="dim" style="margin:0 0 22px;max-width:72ch">Every calculator opens with a real contract at its current price, computed on the server. None of them require an account.</p>
+  <div class="cards">
+    {tools.map((t) => (
+      <a class="card" href={t.href}>
+        <div class="card__name">{t.name}</div>
+        <div class="dim" style="margin:6px 0 10px">{t.blurb}</div>
+        <div class="num dim" style="font-size:12px">{t.live}</div>
+      </a>
+    ))}
+  </div>
+  <p class="dim" style="margin-top:24px;max-width:72ch;font-size:13px">Four further calculators — funding arbitrage, cost of carry, position size and leverage — are specified but not yet shipped, so they are not listed here.</p>
+  <style>
+    .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
+    .card { display: block; padding: 16px; border: 1px solid var(--border-soft); border-radius: 12px; background: var(--surface-2); text-decoration: none; }
+    .card:hover { border-color: #33404e; }
+    .card__name { font-weight: 600; letter-spacing: -.01em; }
+  </style>
+</Base>

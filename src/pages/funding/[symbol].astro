@@ -1,0 +1,130 @@
+---
+import Base from "../../layouts/Base.astro";
+import { getSnapshot } from "../../lib/hyperliquid.ts";
+import { VENUE_LABEL, pct, usd, rawRate, carryCost, settlementsPerYear, paysClass, paysLabel, type Venue } from "../../lib/funding.ts";
+import { liquidationPrice, type MarginTable } from "../../lib/margin.ts";
+import tables from "../../data/margin-tables.json";
+
+const snap = await getSnapshot((Astro.locals as any)?.runtime?.env?.SNAPSHOT);
+const wanted = (Astro.params.symbol ?? "").toUpperCase();
+const p = snap.perps.find((x) => x.symbol === wanted);
+
+// Conditional emission: no entity page exists below the coverage floor. A 404 is correct —
+// a thin page would be worse than no page.
+if (!p) return new Response(null, { status: 404 });
+
+const table = (tables as Record<string, MarginTable>)[String(p.marginTableId)];
+const ORDER: Venue[] = ["HlPerp", "BinPerp", "BybitPerp"];
+const by = new Map(p.venues.map((v) => [v.venue, v]));
+const hl = by.get("HlPerp");
+const carry7d = hl ? carryCost(10_000, hl.apr, 7) : NaN;
+const liq = liquidationPrice({ entryPrice: p.markPx, positionSize: 1, leverage: 10, side: "long", table });
+const nextFunding = hl?.nextFundingTime ? new Date(hl.nextFundingTime) : null;
+
+const title = `${p.symbol} funding rate, open interest and margin tiers | Basis`;
+const description = `${p.symbol} perpetual funding across Hyperliquid, Binance and Bybit, annualised. Open interest ${usd(p.oiNotional)}, 24h volume ${usd(p.dayNtlVlm)}, max leverage ${p.maxLeverage}x.`;
+---
+
+<Base title={title} description={description} fetchedAt={snap.fetchedAt}>
+  <div class="page-head">
+    <p class="crumb"><a href="/funding">Funding</a> › {p.symbol}</p>
+    <h1>{p.symbol} perpetual</h1>
+    <p>
+      Mark <strong>{usd(p.markPx, 2)}</strong>, {p.change24h >= 0 ? "+" : ""}{pct(p.change24h)} over 24 hours ·
+      open interest <strong>{usd(p.oiNotional)}</strong> · 24h volume <strong>{usd(p.dayNtlVlm)}</strong> ·
+      max leverage {p.maxLeverage}×
+    </p>
+  </div>
+
+  <div class="cards">
+    <div class="card">
+      <div class="card__label">Hyperliquid funding</div>
+      <div class:list={["card__value", hl && paysClass(hl.apr)]}>{hl ? pct(hl.apr) : "—"}</div>
+      <div class="card__meta">{hl ? paysLabel(hl.apr) : "—"}</div>
+    </div>
+    <div class="card">
+      <div class="card__label">Gap between venues</div>
+      <div class="card__value">{p.aprSpread != null ? pct(p.aprSpread) : "—"}</div>
+      <div class="card__meta">annualised difference</div>
+    </div>
+    <div class="card">
+      <div class="card__label">Cost to hold $10,000</div>
+      <div class="card__value">{Number.isFinite(carry7d) ? usd(Math.abs(carry7d), 2) : "—"}</div>
+      <div class="card__meta">over 7 days, at the current rate</div>
+    </div>
+    <div class="card">
+      <div class="card__label">Next settlement</div>
+      <div class="card__value" style="font-size:20px">{nextFunding ? nextFunding.toISOString().slice(11, 16) : "—"}</div>
+      <div class="card__meta">{nextFunding ? "UTC · Hyperliquid, hourly" : "—"}</div>
+    </div>
+  </div>
+
+  <h2 class="section">Funding by venue</h2>
+  <p class="section-note">The quoted column is what each venue publishes. Those numbers are not comparable to each other; the annualised column is.</p>
+  <div class="panel">
+    <table class="tbl">
+      <thead><tr><th>Venue</th><th class="num">Quoted rate</th><th class="num">Interval</th><th class="num">Settlements / yr</th><th class="num">Annualised</th></tr></thead>
+      <tbody>
+        {ORDER.map((v) => {
+          const f = by.get(v);
+          return (
+            <tr>
+              <td>{VENUE_LABEL[v]}</td>
+              <td class="num">{f ? rawRate(f.rate) : <span class="faint">—</span>}</td>
+              <td class="num">{f ? `${f.intervalHours}h` : <span class="faint">—</span>}</td>
+              <td class="num">{f ? Math.round(settlementsPerYear(f.intervalHours)).toLocaleString("en-US") : <span class="faint">—</span>}</td>
+              <td class:list={["num", f && paysClass(f.apr)]} style="font-weight:600">{f ? pct(f.apr) : "—"}</td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="section">Margin tiers</h2>
+  <p class="section-note">
+    Maintenance margin is half the initial margin at the tier's max leverage. At 10× long with 1 {p.symbol},
+    the tier-correct liquidation price is <strong style="color:var(--text)">{usd(liq.liquidationPrice, 2)}</strong> —
+    {usd(liq.differenceAbs, 2)} away from what the common <code>entry × (1 − 1/leverage)</code> formula returns.
+  </p>
+  <div class="panel" style="max-width:620px">
+    <table class="tbl">
+      <thead><tr><th>Tier</th><th class="num">Notional from</th><th class="num">Max leverage</th><th class="num">Maintenance margin</th></tr></thead>
+      <tbody>
+        {table.marginTiers.map((t, i) => (
+          <tr>
+            <td>{i + 1}</td>
+            <td class="num">{usd(t.lowerBound)}</td>
+            <td class="num">{t.maxLeverage}×</td>
+            <td class="num">{pct(1 / (2 * t.maxLeverage), 3)}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="banner">
+    <div>
+      <div class="banner__title">Work out your own liquidation price</div>
+      <div class="banner__sub">Pre-filled with {p.symbol} at its current mark, using these tiers.</div>
+    </div>
+    <a class="btn btn--primary" href={`/tools/liquidation-price?symbol=${p.symbol}`}>Open calculator</a>
+  </div>
+
+  <h2 class="section">Other contracts</h2>
+  <p class="related">
+    {snap.perps.filter((x) => x.symbol !== p.symbol).slice(0, 10).map((x) => (
+      <a class="chip-link" href={`/funding/${x.symbol.toLowerCase()}`}>{x.symbol}</a>
+    ))}
+  </p>
+
+  <style>
+    .related { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; }
+    .chip-link {
+      display: inline-block; padding: 6px 14px; border-radius: var(--r-pill);
+      background: var(--surface-2); border: 1px solid var(--border-soft);
+      text-decoration: none; font-size: 13px; font-weight: 500;
+    }
+    .chip-link:hover { background: var(--surface-3); color: var(--accent); }
+  </style>
+</Base>

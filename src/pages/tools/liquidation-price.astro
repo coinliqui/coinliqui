@@ -1,0 +1,169 @@
+---
+import Base from "../../layouts/Base.astro";
+import { getSnapshot } from "../../lib/hyperliquid.ts";
+import { liquidationPrice, nextTierBoundary, type MarginTable, type Side } from "../../lib/margin.ts";
+import { usd, pct } from "../../lib/funding.ts";
+import tables from "../../data/margin-tables.json";
+
+const snap = await getSnapshot((Astro.locals as any)?.runtime?.env?.SNAPSHOT);
+
+// Defaults are a REAL contract at its REAL current mark, rendered on the server.
+// The calculator is never an empty form.
+const q = Astro.url.searchParams;
+const symbol = (q.get("symbol") ?? "BTC").toUpperCase();
+const perp = snap.perps.find((p) => p.symbol === symbol) ?? snap.perps[0];
+const table = (tables as Record<string, MarginTable>)[String(perp.marginTableId)];
+const side = (q.get("side") === "short" ? "short" : "long") as Side;
+const leverage = Number(q.get("leverage") ?? 10);
+const size = Number(q.get("size") ?? (perp.markPx > 1000 ? 0.5 : 100));
+
+const r = liquidationPrice({ entryPrice: perp.markPx, positionSize: size, leverage, side, table });
+const nextTier = nextTierBoundary(table, r.notional);
+
+const title = "Liquidation price calculator with real margin tiers | Basis";
+const description = `Tier-correct liquidation price for ${perp.symbol} perpetuals, using the published maintenance-margin tiers — and how far the common entry × (1 ∓ 1/leverage) formula is wrong.`;
+---
+
+<Base title={title} description={description} fetchedAt={snap.fetchedAt}>
+  <div class="page-head">
+    <p class="crumb"><a href="/tools">Tools</a> › Liquidation price</p>
+    <h1>Liquidation price calculator</h1>
+    <p>
+      Using {perp.symbol} at its current mark of <strong>{usd(perp.markPx, 2)}</strong>, with the
+      maintenance-margin tiers published for this contract. Change any field to recalculate.
+    </p>
+  </div>
+
+  <form method="GET" class="calc">
+    <label>Contract
+      <select name="symbol">{snap.perps.map((p) => <option value={p.symbol} selected={p.symbol === perp.symbol}>{p.symbol}</option>)}</select>
+    </label>
+    <label>Side
+      <select name="side">
+        <option value="long" selected={side === "long"}>Long</option>
+        <option value="short" selected={side === "short"}>Short</option>
+      </select>
+    </label>
+    <label>Position size ({perp.symbol})
+      <input type="number" name="size" value={size} step="any" min="0" />
+    </label>
+    <label>Leverage
+      <input type="number" name="leverage" value={leverage} step="1" min="1" max={perp.maxLeverage} />
+    </label>
+    <button class="btn btn--primary" type="submit">Calculate</button>
+  </form>
+
+  <div class="cards" style="margin-top:12px">
+    <div class="card card--lead">
+      <div class="card__label">Tier-correct liquidation</div>
+      <div class="card__value" id="out-correct">{usd(r.liquidationPrice, 2)}</div>
+      <div class="card__meta"><span id="out-distance">{pct(r.distancePct)}</span> from entry · maintenance <span id="out-mmf">{pct(r.maintenanceMarginFraction, 3)}</span></div>
+    </div>
+    <div class="card">
+      <div class="card__label">Common formula returns</div>
+      <div class="card__value dim" id="out-naive">{usd(r.naivePrice, 2)}</div>
+      <div class="card__meta"><code>entry × (1 {side === "long" ? "−" : "+"} 1/leverage)</code></div>
+    </div>
+    <div class="card">
+      <div class="card__label">Error in that formula</div>
+      <div class="card__value" id="out-delta">{usd(r.differenceAbs, 2)}</div>
+      <div class="card__meta"><span id="out-deltapct">{pct(r.differencePct)}</span> of the correct price</div>
+    </div>
+  </div>
+
+  <p class="prose" style="margin-top:16px">
+    {side === "long"
+      ? <>The correct liquidation price is <strong>higher</strong> than the common formula reports, so the position closes <strong>sooner</strong> than that formula suggests — by <span id="out-delta2">{usd(r.differenceAbs, 2)}</span> here.</>
+      : <>The correct liquidation price is <strong>lower</strong> than the common formula reports, so the position closes <strong>sooner</strong> than that formula suggests — by <span id="out-delta3">{usd(r.differenceAbs, 2)}</span> here.</>}
+  </p>
+
+  <h2 class="section">Why the common formula is wrong</h2>
+  <p class="prose">
+    Nearly every liquidation calculator that ranks for this term computes <code>entry × (1 ∓ 1/leverage)</code>.
+    That solves for the price at which equity reaches <em>zero</em>. Positions are not closed at zero equity —
+    they close when equity falls to the <strong>maintenance margin</strong>, a positive fraction of notional.
+    The formula also treats max leverage as a constant, when it steps down as position size grows.
+  </p>
+  <p class="prose">
+    Maintenance margin here is half the initial margin at the tier's max leverage, so the maintenance fraction is
+    <code>1 / (2 × maxLeverage)</code> for the tier that applies at your notional. Solving for equity = maintenance
+    gives <code>entry × (1 ∓ 1/L) / (1 ∓ mmf)</code>. The common formula is the special case where that fraction is zero.
+  </p>
+
+  <h2 class="section">Margin tiers for {perp.symbol}</h2>
+  <p class="section-note">
+    Contract table <code>{perp.marginTableId}</code>{table.description ? ` — ${table.description}` : ""}.
+    Your notional is <strong style="color:var(--text)">{usd(r.notional)}</strong>, in tier {r.tierIndex + 1}.
+    {nextTier && <> The next tier starts at {usd(nextTier.lowerBound)}, where max leverage drops to {nextTier.maxLeverage}× and the error roughly doubles.</>}
+  </p>
+  <div class="panel" style="max-width:620px">
+    <table class="tbl">
+      <thead><tr><th>Tier</th><th class="num">Notional from</th><th class="num">Max leverage</th><th class="num">Maintenance margin</th></tr></thead>
+      <tbody>
+        {table.marginTiers.map((t, i) => (
+          <tr class={i === r.tierIndex ? "is-active" : undefined}>
+            <td>{i + 1}{i === r.tierIndex ? " · yours" : ""}</td>
+            <td class="num">{usd(t.lowerBound)}</td>
+            <td class="num">{t.maxLeverage}×</td>
+            <td class="num">{pct(1 / (2 * t.maxLeverage), 3)}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+
+  {r.leverageClamped && (
+    <p class="section-note" style="color:var(--pays-l)">Requested leverage exceeds what this tier allows at {usd(r.notional)} notional; the figures use {r.effectiveLeverage}×.</p>
+  )}
+
+  <p style="margin-top:24px"><a class="link" href="/methodology">How these numbers are produced →</a></p>
+
+  <script is:inline define:vars={{ table, markPx: perp.markPx }}>
+    // Client-side recalculation mirrors the server formula exactly. It only mutates values
+    // already present in the HTML — it is never the source of a first-paint number.
+    const f = document.querySelector(".calc");
+    if (f) {
+      const money = (x) => "$" + x.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      const pc = (x, d = 2) => (x * 100).toFixed(d) + "%";
+      const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+      const recalc = () => {
+        const side = f.side.value, L0 = Number(f.leverage.value), S = Number(f.size.value);
+        if (!(L0 > 0) || !(S >= 0)) return;
+        const notional = markPx * S;
+        const tiers = [...table.marginTiers].sort((a, b) => a.lowerBound - b.lowerBound);
+        let idx = 0;
+        tiers.forEach((t, i) => { if (notional >= t.lowerBound) idx = i; });
+        const maxLev = tiers[idx].maxLeverage;
+        const L = Math.min(L0, maxLev);
+        const mmf = 1 / (2 * maxLev);
+        const correct = side === "long" ? (markPx * (1 - 1 / L)) / (1 - mmf) : (markPx * (1 + 1 / L)) / (1 + mmf);
+        const naive = side === "long" ? markPx * (1 - 1 / L) : markPx * (1 + 1 / L);
+        const delta = Math.abs(naive - correct);
+        set("out-correct", money(correct)); set("out-naive", money(naive));
+        set("out-delta", money(delta)); set("out-deltapct", pc(delta / correct));
+        set("out-delta2", money(delta)); set("out-delta3", money(delta));
+        set("out-distance", pc(Math.abs(correct - markPx) / markPx)); set("out-mmf", pc(mmf, 3));
+      };
+      f.addEventListener("input", recalc);
+      f.addEventListener("change", (e) => { if (e.target.name === "symbol") f.submit(); });
+    }
+  </script>
+
+  <style>
+    .calc {
+      display: flex; flex-wrap: wrap; gap: 14px; align-items: end;
+      background: var(--surface-2); border: 1px solid var(--border-soft);
+      border-radius: var(--r-md); padding: 18px;
+    }
+    .calc label { display: grid; gap: 6px; font-size: 13px; color: var(--text-dim); }
+    .calc input, .calc select {
+      height: 40px; min-width: 148px; padding: 0 12px; font: 14px var(--sans); color: var(--text);
+      background: var(--surface-3); border: 1px solid var(--border); border-radius: var(--r-sm);
+      font-variant-numeric: tabular-nums;
+    }
+    .calc input:focus, .calc select:focus { outline: 0; border-color: var(--accent); }
+    .card--lead { border-color: var(--accent); }
+    .card--lead .card__value { color: var(--accent); }
+    .tbl .is-active { background: var(--surface-3); }
+  </style>
+</Base>

@@ -1,0 +1,54 @@
+---
+import Base from "../layouts/Base.astro";
+import { getSnapshot } from "../lib/hyperliquid.ts";
+import { pct, usd } from "../lib/funding.ts";
+// Renders every covered contract server-side, so the page is never empty for a first-time
+// visitor. Pinning is applied client-side from localStorage — no account, no signup wall.
+// robots.txt disallows it: it is a personal view of data already published on /funding.
+const snap = await getSnapshot((Astro.locals as any)?.runtime?.env?.SNAPSHOT);
+---
+<Base title="Pinned contracts | Basis" description="Pin the contracts you follow. Stored in your browser, no account required." fetchedAt={snap.fetchedAt}>
+  <h1 style="margin:0 0 6px;font-size:26px;letter-spacing:-.02em">Pinned</h1>
+  <p class="dim" style="margin:0 0 20px;max-width:72ch">Pinned contracts rise to the top and are stored in this browser only. There is no account and nothing is sent anywhere.</p>
+  <table class="tbl" id="wl">
+    <thead><tr><th style="width:34px"></th><th>Symbol</th><th class="num">Funding APR</th><th class="num">Spread</th><th class="num">Open interest</th></tr></thead>
+    <tbody>
+      {snap.perps.map((p) => (
+        <tr data-sym={p.symbol}>
+          <td><button class="pin" type="button" aria-label={`Pin ${p.symbol}`} data-sym={p.symbol}>☆</button></td>
+          <td><a href={`/funding/${p.symbol.toLowerCase()}`}>{p.symbol}</a></td>
+          <td class="num"><span class={p.hlApr >= 0 ? "pos" : "neg"}>{pct(p.hlApr)}</span></td>
+          <td class="num">{p.aprSpread != null ? pct(p.aprSpread) : "—"}</td>
+          <td class="num">{usd(p.oiNotional)}</td>
+        </tr>
+      ))}
+    </tbody>
+  </table>
+  <script is:inline>
+    (function () {
+      var KEY = "basis.pinned";
+      var read = function () { try { return JSON.parse(localStorage.getItem(KEY) || "[]"); } catch (e) { return []; } };
+      var tb = document.querySelector("#wl tbody");
+      var paint = function () {
+        var pinned = read();
+        Array.prototype.forEach.call(tb.querySelectorAll("tr"), function (tr) {
+          var on = pinned.indexOf(tr.dataset.sym) > -1;
+          tr.querySelector(".pin").textContent = on ? "★" : "☆";
+          tr.dataset.pinned = on ? "1" : "0";
+        });
+        Array.prototype.slice.call(tb.querySelectorAll('tr[data-pinned="1"]')).reverse().forEach(function (tr) { tb.prepend(tr); });
+      };
+      tb.addEventListener("click", function (e) {
+        var b = e.target.closest(".pin"); if (!b) return;
+        var p = read(), i = p.indexOf(b.dataset.sym);
+        if (i > -1) p.splice(i, 1); else p.push(b.dataset.sym);
+        localStorage.setItem(KEY, JSON.stringify(p)); paint();
+      });
+      paint();
+    })();
+  </script>
+  <style>
+    .pin { background: none; border: 0; color: var(--text-dim); cursor: pointer; font-size: 16px; padding: 0; line-height: 1; }
+    tr[data-pinned="1"] .pin { color: #d29922; }
+  </style>
+</Base>
