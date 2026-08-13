@@ -105,8 +105,8 @@ const schema = {
         background: none; border: 0; border-radius: var(--r-pill); color: var(--text-dim); cursor: pointer;
       }
       .icon-btn:hover { background: var(--surface-3); color: var(--text); }
-      .brand { display: flex; align-items: center; gap: 10px; padding: 0 8px; text-decoration: none; font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
-      .brand__mark { width: 22px; height: 22px; flex: 0 0 22px; border-radius: 7px; background: var(--accent); }
+      /* Wordmark only — no mark, no tile. The name is the identity. */
+      .brand { display: flex; align-items: center; padding: 0 8px; text-decoration: none; font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
 
       .nav-group { padding: 6px 12px 0; }
       .nav-group__title { font-size: 12px; font-weight: 500; color: var(--text-faint); padding: 10px 16px 4px; }
@@ -142,6 +142,9 @@ const schema = {
          an entry is unbuilt — so it carries more of the weight than in the expanded rail. */
       .is-collapsed span.nav-item { opacity: .34; }
       .is-collapsed .nav-group__title { display: block; height: 8px; }
+      /* With the wordmark clipped there is nothing left to show, so the anchor must not
+         hold width either — the collapsed rail top is the toggle alone, as in Drive. */
+      .is-collapsed .brand { padding: 0; }
 
       /* --- topbar: search pill + freshness, balanced --- */
       .topbar {
@@ -157,12 +160,24 @@ const schema = {
       .search input::placeholder { color: var(--text-faint); }
       .search input:hover { background: var(--surface-3); }
       .search input:focus { outline: 0; background: var(--surface-3); border-color: var(--accent); }
+      /* --- topbar end cluster ---------------------------------------------------
+         The right corner is a control cluster, the way YouTube, Drive and Gemini
+         anchor theirs: a fixed 40px control height, 8px gaps, right-aligned, with
+         its right padding equal to the topbar's. Today it holds one control. When
+         Telegram alerts create a real identity (chat_id — no email, no password),
+         the account entry appends here as a second 40px control and nothing else
+         in the shell changes: topbar height, search geometry and every layout
+         below are independent of this cluster's contents.
+         ------------------------------------------------------------------------- */
+      .topbar__end { margin-left: auto; display: flex; align-items: center; gap: 8px; flex: 0 0 auto; height: 40px; }
       .freshness {
-        margin-left: auto; display: flex; align-items: center; gap: 8px; flex: 0 0 auto;
-        font-size: 13px; color: var(--text-dim); background: var(--surface-2);
-        border-radius: var(--r-pill); padding: 8px 14px; white-space: nowrap;
+        display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 16px;
+        font-size: 13px; color: var(--text-dim); white-space: nowrap;
+        background: var(--surface-2); border: 1px solid var(--border-soft);
+        border-radius: var(--r-pill);
       }
-      .freshness__dot { width: 7px; height: 7px; border-radius: 50%; background: var(--pays-s); }
+      .freshness svg { color: var(--text-faint); flex: 0 0 15px; }
+      .freshness time { color: var(--text); font-variant-numeric: tabular-nums; }
 
       .page { padding: 8px 24px 80px; max-width: 1320px; }
 
@@ -222,6 +237,30 @@ const schema = {
          DATA GRID — deliberately denser than the chrome around it
          ========================================================================== */
       .panel { background: var(--surface-2); border: 1px solid var(--border-soft); border-radius: var(--r-md); overflow: hidden; }
+
+      /* --- empty state -----------------------------------------------------------
+         Sits on the spacious side of the split, like Drive's empty-folder state:
+         a quiet icon tile, a title, one sentence, and — where the wait is finite —
+         what is being collected and when it resolves. An empty state that explains
+         itself is a trust statement; three dim paragraphs are an unfinished page.
+         --------------------------------------------------------------------------- */
+      .empty {
+        display: flex; gap: 16px; align-items: flex-start; max-width: 760px; padding: 22px;
+        background: var(--surface-2); border: 1px solid var(--border-soft); border-radius: var(--r-md);
+      }
+      .empty__icon {
+        flex: 0 0 40px; width: 40px; height: 40px; display: grid; place-items: center;
+        border-radius: var(--r-pill); background: var(--surface-3); color: var(--text-dim);
+      }
+      .empty__body { min-width: 0; }
+      .empty__title { font-size: 15px; font-weight: 600; margin: 2px 0 6px; }
+      .empty__text { color: var(--text-dim); margin: 0; max-width: 64ch; }
+      .empty__meta { margin: 14px 0 0; font-size: 13px; color: var(--text-faint); }
+      .empty__meta b { color: var(--text); font-weight: 500; font-variant-numeric: tabular-nums; }
+      /* Progress is server-computed and written inline, so it paints at first byte
+         and never animates into place. */
+      .empty__track { height: 4px; border-radius: 2px; background: var(--surface-3); margin: 14px 0 0; overflow: hidden; }
+      .empty__fill { height: 100%; background: var(--accent); border-radius: 2px; }
       table.tbl { border-collapse: collapse; width: 100%; font-size: 13px; }
       .tbl th {
         font-size: 12px; font-weight: 500; color: var(--text-faint); text-align: left;
@@ -277,7 +316,7 @@ const schema = {
               <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M3 5h14M3 10h14M3 15h14" /></svg>
             </button>
           </form>
-          <a class="brand" href="/"><span class="brand__mark" aria-hidden="true"></span><span>{SITE.name}</span></a>
+          <a class="brand" href="/"><span>{SITE.name}</span></a>
         </div>
 
         {NAV.map((group) => (
@@ -309,12 +348,18 @@ const schema = {
             <input id="q" type="search" autocomplete="off" placeholder="Search token, chain, unlock, protocol" />
             <div class="search__results" id="qr"></div>
           </div>
-          {ageMin !== null && (
-            <div class="freshness">
-              <span class="freshness__dot" aria-hidden="true"></span>
-              Updated {ageMin === 0 ? "just now" : `${ageMin} min ago`}
-            </div>
-          )}
+          <div class="topbar__end">
+            {ageMin !== null && (
+              <div class="freshness">
+                {/* A clock, not a status dot. The dot here was green — the one colour the
+                    site's own legend reserves for "shorts pay longs" — so it was making a
+                    semantic claim it did not mean. */}
+                <svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="10" cy="10" r="7.25" /><path d="M10 6v4.2l2.6 1.8" /></svg>
+                <span>Updated <time datetime={new Date(fetchedAt!).toISOString()}>{ageMin === 0 ? "just now" : `${ageMin} min ago`}</time></span>
+              </div>
+            )}
+            {/* Account entry mounts here — see .topbar__end. */}
+          </div>
         </header>
 
         <main class="page">

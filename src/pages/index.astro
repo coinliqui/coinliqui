@@ -8,6 +8,12 @@ const env = (Astro.locals as any)?.runtime?.env;
 const snap = await getSnapshot(env?.SNAPSHOT);
 const flips = await readFlips(env?.DB, 24);
 
+// Empty-state figures are computed on the server so the panel paints complete at first
+// byte — the progress bar never animates in from zero.
+const utc = (ms: number) => new Date(ms).toISOString().slice(0, 16).replace("T", " ") + " UTC";
+const coveredH = flips.status === "warming" ? Math.floor(flips.hours) : 24;
+const flipProgress = Math.min(100, Math.round((coveredH / 24) * 100));
+
 const byApr = [...snap.perps].filter((p) => Number.isFinite(p.hlApr)).sort((a, b) => b.hlApr - a.hlApr);
 const richest = byApr[0];
 const cheapest = byApr[byApr.length - 1];
@@ -94,8 +100,59 @@ const description =
         </tbody>
       </table>
     </div>
+  ) : flips.status === "warming" ? (
+    <div class="empty">
+      <div class="empty__icon" aria-hidden="true">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="10" r="7.25" /><path d="M10 5.5v4.7l3 2" /></svg>
+      </div>
+      <div class="empty__body">
+        <p class="empty__title">Collecting funding history</p>
+        <p class="empty__text">
+          A flip needs two readings to compare, so this feed reports nothing until the window
+          covers a full 24 hours. That way an empty list means <em>no contract flipped</em>,
+          rather than <em>we have not been watching long enough to say</em>.
+        </p>
+        {/* A 0% bar reads as "nothing is happening". Before the first snapshot there is
+            genuinely no progress to draw, so the sentence below carries the state instead. */}
+        {flips.since > 0 && (
+          <div class="empty__track" role="progressbar" aria-valuenow={flipProgress} aria-valuemin="0" aria-valuemax="100" aria-label="Funding history collected">
+            <div class="empty__fill" style={`width:${flipProgress}%`}></div>
+          </div>
+        )}
+        <p class="empty__meta">
+          {flips.since > 0 ? (
+            <><b>{coveredH}</b> of 24 hours collected · started <b>{utc(flips.since)}</b> · first flips appear after <b>{utc(flips.since + 86_400_000)}</b></>
+          ) : (
+            <>Snapshots are taken every <b>5 minutes</b>. The first flip can be reported <b>24 hours</b> after the first snapshot lands.</>
+          )}
+        </p>
+      </div>
+    </div>
+  ) : flips.status === "ready" ? (
+    <div class="empty">
+      <div class="empty__icon" aria-hidden="true">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="10" r="7.25" /><path d="m6.8 10.2 2.2 2.2 4.2-4.6" /></svg>
+      </div>
+      <div class="empty__body">
+        <p class="empty__title">No flips in the last 24 hours</p>
+        <p class="empty__text">
+          Every contract kept the same side paying across all three venues for the full window.
+          This is a result, not a gap — the feed is live and has the history to say so.
+        </p>
+        <p class="empty__meta">Window <b>{utc(Date.now() - 86_400_000)}</b> → <b>{utc(Date.now())}</b></p>
+      </div>
+    </div>
   ) : (
-    <p class="prose">{flips.status === "ready" ? "No contract changed the sign of its funding rate in the last 24 hours." : describeCoverage(flips)}</p>
+    <div class="empty">
+      <div class="empty__icon" aria-hidden="true">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 6.5v4" /><path d="M10 13.4h.01" /><circle cx="10" cy="10" r="7.25" /></svg>
+      </div>
+      <div class="empty__body">
+        <p class="empty__title">Flip feed unavailable here</p>
+        <p class="empty__text">{describeCoverage(flips)}</p>
+        <p class="empty__meta">Every other figure on this page is live and unaffected.</p>
+      </div>
+    </div>
   )}
 
   <h2 class="section">Funding by contract</h2>
