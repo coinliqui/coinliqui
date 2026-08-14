@@ -309,8 +309,17 @@ const schema = {
         padding: 14px 16px; border-radius: var(--r-md);
         background: var(--surface-2); border: 1px solid var(--border-soft);
       }
-      .verdict--warn { border-left: 3px solid var(--pays-l); }
-      .verdict--ok { border-left: 3px solid var(--accent); }
+      /* THE ACCENT MARKS THE THING TO LOOK AT, AND A WARNING IS THAT THING.
+         This pair used to be red for warn and accent for ok, which broke the site's own
+         colour rule — red and green mean the direction of a funding payment here and nothing
+         else, so a red border on "the stop never executes" was making a semantic claim it did
+         not mean, and every red on the page got a little less trustworthy for it. Adding a
+         fourth hue would have solved it by breaking the other rule, the one about a single
+         restrained accent. So the roles are swapped instead: the accent draws the eye to the
+         warning, and a benign confirmation needs no border at all. Same two states, one hue,
+         and the emphasis now points at the case that deserves it. */
+      .verdict--warn { border-left: 3px solid var(--accent); }
+      .verdict--ok { border-left: 3px solid var(--border); }
       .verdict b { font-weight: 600; }
 
       .chip { display: inline-block; font-size: 12px; color: var(--text-dim); background: var(--surface-3); border-radius: 6px; padding: 2px 8px; }

@@ -1,5 +1,6 @@
 ---
 import Base from "../../layouts/Base.astro";
+import Related from "../../components/Related.astro";
 
 const title = "Why we don't publish liquidation totals";
 const description =
@@ -77,7 +78,14 @@ const description =
     exists, this page is the answer rather than a placeholder for a section.
   </p>
 
-  <style>
+    <Related items={[
+    { href: "/liquidations", label: "Liquidation map", note: "What is publishable instead: modelled density, with the model printed on the page." },
+    { href: "/liquidations/sweep", label: "The 5 February sweep", note: "The model tested against real candles from a real event." },
+    { href: "/liquidations/survival", label: "Leverage survival", note: "The same question with nothing modelled — only what the rules did." },
+    { href: "/methodology", label: "Methodology", note: "How every other number here is produced." },
+  ]} />
+
+<style>
     h2 { font-size: 16px; font-weight: 600; margin: 32px 0 10px; letter-spacing: -.01em; }
     .lede {
       max-width: 72ch; padding: 16px 18px; margin: 0 0 8px;

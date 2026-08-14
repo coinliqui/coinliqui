@@ -1,0 +1,26 @@
+---
+/**
+ * A closing strip of real destinations, for the pages that are prose.
+ *
+ * The reference pages carried twelve internal links each — the navigation rail and the footer,
+ * and nothing of their own. On a site whose whole argument is that its pages connect (a
+ * contract to its liquidation map, a coin to its funding, a method to the page that applies
+ * it), a prose page that links nowhere is a dead end for a reader and a leaf for a crawler.
+ *
+ * Every entry is a page that exists. There are no "coming soon" cards here, for the same
+ * reason the rail renders unbuilt sections as spans: a link is a promise that something is on
+ * the other side of it.
+ */
+interface Item { href: string; label: string; note: string }
+const { items, title = "Where to go next" } = Astro.props as { items: Item[]; title?: string };
+---
+
+<h2 class="section">{title}</h2>
+<div class="cards">
+  {items.map((i) => (
+    <a class="card" href={i.href}>
+      <div class="card__label">{i.label}</div>
+      <div class="card__value" style="font-size:15px; line-height:1.45; height:auto; font-weight:500">{i.note}</div>
+    </a>
+  ))}
+</div>

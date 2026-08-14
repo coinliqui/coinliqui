@@ -1,5 +1,6 @@
 ---
 import Base from "../../layouts/Base.astro";
+import Related from "../../components/Related.astro";
 import { getSnapshot, coldStart } from "../../lib/hyperliquid.ts";
 import { pct, rawRate, settlementsPerYear, VENUE_LABEL, type Venue } from "../../lib/funding.ts";
 
@@ -96,7 +97,14 @@ const description =
     Everything displayed comes from <a href="/data-sources">the sources listed here</a>.
   </p>
 
-  <style>
+    <Related items={[
+    { href: "/funding/btc", label: "BTC funding", note: "The normalisation on this page, applied to a live contract across three venues." },
+    { href: "/coins/bitcoin", label: "Bitcoin price", note: "Spot beside the perpetual, and what the funding rate costs to hold." },
+    { href: "/methodology/liquidations", label: "Why no liquidation totals", note: "The one number this site refuses to publish, and the arithmetic behind refusing." },
+    { href: "/data-sources", label: "Data sources", note: "Every endpoint, its cadence, and what is deliberately absent." },
+  ]} />
+
+<style>
     h2 { font-size: 16px; font-weight: 600; margin: 32px 0 10px; letter-spacing: -.01em; }
     .formula { max-width: 72ch; padding: 12px 16px; background: var(--surface-2); border: 1px solid var(--border-soft); border-radius: 10px; font-variant-numeric: tabular-nums; }
   </style>

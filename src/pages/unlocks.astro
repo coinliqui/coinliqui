@@ -1,5 +1,6 @@
 ---
 import Base from "../layouts/Base.astro";
+import Related from "../components/Related.astro";
 import { usd, pct } from "../lib/funding.ts";
 import { getSnapshot, findPerp } from "../lib/hyperliquid.ts";
 import reg from "../data/vesting-contracts.json";
@@ -290,6 +291,13 @@ const description =
     are contract-backed to the strongest; curation covers the gap between them. The badge column
     is what makes running all three at once coherent instead of muddled.
   </p>
+
+  <Related items={[
+    { href: "/coins", label: "Coins", note: "Spot prices and volume, which is what an unlock has to be absorbed by." },
+    { href: "/funding/crv", label: "CRV funding", note: "One of the two tokens here that also has a perpetual on this site." },
+    { href: "/open-interest", label: "Open interest", note: "Turnover against open interest across every covered contract." },
+    { href: "/data-sources", label: "Data sources", note: "Where each figure comes from, and its provenance." },
+  ]} />
 
   <style>
     .prov { display: inline-block; font-size: 11.5px; font-weight: 500; padding: 3px 9px; border-radius: var(--r-pill); white-space: nowrap; }

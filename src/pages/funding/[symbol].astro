@@ -7,6 +7,7 @@ import { getCandles, getHourly, getFunding } from "../../lib/candles.ts";
 import { TIMEFRAMES, DEFAULT_TF, aggregate, buildPriceChart, shortDate, CHART_H } from "../../lib/series.ts";
 import { CH } from "../../lib/chart.ts";
 import tables from "../../data/margin-tables.json";
+import { COINS, isLive } from "../../lib/coins.ts";
 
 const env = (Astro.locals as any)?.runtime?.env;
 const snap = await getSnapshot(env?.SNAPSHOT, import.meta.env.DEV);
@@ -35,6 +36,8 @@ if (p && wanted !== p.symbol.toLowerCase()) {
 if (!p) return Astro.rewrite(`/404?symbol=${encodeURIComponent(wanted)}`);
 
 const table = (tables as Record<string, MarginTable>)[String(p.marginTableId)];
+/* If this contract also has a published coin page, the two should know about each other. */
+const coin = COINS.find((c) => c.symbol === p.symbol && isLive(c));
 const ORDER: Venue[] = ["HlPerp", "BinPerp", "BybitPerp"];
 const by = new Map(p.venues.map((v) => [v.venue, v]));
 const hl = by.get("HlPerp");
@@ -279,10 +282,16 @@ const description = `${p.symbol} perpetual candles from 1H to 1W with the fundin
   </div>
 
   <h2 class="section">Other contracts</h2>
+  {/* Twenty-four rather than ten. A contract page's neighbours are the most useful links it
+      can carry — and a fifty-page template where every page links to ten of its siblings
+      leaves most of the set two or three hops from anywhere, which is the shape that gets a
+      template crawled slowly. Chips, so the density costs no visual weight. */}
   <p class="related">
-    {snap.perps.filter((x) => x.symbol !== p.symbol).slice(0, 10).map((x) => (
+    {snap.perps.filter((x) => x.symbol !== p.symbol).slice(0, 24).map((x) => (
       <a class="chip-link" href={`/funding/${x.symbol.toLowerCase()}`}>{x.symbol}</a>
     ))}
+    <a class="chip-link" href="/funding">All {snap.perps.length} →</a>
+    {coin && <a class="chip-link" href={`/coins/${coin.slug}`}>{coin.name} spot →</a>}
   </p>
 
   {/* NO define:vars HERE. Astro implements it by stamping the variable onto every element

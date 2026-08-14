@@ -1,5 +1,6 @@
 ---
 import Base from "../layouts/Base.astro";
+import Related from "../components/Related.astro";
 import { getSnapshot, OI_NOTIONAL_FLOOR } from "../lib/hyperliquid.ts";
 import { usd } from "../lib/funding.ts";
 const snap = await getSnapshot((Astro.locals as any)?.runtime?.env?.SNAPSHOT, import.meta.env.DEV);
@@ -48,6 +49,13 @@ const sources = [
       forbids it. Where it is used at all it is an internal cross-check that never reaches a page.</li>
     <li><strong>Predicted or forecast rates.</strong> Only the venues' own published next-interval rates appear; nothing here is a model output.</li>
   </ul>
+  <Related items={[
+    { href: "/status", label: "Status", note: "Whether the ingest described here actually ran, and what it saw." },
+    { href: "/coins", label: "Coins", note: "Where the Coinbase spot layer is used, and why it is not Hyperliquid's." },
+    { href: "/methodology", label: "Methodology", note: "What is done to these numbers once they arrive." },
+    { href: "/privacy", label: "Privacy", note: "What the site does not collect while serving them." },
+  ]} />
+
   <style>
     h2 { font-size: 17px; margin: 30px 0 10px; }
     .p { max-width: 72ch; }
