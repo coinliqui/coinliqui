@@ -115,8 +115,13 @@ await step("Browser Integrity Check", "OFF", () =>
   cf(`/zones/${Z}/settings/browser_check`, { method: "PATCH", body: { value: "off" } }));
 await step("Security Level", "medium", () =>
   cf(`/zones/${Z}/settings/security_level`, { method: "PATCH", body: { value: "medium" } }));
+/* Managed robots.txt is NOT a zone setting — the live zone answers "Undefined zone setting"
+   for that name. It is `is_robots_txt_managed` inside the bot_management object, which is
+   where Cloudflare also keeps the AI controls. Measured on the zone, not taken from docs. */
 await step("Managed robots.txt", "OFF", () =>
-  cf(`/zones/${Z}/settings/managed_robots_txt`, { method: "PATCH", body: { value: "off" } }));
+  cf(`/zones/${Z}/bot_management`, { method: "PUT", body: { is_robots_txt_managed: false } }));
+await step("content bots protection", "disabled", () =>
+  cf(`/zones/${Z}/bot_management`, { method: "PUT", body: { content_bots_protection: "disabled" } }));
 
 console.log("\n11. email routing");
 await step("destination address", FORWARD_TO, () =>
