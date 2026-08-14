@@ -1,0 +1,26 @@
+#!/usr/bin/env node
+/**
+ * Content hashes for the two hand-written scripts in public/.
+ *
+ * Astro fingerprints everything it compiles into _astro/, but files in public/ are served
+ * verbatim, and Cloudflare Pages gives them `max-age=14400, must-revalidate`. So for four
+ * hours after a deploy a returning visitor runs the OLD interact.js against the NEW HTML.
+ *
+ * That is not theoretical: it happened on this deploy. The table-follows-the-chart fix was
+ * live in the file, the markup it needed was live in the page, and the browser kept running
+ * yesterday's script — which looks exactly like the fix not working, and would have been
+ * "fixed" a second time by someone chasing a bug that no longer existed.
+ *
+ * A query string is enough: the path stays stable, the URL changes whenever the bytes do,
+ * and the long cache becomes correct instead of dangerous. Wired into `npm run build` rather
+ * than left as a step to remember — the whole point is that it cannot be forgotten.
+ */
+import { createHash } from "node:crypto";
+import { readFileSync, writeFileSync, readdirSync } from "node:fs";
+
+const out = {};
+for (const f of readdirSync("public").filter((f) => f.endsWith(".js"))) {
+  out[`/${f}`] = createHash("sha256").update(readFileSync(`public/${f}`)).digest("hex").slice(0, 10);
+}
+writeFileSync("src/data/assets.json", JSON.stringify(out, null, 2) + "\n");
+for (const [k, v] of Object.entries(out)) console.log(`  ${v}  ${k}`);

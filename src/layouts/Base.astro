@@ -1,5 +1,6 @@
 ---
 import { SITE, NAV, FOOTER_LINKS, origin } from "../lib/site.ts";
+import ASSETS from "../data/assets.json";
 
 interface Props {
   /** Bare page title. The brand suffix is appended here, not typed into every page. */
@@ -569,7 +570,10 @@ const schema = {
       ))}
     </nav>
 
-    <script type="module" src="/typeahead.js"></script>
-    <script type="module" src="/interact.js"></script>
+    {/* Fingerprinted — see scripts/gen-assets.mjs. Pages serves public/ with a four-hour
+        max-age and no hash in the filename, so without this a returning visitor runs the
+        previous deploy's script against this deploy's markup. */}
+    <script type="module" src={`/typeahead.js?v=${ASSETS["/typeahead.js"]}`}></script>
+    <script type="module" src={`/interact.js?v=${ASSETS["/interact.js"]}`}></script>
   </body>
 </html>
