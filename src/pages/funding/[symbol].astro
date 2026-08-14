@@ -7,7 +7,7 @@ import { getCandles, getHourly, getFunding } from "../../lib/candles.ts";
 import { TIMEFRAMES, DEFAULT_TF, aggregate, buildPriceChart, shortDate, CHART_H } from "../../lib/series.ts";
 import { CH } from "../../lib/chart.ts";
 import tables from "../../data/margin-tables.json";
-import { COINS, isLive } from "../../lib/coins.ts";
+import { COINS, isLive, getSpot, SPOT_SOURCE } from "../../lib/coins.ts";
 
 const env = (Astro.locals as any)?.runtime?.env;
 const snap = await getSnapshot(env?.SNAPSHOT, import.meta.env.DEV);
@@ -58,11 +58,22 @@ const px = (v: number) => usd(v, dp);
    the pre-rendered panel swaps in instantly and the URL is cleaned.
    --------------------------------------------------------------------------------------- */
 const tfKey = TIMEFRAMES.some((t) => t.key === Astro.url.searchParams.get("tf")) ? Astro.url.searchParams.get("tf")! : DEFAULT_TF;
-const [dayset, hourset, funding] = await Promise.all([
+const [dayset, hourset, funding, spotSet] = await Promise.all([
   getCandles(env?.SNAPSHOT, p.symbol, import.meta.env.DEV),
   getHourly(env?.SNAPSHOT, p.symbol, import.meta.env.DEV),
   getFunding(env?.SNAPSHOT, p.symbol, import.meta.env.DEV),
+  getSpot(env?.SNAPSHOT, import.meta.env.DEV),
 ]);
+/* THE HERO NUMBER ON THIS TEMPLATE IS A PERPETUAL MARK, AND IT SAID SO NOWHERE.
+   Fifty pages, the site's highest-traffic template, and the biggest figure on each was
+   p.markPx with nothing beside it naming what it is — while the sibling coin page put the
+   SAME figure under an explicit "Perpetual mark" label and led with spot instead. A reader
+   arriving from a price search had no way to tell the two apart, and they differ by the
+   basis. So this page now names its own number, and where a coin page exists it shows that
+   page's number too, labelled, with the gap between them — the mirror image of what the coin
+   page already does. */
+const spotQ = spotSet?.q[p.symbol] ?? null;
+const basisBp = spotQ && spotQ.last > 0 ? (p.markPx / spotQ.last - 1) * 10_000 : NaN;
 
 const charts = TIMEFRAMES.map((tf) => {
   const base = tf.base === "hour" ? hourset?.d : dayset?.d;
@@ -105,8 +116,10 @@ const description = `What a ${p.symbol} perpetual costs to hold: funding across 
     <span class="hero__chg" data-tfstat data-group="px" {...stat((c) => `${arrow(c.chart!.change)} ${(Math.abs(c.chart!.change) * 100).toFixed(2)}%`)}>
       {active ? `${arrow(active.chart.change)} ${(Math.abs(active.chart.change) * 100).toFixed(2)}%` : `${arrow(p.change24h)} ${(Math.abs(p.change24h) * 100).toFixed(2)}%`}
     </span>
-    <span class="hero__span" data-tfstat data-group="px" {...stat((c) => `over ${c.chart!.bars} ${span(c.tf.key)}`)}>
-      {active ? `over ${active.chart.bars} ${span(active.tf.key)}` : "24-hour change"}
+    <span class="hero__span">
+      <span data-tfstat data-group="px" {...stat((c) => `over ${c.chart!.bars} ${span(c.tf.key)}`)}>
+        {active ? `over ${active.chart.bars} ${span(active.tf.key)}` : "24-hour change"}
+      </span> · Hyperliquid perpetual mark
     </span>
   </div>
 
@@ -114,6 +127,12 @@ const description = `What a ${p.symbol} perpetual costs to hold: funding across 
     <div>Period high<b data-tfstat data-group="px" {...stat((c) => px(c.chart!.high))}>{active ? px(active.chart.high) : "—"}</b></div>
     <div>Period low<b data-tfstat data-group="px" {...stat((c) => px(c.chart!.low))}>{active ? px(active.chart.low) : "—"}</b></div>
     <div>Period volume<b data-tfstat data-group="px" {...stat((c) => compact(c.chart!.volume) + " " + p.symbol)}>{active ? compact(active.chart.volume) + " " + p.symbol : "—"}</b></div>
+    {spotQ && (
+      <div>Spot ({SPOT_SOURCE})<b data-spot="last" data-sym={p.symbol} data-dp={dp}>{px(spotQ.last)}</b></div>
+    )}
+    {Number.isFinite(basisBp) && (
+      <div>Basis<b data-spot="basis" data-sym={p.symbol}>{basisBp >= 0 ? "+" : ""}{basisBp.toFixed(1)} bps</b></div>
+    )}
     <div>Open interest<b>{usd(p.oiNotional)}</b></div>
     <div>Max leverage<b>{p.maxLeverage}×</b></div>
   </div>
