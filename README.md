@@ -139,6 +139,25 @@ Liquidation **events** are out of scope by decision, not oversight: no venue pub
 complete feed, and the two routes to one were costed and rejected. See
 `/methodology/liquidations`.
 
+## Weekly instrument
+
+`.github/workflows/indexation.yml` runs `scripts/indexation-report.mjs` every Monday at
+07:00 UTC and commits the output to `reports/`. Three independent sections, each degrading
+to a stated reason rather than failing the run:
+
+| Section | Needs | Answers |
+|---|---|---|
+| A. Coverage | nothing | what exists per template, and whether a crawler can still fetch all of it |
+| B. Search Console | `GSC_SA_KEY` | indexed share per template, position, impressions, top queries |
+| C. Crawler fetches | `CF_ANALYTICS_TOKEN`, `CF_ZONE_ID` | which named crawlers actually fetched, from Cloudflare's edge |
+
+The sitemaps ARE the template split — one file per template by construction — so the
+report's grouping cannot drift from the site's own.
+
+Section C reads aggregate request metrics Cloudflare already keeps, which `/privacy`
+already discloses. Nothing is added to the page: no script, no cookie, no beacon. Any
+option that would have required one is out of scope by that page rather than by preference.
+
 ## Not built yet
 
 OG image generation, at build time in GitHub Actions into R2 — not on demand in a Worker,
