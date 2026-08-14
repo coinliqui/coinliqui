@@ -1,5 +1,5 @@
 import { type Candle, type FundingPoint, T, O, H, L, C, V } from "./candles.ts";
-import { U, CH, INK, SANS, niceTicks, timeTicks, text, rect, line, fint, crosshair, n2, FS_AXIS, FS_MICRO, PILL_H, PILL_R, PILL_GAP } from "./chart.ts";
+import { U, CH, INK, SANS, MONO, niceTicks, timeTicks, text, rect, line, fint, crosshair, n2, FS_AXIS, FS_MICRO, PILL_H, PILL_R, PILL_GAP } from "./chart.ts";
 
 /* =========================================================================================
    PRICE CHART — candles, volume, and the funding band.
