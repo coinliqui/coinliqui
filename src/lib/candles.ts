@@ -28,9 +28,11 @@ export interface CandleSet {
 const INFO = "https://api.hyperliquid.xyz/info";
 
 /** Days retained in KV. The page shows fewer; the surplus lets the hold window slide. */
-export const CANDLE_DAYS = 200;
-/** Hours retained for the liquidation map. 14 days at 1h resolution. */
-export const CANDLE_HOURS = 336;
+export const CANDLE_DAYS = 800;
+/** Hours retained for the liquidation map. 45 days: the longest drawn window is 30 days and
+    the model needs a further 14 days of warm-up before it, so column zero already holds a
+    full book instead of filling up in view. */
+export const CANDLE_HOURS = 1080;
 
 export async function fetchCandles(symbol: string, days = CANDLE_DAYS): Promise<CandleSet> {
   const end = Date.now();
@@ -202,6 +204,83 @@ export async function getHourly(kv: KVLike | undefined, symbol: string, devReadT
     return null;
   }
 }
+
+/* =========================================================================================
+   FUNDING HISTORY
+
+   Hyperliquid publishes its OWN funding rate hourly back to 2023-05-12, 500 rows per call.
+   That is a different thing from the cross-venue history this site records itself, and the
+   chart must say which is which rather than blurring them: HL's own rate has years of
+   depth; the three-venue comparison only begins when our cron started.
+
+   Sign flips for HL are derivable from this series directly — no recorded history needed.
+   ========================================================================================= */
+export type FundingPoint = [t: number, rate: number];
+
+export async function fetchFundingHistory(symbol: string, sinceMs: number, endMs?: number): Promise<FundingPoint[]> {
+  const r = await fetch(INFO, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ type: "fundingHistory", coin: symbol, startTime: sinceMs, ...(endMs ? { endTime: endMs } : {}) }),
+  });
+  if (!r.ok) throw new Error(`fundingHistory ${symbol} ${r.status}`);
+  const raw = (await r.json()) as { time: number; fundingRate: string }[];
+  return raw.map((x) => [x.time, Number(x.fundingRate)] as FundingPoint).filter((x) => Number.isFinite(x[1]));
+}
+
+/**
+ * Page backwards from `sinceMs`. One call returns 500 hourly rows — 21 days — which is not
+ * enough to reach across a 220-bar daily chart, so depth has to be assembled. Bounded by
+ * `pages` because this runs inside a Worker with a subrequest ceiling.
+ */
+export async function fetchFundingDeep(symbol: string, days: number, pages = 8): Promise<FundingPoint[]> {
+  const out = new Map<number, number>();
+  let end = Date.now();
+  const floor = Date.now() - days * 86_400_000;
+  for (let i = 0; i < pages; i++) {
+    const start = Math.max(floor, end - 500 * 3_600_000);
+    const rows = await fetchFundingHistory(symbol, start, end);
+    if (!rows.length) break;
+    for (const [t, v] of rows) out.set(t, v);
+    const oldest = Math.min(...rows.map((r) => r[0]));
+    if (oldest <= floor + 3_600_000) break;
+    end = oldest - 1;
+  }
+  return [...out.entries()].sort((a, b) => a[0] - b[0]).map(([t, v]) => [t, v] as FundingPoint);
+}
+
+/** Newest 500 rows merged into whatever is stored, so depth ACCUMULATES across refreshes. */
+export function mergeFunding(prev: FundingPoint[], next: FundingPoint[], cap = 5200): FundingPoint[] {
+  const m = new Map<number, number>();
+  for (const [t, v] of prev) m.set(t, v);
+  for (const [t, v] of next) m.set(t, v);
+  return [...m.entries()].sort((a, b) => a[0] - b[0]).slice(-cap).map(([t, v]) => [t, v] as FundingPoint);
+}
+
+export async function getFunding(kv: KVLike | undefined, symbol: string, devReadThrough = false): Promise<FundingPoint[] | null> {
+  if (kv) {
+    try {
+      const v = (await kv.get(`funding:${symbol}`, "json")) as FundingPoint[] | null;
+      if (Array.isArray(v) && v.length > 24) return v;
+    } catch {
+      /* fall through */
+    }
+    if (!devReadThrough) return null;
+  }
+  /* Dev read-through only. Production reads the accumulated KV value, which the worker
+     deepens on every pass; this path exists so the chart is not empty on a laptop. Cached in
+     module scope because eleven sequential upstream calls per page render is not a dev loop. */
+  const hit = devFunding.get(symbol);
+  if (hit && Date.now() - hit.at < 10 * 60_000) return hit.v;
+  try {
+    const v = await fetchFundingDeep(symbol, 220, 11);
+    devFunding.set(symbol, { at: Date.now(), v });
+    return v;
+  } catch {
+    return null;
+  }
+}
+const devFunding = new Map<string, { at: number; v: FundingPoint[] }>();
 
 /** Leverage ladder for the grid: dense at the top where the differences bite. */
 export function gridLevels(maxLeverage: number, rows = 12): number[] {

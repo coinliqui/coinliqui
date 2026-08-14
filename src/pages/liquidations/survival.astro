@@ -4,6 +4,7 @@ import { getSnapshot, coldStart } from "../../lib/hyperliquid.ts";
 import { usd, pct } from "../../lib/funding.ts";
 import { maintenanceMarginFraction, type MarginTable } from "../../lib/margin.ts";
 import { getCandles, survivalGrid, gridLevels } from "../../lib/candles.ts";
+import { CH, INK, RAMP, text, rect, timeTicks, fint, SANS } from "../../lib/chart.ts";
 import tables from "../../data/margin-tables.json";
 
 const env = (Astro.locals as any)?.runtime?.env;
@@ -34,56 +35,85 @@ const dayLabel = (ms: number) => new Date(ms).toLocaleDateString("en-GB", { day:
 /* Built as a string: 1,000 JSX vnodes is needless Worker CPU. Presentation attributes are
    INLINE — Astro scopes `.cls{}` to `.cls[data-astro-cid-x]`, and markup injected with
    set:html never carries that attribute, so class-based styling here silently does nothing
-   and SVG falls back to fill:black. That shipped once; it will not again. */
+   and SVG falls back to fill:black. That shipped once; it will not again.
+
+   Drawn to the same scale and palette as every other chart on the site (see lib/chart.ts).
+   The one deliberate difference: leverage is a CATEGORY, not a continuous axis, so its
+   labels sit on the left where a row label belongs, and only price axes go on the right. */
 let heatSvg = "";
-const HW = 980, HH = 506, hpL = 76, hpR = 20, hpT = 128, hpB = 44;
-const stripT = 46, stripH = 62;
+const HW = CH.w, HH = 568;
+const hpL = 13 * 4, hpR = 20 * 4, hpT = 32 * 4, hpB = 7 * 4;
+const stripT = 16 * 4, stripH = 15 * 4;
+
+/* SIX BUCKETS, NOT A CONTINUUM. A smooth day-to-day ramp turned 1,080 cells into vertical
+   static: adjacent columns differ by a day and jump three ramp stops, so the eye reads noise
+   instead of the finding. Quantising to bands the reader can name — closed the next day,
+   inside a week, inside a month, never — makes the shape legible and the legend readable,
+   and every exact day is still in the tooltip and the table. */
+const BUCKETS: { max: number; label: string; ramp: number }[] = [
+  { max: 1, label: "next day", ramp: 20 },
+  { max: 2, label: "2", ramp: 17 },
+  { max: 4, label: "3–4", ramp: 14 },
+  { max: 7, label: "5–7", ramp: 11 },
+  { max: 14, label: "8–14", ramp: 8 },
+  { max: Infinity, label: `15–${hold}`, ramp: 5 },
+];
+const SURVIVED = "#2b323a";   // neutral, off the ramp: a different outcome, not a dimmer one
+const bucketOf = (d: number) => BUCKETS.find((b) => d <= b.max)!;
+
 if (grid && grid.entries.length > 4) {
   const pw = HW - hpL - hpR, ph = HH - hpT - hpB;
   const rows = grid.levels.length, cols = grid.entries.length;
   const rowH = ph / rows, colW = pw / cols;
   const out: string[] = [];
-  const opFor = (day: number) => 0.22 + 0.78 * (1 - Math.log(day) / Math.log(Math.max(2, hold)));
-  const FAINT = "#6c737d", DIM = "#9aa1ab";
 
-  const steps = 24;
-  for (let i = 0; i < steps; i++) {
-    const day = Math.exp((i / (steps - 1)) * Math.log(Math.max(2, hold)));
-    out.push(`<rect x="${(hpL + i * 7).toFixed(1)}" y="12" width="7.4" height="10" fill="#8ab4f8" fill-opacity="${opFor(day).toFixed(3)}"/>`);
+  out.push(rect(0, 0, HW, HH, INK.well, ` rx="${CH.radius}"`));
+
+  // legend: one swatch per bucket, labelled underneath, then the survived key
+  out.push(text(hpL, 22, "closed after", INK.faint, 11, "start", 400, SANS));
+  let lx = hpL + 76;
+  for (const b of BUCKETS) {
+    out.push(rect(lx, 13, 34, 11, RAMP[b.ramp], ' rx="2"'));
+    out.push(text(lx + 17, 37, b.label, INK.faint, 10.5, "middle"));
+    lx += 39;
   }
-  out.push(`<text x="${hpL - 10}" y="21" text-anchor="end" font-size="11.5" fill="${FAINT}">closed</text>`);
-  out.push(`<text x="${(hpL + steps * 7 + 8).toFixed(1)}" y="21" font-size="11.5" fill="${FAINT}">next day ← → day ${hold}</text>`);
-  const sx = hpL + steps * 7 + 132;
-  out.push(`<rect x="${sx}" y="12" width="14" height="10" fill="#2a2f35"/>`);
-  out.push(`<text x="${sx + 20}" y="21" font-size="11.5" fill="${FAINT}">never closed</text>`);
+  out.push(text(lx + 4, 22, "days", INK.faint, 11, "start", 400, SANS));
+  out.push(rect(lx + 44, 13, 14, 11, SURVIVED, ' rx="2"'));
+  out.push(text(lx + 64, 22, `never closed in ${hold} days`, INK.faint, 11, "start", 400, SANS));
 
+  // price strip — the same entry-day closes the grid below is computed from
   const cl = grid.entries.map((c) => c[4]);
   const pmin = Math.min(...cl), pmax = Math.max(...cl);
   const sy = (v: number) => stripT + stripH - ((v - pmin) / Math.max(1e-12, pmax - pmin)) * stripH;
   const pts = cl.map((v, i) => `${(hpL + i * colW + colW / 2).toFixed(1)},${sy(v).toFixed(1)}`);
-  out.push(`<path d="M${hpL},${(stripT + stripH).toFixed(1)} L${pts.join(" L")} L${(hpL + cols * colW).toFixed(1)},${(stripT + stripH).toFixed(1)} Z" fill="${FAINT}" fill-opacity="0.13"/>`);
-  out.push(`<polyline points="${pts.join(" ")}" fill="none" stroke="${DIM}" stroke-width="1.6" stroke-linejoin="round"/>`);
-  out.push(`<text x="${hpL - 10}" y="${(stripT + 10).toFixed(1)}" text-anchor="end" font-size="11.5" fill="${FAINT}">${px(pmax)}</text>`);
-  out.push(`<text x="${hpL - 10}" y="${(stripT + stripH).toFixed(1)}" text-anchor="end" font-size="11.5" fill="${FAINT}">${px(pmin)}</text>`);
-  out.push(`<text x="${hpL}" y="${(stripT - 8).toFixed(1)}" font-size="11.5" fill="${FAINT}">${perp.symbol} close on the entry day</text>`);
+  out.push(`<path d="M${hpL},${(stripT + stripH).toFixed(1)} L${pts.join(" L")} L${(hpL + cols * colW).toFixed(1)},${(stripT + stripH).toFixed(1)} Z" fill="${INK.acc}" fill-opacity="0.09"/>`);
+  out.push(`<polyline points="${pts.join(" ")}" fill="none" stroke="${INK.up}" stroke-width="1.5" stroke-linejoin="round"/>`);
+  out.push(text(HW - hpR + 10, stripT + 4, fint(pmax), INK.dim, 11));
+  out.push(text(HW - hpR + 10, stripT + stripH + 4, fint(pmin), INK.dim, 11));
+  out.push(text(hpL, stripT - 9, `${perp.symbol} close on the entry day`, INK.faint, 11, "start", 400, SANS));
 
   grid.levels.forEach((lv, r) => {
     const yy = hpT + r * rowH;
-    out.push(`<text x="${hpL - 10}" y="${(yy + rowH / 2 + 4).toFixed(1)}" text-anchor="end" font-size="12.5" font-weight="600" fill="${DIM}">${lv.L}×</text>`);
+    out.push(text(hpL - 10, yy + rowH / 2 + 4, `${lv.L}×`, INK.dim, 11.5, "end", 500));
     lv.cells.forEach((c, ci) => {
-      const x = hpL + ci * colW;
       const surv = c.liqDay === null;
+      const b = surv ? null : bucketOf(c.liqDay!);
+      const tip =
+        `&lt;div class=&quot;tip__h&quot;&gt;${lv.L}× ${mapSide} opened ${dayLabel(grid.entries[ci][0])}&lt;/div&gt;` +
+        `&lt;div class=&quot;tip__g&quot;&gt;&lt;span&gt;Outcome&lt;/span&gt;&lt;b&gt;${surv ? `survived ${hold}d` : `closed on day ${c.liqDay}`}&lt;/b&gt;` +
+        `&lt;span&gt;Entry close&lt;/span&gt;&lt;b&gt;${px(grid.entries[ci][4])}&lt;/b&gt;&lt;/div&gt;` +
+        `&lt;div class=&quot;tip__f&quot;&gt;Derived from the real price path — nothing modelled&lt;/div&gt;`;
       out.push(
-        `<rect x="${x.toFixed(1)}" y="${yy.toFixed(1)}" width="${(colW + 0.5).toFixed(1)}" height="${(rowH + 0.5).toFixed(1)}" fill="${surv ? "#2a2f35" : "#8ab4f8"}" fill-opacity="${(surv ? 0.85 : opFor(c.liqDay!)).toFixed(3)}" data-tip="&lt;div class=&quot;tip__h&quot;&gt;${lv.L}× opened ${dayLabel(grid.entries[ci][0])}&lt;/div&gt;&lt;div class=&quot;tip__g&quot;&gt;&lt;span&gt;Outcome&lt;/span&gt;&lt;b&gt;${surv ? `survived ${hold}d` : `closed day ${c.liqDay}`}&lt;/b&gt;&lt;span&gt;Entry close&lt;/span&gt;&lt;b&gt;${px(grid.entries[ci][4])}&lt;/b&gt;&lt;/div&gt;"><title>${lv.L}× ${dayLabel(grid.entries[ci][0])}: ${surv ? `survived ${hold}d` : `closed day ${c.liqDay}`}</title></rect>`,
+        `<rect x="${(hpL + ci * colW).toFixed(1)}" y="${yy.toFixed(1)}" width="${(colW + 0.4).toFixed(1)}" height="${(rowH + 0.4).toFixed(1)}" ` +
+        `fill="${surv ? SURVIVED : RAMP[b!.ramp]}" data-tip="${tip}">` +
+        `<title>${lv.L}× ${dayLabel(grid.entries[ci][0])}: ${surv ? `survived ${hold}d` : `closed day ${c.liqDay}`}</title></rect>`,
       );
     });
   });
 
-  const every = Math.max(1, Math.round(cols / 6));
-  for (let ci = 0; ci < cols; ci += every) {
-    out.push(`<text x="${(hpL + ci * colW + colW / 2).toFixed(1)}" y="${HH - hpB + 20}" text-anchor="middle" font-size="11.5" fill="${FAINT}">${dayLabel(grid.entries[ci][0])}</text>`);
+  for (const { i, label } of timeTicks(grid.entries.map((c) => c[0]), 8)) {
+    out.push(text(hpL + i * colW + colW / 2, HH - 9, label, INK.faint, 11, "middle"));
   }
-  out.push(`<text x="${hpL}" y="${HH - hpB + 38}" font-size="11.5" fill="${FAINT}">entry date →</text>`);
   heatSvg = out.join("");
 }
 
@@ -123,12 +153,10 @@ const description = `For every entry day and every leverage, whether a ${perp.sy
   {grid ? (
     <>
       <figure class="chart">
-        <div class="chart__scroll">
-          <svg viewBox={`0 0 ${HW} ${HH}`} class="chart__svg heat" role="img"
-               aria-label={`Survival map for ${perp.symbol}: ${grid.levels.length} leverage levels by ${grid.entries.length} entry days, ${mapSide} positions held ${hold} days.`}>
-            <Fragment set:html={heatSvg} />
-          </svg>
-        </div>
+        <svg viewBox={`0 0 ${HW} ${HH}`} class="heat" role="img" data-tips
+             aria-label={`Survival map for ${perp.symbol}: ${grid.levels.length} leverage levels by ${grid.entries.length} entry days, ${mapSide} positions held ${hold} days.`}>
+          <Fragment set:html={heatSvg} />
+        </svg>
         <figcaption>
           {perp.symbol} daily candles from Hyperliquid — real traded days only; the venue's
           pre-launch backfill carries zero volume and is excluded. Entry days
@@ -189,13 +217,9 @@ const description = `For every entry day and every leverage, whether a ${perp.sy
     · <a class="link" href="/tools/liquidation-price">Work out a specific position →</a>
   </p>
 
-  <style>
-    .chart { margin: 0; }
-    .chart__scroll { overflow-x: auto; background: var(--surface-2); border: 1px solid var(--border-soft); border-radius: var(--r-md); }
-    .chart__svg { display: block; width: 100%; min-width: 660px; height: auto; }
-    .heat { aspect-ratio: 980 / 506; }
-    .heat rect { shape-rendering: crispEdges; }
-    figcaption { font-size: 13px; color: var(--text-faint); margin-top: 10px; max-width: 82ch; }
+  <style define:vars={{ heatRatio: `${HW} / ${HH}` }}>
+    .heat { display: block; width: 100%; height: auto; aspect-ratio: var(--heatRatio); }
+    .heat :global(rect) { shape-rendering: crispEdges; }
     .src { margin-top: 14px; }
     .src summary { font-size: 13px; color: var(--text-dim); cursor: pointer; padding: 8px 0; }
     .src summary:hover { color: var(--text); }

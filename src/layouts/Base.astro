@@ -333,6 +333,7 @@ const schema = {
       .tbl tbody tr:last-child td { border-bottom: 0; }
       .tbl th.num, .tbl td.num { text-align: right; }
       .tbl tbody tr:hover { background: var(--surface-3); }
+      .tbl tbody tr.is-active:hover { background: #333941; }
       .tbl td a { text-decoration: none; font-weight: 500; }
       .tbl td a:hover { color: var(--accent); }
       .tbl .sym { font-weight: 600; }
@@ -366,21 +367,42 @@ const schema = {
         opacity: 0; transition: opacity .12s var(--ease);
         font-variant-numeric: tabular-nums;
       }
-      .tip.is-on { opacity: 1; }
+      .tip[data-on] { opacity: 1; }
       .tip__h { font-size: var(--fs-xs); color: var(--text-faint); margin-bottom: 7px; }
       .tip__g { display: grid; grid-template-columns: auto auto; gap: 3px 18px; }
       .tip__g span { color: var(--text-dim); }
       .tip__g b { font-weight: 600; text-align: right; }
       .tip__f { margin-top: 7px; padding-top: 7px; border-top: 1px solid var(--border-soft); font-size: var(--fs-xs); color: var(--text-faint); }
 
-      /* --- crosshair --- */
-      .xh-v { stroke: var(--text-dim); stroke-width: 1; stroke-dasharray: 3 3; opacity: .75; }
-      .xh-dot { fill: var(--accent); stroke: var(--bg); stroke-width: 2.5; }
-      svg[data-xhair] { cursor: crosshair; touch-action: none; }
+      /* --- crosshair ---
+         The furniture itself is styled INLINE inside the generated SVG (see chart.ts) —
+         a class here would not reach it. All that belongs in this stylesheet is the
+         cursor, the touch behaviour, and the fade, which apply to the host element. */
+      svg[data-xhair], svg[data-heat] { cursor: crosshair; touch-action: none; }
+      svg[data-xhair] [data-xh="g"], svg[data-heat] [data-xh="g"] { transition: opacity .13s var(--ease); }
+      /* On a touch screen the chart has to be pannable, so the browser keeps the gesture and
+         a tap — not a drag — is what places the readout. */
+      @media (pointer: coarse) { svg[data-xhair], svg[data-heat] { touch-action: pan-x pan-y; } }
 
-      /* --- hovered cell in a grid or bar chart --- */
-      [data-tip] { transition: opacity .1s var(--ease); }
-      .is-hot { stroke: var(--text); stroke-width: 1.4; paint-order: stroke; }
+      /* --- the chart well sits inside the card, one step darker ---
+         No line-height:0 and no overflow:hidden here: the well's rounded corner is drawn by
+         the SVG's own background rect, and a figure.chart with a caption inside must keep
+         normal line spacing. Collapsing it stacked caption lines on top of each other. */
+      .chart { position: relative; margin: 0; }
+      /* A 1260-wide chart squeezed into 336px is 158px tall: one pixel per heatmap row and
+         a candle narrower than its own wick. Below the breakpoint the chart keeps a legible
+         size and the container scrolls instead. */
+      @media (max-width: 760px) {
+        .chart {
+          overflow-x: auto; overscroll-behavior-x: contain;
+          /* the fade is the only signal that there is more chart to the right */
+          -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 26px), transparent);
+                  mask-image: linear-gradient(to right, #000 calc(100% - 26px), transparent);
+        }
+        .chart > svg, .chart > figure > svg, figure.chart > svg { min-width: 720px; }
+      }
+      .chart > svg, .chart > figure > svg, .chart__scroll > svg { display: block; width: 100%; height: auto; }
+      figure.chart > figcaption { font-size: 13px; color: var(--text-faint); margin-top: 10px; max-width: 84ch; line-height: 1.55; }
 
       /* --- table rows respond, and the magnitude bar responds with them --- */
       .tbl tbody tr { transition: background .12s var(--ease); }
@@ -404,9 +426,9 @@ const schema = {
 
       /* --- timeframe panels: cross-fade rather than snap --- */
       [data-tfpanel] { display: none; }
-      [data-tfpanel].is-on { display: block; animation: tfin .22s var(--ease); }
+      [data-tfpanel][data-on] { display: block; animation: tfin .22s var(--ease); }
       @keyframes tfin { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
-      .is-swap { opacity: 0; transform: translateY(-3px); }
+      [data-tfstat][data-swap] { opacity: 0; transform: translateY(-3px); }
       [data-tfstat] { transition: opacity .11s var(--ease), transform .11s var(--ease); display: inline-block; }
 
       /* --- hero figure: the one number a page is about --- */

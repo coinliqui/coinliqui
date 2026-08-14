@@ -3,8 +3,9 @@ import Base from "../../layouts/Base.astro";
 import { getSnapshot, coldStart } from "../../lib/hyperliquid.ts";
 import { VENUE_LABEL, pct, usd, rawRate, carryCost, settlementsPerYear, paysClass, paysLabel, type Venue } from "../../lib/funding.ts";
 import { liquidationPrice, type MarginTable } from "../../lib/margin.ts";
-import { getCandles, getHourly, T, C } from "../../lib/candles.ts";
-import { TIMEFRAMES, DEFAULT_TF, aggregate, buildAreaChart } from "../../lib/series.ts";
+import { getCandles, getHourly, getFunding } from "../../lib/candles.ts";
+import { TIMEFRAMES, DEFAULT_TF, aggregate, buildPriceChart, shortDate, CHART_H } from "../../lib/series.ts";
+import { CH } from "../../lib/chart.ts";
 import tables from "../../data/margin-tables.json";
 
 const env = (Astro.locals as any)?.runtime?.env;
@@ -28,40 +29,38 @@ const dp = p.markPx >= 100 ? 2 : p.markPx >= 1 ? 3 : p.markPx >= 0.01 ? 5 : 7;
 const px = (v: number) => usd(v, dp);
 
 /* ---------------------------------------------------------------------------------------
-   PRICE CHART
+   THE CHART
 
    Timeframe switching is a GET form of submit buttons, not links. Crawlers do not submit
    forms, so one contract stays exactly one URL — no ?tf= variants discovered, no crawl
-   budget split four ways, nothing to consolidate with canonicals after the fact. Without
-   JS the buttons submit and the server renders that timeframe; with JS the click is
-   intercepted, the pre-rendered panel is swapped in instantly and the URL is cleaned.
+   budget split four ways, nothing to consolidate with canonicals afterwards. Without JS the
+   buttons submit and the server renders that timeframe; with JS the click is intercepted,
+   the pre-rendered panel swaps in instantly and the URL is cleaned.
    --------------------------------------------------------------------------------------- */
 const tfKey = TIMEFRAMES.some((t) => t.key === Astro.url.searchParams.get("tf")) ? Astro.url.searchParams.get("tf")! : DEFAULT_TF;
-const [dayset, hourset] = await Promise.all([
+const [dayset, hourset, funding] = await Promise.all([
   getCandles(env?.SNAPSHOT, p.symbol, import.meta.env.DEV),
   getHourly(env?.SNAPSHOT, p.symbol, import.meta.env.DEV),
+  getFunding(env?.SNAPSHOT, p.symbol, import.meta.env.DEV),
 ]);
 
-const CW = 1000, CH = 392;
-const CPAD = { l: 78, r: 24, t: 20, b: 36 };
 const charts = TIMEFRAMES.map((tf) => {
   const base = tf.base === "hour" ? hourset?.d : dayset?.d;
-  if (!base || base.length < 6) return { tf, chart: null, series: [] as number[][] };
-  const rolled = aggregate(base, tf.factor).slice(-tf.bars);
-  const chart = buildAreaChart(rolled, tf, CW, CH, CPAD);
-  const series = chart ? chart.points.map((q) => [q.x, q.y, q.t, q.o, q.h, q.l, q.c, q.v]) : [];
-  return { tf, chart, series };
+  if (!base || base.length < 6) return { tf, chart: null };
+  return { tf, chart: buildPriceChart(aggregate(base, tf.factor).slice(-tf.bars), funding, tf) };
 });
 const active = charts.find((c) => c.tf.key === tfKey) ?? charts[0];
 const hasChart = charts.some((c) => c.chart);
-const plotAttr = `${CPAD.l},${CPAD.t},${CW - CPAD.l - CPAD.r},${CH - CPAD.t - CPAD.b}`;
+const span = (k: string) => (k === "1h" ? "hourly bars" : k === "4h" ? "4-hour bars" : k === "1d" ? "daily bars" : "weekly bars");
+
 const arrow = (n: number) => (n >= 0 ? "▲" : "▼");
 const compact = (n: number) => (Math.abs(n) >= 1e9 ? (n / 1e9).toFixed(2) + "B" : Math.abs(n) >= 1e6 ? (n / 1e6).toFixed(2) + "M" : Math.abs(n) >= 1e3 ? (n / 1e3).toFixed(2) + "K" : n.toFixed(2));
 const stat = (fn: (c: (typeof charts)[number]) => string) =>
   Object.fromEntries(charts.filter((c) => c.chart).map((c) => [`data-v${c.tf.key}`, fn(c)]));
 
+const rows = active.chart ? active.chart.points.slice(-200) : [];
 const title = `${p.symbol} price, funding rate and margin tiers | Basis`;
-const description = `${p.symbol} perpetual price chart with 1H to 1W candles, funding across Hyperliquid, Binance and Bybit annualised, open interest ${usd(p.oiNotional)} and the published margin tiers.`;
+const description = `${p.symbol} perpetual candles from 1H to 1W with the funding rate charted on the same time axis, funding across Hyperliquid, Binance and Bybit annualised, open interest ${usd(p.oiNotional)} and the published margin tiers.`;
 ---
 
 <Base title={title} description={description} fetchedAt={snap.fetchedAt}>
@@ -75,8 +74,8 @@ const description = `${p.symbol} perpetual price chart with 1H to 1W candles, fu
     <span class="hero__chg" data-tfstat data-group="px" {...stat((c) => `${arrow(c.chart!.change)} ${(Math.abs(c.chart!.change) * 100).toFixed(2)}%`)}>
       {active.chart ? `${arrow(active.chart.change)} ${(Math.abs(active.chart.change) * 100).toFixed(2)}%` : `${arrow(p.change24h)} ${(Math.abs(p.change24h) * 100).toFixed(2)}%`}
     </span>
-    <span class="hero__span" data-tfstat data-group="px" {...stat((c) => `over ${c.tf.label === "1H" ? "7 days of hourly bars" : c.tf.label === "4H" ? "14 days of 4-hour bars" : c.tf.label === "1D" ? "120 days" : "2 years"}`)}>
-      {active.chart ? (active.tf.label === "1H" ? "over 7 days of hourly bars" : active.tf.label === "4H" ? "over 14 days of 4-hour bars" : active.tf.label === "1D" ? "over 120 days" : "over 2 years") : "24-hour change"}
+    <span class="hero__span" data-tfstat data-group="px" {...stat((c) => `over ${c.chart!.bars} ${span(c.tf.key)}`)}>
+      {active.chart ? `over ${active.chart.bars} ${span(active.tf.key)}` : "24-hour change"}
     </span>
   </div>
 
@@ -99,51 +98,45 @@ const description = `${p.symbol} perpetual price chart with 1H to 1W candles, fu
         <span class="tfbar__note">Real traded candles only — Hyperliquid's pre-launch backfill carries zero volume and is excluded.</span>
       </form>
 
-      {charts.map(({ tf, chart, series }) => chart && (
-        <div data-tfpanel={tf.key} data-group="px" class:list={["chart", { "is-on": tf.key === tfKey }]}>
-          <svg viewBox={`0 0 ${CW} ${CH}`} class="pchart" data-xhair={`pts-${tf.key}`} data-plot={plotAttr} data-dp={dp}
-               role="img" aria-label={`${p.symbol} price, ${tf.label} candles. Values are tabulated below the chart.`}>
-            <defs>
-              <linearGradient id={`grad-${tf.key}`} x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stop-color="var(--accent)" stop-opacity="0.30" />
-                <stop offset="55%" stop-color="var(--accent)" stop-opacity="0.10" />
-                <stop offset="100%" stop-color="var(--accent)" stop-opacity="0" />
-              </linearGradient>
-            </defs>
-            {chart.yTicks.map((t) => (
-              <g>
-                <line x1={CPAD.l} x2={CW - CPAD.r} y1={t.y} y2={t.y} class="pgrid" />
-                <text x={CPAD.l - 12} y={t.y + 4} class="pax" text-anchor="end">{usd(t.v, dp >= 5 ? dp : 0)}</text>
-              </g>
-            ))}
-            {chart.xTicks.map((t) => (
-              <text x={t.x} y={CH - CPAD.b + 22} class="pax" text-anchor="middle">{t.label}</text>
-            ))}
-            <path d={chart.area} fill={`url(#grad-${tf.key})`} />
-            <path d={chart.line} class="pline" />
-            <g class="xh" hidden>
-              <line class="xh-v" />
-              <circle class="xh-dot" r="4.5" />
-            </g>
-          </svg>
-          <script type="application/json" id={`pts-${tf.key}`} set:html={JSON.stringify(series)} />
+      {charts.map(({ tf, chart }) => chart && (
+        <div data-tfpanel={tf.key} data-group="px" data-on={tf.key === tfKey ? "" : undefined} class="chart chart--price">
+          <Fragment set:html={chart.svg.replace("<svg ",
+            `<svg data-xhair="pts-${tf.key}" data-plot="${chart.plot.join(",")}" data-prange="${chart.range[0]},${chart.range[1]}" ` +
+            `data-axx="${chart.axisX}" data-slot="${chart.slot.toFixed(2)}" data-taxisy="${CHART_H - 27}" data-unit="${p.symbol}" data-dp="${chart.dp}" data-intraday="${tf.hours < 24 ? 1 : 0}" `)} />
+          <script type="application/json" id={`pts-${tf.key}`} set:html={JSON.stringify(chart.points)} />
         </div>
       ))}
 
+      <p class="legend">
+        <b>Candles</b> are monochrome — light for up, muted for down — because red and green on this
+        site mean one thing only: <b class="pays-l">longs paying shorts</b> and
+        <b class="pays-s">shorts paying longs</b>. That is the band under the volume histogram, on the
+        same time axis as the price, and it is the reason this chart is not the one everybody else draws.
+        {active.chart?.fundingFrom && (
+          <> Hyperliquid publishes its own funding hourly; this series reaches back to {shortDate(active.chart.fundingFrom)},
+          and the shaded region to its left is the part of the window with no funding to show.</>
+        )}
+        {active.chart && active.chart.fundingClipped > 0 && (
+          <> The band is scaled to ±{(active.chart.fundingMax * 100).toFixed(0)}% APR, the 96th percentile —
+          {" "}{active.chart.fundingClipped} bar{active.chart.fundingClipped === 1 ? "" : "s"} exceed it and are drawn at the edge; hover reads the true figure.</>
+        )}
+      </p>
+
       <details class="src">
-        <summary>{active.tf.label} candles as a table ({active.chart?.points.length ?? 0} rows, open · high · low · close · volume)</summary>
+        <summary>{active.tf.label} bars as a table ({rows.length} rows, open · high · low · close · volume · funding)</summary>
         <div class="panel" style="margin-top:10px">
           <table class="tbl">
-            <thead><tr><th>Time (UTC)</th><th class="num">Open</th><th class="num">High</th><th class="num">Low</th><th class="num">Close</th><th class="num">Volume</th></tr></thead>
+            <thead><tr><th>Time (UTC)</th><th class="num">Open</th><th class="num">High</th><th class="num">Low</th><th class="num">Close</th><th class="num">Volume</th><th class="num">Funding APR</th></tr></thead>
             <tbody>
-              {(active.chart?.points ?? []).map((q) => (
+              {rows.map((q) => (
                 <tr>
-                  <td>{new Date(q.t).toISOString().slice(0, 16).replace("T", " ")}</td>
-                  <td class="num">{px(q.o)}</td>
-                  <td class="num">{px(q.h)}</td>
-                  <td class="num">{px(q.l)}</td>
-                  <td class="num">{px(q.c)}</td>
-                  <td class="num">{compact(q.v)}</td>
+                  <td>{new Date(q[1]).toISOString().slice(0, 16).replace("T", " ")}</td>
+                  <td class="num">{px(q[2])}</td>
+                  <td class="num">{px(q[3])}</td>
+                  <td class="num">{px(q[4])}</td>
+                  <td class="num">{px(q[5])}</td>
+                  <td class="num">{compact(q[6])}</td>
+                  <td class:list={["num", Number.isFinite(q[7]) ? paysClass(q[7]) : "faint"]}>{Number.isFinite(q[7]) ? pct(q[7]) : "—"}</td>
                 </tr>
               ))}
             </tbody>
@@ -243,19 +236,14 @@ const description = `${p.symbol} perpetual price chart with 1H to 1W candles, fu
     ))}
   </p>
 
-  <style>
+  <style define:vars={{ chartRatio: `${CH.w} / ${CHART_H}` }}>
     .hero__span { font-size: var(--fs-sm); color: var(--text-faint); }
     .tfbar { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin: 18px 0 10px; }
     .tfbar__note { font-size: var(--fs-xs); color: var(--text-faint); }
-    .chart {
-      background: var(--surface-2); border: 1px solid var(--border-soft); border-radius: var(--r-md);
-      padding: 8px 6px 2px; margin: 0;
-    }
-    /* the box is reserved before paint, so switching timeframe cannot move the page */
-    .pchart { display: block; width: 100%; height: auto; aspect-ratio: 1000 / 392; }
-    .pgrid { stroke: var(--border-soft); stroke-width: 1; }
-    .pax { font-size: 11.5px; fill: var(--text-faint); font-variant-numeric: tabular-nums; }
-    .pline { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+    /* The box is reserved from the viewBox ratio before paint, so switching timeframe or
+       loading the script cannot move a single pixel of the page. */
+    .chart--price :global(svg) { aspect-ratio: var(--chartRatio); }
+    .legend { max-width: 88ch; line-height: 1.6; margin-top: 12px; }
     .src { margin-top: 12px; }
     .src summary { font-size: var(--fs-sm); color: var(--text-dim); cursor: pointer; padding: 8px 0; }
     .src summary:hover { color: var(--text); }
@@ -267,10 +255,6 @@ const description = `${p.symbol} perpetual price chart with 1H to 1W candles, fu
       transition: background .14s var(--ease), color .14s var(--ease);
     }
     .chip-link:hover { background: var(--surface-3); color: var(--accent); }
-    @media (max-width: 700px) {
-      /* a 2.55:1 chart is 147px tall on a 375px screen — too squat to read a trend from */
-      .pchart { aspect-ratio: 5 / 4; }
-      .hero__meta { gap: 14px 20px; }
-    }
+    @media (max-width: 700px) { .hero__meta { gap: 14px 20px; } }
   </style>
 </Base>

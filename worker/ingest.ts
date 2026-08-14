@@ -1,5 +1,5 @@
 import { fetchSnapshot } from "../src/lib/hyperliquid.ts";
-import { fetchCandles, fetchHourly } from "../src/lib/candles.ts";
+import { fetchCandles, fetchHourly, fetchFundingHistory, mergeFunding, type FundingPoint } from "../src/lib/candles.ts";
 
 /**
  * Ingest worker. Runs on a 5-minute cron, writes the current snapshot to KV (which the
@@ -38,6 +38,8 @@ const CANDLE_REFRESH_HOURS = 12;
  *  Daily and hourly are on SEPARATE cadences so a single tick never exceeds the
  *  50-subrequest ceiling: 25 fetches + the 2 snapshot calls, never 50 + 2. */
 const HOURLY_REFRESH_HOURS = 6;
+/** HL's own funding history, 500 rows a call, merged into what is stored so depth grows. */
+const FUNDING_REFRESH_HOURS = 6;
 /** Canary rows are small but unbounded, so they are pruned on the same schedule. */
 const CANARY_RETAIN_HOURS = 168;
 
@@ -69,6 +71,7 @@ interface RunResult {
   error?: string;
   candles?: number;
   hourly?: number;
+  funding?: number;
   candleError?: string;
 }
 
@@ -110,40 +113,53 @@ async function run(env: Env): Promise<RunResult> {
     result.ok = rows.length > 0;
     if (!result.ok) result.error = "upstream returned no usable funding rows";
 
-    // Candles feed the survival map. Failure here must never fail the ingest: the funding
-    // history is the asset that cannot be backfilled, candles can be re-fetched any time.
+    /* Bulk refreshes are STAGGERED: at most one per invocation. Daily, hourly and funding
+       are 25 fetches each, and a free Worker allows 50 subrequests per invocation — running
+       two together would blow the ceiling and drop the tick silently. */
     try {
-      const meta = (await env.SNAPSHOT.get("candles:meta", "json")) as { u: number } | null;
-      const stale = !meta || Date.now() - meta.u > CANDLE_REFRESH_HOURS * 3_600_000;
-      if (stale) {
-        const syms = snap.perps.map((p) => p.symbol);
-        const sets = await Promise.all(
-          syms.map((sym) => fetchCandles(sym).then((c) => [sym, c] as const).catch(() => null)),
-        );
-        let written = 0;
-        for (const entry of sets) {
-          if (!entry) continue;
-          await env.SNAPSHOT.put(`candles:${entry[0]}`, JSON.stringify(entry[1]));
-          written++;
-        }
-        await env.SNAPSHOT.put("candles:meta", JSON.stringify({ u: Date.now(), symbols: syms, written }));
-        result.candles = written;
-      }
+      const syms = snap.perps.map((p) => p.symbol);
+      const stale = async (key: string, hours: number) => {
+        const m = (await env.SNAPSHOT.get(key, "json")) as { u: number } | null;
+        return !m || Date.now() - m.u > hours * 3_600_000;
+      };
 
-      const hmeta = (await env.SNAPSHOT.get("hourly:meta", "json")) as { u: number } | null;
-      if (!hmeta || Date.now() - hmeta.u > HOURLY_REFRESH_HOURS * 3_600_000) {
-        const syms = snap.perps.map((p) => p.symbol);
-        const sets = await Promise.all(
-          syms.map((sym) => fetchHourly(sym).then((c) => [sym, c] as const).catch(() => null)),
-        );
-        let written = 0;
-        for (const entry of sets) {
-          if (!entry) continue;
-          await env.SNAPSHOT.put(`hourly:${entry[0]}`, JSON.stringify(entry[1]));
-          written++;
+      if (await stale("hourly:meta", HOURLY_REFRESH_HOURS)) {
+        const sets = await Promise.all(syms.map((s) => fetchHourly(s).then((c) => [s, c] as const).catch(() => null)));
+        let n = 0;
+        for (const e of sets) { if (!e) continue; await env.SNAPSHOT.put(`hourly:${e[0]}`, JSON.stringify(e[1])); n++; }
+        await env.SNAPSHOT.put("hourly:meta", JSON.stringify({ u: Date.now(), written: n }));
+        result.hourly = n;
+      } else if (await stale("funding:meta", FUNDING_REFRESH_HOURS)) {
+        /* Each pass fetches the latest 500 rows for every symbol, and ALSO pages one step
+           further back for a rotating slice of 6. A refresh alone only ever accumulates
+           forward; the rotation is what deepens history, and it keeps the tick at
+           25 + 6 + 2 = 33 subrequests, inside the 50 ceiling. */
+        const since = Date.now() - 25 * 86_400_000;
+        const meta = (await env.SNAPSHOT.get("funding:meta", "json")) as { cursor?: number } | null;
+        const cursor = meta?.cursor ?? 0;
+        let n = 0;
+        for (let i = 0; i < syms.length; i++) {
+          const s = syms[i];
+          try {
+            const prev = ((await env.SNAPSHOT.get(`funding:${s}`, "json")) as FundingPoint[] | null) ?? [];
+            let merged = mergeFunding(prev, await fetchFundingHistory(s, since));
+            const inSlice = (i - cursor + syms.length) % syms.length < 6;
+            if (inSlice && merged.length) {
+              const oldest = merged[0][0];
+              try { merged = mergeFunding(await fetchFundingHistory(s, oldest - 21 * 86_400_000), merged); } catch {}
+            }
+            await env.SNAPSHOT.put(`funding:${s}`, JSON.stringify(merged));
+            n++;
+          } catch { /* one symbol failing must not abort the sweep */ }
         }
-        await env.SNAPSHOT.put("hourly:meta", JSON.stringify({ u: Date.now(), written }));
-        result.hourly = written;
+        await env.SNAPSHOT.put("funding:meta", JSON.stringify({ u: Date.now(), written: n, cursor: (cursor + 6) % Math.max(1, syms.length) }));
+        result.funding = n;
+      } else if (await stale("candles:meta", CANDLE_REFRESH_HOURS)) {
+        const sets = await Promise.all(syms.map((s) => fetchCandles(s).then((c) => [s, c] as const).catch(() => null)));
+        let n = 0;
+        for (const e of sets) { if (!e) continue; await env.SNAPSHOT.put(`candles:${e[0]}`, JSON.stringify(e[1])); n++; }
+        await env.SNAPSHOT.put("candles:meta", JSON.stringify({ u: Date.now(), written: n }));
+        result.candles = n;
       }
     } catch (e) {
       result.candleError = (e instanceof Error ? e.message : String(e)).slice(0, 120);

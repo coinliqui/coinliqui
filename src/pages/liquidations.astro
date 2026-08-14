@@ -3,8 +3,11 @@ import Base from "../layouts/Base.astro";
 import { getSnapshot, coldStart } from "../lib/hyperliquid.ts";
 import { usd, pct } from "../lib/funding.ts";
 import { maintenanceMarginFraction, nextTierBoundary, type MarginTable } from "../lib/margin.ts";
-import { getHourly } from "../lib/candles.ts";
-import { buildLiqMap, rampColor, RAMP, PROFILES } from "../lib/liqmap.ts";
+import { getHourly, type Candle } from "../lib/candles.ts";
+import { buildLiqMap, PROFILES } from "../lib/liqmap.ts";
+import { paintHeatMap } from "../lib/heatmap.ts";
+import { RAMP, CH, compact } from "../lib/chart.ts";
+import { aggregate } from "../lib/series.ts";
 import tables from "../data/margin-tables.json";
 
 const env = (Astro.locals as any)?.runtime?.env;
@@ -26,85 +29,36 @@ const px = (v: number) => usd(v, dp);
 const axisDp = mark >= 100 ? 0 : mark >= 1 ? 2 : dp;
 const axisPx = (v: number) => usd(v, axisDp);
 
-// MODEL INPUTS. Chosen by the reader, printed beside the picture, applied here.
-const WINDOWS = [{ h: 72, label: "3 days" }, { h: 168, label: "7 days" }, { h: 336, label: "14 days" }];
-const winH = WINDOWS.some((w) => w.h === Number(q.get("win"))) ? Number(q.get("win")) : 168;
+/* MODEL INPUTS. Chosen by the reader, printed beside the picture, applied here.
+   Each window picks a bar size that gives ~180 columns, which is the density at which a
+   candle is still a candle rather than a hairline — the price path has to have presence. */
+const WINDOWS = [
+  { days: 7, label: "7 days", factor: 1, cols: 168 },
+  { days: 14, label: "14 days", factor: 2, cols: 168 },
+  { days: 30, label: "30 days", factor: 4, cols: 180 },
+];
+const win = WINDOWS.find((w) => String(w.days) === q.get("win")) ?? WINDOWS[2];
 const profile = PROFILES.find((p) => p.key === q.get("profile")) ?? PROFILES[1];
+/** Turnover window: how long a modelled position stays open before it is assumed closed. */
+const TURNOVER_DAYS = 14;
+const ageBars = Math.round((TURNOVER_DAYS * 24) / win.factor);
 
 const hourly = await getHourly(env?.SNAPSHOT, perp.symbol, import.meta.env.DEV);
-const bars = hourly ? hourly.d.slice(-winH) : [];
+const series: Candle[] = hourly ? aggregate(hourly.d, win.factor) : [];
+const start = series.length - win.cols;
 const map =
-  bars.length > 24
-    ? buildLiqMap({ candles: bars, mark, mmf, maxLeverage: tier1.maxLeverage, openInterest: perp.oiNotional, profile, rows: 60 })
+  start > 4 && series.length > 40
+    ? buildLiqMap({
+        candles: series, start, cols: win.cols, mmf, maxLeverage: tier1.maxLeverage,
+        openInterest: perp.oiNotional, profile, rows: 150, ageBars, minSpan: 0.16,
+      })
     : null;
-
-/* SVG built as a string with INLINE presentation attributes. Astro scopes class selectors to
-   [data-astro-cid-…]; markup injected with set:html never carries that attribute, so a
-   class-styled <text> here renders in SVG's default black on a dark page. That shipped once. */
-const MW = 1000, MH = 560, mL = 88, mR = 104, mT = 74, mB = 46;
-let mapSvg = "";
-if (map) {
-  const pw = MW - mL - mR, ph = MH - mT - mB;
-  const colW = pw / map.cols, rowH = ph / map.rows;
-  const FAINT = "#6c737d", DIM = "#9aa1ab", TXT = "#e6e8ec";
-  const o: string[] = [];
-
-  // The MODEL badge lives in the visual, where the reference puts its model tabs.
-  o.push(`<rect x="${mL}" y="12" width="92" height="23" rx="11.5" fill="#8ab4f8" fill-opacity="0.18" stroke="#8ab4f8" stroke-opacity="0.55"/>`);
-  o.push(`<text x="${mL + 46}" y="27.5" text-anchor="middle" font-size="11.5" font-weight="700" fill="#8ab4f8" letter-spacing="0.7">MODELLED</text>`);
-  o.push(`<text x="${mL + 104}" y="27.5" font-size="12.5" fill="${DIM}">${profile.label} leverage mix · ${WINDOWS.find((w) => w.h === winH)!.label} · notional scaled to open interest</text>`);
-
-  RAMP.forEach((c, i) => o.push(`<rect x="${mL + i * 17}" y="47" width="17" height="9" fill="${c}"/>`));
-  o.push(`<text x="${mL + RAMP.length * 17 + 10}" y="55.5" font-size="11.5" fill="${FAINT}">less ← modelled notional liquidated at this price → more</text>`);
-
-  // density field, run-length merged along time: far fewer rects, and no seams
-  for (let r = 0; r < map.rows; r++) {
-    let c = 0;
-    while (c < map.cols) {
-      const col = rampColor(map.grid[r][c], map.maxDensity);
-      if (!col) { c++; continue; }
-      let e = c;
-      while (e + 1 < map.cols && rampColor(map.grid[r][e + 1], map.maxDensity) === col) e++;
-      const bandHi = map.bucketHi[r], bandLo = map.bucketLo[r];
-      const notion = map.grid[r][c];
-      o.push(
-        `<rect x="${(mL + c * colW).toFixed(1)}" y="${(mT + r * rowH).toFixed(1)}" width="${((e - c + 1) * colW + 0.4).toFixed(1)}" height="${(rowH + 0.4).toFixed(1)}" fill="${col}"` +
-        ` data-tip="&lt;div class=&quot;tip__h&quot;&gt;Modelled — not observed&lt;/div&gt;&lt;div class=&quot;tip__g&quot;&gt;&lt;span&gt;Price band&lt;/span&gt;&lt;b&gt;${axisPx(bandLo)}–${axisPx(bandHi)}&lt;/b&gt;&lt;span&gt;Notional here&lt;/span&gt;&lt;b&gt;${usd(notion)}&lt;/b&gt;&lt;span&gt;Of open interest&lt;/span&gt;&lt;b&gt;${pct(notion / Math.max(1, perp.oiNotional))}&lt;/b&gt;&lt;/div&gt;"/>`,
-      );
-      c = e + 1;
-    }
-  }
-
-  for (let i = 0; i <= 6; i++) {
-    const p = map.hiPrice - ((map.hiPrice - map.loPrice) * i) / 6;
-    const y = mT + (ph * i) / 6;
-    o.push(`<line x1="${mL}" x2="${MW - mR}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}" stroke="#2e343b" stroke-width="1" stroke-opacity="0.6"/>`);
-    o.push(`<text x="${mL - 10}" y="${(y + 4).toFixed(1)}" text-anchor="end" font-size="11.5" fill="${FAINT}">${axisPx(p)}</text>`);
-  }
-
-  // observed price path, over the modelled field, with a dark halo so it reads on any cell
-  const yPrice = (p: number) => mT + ((map.hiPrice - p) / (map.hiPrice - map.loPrice)) * ph;
-  const pts = map.closes.map((v, i) => `${(mL + i * colW + colW / 2).toFixed(1)},${yPrice(v).toFixed(1)}`).join(" ");
-  o.push(`<polyline points="${pts}" fill="none" stroke="#0d0f12" stroke-width="4" stroke-linejoin="round" stroke-opacity="0.8"/>`);
-  o.push(`<polyline points="${pts}" fill="none" stroke="${TXT}" stroke-width="1.8" stroke-linejoin="round"/>`);
-
-  const ym = yPrice(mark);
-  o.push(`<line x1="${mL}" x2="${MW - mR}" y1="${ym.toFixed(1)}" y2="${ym.toFixed(1)}" stroke="${TXT}" stroke-width="1.2" stroke-dasharray="5 4" stroke-opacity="0.75"/>`);
-  o.push(`<text x="${MW - mR + 10}" y="${(ym - 5).toFixed(1)}" font-size="11" fill="${FAINT}">mark</text>`);
-  o.push(`<text x="${MW - mR + 10}" y="${(ym + 11).toFixed(1)}" font-size="12.5" font-weight="600" fill="${TXT}">${px(mark)}</text>`);
-
-  const step = Math.max(1, Math.round(map.cols / 6));
-  for (let i = 0; i < map.cols; i += step) {
-    const d = new Date(map.times[i]);
-    const lab = winH <= 72
-      ? d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "UTC" })
-      : d.toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
-    o.push(`<text x="${(mL + i * colW + colW / 2).toFixed(1)}" y="${MH - mB + 20}" text-anchor="middle" font-size="11.5" fill="${FAINT}">${lab}</text>`);
-  }
-  o.push(`<text x="${mL}" y="${MH - mB + 38}" font-size="11.5" fill="${FAINT}">UTC →</text>`);
-  mapSvg = o.join("");
-}
+const paint = map ? paintHeatMap(map) : null;
+const warmBars = map ? Math.min(start, ageBars) : 0;
+const stepMs = win.factor * 3_600_000;
 const totalClustered = map ? map.clusters.reduce((s, c) => s + c.notional, 0) : 0;
+const offAxis = profile.weights.filter(([L]) => L <= tier1.maxLeverage && map && (mark * (1 - 1 / L)) / (1 - mmf) < map.loPrice);
+const sweptTotal = map ? map.swept.reduce((a, b) => a + b, 0) : 0;
 
 /* --- corridor ladder: derived, not modelled --- */
 const CHART_FRACTIONS = [1, 0.75, 0.6, 0.5, 0.4, 0.3, 0.25];
@@ -117,8 +71,8 @@ const rungs = [...new Set(CHART_FRACTIONS.map((f) => Math.max(2, Math.round(tier
   .filter((l) => l <= tier1.maxLeverage && l >= 2)
   .sort((a, b) => b - a)
   .map(rung);
-const CW = 980, CH = 460, cpL = 92, cpR = 108, cpT = 26, cpB = 64;
-const cPlotW = CW - cpL - cpR, cPlotH = CH - cpT - cpB;
+const CW = 1000, CHT = 440, cpL = 20, cpR = 96, cpT = 20, cpB = 62;
+const cPlotW = CW - cpL - cpR, cPlotH = CHT - cpT - cpB;
 const cLo = Math.min(...rungs.map((r) => r.longLiq)), cHi = Math.max(...rungs.map((r) => r.shortLiq));
 const cGap = (cHi - cLo) * 0.06;
 const yMin = cLo - cGap, yMax = cHi + cGap;
@@ -130,19 +84,19 @@ const cx = (i: number) => groupX + (i + 0.5) * colW2;
 const barW = Math.min(72, colW2 * 0.58);
 const gridPrices = Array.from({ length: 6 }, (_, i) => yMin + ((yMax - yMin) * i) / 5);
 
-const title = `${perp.symbol} liquidation map — modelled density and the corridor each leverage permits | Basis`;
-const description = `A modelled liquidation density map for ${perp.symbol} with its assumptions stated and adjustable, alongside the tier-correct liquidation corridor, which is derived rather than modelled.`;
+const title = `${perp.symbol} liquidation map — modelled density, with the model on the page | Basis`;
+const description = `A modelled liquidation density map for ${perp.symbol}: where levels stand, where price has already cleared them, and every assumption printed and adjustable — alongside the tier-correct corridor, which is derived rather than modelled.`;
 ---
 
 <Base title={title} description={description} fetchedAt={snap.fetchedAt}>
   <div class="page-head">
     <h1>Liquidation map</h1>
     <p>
-      Two pictures of the same contract. The first is a <strong>model</strong> — where
-      liquidation levels would sit if positions were opened the way the assumptions below
-      describe. The second is <strong>derived</strong>: the corridor {perp.symbol} permits at each
-      leverage, which follows from the published tier table and assumes nothing. Both are labelled
-      wherever they appear.
+      Where liquidation levels would sit if positions were opened the way the assumptions below
+      describe — and, the part that matters, <strong>where price has already cleared them</strong>.
+      The dark corridor the price path carves through the field is not empty space; it is the
+      levels the market has already taken out. This is a model, and it is labelled as one inside
+      the picture, not only underneath it.
     </p>
   </div>
 
@@ -154,26 +108,34 @@ const description = `A modelled liquidation density map for ${perp.symbol} with 
       <select name="profile">{PROFILES.map((p) => <option value={p.key} selected={p.key === profile.key}>{p.label}</option>)}</select>
     </label>
     <label>Window
-      <select name="win">{WINDOWS.map((w) => <option value={w.h} selected={w.h === winH}>{w.label}</option>)}</select>
+      <select name="win">{WINDOWS.map((w) => <option value={w.days} selected={w.days === win.days}>{w.label}</option>)}</select>
     </label>
     <button class="btn btn--primary" type="submit">Redraw</button>
   </form>
 
-  {map ? (
+  {map && paint ? (
     <>
-      <figure class="chart">
-        <div class="chart__scroll">
-          <svg viewBox={`0 0 ${MW} ${MH}`} class="chart__svg lmap" role="img" data-time-axis={`${map.times[0]},${map.times.length > 1 ? map.times[1] - map.times[0] : 3600000},${mL},${(MW - mL - mR) / map.cols}`}
-               aria-label={`Modelled liquidation density for ${perp.symbol} over ${WINDOWS.find((w) => w.h === winH)!.label} using the ${profile.label} leverage mix. Assumptions and the resulting clusters are tabulated below.`}>
-            <Fragment set:html={mapSvg} />
-          </svg>
-        </div>
-        <figcaption>
-          Brighter means more modelled notional would be liquidated at that price. The white line
-          is the observed {perp.symbol} price; everything behind it is the model. Bands stop where
-          price traded through them, because a position liquidated once cannot be liquidated again.
-        </figcaption>
-      </figure>
+      <div class="chart">
+        <Fragment set:html={paint.svg.replace("<svg ",
+          `<svg data-heat="1" data-ramp="${RAMP.join(",")}" data-scale="${paint.scale}" data-gamma="${paint.gamma}" ` +
+          `data-plot="${paint.plot.join(",")}" data-prange="${map.loPrice},${map.hiPrice}" data-axx="${paint.axisX}" ` +
+          `data-taxis="${map.candles[0][0]},${stepMs}" data-rows="${map.rows}" data-cols="${map.cols}" `)} />
+      </div>
+
+      <div class="scalebar">
+        <Fragment set:html={paint.legend} />
+        <p class="scalebar__note">
+          Modelled notional standing at a price, at a moment. Scaled against the 99.5th percentile
+          so one dominant cluster cannot drag everything else to the floor; the peak cell is
+          {" "}{compact(map.peak)}. Hover any point for the band it sits in.
+        </p>
+      </div>
+
+      <div class="reads">
+        <div><b>{compact(sweptTotal)}</b><span>modelled notional price traded through inside this window</span></div>
+        <div><b>{pct(map.clipped)}</b><span>of modelled notional sits outside the drawn price range</span></div>
+        <div><b>{axisPx(map.tradedLo)} – {axisPx(map.tradedHi)}</b><span>the traded range the axis is fitted to</span></div>
+      </div>
 
       <div class="verdict verdict--warn">
         <div>
@@ -181,34 +143,45 @@ const description = `A modelled liquidation density map for ${perp.symbol} with 
           the distribution of open positions by leverage and entry price, so nobody can observe
           this — not us, and not anyone shipping a similar picture. Change the leverage mix in the
           form above and the bands move: that is the honest version of being handed someone else's
-          Model 1, 2 and 3. The <a class="link" href="/liquidations/survival">survival map</a> and
-          the corridor chart below assume nothing at all.
+          Model 1, 2 and 3. What is <em>not</em> modelled is the price path drawn over the field, and
+          the claim the picture actually supports is a checkable one — that price traded through
+          where the model puts levels. <a class="link" href="/liquidations/sweep">See it happen on
+          5 February 2026 →</a>
         </div>
       </div>
 
       <h2 class="section">The assumptions, in full</h2>
-      <div class="panel" style="max-width:900px">
+      <div class="panel" style="max-width:940px">
         <table class="tbl">
           <thead><tr><th class="num">#</th><th>Assumption</th><th>Value used</th><th class="num">Observed?</th></tr></thead>
           <tbody>
             <tr><td class="num">1</td><td>Total notional modelled</td><td>Equal to current open interest, {usd(perp.oiNotional)}</td><td class="num">observed</td></tr>
-            <tr><td class="num">2</td><td>When positions were opened</td><td>Spread over {map.cols} hourly bars in proportion to each bar's traded volume</td><td class="num">observed</td></tr>
+            <tr><td class="num">2</td><td>When positions were opened</td><td>Spread over the bars of the window in proportion to each bar's traded volume</td><td class="num">observed</td></tr>
             <tr class="is-active"><td class="num">3</td><td>Leverage mix</td><td><strong>{profile.label}</strong> — {profile.note}</td><td class="num">assumed</td></tr>
             <tr><td class="num">4</td><td>Direction</td><td>Half long, half short at every leverage</td><td class="num">assumed</td></tr>
-            <tr><td class="num">5</td><td>How positions end</td><td>Only by liquidation — no manual close, no added margin. This overstates what survives.</td><td class="num">assumed</td></tr>
+            <tr><td class="num">5</td><td>How long a position stays open</td><td>A bounded life of {TURNOVER_DAYS} days, decaying in four tranches. Removed earlier if price trades through its level.</td><td class="num">assumed</td></tr>
             <tr><td class="num">6</td><td>Maintenance margin</td><td>{pct(mmf, 3)} at tier 1, from the published table</td><td class="num">observed</td></tr>
+            <tr><td class="num">7</td><td>Book before the window opens</td><td>{warmBars} bars of warm-up are modelled off-screen, so the first drawn column already holds a full book</td><td class="num">assumed</td></tr>
+            <tr><td class="num">8</td><td>Drawn price range</td><td>Fitted to the traded range. {pct(map.clipped)} of modelled notional liquidates further away than this and is not drawn.</td><td class="num">observed</td></tr>
           </tbody>
         </table>
       </div>
+      <p class="section-note" style="max-width:88ch">
+        Row 8 is the one most worth reading twice. Fitting the axis to the traded range is what
+        gives the price path presence — the previous version spanned a third of the price to
+        accommodate 2× levels half a market away, and flattened real movement into a squiggle.
+        The cost is that low-leverage levels fall off the picture.
+        {offAxis.length > 0 && <> Here that is {offAxis.map(([L]) => `${L}×`).join(", ")} and below.</>}
+      </p>
 
       <h2 class="section">Leverage mix used: {profile.label}</h2>
       <p class="section-note">The exact weight vector behind the picture. Every other profile is one form submission away.</p>
-      <div class="panel" style="max-width:560px">
+      <div class="panel" style="max-width:600px">
         <table class="tbl">
-          <thead><tr><th class="num">Leverage</th><th class="num">Share of notional</th><th class="num">Modelled notional</th></tr></thead>
+          <thead><tr><th class="num">Leverage</th><th class="num">Share of notional</th><th class="num">Modelled notional</th><th class="num">Long level, from mark</th></tr></thead>
           <tbody>
             {profile.weights.filter(([L]) => L <= tier1.maxLeverage).map(([L, w]) => (
-              <tr><td class="num">{L}×</td><td class="num">{pct(w)}</td><td class="num">{usd(perp.oiNotional * w)}</td></tr>
+              <tr><td class="num">{L}×</td><td class="num">{pct(w)}</td><td class="num">{usd(perp.oiNotional * w)}</td><td class="num">−{(((1 / L - mmf) / (1 - mmf)) * 100).toFixed(1)}%</td></tr>
             ))}
           </tbody>
         </table>
@@ -217,8 +190,8 @@ const description = `A modelled liquidation density map for ${perp.symbol} with 
       <h2 class="section">Where the model puts the biggest clusters</h2>
       <p class="section-note">
         Price levels still carrying modelled notional at the right-hand edge of the chart, largest
-        first — {usd(totalClustered)} across the twelve listed. These are the numbers the bright
-        bands stand for.
+        first — {usd(totalClustered)} across the ten listed. These are the numbers the bright bands
+        stand for.
       </p>
       <div class="panel">
         <table class="tbl">
@@ -251,39 +224,38 @@ const description = `A modelled liquidation density map for ${perp.symbol} with 
     No assumptions here. Given the tier table and a mark these prices are arithmetic: the upper cap
     is where a short is closed, the lower cap where a long is closed.
   </p>
-  <figure class="chart">
-    <div class="chart__scroll">
-      <svg viewBox={`0 0 ${CW} ${CH}`} class="chart__svg corr" role="img"
-           aria-label={`Liquidation corridor for ${perp.symbol} at a mark of ${px(mark)}. Every value is in the table beneath.`}>
-        {gridPrices.map((p) => (
+  <div class="chart">
+    <svg viewBox={`0 0 ${CW} ${CHT}`} class="corr" role="img" data-tips
+         aria-label={`Liquidation corridor for ${perp.symbol} at a mark of ${px(mark)}. Every value is in the table beneath.`}>
+      <rect x="0" y="0" width={CW} height={CHT} rx="10" fill="#14171b" />
+      {gridPrices.map((p) => (
+        <g>
+          <line x1={cpL} x2={CW - cpR} y1={cy(p)} y2={cy(p)} stroke="#22272e" stroke-width="1" />
+          <text x={CW - cpR + 10} y={cy(p) + 4} fill="#9aa1ab" font-size="11" font-family="ui-monospace,Menlo,monospace">{axisPx(p)}</text>
+        </g>
+      ))}
+      {rungs.map((r, i) => {
+        const yTop = cy(r.shortLiq), yBot = cy(r.longLiq);
+        const op = 0.46 - (0.3 * i) / Math.max(1, rungs.length - 1);
+        return (
           <g>
-            <line x1={cpL} x2={CW - cpR} y1={cy(p)} y2={cy(p)} class="grid" />
-            <text x={cpL - 12} y={cy(p) + 4} class="axis" text-anchor="end">{axisPx(p)}</text>
+            <rect x={cx(i) - barW / 2} y={yTop} width={barW} height={Math.max(2, yBot - yTop)} rx="4"
+                  fill="#8ab4f8" fill-opacity={op} stroke="#8ab4f8" stroke-opacity="0.5"
+                  data-tip={`<div class="tip__h">${r.L}× on ${perp.symbol}</div><div class="tip__g"><span>Short closed</span><b>${px(r.shortLiq)}</b><span>Long closed</span><b>${px(r.longLiq)}</b><span>Corridor</span><b>${(r.corridor * 100).toFixed(2)}%</b><span>Initial margin</span><b>${pct(r.margin)}</b></div>`} />
+            <line x1={cx(i) - barW / 2} x2={cx(i) + barW / 2} y1={yTop} y2={yTop} stroke="#8ab4f8" stroke-width="2.5" stroke-linecap="round" />
+            <line x1={cx(i) - barW / 2} x2={cx(i) + barW / 2} y1={yBot} y2={yBot} stroke="#8ab4f8" stroke-width="2.5" stroke-linecap="round" />
+            <text x={cx(i)} y={CHT - cpB + 26} fill="#e6e8ec" font-size="15" font-weight="600" text-anchor="middle" font-family="ui-sans-serif,system-ui,sans-serif">{r.L}×</text>
+            <text x={cx(i)} y={CHT - cpB + 44} fill="#6c737d" font-size="11.5" text-anchor="middle" font-family="ui-sans-serif,system-ui,sans-serif">±{(((r.longDist + r.shortDist) / 2) * 100).toFixed(1)}%</text>
           </g>
-        ))}
-        {rungs.map((r, i) => {
-          const yTop = cy(r.shortLiq), yBot = cy(r.longLiq);
-          const op = 0.5 - (0.36 * i) / Math.max(1, rungs.length - 1);
-          return (
-            <g>
-              <rect x={cx(i) - barW / 2} y={yTop} width={barW} height={Math.max(2, yBot - yTop)} rx="4"
-                    fill="var(--accent)" fill-opacity={op} stroke="var(--accent)" stroke-opacity="0.55"
-                    data-tip={`<div class="tip__h">${r.L}× on ${perp.symbol}</div><div class="tip__g"><span>Short closed</span><b>${px(r.shortLiq)}</b><span>Long closed</span><b>${px(r.longLiq)}</b><span>Corridor</span><b>${(r.corridor * 100).toFixed(2)}%</b><span>Initial margin</span><b>${pct(r.margin)}</b></div>`} />
-              <line x1={cx(i) - barW / 2} x2={cx(i) + barW / 2} y1={yTop} y2={yTop} class="cap" />
-              <line x1={cx(i) - barW / 2} x2={cx(i) + barW / 2} y1={yBot} y2={yBot} class="cap" />
-              <text x={cx(i)} y={CH - cpB + 26} class="lev" text-anchor="middle">{r.L}×</text>
-              <text x={cx(i)} y={CH - cpB + 44} class="levsub" text-anchor="middle">±{(((r.longDist + r.shortDist) / 2) * 100).toFixed(1)}%</text>
-            </g>
-          );
-        })}
-        <line x1={cpL} x2={CW - cpR} y1={cy(mark)} y2={cy(mark)} class="mark" />
-        <text x={CW - cpR + 10} y={cy(mark) - 6} class="marklab">mark</text>
-        <text x={CW - cpR + 10} y={cy(mark) + 13} class="markval">{px(mark)}</text>
-      </svg>
-    </div>
-  </figure>
+        );
+      })}
+      <line x1={cpL} x2={CW - cpR} y1={cy(mark)} y2={cy(mark)} stroke="#8ab4f8" stroke-width="1" stroke-dasharray="2 5" opacity="0.6" />
+      <rect x={CW - cpR + 5} y={cy(mark) - 10} width="70" height="20" rx="5" fill="#8ab4f8" />
+      <text x={CW - cpR + 40} y={cy(mark) + 4} fill="#12161c" font-size="11.5" font-weight="600" text-anchor="middle" font-family="ui-monospace,Menlo,monospace">{axisPx(mark)}</text>
+    </svg>
+  </div>
 
-  <div class="panel" style="margin-top:12px">
+  <div class="panel" style="margin-top:14px">
     <table class="tbl">
       <thead><tr><th class="num">Leverage</th><th class="num">Initial margin</th><th class="num">Long liquidation</th><th class="num">Move</th><th class="num">Short liquidation</th><th class="num">Move</th><th class="num">Corridor width</th></tr></thead>
       <tbody>
@@ -332,27 +304,19 @@ const description = `A modelled liquidation density map for ${perp.symbol} with 
   </p>
 
   <p style="margin-top:24px">
-    <a class="link" href="/liquidations/survival">Leverage survival — nothing modelled →</a>
+    <a class="link" href="/liquidations/sweep">The 5 February sweep, on real candles →</a>
+    · <a class="link" href="/liquidations/survival">Leverage survival — nothing modelled →</a>
     · <a class="link" href="/tools/liquidation-price">Work out a specific position →</a>
     · <a class="link" href={`/funding/${perp.symbol.toLowerCase()}`}>{perp.symbol} funding →</a>
   </p>
 
-  <style>
-    .chart { margin: 0; }
-    .chart__scroll { overflow-x: auto; background: var(--surface-2); border: 1px solid var(--border-soft); border-radius: var(--r-md); }
-    .chart__svg { display: block; width: 100%; height: auto; }
-    .lmap { min-width: 720px; aspect-ratio: 1000 / 560; }
-    .lmap rect { shape-rendering: crispEdges; }
-    .corr { min-width: 660px; aspect-ratio: 980 / 460; }
-    figcaption { font-size: 13px; color: var(--text-faint); margin-top: 10px; max-width: 82ch; }
-    .grid { stroke: var(--border-soft); stroke-width: 1; }
-    .cap { stroke: var(--accent); stroke-width: 2.5; stroke-linecap: round; }
-    .mark { stroke: var(--text); stroke-width: 1.5; stroke-dasharray: 5 4; opacity: .8; }
-    text { font-family: var(--sans); font-variant-numeric: tabular-nums; }
-    .axis { font-size: 12.5px; fill: var(--text-faint); }
-    .lev { font-size: 15px; font-weight: 600; fill: var(--text); }
-    .levsub { font-size: 12px; fill: var(--text-faint); }
-    .marklab { font-size: 11.5px; fill: var(--text-faint); }
-    .markval { font-size: 13px; font-weight: 600; fill: var(--text); }
+  <style define:vars={{ mapRatio: `${CH.w} / 576`, corrRatio: `${CW} / ${CHT}` }}>
+    .chart :global(svg[data-heat]) { aspect-ratio: var(--mapRatio); }
+    .corr { aspect-ratio: var(--corrRatio); }
+    .scalebar { display: flex; align-items: flex-start; gap: 24px; flex-wrap: wrap; margin: 14px 0 0; }
+    .scalebar__note { flex: 1 1 320px; margin: 0; font-size: 12.5px; color: var(--text-faint); max-width: 62ch; line-height: 1.55; }
+    .reads { display: flex; flex-wrap: wrap; gap: 10px 40px; margin: 18px 0 4px; }
+    .reads b { display: block; font-size: 21px; font-weight: 650; letter-spacing: -.012em; font-variant-numeric: tabular-nums; }
+    .reads span { font-size: 12.5px; color: var(--text-faint); }
   </style>
 </Base>
