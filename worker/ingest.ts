@@ -1,6 +1,7 @@
 import { fetchSnapshot } from "../src/lib/hyperliquid.ts";
 import { fetchCandles, fetchHourly, fetchFundingHistory, mergeFunding, type FundingPoint } from "../src/lib/candles.ts";
 import { stepReport } from "./report.ts";
+import { COINS, fetchSpot, fetchSpotCandles } from "../src/lib/coins.ts";
 
 /**
  * Ingest worker. Runs on a 5-minute cron, writes the current snapshot to KV (which the
@@ -77,7 +78,7 @@ const FILL_BACKOFF_MS = 10 * 60_000;
  *
  * BUMP BOTH when you change this file: here and EXPECTED_WORKER_BUILD in src/lib/version.ts.
  */
-const WORKER_BUILD = "2026-08-14f";
+const WORKER_BUILD = "2026-08-14g";
 
 export default {
   async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext) {
@@ -126,6 +127,10 @@ interface RunResult {
   coverageChanged?: boolean;
   /** A slice of the weekly indexation report ran instead of the bulk sweeps. */
   report?: string;
+  /** Coins whose spot candles were refreshed this tick. */
+  spot?: number;
+  /** Coinbase was unreachable; coin pages keep their last spot price. */
+  spotError?: string;
 }
 
 /** Sentinel: not an error, just "this tick was spent on the report". */
@@ -173,6 +178,16 @@ async function run(env: Env): Promise<RunResult> {
 
     // KV first: the site reads from it, and it is the write that matters most.
     await env.SNAPSHOT.put("snapshot", JSON.stringify(snap));
+
+    /* SPOT, every tick, in one subrequest. Coinbase's /products/stats returns the whole
+       exchange at once, so the ten coin pages cost one call rather than ten. Wrapped on its
+       own: a Coinbase outage must degrade the coin pages to their last spot price, never
+       take down a tick that the fifty contract pages depend on. */
+    try {
+      await env.SNAPSHOT.put("spot", JSON.stringify(await fetchSpot()));
+    } catch (e) {
+      result.spotError = (e instanceof Error ? e.message : String(e)).slice(0, 80);
+    }
 
     if (rows.length) {
       // One batched statement per tick. At 25 symbols x 3 venues that is ~75 rows per 5
@@ -231,7 +246,9 @@ async function run(env: Env): Promise<RunResult> {
         hours: number,
         write: (sym: string) => Promise<boolean>,
         extra = 0,
+        over: string[] = syms,
       ): Promise<number | undefined> => {
+        const scope = over;
         const m = (await env.SNAPSHOT.get(key, "json")) as
           | { u?: number; i?: number; l?: string[]; h?: string[]; f?: number }
           | null;
@@ -260,13 +277,13 @@ async function run(env: Env): Promise<RunResult> {
         const stalledSince = m?.f ?? 0;
         const stalled = stalledSince > 0 && Date.now() - stalledSince < FILL_BACKOFF_MS;
         if (!inCycle && !stalled) {
-          const missing = syms.filter((s) => !have.has(s));
+          const missing = scope.filter((s) => !have.has(s));
           if (missing.length) {
             const done = await run(missing.slice(0, room));
             for (const s of done) have.add(s);
             /* On a genuinely cold store the fill IS the first full cycle, so stamp it rather
                than immediately re-fetching all of it under the ordinary gate. */
-            const coldComplete = !m?.u && syms.every((s) => have.has(s));
+            const coldComplete = !m?.u && scope.every((s) => have.has(s));
             await env.SNAPSHOT.put(key, JSON.stringify({
               u: coldComplete ? Date.now() : (m?.u ?? 0),
               i: 0,
@@ -282,7 +299,7 @@ async function run(env: Env): Promise<RunResult> {
         const due = !m?.u || Date.now() - m.u > hours * 3_600_000;
         if (!inCycle && !due) return undefined;
 
-        const list = inCycle && m?.l?.length ? m.l : syms;
+        const list = inCycle && m?.l?.length ? m.l : scope;
         const done = await run(list.slice(cursor, cursor + room));
         for (const s of done) have.add(s);
 
@@ -293,7 +310,7 @@ async function run(env: Env): Promise<RunResult> {
           /* A cycle just covered the whole set, so `have` is exactly the set with data —
              anything else is a leftover from a contract that dropped out of coverage. Its
              keys would otherwise sit in KV forever. */
-          const covered = new Set(syms);
+          const covered = new Set(scope);
           for (const s of have) {
             if (!covered.has(s)) {
               await env.SNAPSHOT.delete(`${key.split(":")[0]}:${s}`).catch(() => {});
@@ -348,6 +365,20 @@ async function run(env: Env): Promise<RunResult> {
             return true;
           });
           if (candles !== undefined) result.candles = candles;
+          else {
+            /* Coinbase spot candles for the coin pages. Two granularities per coin — hourly
+               and daily — which the site aggregates into 1H/4H and 1D/1W exactly as it does
+               for the perpetual series. Ten coins is twenty fetches, one chunk. */
+            const cb = await sweep("cb:meta", HOURLY_REFRESH_HOURS, async (s) => {
+              const c = COINS.find((x) => x.symbol === s);
+              if (!c) return false;
+              const [h, d] = await Promise.all([fetchSpotCandles(c.product, 3600), fetchSpotCandles(c.product, 86400)]);
+              await env.SNAPSHOT.put(`cbh:${s}`, JSON.stringify(h));
+              await env.SNAPSHOT.put(`cbd:${s}`, JSON.stringify(d));
+              return true;
+            }, 10, COINS.map((c) => c.symbol));
+            if (cb !== undefined) result.spot = cb;
+          }
         }
       }
     } catch (e) {

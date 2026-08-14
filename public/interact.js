@@ -263,64 +263,79 @@
   });
 
   /* ------------------------------------------------------------- timeframe switcher */
+  /* ------------------------------------------------- timeframe + chart-style groups
+     TWO AXES, ONE MECHANISM. A contract page switches timeframe only; a coin page switches
+     timeframe and candle-versus-line. Both are GET submit buttons so a crawler sees one URL
+     and a reader without JavaScript still gets the panel from the server. With JavaScript the
+     click is intercepted and the already-rendered panel is revealed, which is why every
+     combination is in the page at first byte rather than fetched.
+
+     A panel is keyed `tf` when there is one axis and `tf.mode` when there are two. The hidden
+     carry inputs keep the OTHER axis when a no-JS submit happens, so pressing "Line" cannot
+     silently reset the timeframe to the default. */
   document.querySelectorAll("[data-tfgroup]").forEach((group) => {
     const id = group.dataset.tfgroup;
     const panels = document.querySelectorAll(`[data-tfpanel][data-group="${id}"]`);
     const stats = document.querySelectorAll(`[data-tfstat][data-group="${id}"]`);
-    group.querySelectorAll("[data-tf]").forEach((btn) => {
-      btn.addEventListener("click", (e) => {
-        e.preventDefault();
-        const tf = btn.dataset.tf;
-        group.querySelectorAll("[data-tf]").forEach((b) => b.setAttribute("aria-pressed", String(b === btn)));
-        panels.forEach((p) => p.toggleAttribute("data-on", p.dataset.tfpanel === tf));
-        stats.forEach((s) => {
-          const next = s.dataset["v" + tf.replace(/\W/g, "")];
-          if (next === undefined || s.textContent === next) return;
-          if (reduced) { s.textContent = next; return; }
-          s.setAttribute("data-swap", "1");
-          setTimeout(() => { s.textContent = next; s.removeAttribute("data-swap"); }, 110);
-        });
-        syncTable(tf, btn.textContent.trim());
-        try { history.replaceState(null, "", location.pathname); } catch {}
-      });
-    });
-
-    /* THE TABLE HAS TO FOLLOW THE CHART.
-       Switching timeframe swapped the panel and the hero figures but left the "bars as a
-       table" block holding the server-rendered timeframe — the chart said 1H while the table
-       under it said 1D. Both were individually true, which is exactly why nobody would catch
-       it; together they are a contradiction on one screen.
-
-       No number is invented here. The rows are rebuilt from the SAME pts-* JSON the chart was
-       drawn from, which is server-rendered into the page at first byte — this only re-reads
-       what is already there, which is the rule the rest of this file obeys. */
     const table = document.querySelector(`[data-tftable][data-group="${id}"]`);
-    const syncTable = (tf, label) => {
+    const pressed = (sel) => group.querySelector(`[${sel}][aria-pressed="true"]`);
+    const hasModes = Boolean(group.querySelector("[data-mode]"));
+    let tf = pressed("data-tf")?.dataset.tf ?? null;
+    let mode = pressed("data-mode")?.dataset.mode ?? null;
+
+    /* Rebuilt from the SAME pts-* JSON the chart was drawn from, which is server-rendered into
+       the page. Switching timeframe used to swap the chart and leave the table showing the
+       previous one — both individually true, a contradiction on one screen. */
+    const syncTable = (key, label) => {
       if (!table) return;
-      const src = document.getElementById(`pts-${tf}`);
+      const src = document.getElementById(`pts-${key}`);
       const body = table.querySelector("tbody");
       if (!src || !body) return;
       let pts;
       try { pts = JSON.parse(src.textContent).slice(-200); } catch { return; }
       const dp = +table.dataset.dp || 2;
       const money = (v) => "$" + nf(v, dp);
-      body.innerHTML = pts
-        .map((q) => {
-          const f = Number.isFinite(q[7]);
-          return (
-            "<tr>" +
-            `<td>${new Date(q[1]).toISOString().slice(0, 16).replace("T", " ")}</td>` +
-            `<td class="num">${money(q[2])}</td><td class="num">${money(q[3])}</td>` +
-            `<td class="num">${money(q[4])}</td><td class="num">${money(q[5])}</td>` +
-            `<td class="num">${qty(q[6])}</td>` +
-            `<td class="num ${f ? (q[7] >= 0 ? "pays-l" : "pays-s") : "faint"}">${f ? (q[7] * 100).toFixed(2) + "%" : "—"}</td>` +
-            "</tr>"
-          );
-        })
-        .join("");
+      body.innerHTML = pts.map((q) => {
+        const f = Number.isFinite(q[7]);
+        return "<tr>" +
+          `<td>${new Date(q[1]).toISOString().slice(0, 16).replace("T", " ")}</td>` +
+          `<td class="num">${money(q[2])}</td><td class="num">${money(q[3])}</td>` +
+          `<td class="num">${money(q[4])}</td><td class="num">${money(q[5])}</td>` +
+          `<td class="num">${qty(q[6])}</td>` +
+          `<td class="num ${f ? (q[7] >= 0 ? "pays-l" : "pays-s") : "faint"}">${f ? (q[7] * 100).toFixed(2) + "%" : "—"}</td>` +
+          "</tr>";
+      }).join("");
       table.querySelector("[data-tflabel]").textContent = label;
       table.querySelector("[data-tfcount]").textContent = String(pts.length);
     };
+
+    const apply = (label) => {
+      const key = hasModes && mode ? `${tf}.${mode}` : tf;
+      panels.forEach((p) => p.toggleAttribute("data-on", p.dataset.tfpanel === key));
+      group.querySelectorAll("[data-tf]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.tf === tf)));
+      group.querySelectorAll("[data-mode]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.mode === mode)));
+      const carryTf = group.querySelector('[data-tfcarry="tf"]');
+      const carryView = group.querySelector('[data-tfcarry="view"]');
+      if (carryTf) carryTf.value = tf;
+      if (carryView && mode) carryView.value = mode;
+      stats.forEach((s) => {
+        const next = s.dataset["v" + String(tf).replace(/\W/g, "")];
+        if (next === undefined || s.textContent === next) return;
+        if (reduced) { s.textContent = next; return; }
+        s.setAttribute("data-swap", "1");
+        setTimeout(() => { s.textContent = next; s.removeAttribute("data-swap"); }, 110);
+      });
+      if (label) syncTable(tf, label);
+      try { history.replaceState(null, "", location.pathname); } catch {}
+    };
+
+    group.querySelectorAll("[data-tf], [data-mode]").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        if (btn.dataset.tf) tf = btn.dataset.tf; else mode = btn.dataset.mode;
+        apply(btn.dataset.tf ? btn.textContent.trim() : null);
+      });
+    });
   });
 
   /* --------------------------------------------------------- live freshness ticker */
@@ -340,5 +355,70 @@
     };
     tick();
     setInterval(tick, 20000);
+  }
+
+  /* ------------------------------------------------------------------ live spot prices
+     A LAYER OVER SERVER-RENDERED VALUES, NEVER THEIR SOURCE. Every figure it touches was
+     already correct in the HTML at first byte — that is what gets indexed and cited, and it
+     is what stays on screen if this never runs. There is no loading state and no skeleton,
+     because there is nothing to wait for.
+
+     Same origin only. Both Hyperliquid and Coinbase publish WebSocket feeds a browser could
+     subscribe to directly, and either would be a request to a third-party domain on every
+     page view — which /privacy says does not happen. So the page asks this site, and this
+     site reads the value the cron already stored.
+
+     No layout shift by construction: only textContent changes, inside boxes whose size is
+     fixed by tabular figures and CSS. Nothing is inserted, removed or resized.
+
+     Failure is silence. A 500, a timeout, an offline tab or a blocked request all leave the
+     served numbers exactly where they were. */
+  const spotEls = [...document.querySelectorAll("[data-spot]")];
+  if (spotEls.length) {
+    const dpOf = (el) => +(el.dataset.dp || 2);
+    const money = (v, dp) => "$" + nf(v, dp);
+    let last = {};
+    const paint = (d) => {
+      for (const el of spotEls) {
+        const s = d.spot[el.dataset.sym];
+        const mk = d.mark[el.dataset.sym];
+        let next = null;
+        if (el.dataset.spot === "last" && s) next = money(s.last, dpOf(el));
+        else if (el.dataset.spot === "mark" && Number.isFinite(mk)) next = money(mk, dpOf(el));
+        else if (el.dataset.spot === "chg" && s && s.open24h > 0) {
+          const c = s.last / s.open24h - 1;
+          next = `${c >= 0 ? "▲" : "▼"} ${(Math.abs(c) * 100).toFixed(2)}%`;
+        } else if (el.dataset.spot === "basis" && s && Number.isFinite(mk) && s.last > 0) {
+          const b = (mk / s.last - 1) * 1e4;
+          next = el.classList.contains("card__value")
+            ? `${b >= 0 ? "+" : ""}${b.toFixed(1)} bps`
+            : `${b >= 0 ? "+" : ""}${b.toFixed(1)}`;
+        }
+        if (next === null || el.textContent === next) continue;
+        const key = el.dataset.spot + el.dataset.sym;
+        const prev = last[key];
+        el.textContent = next;
+        last[key] = next;
+        // A one-shot tint on change, and only if the reader did not ask for stillness.
+        if (prev !== undefined && !reduced) {
+          el.setAttribute("data-moved", "1");
+          setTimeout(() => el.removeAttribute("data-moved"), 700);
+        }
+      }
+    };
+    let timer = 0;
+    const pull = async () => {
+      try {
+        const r = await fetch("/api/spot.json", { headers: { accept: "application/json" }, cache: "no-store" });
+        if (!r.ok) return;
+        const d = await r.json();
+        if (d && d.spot) paint(d);
+      } catch { /* keep what the server rendered */ }
+    };
+    const start = () => { if (!timer) { timer = setInterval(pull, 30000); pull(); } };
+    const stop = () => { clearInterval(timer); timer = 0; };
+    // A hidden tab polls nothing: no work, no requests, no battery.
+    document.addEventListener("visibilitychange", () => (document.hidden ? stop() : start()));
+    if (!document.hidden) start();
   }
 })();

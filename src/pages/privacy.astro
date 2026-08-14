@@ -68,8 +68,19 @@ const description =
     requests to any domain other than this one.
   </p>
   <p class="prose">
-    The only script is the search box's typeahead, which fetches a small index of this site's own
-    pages from this site. It sends nothing; what you type in that box never leaves the browser.
+    That is enforced by the browser, not by our good intentions. Every page is served with a
+    <strong>Content-Security-Policy</strong> whose script source is <code>'self'</code>, so a
+    third-party script cannot load here even if something upstream tried to insert one — which is
+    exactly what a host's own analytics feature does when it is switched on. The policy is visible
+    in the response headers of the page you are reading.
+  </p>
+  <p class="prose">
+    Two scripts run, both from this site and both talking only to this site. The search box's
+    typeahead fetches a small index of these pages; what you type in it never leaves the browser.
+    On the <a href="/coins">coin pages</a> a price ticker asks this site for the latest quote every
+    thirty seconds, and stops entirely while the tab is in the background. It sends nothing about
+    you, sets nothing, and reads no identifier — and because every price is already in the page
+    when it arrives, turning JavaScript off changes nothing except how often the number moves.
   </p>
 
   <h2 class="section">The calculators</h2>

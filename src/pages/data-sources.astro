@@ -9,6 +9,8 @@ const sources = [
   { what: "Funding rate, per venue", ep: "POST /info {\"type\":\"predictedFundings\"}", who: "Hyperliquid", freq: "5 min" },
   { what: "Open interest, volume, mark and oracle price, premium", ep: "POST /info {\"type\":\"metaAndAssetCtxs\"}", who: "Hyperliquid", freq: "5 min" },
   { what: "Maintenance-margin tiers", ep: "POST /info {\"type\":\"marginTable\",\"id\":N}", who: "Hyperliquid", freq: "build time" },
+  { what: "Spot price, 24h open/high/low/volume", ep: "GET /products/stats", who: "Coinbase Exchange", freq: "5 min" },
+  { what: "Spot candles, hourly and daily", ep: "GET /products/{id}/candles", who: "Coinbase Exchange", freq: "2 h" },
 ];
 ---
 <Base title="Data sources" description="Every endpoint behind every number on this site, its refresh cadence, and an explicit list of what is deliberately absent." fetchedAt={snap.fetchedAt}>
@@ -18,12 +20,32 @@ const sources = [
     <thead><tr><th>Figure</th><th>Endpoint</th><th>Source</th><th>Refresh</th></tr></thead>
     <tbody>{sources.map((s) => (<tr><td>{s.what}</td><td><code>{s.ep}</code></td><td>{s.who}</td><td>{s.freq}</td></tr>))}</tbody>
   </table>
+  <h2>Why spot comes from Coinbase</h2>
+  <p class="prose">
+    Hyperliquid supplies everything derivative here, but it has no Bitcoin spot market — its spot book is
+    HIP-1 tokens and bridged wrappers turning over roughly $60M a day in total, so a "Bitcoin price" taken
+    from it would not be Bitcoin's. Hyperliquid does publish an <strong>oracle price</strong>, a validator
+    median across major spot venues, and it is a good index; but it is an index, and nobody can trade it.
+    Coinbase Exchange is a real USD order book with a real bid and ask, free, without a key, and it permits
+    display with attribution. So the spot prices on this site are Coinbase's, labelled as such wherever they
+    appear, and never averaged into a Hyperliquid number.
+  </p>
+
   <h2>Coverage</h2>
   <p class="prose">A contract is published only above {usd(OI_NOTIONAL_FLOOR)} of open interest. {snap.eligibleCount} of {snap.universeCount} contracts clear that floor today; {snap.perps.length} are published.</p>
   <h2>What is deliberately absent</h2>
   <ul class="prose">
     <li><strong>Liquidation totals.</strong> Exchange feeds are throttled and any total would be understated — <a href="/methodology/liquidations">the full explanation</a>.</li>
-    <li><strong>Spot prices, market capitalisation, circulating supply.</strong> The sources that carry these do not license their display, so they are absent rather than quietly borrowed.</li>
+    <li><strong>Market capitalisation and circulating supply.</strong> Every source that carries these
+      restricts their display — CoinGecko's free tier is non-commercial, and the paid feeds are a purchase
+      decision rather than an engineering one. So they are absent rather than quietly borrowed, and the
+      <a href="/coins">coin pages</a> are ordered by measured traded volume rather than by a market cap
+      this site cannot cite.</li>
+    <li><strong>Binance and Bybit spot.</strong> Both are unreachable from this site's servers. Their
+      <em>funding rates</em> appear because Hyperliquid publishes them in its own predicted-funding feed;
+      their order books do not.</li>
+    <li><strong>OKX.</strong> Reachable, and deliberately never displayed or credited: its API agreement
+      forbids it. Where it is used at all it is an internal cross-check that never reaches a page.</li>
     <li><strong>Predicted or forecast rates.</strong> Only the venues' own published next-interval rates appear; nothing here is a model output.</li>
   </ul>
   <style>

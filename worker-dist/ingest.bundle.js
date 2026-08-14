@@ -397,6 +397,114 @@ Search performance not available: ${e instanceof Error ? e.message : String(e)}`
   return `report: complete (${st.week})`;
 }
 
+// src/lib/coins.ts
+var CB = "https://api.exchange.coinbase.com";
+var COINS = [
+  {
+    slug: "bitcoin",
+    name: "Bitcoin",
+    symbol: "BTC",
+    product: "BTC-USD",
+    publishAt: "2026-08-14",
+    blurb: "The first and largest cryptocurrency, and the one whose derivatives market sets the tone for every other."
+  },
+  {
+    slug: "ethereum",
+    name: "Ethereum",
+    symbol: "ETH",
+    product: "ETH-USD",
+    publishAt: "2026-08-14",
+    blurb: "The largest smart-contract platform, and the second-largest perpetual market by open interest."
+  },
+  {
+    slug: "solana",
+    name: "Solana",
+    symbol: "SOL",
+    product: "SOL-USD",
+    publishAt: "2026-08-14",
+    blurb: "A high-throughput layer-1 whose perpetual funding is among the most volatile of the majors."
+  },
+  {
+    slug: "xrp",
+    name: "XRP",
+    symbol: "XRP",
+    product: "XRP-USD",
+    publishAt: "2026-08-14",
+    blurb: "A payment-focused asset with a large retail spot base and a comparatively small derivatives book."
+  },
+  {
+    slug: "bnb",
+    name: "BNB",
+    symbol: "BNB",
+    product: "BNB-USD",
+    publishAt: "2026-08-17",
+    blurb: "The BNB Chain asset, listed here because its perpetual funding rarely matches its spot demand."
+  },
+  {
+    slug: "dogecoin",
+    name: "Dogecoin",
+    symbol: "DOGE",
+    product: "DOGE-USD",
+    publishAt: "2026-08-17",
+    blurb: "The original memecoin, and a reliable example of funding running far ahead of spot."
+  },
+  {
+    slug: "cardano",
+    name: "Cardano",
+    symbol: "ADA",
+    product: "ADA-USD",
+    publishAt: "2026-08-17",
+    blurb: "A research-led layer-1 with deep spot liquidity relative to its open interest."
+  },
+  {
+    slug: "avalanche",
+    name: "Avalanche",
+    symbol: "AVAX",
+    product: "AVAX-USD",
+    publishAt: "2026-08-17",
+    blurb: "A layer-1 with a subnet architecture, and one of the smaller major perpetual books."
+  },
+  {
+    slug: "chainlink",
+    name: "Chainlink",
+    symbol: "LINK",
+    product: "LINK-USD",
+    publishAt: "2026-08-17",
+    blurb: "The dominant oracle network, whose token trades with unusually persistent positive funding."
+  },
+  {
+    slug: "litecoin",
+    name: "Litecoin",
+    symbol: "LTC",
+    product: "LTC-USD",
+    publishAt: "2026-08-17",
+    blurb: "One of the oldest altcoins, with a long, clean price history and a modest derivatives market."
+  }
+];
+var num = (x) => typeof x === "string" || typeof x === "number" ? Number(x) : NaN;
+async function fetchSpot() {
+  const r = await fetch(`${CB}/products/stats`, { headers: { "user-agent": "coinliqui.com" } });
+  if (!r.ok) throw new Error(`coinbase ${r.status}`);
+  const all = await r.json();
+  const q = {};
+  for (const c of COINS) {
+    const s = all[c.product]?.stats_24hour;
+    if (!s) continue;
+    const last = num(s.last);
+    if (!Number.isFinite(last)) continue;
+    q[c.symbol] = { last, open24h: num(s.open), high24h: num(s.high), low24h: num(s.low), volume24h: num(s.volume) };
+  }
+  return { at: Date.now(), q };
+}
+async function fetchSpotCandles(product, granularity) {
+  const r = await fetch(`${CB}/products/${product}/candles?granularity=${granularity}`, {
+    headers: { "user-agent": "coinliqui.com" }
+  });
+  if (!r.ok) throw new Error(`coinbase candles ${r.status}`);
+  const rows = await r.json();
+  return rows.map((x) => [x[0] * 1e3, x[3], x[2], x[1], x[4], x[5]]).filter((c) => c.every(Number.isFinite)).sort((a, b) => a[0] - b[0]);
+}
+
 // worker/ingest.ts
 var RETAIN_HOURS = 72;
 var CANDLE_REFRESH_HOURS = 12;
@@ -405,7 +513,7 @@ var FUNDING_REFRESH_HOURS = 6;
 var CANARY_RETAIN_HOURS = 168;
 var CHUNK = 24;
 var FILL_BACKOFF_MS = 10 * 6e4;
-var WORKER_BUILD = "2026-08-14f";
+var WORKER_BUILD = "2026-08-14g";
 var ingest_default = {
   async scheduled(_event, env, ctx) {
     ctx.waitUntil(run(env));
@@ -466,6 +574,11 @@ async function run(env) {
     }
     result.rows = rows.length;
     await env.SNAPSHOT.put("snapshot", JSON.stringify(snap));
+    try {
+      await env.SNAPSHOT.put("spot", JSON.stringify(await fetchSpot()));
+    } catch (e) {
+      result.spotError = (e instanceof Error ? e.message : String(e)).slice(0, 80);
+    }
     if (rows.length) {
       const insert = env.DB.prepare("INSERT INTO funding_snapshot (symbol, venue, apr, at) VALUES (?1, ?2, ?3, ?4)");
       await env.DB.batch(rows.map((r) => insert.bind(...r)));
@@ -480,7 +593,8 @@ async function run(env) {
         throw SKIP_SWEEPS;
       }
       const syms = nowPublished;
-      const sweep = async (key, hours, write, extra = 0) => {
+      const sweep = async (key, hours, write, extra = 0, over = syms) => {
+        const scope = over;
         const m = await env.SNAPSHOT.get(key, "json");
         const have = new Set(m?.h ?? []);
         const room = Math.max(1, CHUNK - extra);
@@ -497,11 +611,11 @@ async function run(env) {
         const stalledSince = m?.f ?? 0;
         const stalled = stalledSince > 0 && Date.now() - stalledSince < FILL_BACKOFF_MS;
         if (!inCycle && !stalled) {
-          const missing = syms.filter((s) => !have.has(s));
+          const missing = scope.filter((s) => !have.has(s));
           if (missing.length) {
             const done2 = await run2(missing.slice(0, room));
             for (const s of done2) have.add(s);
-            const coldComplete = !m?.u && syms.every((s) => have.has(s));
+            const coldComplete = !m?.u && scope.every((s) => have.has(s));
             await env.SNAPSHOT.put(key, JSON.stringify({
               u: coldComplete ? Date.now() : m?.u ?? 0,
               i: 0,
@@ -515,13 +629,13 @@ async function run(env) {
         }
         const due = !m?.u || Date.now() - m.u > hours * 36e5;
         if (!inCycle && !due) return void 0;
-        const list = inCycle && m?.l?.length ? m.l : syms;
+        const list = inCycle && m?.l?.length ? m.l : scope;
         const done = await run2(list.slice(cursor, cursor + room));
         for (const s of done) have.add(s);
         const next = cursor + Math.min(room, Math.max(0, list.length - cursor));
         const wrapped = next >= list.length;
         if (wrapped) {
-          const covered = new Set(syms);
+          const covered = new Set(scope);
           for (const s of have) {
             if (!covered.has(s)) {
               await env.SNAPSHOT.delete(`${key.split(":")[0]}:${s}`).catch(() => {
@@ -574,6 +688,17 @@ async function run(env) {
             return true;
           });
           if (candles !== void 0) result.candles = candles;
+          else {
+            const cb = await sweep("cb:meta", HOURLY_REFRESH_HOURS, async (s) => {
+              const c = COINS.find((x) => x.symbol === s);
+              if (!c) return false;
+              const [h, d] = await Promise.all([fetchSpotCandles(c.product, 3600), fetchSpotCandles(c.product, 86400)]);
+              await env.SNAPSHOT.put(`cbh:${s}`, JSON.stringify(h));
+              await env.SNAPSHOT.put(`cbd:${s}`, JSON.stringify(d));
+              return true;
+            }, 10, COINS.map((c) => c.symbol));
+            if (cb !== void 0) result.spot = cb;
+          }
         }
       }
     } catch (e) {

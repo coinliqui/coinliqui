@@ -1,0 +1,252 @@
+---
+import Base from "../../layouts/Base.astro";
+import { getSnapshot, coldStart, findPerp } from "../../lib/hyperliquid.ts";
+import { usd, pct, VENUE_LABEL, paysClass, paysLabel, carryCost, type Venue } from "../../lib/funding.ts";
+import { findCoin, isLive, liveCoins, getSpot, getSpotCandles, basisBps, SPOT_SOURCE } from "../../lib/coins.ts";
+import { TIMEFRAMES, DEFAULT_TF, aggregate, buildPriceChart, CHART_H, type ChartMode } from "../../lib/series.ts";
+import { CH } from "../../lib/chart.ts";
+
+/* =========================================================================================
+   ONE COIN.
+
+   WHY THIS IS NOT /funding/{symbol} IN A HAT. That page answers a derivatives question: what
+   is the funding, on which venue, against which margin tiers. This one answers the question
+   people actually type — "bitcoin price" — and then earns the visit by putting next to that
+   price the thing no price page has: what it costs to hold the position instead of the coin.
+
+   Spot is Coinbase. Everything derivative is Hyperliquid. The two are never mixed into one
+   number, and the gap between them — the basis — is printed rather than hidden.
+   ========================================================================================= */
+
+const env = (Astro.locals as any)?.runtime?.env;
+const coin = findCoin(Astro.params.coin);
+// Staged publication: a coin that has not reached its date has no URL yet. See COINS.
+if (!coin || !isLive(coin)) return Astro.rewrite(`/404?symbol=${encodeURIComponent(Astro.params.coin ?? "")}`);
+
+const snap = await getSnapshot(env?.SNAPSHOT, import.meta.env.DEV);
+if (!snap.available) return coldStart();
+
+const [spotSet, hourly, daily] = await Promise.all([
+  getSpot(env?.SNAPSHOT, import.meta.env.DEV),
+  getSpotCandles(env?.SNAPSHOT, coin.symbol, "h", import.meta.env.DEV),
+  getSpotCandles(env?.SNAPSHOT, coin.symbol, "d", import.meta.env.DEV),
+]);
+const q = spotSet?.q[coin.symbol] ?? null;
+const perp = findPerp(snap.perps, coin.symbol);
+
+const price = q?.last ?? NaN;
+const dp = price >= 100 ? 2 : price >= 1 ? 3 : price >= 0.01 ? 5 : 7;
+const px = (v: number) => usd(v, dp);
+const chg24 = q && q.open24h > 0 ? q.last / q.open24h - 1 : NaN;
+const basis = perp && q ? basisBps(perp.markPx, q.last) : NaN;
+const spotNtl = q ? q.last * q.volume24h : NaN;
+const oiToSpot = perp && Number.isFinite(spotNtl) && spotNtl > 0 ? perp.oiNotional / spotNtl : NaN;
+
+const ORDER: Venue[] = ["HlPerp", "BinPerp", "BybitPerp"];
+const by = new Map((perp?.venues ?? []).map((v) => [v.venue, v]));
+const hl = by.get("HlPerp");
+/** What a $10,000 leveraged long pays (or receives) in a week, at the current rate. */
+const week = (apr: number) => carryCost(10_000, apr, 7);
+
+/* --- the chart: two modes, four timeframes, all server-rendered ------------------------
+   The mode is a GET parameter and the switch is a submit button, exactly like the timeframe
+   control: crawlers never submit forms, so one coin stays one URL. Both modes for all four
+   timeframes are rendered up front — a line panel is a single polyline and costs almost
+   nothing next to 300 candle bodies — so switching either mode or timeframe is instant, works
+   with JavaScript disabled, and cannot shift the layout. */
+const MODES: { key: ChartMode; label: string }[] = [{ key: "candle", label: "Candles" }, { key: "line", label: "Line" }];
+const qs = Astro.url.searchParams;
+const tfKey = TIMEFRAMES.some((t) => t.key === qs.get("tf")) ? qs.get("tf")! : DEFAULT_TF;
+const modeKey: ChartMode = qs.get("view") === "line" ? "line" : "candle";
+
+const panels = TIMEFRAMES.flatMap((tf) => {
+  const base = tf.base === "hour" ? hourly : daily;
+  if (!base || base.length < 6) return [];
+  const src = aggregate(base, tf.factor).slice(-tf.bars);
+  return MODES.map((m) => ({ tf, mode: m, chart: buildPriceChart(src, null, tf, m.key) })).filter((p) => p.chart);
+});
+const tfsAvailable = [...new Set(panels.map((p) => p.tf.key))];
+const active = panels.find((p) => p.tf.key === tfKey && p.mode.key === modeKey) ?? panels[0];
+const hasChart = panels.length > 0;
+const span = (k: string) => (k === "1h" ? "hourly bars" : k === "4h" ? "4-hour bars" : k === "1d" ? "daily bars" : "weekly bars");
+const arrow = (n: number) => (n >= 0 ? "▲" : "▼");
+const stat = (fn: (p: (typeof panels)[number]) => string) =>
+  Object.fromEntries(panels.filter((p) => p.mode.key === modeKey).map((p) => [`data-v${p.tf.key}`, fn(p)]));
+
+const others = liveCoins().filter((c) => c.slug !== coin.slug);
+const title = `${coin.name} price — ${coin.symbol} spot, and what leverage costs`;
+const description = `Live ${coin.name} (${coin.symbol}) spot price from ${SPOT_SOURCE}, with the perpetual basis, the funding rate across three venues and what holding a leveraged position actually costs per week.`;
+---
+
+<Base title={title} description={description} fetchedAt={spotSet?.at ?? snap.fetchedAt}>
+  <div class="page-head">
+    <p class="crumb"><a href="/coins">Coins</a> › {coin.name}</p>
+    <h1>{coin.name} price</h1>
+    <p>{coin.blurb}</p>
+  </div>
+
+  <div class="hero">
+    <span class="hero__price" data-spot="last" data-sym={coin.symbol} data-dp={dp}>{Number.isFinite(price) ? px(price) : "—"}</span>
+    <span class:list={["hero__chg"]} data-spot="chg" data-sym={coin.symbol}>
+      {Number.isFinite(chg24) ? `${arrow(chg24)} ${(Math.abs(chg24) * 100).toFixed(2)}%` : "—"}
+    </span>
+    <span class="hero__span">24-hour change · {SPOT_SOURCE} spot</span>
+  </div>
+
+  <div class="hero__meta">
+    <div>24h high<b>{q ? px(q.high24h) : "—"}</b></div>
+    <div>24h low<b>{q ? px(q.low24h) : "—"}</b></div>
+    <div>24h spot volume<b>{Number.isFinite(spotNtl) ? usd(spotNtl) : "—"}</b></div>
+    <div>Perpetual mark<b data-spot="mark" data-sym={coin.symbol} data-dp={dp}>{perp ? px(perp.markPx) : "—"}</b></div>
+    <div>Open interest<b>{perp ? usd(perp.oiNotional) : "—"}</b></div>
+  </div>
+
+  {hasChart ? (
+    <>
+      <form method="GET" class="tfbar" data-tfgroup="cx">
+        <div class="tf" role="group" aria-label="Chart timeframe">
+          {TIMEFRAMES.filter((t) => tfsAvailable.includes(t.key)).map((tf) => (
+            <button type="submit" name="tf" value={tf.key} data-tf={tf.key} aria-pressed={tf.key === active!.tf.key}>{tf.label}</button>
+          ))}
+          <input type="hidden" name="view" value={modeKey} data-tfcarry="view" />
+        </div>
+        <div class="tf" role="group" aria-label="Chart style">
+          {MODES.map((m) => (
+            <button type="submit" name="view" value={m.key} data-mode={m.key} aria-pressed={m.key === active!.mode.key}>{m.label}</button>
+          ))}
+          <input type="hidden" name="tf" value={active!.tf.key} data-tfcarry="tf" />
+        </div>
+        <span class="tfbar__note">{SPOT_SOURCE} spot candles — a traded price, not an index.</span>
+      </form>
+
+      {panels.map(({ tf, mode, chart }) => (
+        <div data-tfpanel={`${tf.key}.${mode.key}`} data-group="cx"
+             data-on={tf.key === active!.tf.key && mode.key === active!.mode.key ? "" : undefined}
+             class="chart chart--price" style={`--chartRatio: ${CH.w} / ${CHART_H}`}>
+          <Fragment set:html={chart!.svg.replace("<svg ",
+            `<svg data-xhair="cpts-${tf.key}" data-plot="${chart!.plot.join(",")}" data-prange="${chart!.range[0]},${chart!.range[1]}" ` +
+            `data-axx="${chart!.axisX}" data-slot="${chart!.slot.toFixed(2)}" data-taxisy="${CHART_H - 27}" data-unit="${coin.symbol}" data-dp="${chart!.dp}" data-intraday="${tf.hours < 24 ? 1 : 0}" `)} />
+        </div>
+      ))}
+      {TIMEFRAMES.filter((t) => tfsAvailable.includes(t.key)).map((tf) => (
+        <script type="application/json" id={`cpts-${tf.key}`}
+                set:html={JSON.stringify(panels.find((p) => p.tf.key === tf.key)!.chart!.points)} />
+      ))}
+
+      <p class="legend">
+        Period high <b data-tfstat data-group="cx" {...stat((p) => px(p.chart!.high))}>{px(active!.chart!.high)}</b>,
+        low <b data-tfstat data-group="cx" {...stat((p) => px(p.chart!.low))}>{px(active!.chart!.low)}</b>,
+        over <b data-tfstat data-group="cx" {...stat((p) => `${p.chart!.bars} ${span(p.tf.key)}`)}>{active!.chart!.bars} {span(active!.tf.key)}</b>.
+        No funding band here — funding is a property of the perpetual, not of spot, and it has
+        {" "}<a class="link" href={`/funding/${coin.symbol.toLowerCase()}`}>its own chart</a>.
+      </p>
+    </>
+  ) : (
+    <div class="empty">
+      <div class="empty__body">
+        <p class="empty__title">Spot candles not collected yet</p>
+        <p class="empty__text">The ingest worker fetches {SPOT_SOURCE} candles on the next tick after a coin is published. Every figure above and below is unaffected.</p>
+      </div>
+    </div>
+  )}
+
+  <h2 class="section">Spot against the perpetual</h2>
+  <p class="section-note">
+    The one number a price page usually leaves out. The perpetual has no expiry, so nothing forces
+    it back to spot except the funding payment — the gap and the rate are the same mechanism seen
+    from two sides.
+  </p>
+  <div class="cards">
+    <div class="card card--lead">
+      <div class="card__label">Basis</div>
+      <div class="card__value" data-spot="basis" data-sym={coin.symbol}>{Number.isFinite(basis) ? `${basis >= 0 ? "+" : ""}${basis.toFixed(1)} bps` : "—"}</div>
+      <div class="card__meta">{Number.isFinite(basis) ? (basis >= 0 ? "perpetual richer than spot" : "perpetual cheaper than spot") : "—"}</div>
+    </div>
+    <div class="card">
+      <div class="card__label">Hyperliquid funding</div>
+      <div class:list={["card__value", hl && paysClass(hl.apr)]}>{hl ? pct(hl.apr) : "—"}</div>
+      <div class="card__meta">{hl ? paysLabel(hl.apr) : "—"}</div>
+    </div>
+    <div class="card">
+      <div class="card__label">Cost to hold $10,000 long</div>
+      <div class="card__value">{hl ? usd(Math.abs(week(hl.apr)), 2) : "—"}</div>
+      <div class="card__meta">{hl ? `per week · ${hl.apr >= 0 ? "you pay" : "you receive"}` : "—"}</div>
+    </div>
+    <div class="card">
+      <div class="card__label">Open interest ÷ spot volume</div>
+      <div class="card__value">{Number.isFinite(oiToSpot) ? `${oiToSpot.toFixed(2)}×` : "—"}</div>
+      <div class="card__meta">derivatives against the cash market</div>
+    </div>
+  </div>
+
+  <h2 class="section">What leverage costs, per venue</h2>
+  <p class="section-note">
+    Each venue settles funding on its own interval, so the quoted numbers are not comparable to
+    each other. The weekly column is, because it is the same $10,000 position on all three.
+  </p>
+  <div class="panel">
+    <table class="tbl">
+      <thead><tr><th>Venue</th><th class="num">Interval</th><th class="num">Annualised</th><th class="num">$10,000 long, per week</th><th>Direction</th></tr></thead>
+      <tbody>
+        {ORDER.map((v) => {
+          const f = by.get(v);
+          const ok = f && Number.isFinite(f.apr);
+          return (
+            <tr>
+              <td>{VENUE_LABEL[v]}</td>
+              <td class="num">{f && Number.isFinite(f.intervalHours) ? `${f.intervalHours}h` : <span class="faint">—</span>}</td>
+              <td class:list={["num", ok && paysClass(f!.apr)]} style="font-weight:600">{ok ? pct(f!.apr) : "—"}</td>
+              <td class="num">{ok ? usd(Math.abs(week(f!.apr)), 2) : "—"}</td>
+              <td>{ok ? (f!.apr >= 0 ? "longs pay" : "longs receive") : <span class="faint">—</span>}</td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="section">Where the numbers come from</h2>
+  <p class="prose">
+    The price, the 24-hour figures and the candles are <strong>{SPOT_SOURCE} spot</strong> — a real
+    USD order book with a real bid and ask. This site does not show a Hyperliquid spot price for
+    {" "}{coin.name} because there is no such market: Hyperliquid's spot book is HIP-1 tokens and
+    bridged wrappers, and a price taken from it would not be {coin.name}'s.
+  </p>
+  <p class="prose">
+    The mark, the funding and the open interest are <strong>Hyperliquid</strong>, the same snapshot
+    the rest of the site reads. Nothing here averages the two together. Full detail on both is on
+    {" "}<a class="link" href="/data-sources">data sources</a>.
+  </p>
+
+  <p style="margin-top:24px">
+    <a class="link" href={`/funding/${coin.symbol.toLowerCase()}`}>{coin.symbol} funding across three venues →</a>
+    · <a class="link" href={`/liquidations?symbol=${coin.symbol}`}>Where {coin.symbol} leverage breaks →</a>
+    · <a class="link" href={`/liquidations/survival?symbol=${coin.symbol}`}>What the rules did to past positions →</a>
+  </p>
+
+  <h2 class="section">Other coins</h2>
+  <p class="related">
+    {others.map((c) => <a class="chip-link" href={`/coins/${c.slug}`}>{c.name}</a>)}
+  </p>
+
+  <style>
+    .hero__span { font-size: var(--fs-sm); color: var(--text-faint); }
+    .tfbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 18px 0 10px; }
+    .tfbar__note { font-size: var(--fs-xs); color: var(--text-faint); }
+    .chart--price :global(svg) { aspect-ratio: var(--chartRatio); }
+    .legend { max-width: 88ch; line-height: 1.6; margin-top: 12px; }
+    .related { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; }
+    .chip-link {
+      display: inline-block; padding: 6px 14px; border-radius: var(--r-pill);
+      background: var(--surface-2); border: 1px solid var(--border-soft);
+      text-decoration: none; font-size: 13px; font-weight: 500;
+      transition: background .14s var(--ease), color .14s var(--ease);
+    }
+    .chip-link:hover { background: var(--surface-3); color: var(--accent); }
+    /* The live layer only ever changes the TEXT of these, never their box. */
+    [data-spot] { transition: color .35s var(--ease); }
+    [data-spot][data-moved="up"] { color: var(--accent); }
+    [data-spot][data-moved="down"] { color: var(--accent); }
+    @media (max-width: 700px) { .hero__meta { gap: 14px 20px; } }
+  </style>
+</Base>

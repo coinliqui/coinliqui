@@ -24,6 +24,7 @@ export const GET: APIRoute = async ({ locals, site }) => {
   const files: { name: string; lastmod?: string }[] = [
     // mixed: the homepage moves with the market, the prose does not
     { name: "pages", lastmod: newest([data, ...["/methodology", "/methodology/liquidations", "/data-sources", "/privacy"].map(codeStamp)]) },
+    { name: "coins", lastmod: data },
     { name: "funding-hub", lastmod: data },
     { name: "funding-symbols", lastmod: data },
     { name: "open-interest", lastmod: data },

@@ -53,7 +53,15 @@ export interface PriceChart {
   dp: number; bars: number;
 }
 
-export function buildPriceChart(candles: Candle[], funding: FundingPoint[] | null, tf: Timeframe): PriceChart | null {
+/** Candles or a close line. The line is a presentation of the same array, not a second series. */
+export type ChartMode = "candle" | "line";
+
+export function buildPriceChart(
+  candles: Candle[],
+  funding: FundingPoint[] | null,
+  tf: Timeframe,
+  mode: ChartMode = "candle",
+): PriceChart | null {
   const gid = `f${tf.key}`;
   if (candles.length < 3) return null;
   const px = candles[candles.length - 1][C];
@@ -130,11 +138,28 @@ export function buildPriceChart(candles: Candle[], funding: FundingPoint[] | nul
   }
   s.push(`<g data-ax="y">${yLabels.join("")}</g>`);
 
-  for (let i = 0; i < n; i++) {
-    const c = candles[i], x = xOf(i), k = c[C] >= c[O] ? INK.up : INK.down;
-    s.push(rect(x - ww / 2, yOf(c[H]), ww, Math.max(0.7, yOf(c[L]) - yOf(c[H])), k));
-    const bt = yOf(Math.max(c[O], c[C])), bb = yOf(Math.min(c[O], c[C]));
-    s.push(rect(x - bw / 2, bt, bw, Math.max(1, bb - bt), k, rx));
+  if (mode === "line") {
+    /* THE LINE IS THE SAME DATA, NOT A DIFFERENT ONE. Closes only, in the same colour the
+       up-candle uses, over a soft fill down to the plot floor — which is what makes a long
+       window readable when 300 candle bodies collapse into texture. The wick range is
+       deliberately dropped rather than shaded: a band around a close line reads as a
+       confidence interval, and a high-low range is not one. */
+    const pts = candles.map((c, i) => `${xOf(i).toFixed(1)},${yOf(c[C]).toFixed(1)}`).join(" ");
+    const floor = (priceY + priceH).toFixed(1);
+    s.push(
+      `<defs><linearGradient id="ln${tf.key}" x1="0" y1="0" x2="0" y2="1">` +
+        `<stop offset="0" stop-color="${INK.up}" stop-opacity="0.16"/>` +
+        `<stop offset="1" stop-color="${INK.up}" stop-opacity="0"/></linearGradient></defs>`,
+    );
+    s.push(`<path d="M${xOf(0).toFixed(1)},${floor} L${pts.split(" ").join(" L")} L${xOf(n - 1).toFixed(1)},${floor} Z" fill="url(#ln${tf.key})"/>`);
+    s.push(`<polyline points="${pts}" fill="none" stroke="${INK.up}" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/>`);
+  } else {
+    for (let i = 0; i < n; i++) {
+      const c = candles[i], x = xOf(i), k = c[C] >= c[O] ? INK.up : INK.down;
+      s.push(rect(x - ww / 2, yOf(c[H]), ww, Math.max(0.7, yOf(c[L]) - yOf(c[H])), k));
+      const bt = yOf(Math.max(c[O], c[C])), bb = yOf(Math.min(c[O], c[C]));
+      s.push(rect(x - bw / 2, bt, bw, Math.max(1, bb - bt), k, rx));
+    }
   }
   for (let i = 0; i < n; i++) {
     const c = candles[i], h = Math.max(0.9, (c[V] / vmax) * LY.volH);

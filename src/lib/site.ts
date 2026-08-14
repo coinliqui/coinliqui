@@ -56,6 +56,7 @@ export const NAV: NavGroup[] = [
       { label: "Funding", href: "/funding", mobile: true, icon: "M3 14.5 7 9l3.5 3.5L17 5M17 5h-4.5M17 5v4.5" },
       { label: "Liquidations", href: "/liquidations", icon: "M10 3v6m0 0 3-2m-3 2L7 7m3 10a5 5 0 0 0 5-5c0-2-1.5-3.5-2.5-5" },
       { label: "Unlocks", href: "/unlocks", icon: "M6 9V6.5a4 4 0 0 1 8 0M5 9h10v8H5z" },
+      { label: "Coins", href: "/coins", mobile: true, icon: "M10 4c3.3 0 6 1.3 6 3s-2.7 3-6 3-6-1.3-6-3 2.7-3 6-3Zm6 3v6c0 1.7-2.7 3-6 3s-6-1.3-6-3V7" },
     ],
   },
   {
@@ -66,7 +67,6 @@ export const NAV: NavGroup[] = [
     title: "Reference",
     items: [
       { label: "Open interest", href: "/open-interest", mobile: true, icon: "M4 16V8m4 8V5m4 11v-6m4 6V7" },
-      { label: "Tokens", icon: "M10 3.5 16 7v6l-6 3.5L4 13V7z" },
       { label: "Chains", icon: "M8 12a3 3 0 0 1 0-4l2-2a3 3 0 0 1 4 4l-1 1m-1 1a3 3 0 0 1 0 4l-2 2a3 3 0 0 1-4-4l1-1" },
       { label: "Seasonality", icon: "M4 16h12M4 16V8m4 8V5m4 11v-6m4 6V9" },
       { label: "Metrics", icon: "M4 10h3l2-5 2 10 2-5h3" },
@@ -85,6 +85,7 @@ export const NAV: NavGroup[] = [
 
 /** Footer carries every built destination, so nothing is reachable only at desktop widths. */
 export const FOOTER_LINKS = [
+  { href: "/coins", label: "Coins" },
   { href: "/funding", label: "Funding" },
   { href: "/open-interest", label: "Open interest" },
   { href: "/tools", label: "Tools" },
