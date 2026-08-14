@@ -22,7 +22,7 @@ const size = Number(q.get("size") ?? (perp.markPx > 1000 ? 0.5 : 100));
 const r = liquidationPrice({ entryPrice: perp.markPx, positionSize: size, leverage, side, table });
 const nextTier = nextTierBoundary(table, r.notional);
 
-const title = "Liquidation price calculator with real margin tiers | Basis";
+const title = "Liquidation price calculator with real margin tiers";
 const description = `Tier-correct liquidation price for ${perp.symbol} perpetuals, using the published maintenance-margin tiers — and how far the common entry × (1 ∓ 1/leverage) formula is wrong.`;
 ---
 

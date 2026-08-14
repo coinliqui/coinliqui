@@ -6,11 +6,11 @@ number is in the server-rendered HTML at first byte, every navigation link is a 
 
 Deployment runbook: **[DEPLOY.md](DEPLOY.md)** — dashboard only.
 
-> **The wordmark and the domain do not match yet.** The domain is `coinliqui.com`; the
-> brand string in the UI is still `Basis`, the working name. It lives in exactly one
-> constant, `SITE.name` in `src/lib/site.ts`, and it feeds every `<title>` suffix, the rail
-> wordmark and the JSON-LD. Changing it is a one-line edit — but it changes every indexed
-> title, so it is cheap this week and progressively less so after.
+**Brand lives in one constant.** `SITE.name` in `src/lib/site.ts` feeds the rail wordmark,
+the JSON-LD and every `<title>` — pages pass a bare title and `Base.astro` appends the
+suffix, so a rename is one line rather than twenty-four. `STORE_NS` does the same for the
+one key this site writes to a visitor's browser, which is why `/privacy` can print the
+exact key instead of a copy that drifts.
 
 ## Routes
 

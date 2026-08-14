@@ -306,6 +306,46 @@ no brand history takes 6–10 weeks before `coinliqui` returns the site first.
 
 ---
 
+## Steps that fail silently
+
+A wrong click here does not produce an error. It produces a site that looks completely
+correct with something quietly missing, and the symptom shows up weeks later looking like
+something else. Three of these used to be silent and are now loud — the rest still need a
+deliberate check.
+
+### Now loud — you cannot get past them
+
+| Was silent | What it used to do | What happens now |
+|---|---|---|
+| `SITE_URL` with a trailing slash, `http://`, `www.`, or a `pages.dev` host | Built cleanly. The host guard then decided the live domain was *not* canonical and served `noindex, nofollow` on every page. Site perfect, invisible, discovered in week 3 with nothing on the site to see. | **The build fails in 20 seconds** with the exact reason. All six malformed shapes are rejected. |
+| KV binding missing, misnamed, or added without the re-deploy | The site fell back to calling the upstream API on **every request**. Looked perfect at low traffic; the architecture guarantee was void; it would have collapsed under the first crawl. | **Pages return 503** with the cold-start notice, and `/status` prints `SNAPSHOT — MISSING`. |
+| A `worker-dist` bundle older than the source | The worker kept running and kept writing *something*, so timestamps updated normally. Whatever the newer worker was meant to write was simply absent — an empty chart panel, not a deploy error. | The worker writes a **build stamp** on every run and `/status` shows `Worker bundle — STALE` with both values. |
+
+### Still silent — check them deliberately
+
+| Step | Wrong click | Symptom | How to catch it |
+|---|---|---|---|
+| **10** | Any one bot setting left on | The site is flawless in a browser and invisible to crawlers. **This is the DeFiLlama failure.** | The four `curl` checks in §10. Nothing in the dashboard tells you. |
+| **10** | Cloudflare *Managed robots.txt* left on | Cloudflare appends AI-blocking rules to the file we serve. `robots.txt` looks fine until you read to the end. | Open `https://coinliqui.com/robots.txt` and read the **whole** file. |
+| **9** | `www` added as a custom domain, redirect rule not created — or created and not **Deployed** | Both hostnames serve 200. Google splits the site in two and picks one. | `curl -sI https://www.coinliqui.com/` must return `301`, not `200`. |
+| **6** | D1 binding missed, KV added | Every page renders correctly forever. No funding history accrues, and the flip feed stays empty. | `/status` → `DB — MISSING`. Also `SELECT COUNT(*) FROM funding_snapshot` stops climbing. |
+| **6** | Cron trigger typed but **Add** not clicked | Step 7's manual `/ingest` succeeds, so everything looks right. Data then freezes five minutes later. | `/status` → snapshot age over 15 min turns red. Check it an hour after deploy, not immediately. |
+| **4** | Only the first SQL statement executed in the D1 console | `funding_snapshot` exists, `upstream_check` does not. Ingest keeps working; the canary silently writes nothing. | `/status` → *Canary table unreadable*. |
+| **8** | Env var or bindings set on Preview only, or Production only | Cloudflare keeps the two sets separate. One environment works and the other does not, and you will be looking at the one that works. | Set both. Then check the **production** URL, not a preview deployment. |
+| **13** | Search Console property added as *URL prefix* instead of *Domain* | Verifies and reports — on a subset of hostnames. Numbers look plausible and are incomplete. | The left-hand box on the add-property screen, not the right. |
+| **13** | Sitemap submitted before step 9 | Teaches Google the `pages.dev` hostname, which then has to be migrated away from. | Submit only after the apex resolves. |
+| **11** | Email Routing destination never confirmed | Rule shows as created. Mail to `hello@` is discarded with no bounce. | Cloudflare marks the destination *unverified* — send yourself a test. |
+
+### The one-minute check, an hour after deploy
+
+Open `https://coinliqui.com/status`. Everything above that can be caught from inside the
+site is on that page: both bindings, the worker build stamp, snapshot age, per-venue
+coverage and the last 24 canary runs. If those are green, the only thing left that can
+still be silently wrong is bot protection — and that is what §10's four `curl` checks are
+for.
+
+---
+
 ## What is already done, that you do not have to do
 
 - The build is verified against `https://coinliqui.com`: 42 URLs across 7 sitemaps, every

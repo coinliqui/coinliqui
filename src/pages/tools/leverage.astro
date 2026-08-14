@@ -38,7 +38,7 @@ const next = nextTierBoundary(table, notional);
 // Headroom: how far the price can move before maintenance margin is breached.
 const buffer = initialMargin - maintenanceMargin;
 
-const title = `Leverage calculator — what ${perp.symbol} actually allows at your size | Basis`;
+const title = `Leverage calculator — what ${perp.symbol} actually allows at your size`;
 const description = `Maximum leverage on ${perp.symbol} perpetuals steps down as position size grows. This shows the tier that applies at your notional, the margin required, and where the next step falls.`;
 ---
 

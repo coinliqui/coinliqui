@@ -163,6 +163,13 @@ const EMPTY: Snapshot = { fetchedAt: 0, perps: [], eligibleCount: 0, universeCou
  */
 export async function getSnapshot(kv?: KVNamespace, devReadThrough = false): Promise<Snapshot> {
   if (!kv) {
+    /* NO BINDING. In dev that is normal and we read through so the site is usable.
+       In PRODUCTION it means the Pages KV binding is missing, misnamed, or was added
+       without the re-deploy that attaches it — and reading through would hide that behind
+       a site that looks perfect while calling the upstream API on every single request.
+       That is the failure you would not diagnose from the symptom, so it fails visibly:
+       an empty snapshot, which the page turns into a 503 cold-start notice. */
+    if (!devReadThrough) return EMPTY;
     try {
       return await fetchSnapshot();
     } catch {

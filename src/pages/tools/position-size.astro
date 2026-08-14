@@ -48,7 +48,7 @@ const marginAtRisk = notional / Math.min(leverage, tier.maxLeverage);
 const liqMove = entry > 0 ? Math.abs(r.liquidationPrice - entry) / entry : 0;
 const stopMove = entry > 0 ? Math.abs(stop - entry) / entry : 0;
 
-const title = `Position size calculator with liquidation check | Basis`;
+const title = `Position size calculator with liquidation check`;
 const description = `Risk-based position sizing for ${perp.symbol} perpetuals that checks the stop against the tier-correct liquidation price — because a stop beyond liquidation is not a stop.`;
 ---
 

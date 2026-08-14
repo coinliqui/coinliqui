@@ -1,6 +1,7 @@
 ---
 import Base from "../layouts/Base.astro";
 import { getSnapshot } from "../lib/hyperliquid.ts";
+import { EXPECTED_WORKER_BUILD } from "../lib/version.ts";
 
 // Deliberately NOT guarded with coldStart(): this is the page you open to find out why
 // everything else is returning 503, so it has to render when the snapshot store is empty.
@@ -35,10 +36,23 @@ const latestVenues: Record<string, number> = (() => {
   try { return latest?.note ? (JSON.parse(latest.note).venues ?? {}) : {}; } catch { return {}; }
 })();
 const fails = checks.filter((c) => !c.ok).length;
+
+/* Is the deployed worker the one this build expects? A hand-pasted bundle can be older than
+   the site with nothing anywhere to say so. */
+let workerBuild: string | null = null;
+try {
+  const v = (await env?.SNAPSHOT?.get("worker:build", "json")) as { build?: string } | null;
+  workerBuild = v?.build ?? null;
+} catch { /* leave null */ }
+const workerDrift = workerBuild !== null && workerBuild !== EXPECTED_WORKER_BUILD;
+const bindings = [
+  { name: "SNAPSHOT", kind: "KV", present: Boolean(env?.SNAPSHOT) },
+  { name: "DB", kind: "D1", present: Boolean(env?.DB) },
+];
 const utc = (ms: number) => new Date(ms).toISOString().slice(0, 16).replace("T", " ") + " UTC";
 ---
 
-<Base title="Status | Basis" description="Ingest health: snapshot age, upstream status codes and per-venue coverage.">
+<Base title="Status" description="Ingest health: snapshot age, upstream status codes and per-venue coverage.">
   <div class="page-head">
     <h1>Status</h1>
     <p>Ingest health. This page reads the canary table directly and renders even when the snapshot store is empty.</p>
@@ -65,6 +79,41 @@ const utc = (ms: number) => new Date(ms).toISOString().slice(0, 16).replace("T",
       <div class:list={["card__value", fails > 0 && "pays-l"]}>{checks.length ? fails : "—"}</div>
       <div class="card__meta">{checks.length} runs recorded</div>
     </div>
+  </div>
+
+  <h2 class="section">Deploy wiring</h2>
+  <p class="section-note">
+    The three things that can be wrong while every page still renders correctly. Each is a
+    deploy step that fails quietly rather than loudly, so it is checked here instead.
+  </p>
+  <div class="panel" style="max-width:760px">
+    <table class="tbl">
+      <thead><tr><th>Check</th><th>State</th><th>What a wrong value means</th></tr></thead>
+      <tbody>
+        {bindings.map((b) => (
+          <tr class={b.present ? undefined : "is-active"}>
+            <td>{b.kind} binding <code>{b.name}</code></td>
+            <td class:list={[b.present ? "pays-s" : "pays-l"]} style="font-weight:600">{b.present ? "attached" : "MISSING"}</td>
+            <td class="reason">
+              {b.name === "SNAPSHOT"
+                ? "Pages would serve 503 rather than fall back to the upstream API — deliberately, so a missing binding cannot hide behind a working-looking site."
+                : "Pages still render, but no funding history accrues and this table stays empty. Nothing else shows it."}
+            </td>
+          </tr>
+        ))}
+        <tr class={workerDrift ? "is-active" : undefined}>
+          <td>Worker bundle</td>
+          <td class:list={[workerBuild === null ? "dim" : workerDrift ? "pays-l" : "pays-s"]} style="font-weight:600">
+            {workerBuild === null ? "not reported yet" : workerDrift ? "STALE" : "current"}
+          </td>
+          <td class="reason">
+            Deployed <code>{workerBuild ?? "—"}</code>, site expects <code>{EXPECTED_WORKER_BUILD}</code>.
+            The bundle is pasted into the dashboard by hand, so it can sit behind this repository
+            with nothing to say so — whatever the newer worker was meant to write is simply absent.
+          </td>
+        </tr>
+      </tbody>
+    </table>
   </div>
 
   {stale && (
@@ -130,4 +179,9 @@ const utc = (ms: number) => new Date(ms).toISOString().slice(0, 16).replace("T",
       </table>
     </div>
   )}
+
+  <style>
+    .reason { color: var(--text-dim); white-space: normal; font-size: 12.5px; }
+    .tbl code { font-size: 12px; }
+  </style>
 </Base>

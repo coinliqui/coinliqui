@@ -1,11 +1,12 @@
 ---
 import Base from "../layouts/Base.astro";
+import { PINNED_KEY } from "../lib/site.ts";
 
 // Every claim on this page is checkable against the source. Nothing here describes a
 // planned feature: an honest-data site cannot ship a page describing a fiction.
-const title = "Privacy — there are no accounts | Basis";
+const title = "Privacy — there are no accounts";
 const description =
-  "There are no accounts on Basis and none are planned. Your watchlist lives in your own browser, no analytics run, and the only cookie stores whether the sidebar is collapsed.";
+  "There are no accounts on this site and none are planned. Your watchlist lives in your own browser, no analytics run, and the only cookie stores whether the sidebar is collapsed.";
 ---
 
 <Base title={title} description={description}>
@@ -44,7 +45,7 @@ const description =
           <td><code>0</code> or <code>1</code> — nothing else is possible</td>
         </tr>
         <tr>
-          <td><code>basis.pinned</code></td>
+          <td><code>{PINNED_KEY}</code></td>
           <td>Local storage</td>
           <td>You pin a contract on <a href="/watchlist">Pinned</a></td>
           <td>A list of ticker symbols</td>

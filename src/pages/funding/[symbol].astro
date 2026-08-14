@@ -59,7 +59,7 @@ const stat = (fn: (c: (typeof charts)[number]) => string) =>
   Object.fromEntries(charts.filter((c) => c.chart).map((c) => [`data-v${c.tf.key}`, fn(c)]));
 
 const rows = active.chart ? active.chart.points.slice(-200) : [];
-const title = `${p.symbol} price, funding rate and margin tiers | Basis`;
+const title = `${p.symbol} price, funding rate and margin tiers`;
 const description = `${p.symbol} perpetual candles from 1H to 1W with the funding rate charted on the same time axis, funding across Hyperliquid, Binance and Bybit annualised, open interest ${usd(p.oiNotional)} and the published margin tiers.`;
 ---
 

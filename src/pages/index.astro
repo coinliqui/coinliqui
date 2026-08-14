@@ -1,5 +1,6 @@
 ---
 import Base from "../layouts/Base.astro";
+import { SITE } from "../lib/site.ts";
 import { getSnapshot, coldStart } from "../lib/hyperliquid.ts";
 import { pct, usd, paysClass, paysArrow, paysLabel, LEGEND } from "../lib/funding.ts";
 import { readFlips, describeCoverage } from "../lib/flips.ts";
@@ -40,12 +41,12 @@ const parts: [string, boolean][] = [
   [", ", false], [widest?.aprSpread != null ? pct(widest.aprSpread) : "—", true], [".", false],
 ];
 
-const title = "Basis — perpetual funding, normalised";
+const title = `${SITE.name} — perpetual funding, normalised`;
 const description =
   "Funding rates across Hyperliquid, Binance and Bybit annualised so they are comparable, open interest, and a tier-correct liquidation price calculator.";
 ---
 
-<Base title={title} description={description} fetchedAt={snap.fetchedAt}>
+<Base title={title} titleMode="exact" description={description} fetchedAt={snap.fetchedAt}>
   <div class="page-head">
       <p class="crumb">{stamp}</p>
       <h1 class="lede">{parts.map(([t, n]) => (n ? <b>{t}</b> : <span>{t}</span>))}</h1>

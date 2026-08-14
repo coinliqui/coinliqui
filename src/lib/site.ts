@@ -1,14 +1,21 @@
 /**
  * Site config and the single navigation source of truth.
  *
- * BRAND IS A PLACEHOLDER — "Basis" is a working name pending trademark and domain checks.
+ * BRAND. "Coinliqui" matches the domain, coinliqui.com. It is set once here and reaches
+ * every title, the rail wordmark and the JSON-LD — pages pass a bare title and the layout
+ * appends the suffix, so renaming again is one line rather than twenty-four.
  * The site is in ENGLISH; every target query is English.
  */
 export const SITE = {
-  name: "Basis",
+  name: "Coinliqui",
   tagline: "Perpetual funding, normalised.",
   locale: "en",
 } as const;
+
+/** Namespace for anything this site writes to a visitor's own browser. One constant, so
+ *  /privacy can document the exact key rather than a copy of it that drifts. */
+export const STORE_NS = "coinliqui";
+export const PINNED_KEY = `${STORE_NS}.pinned`;
 
 /**
  * The canonical origin, from Astro's configured `site` (set by SITE_URL at build time).

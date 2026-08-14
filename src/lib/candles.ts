@@ -86,6 +86,9 @@ interface KVLike {
  * the caller degrades the section rather than the page.
  */
 export async function getCandles(kv: KVLike | undefined, symbol: string, devReadThrough = false): Promise<CandleSet | null> {
+  // A MISSING binding is not the same as an empty one — see getSnapshot. In production it
+  // means the Pages binding never attached, and reading through would hide it.
+  if (!kv && !devReadThrough) return null;
   if (kv) {
     try {
       const v = (await kv.get(`candles:${symbol}`, "json")) as CandleSet | null;
@@ -189,6 +192,7 @@ export function survivalGrid(opts: {
 }
 
 export async function getHourly(kv: KVLike | undefined, symbol: string, devReadThrough = false): Promise<{ u: number; d: HourCandle[] } | null> {
+  if (!kv && !devReadThrough) return null;
   if (kv) {
     try {
       const v = (await kv.get(`hourly:${symbol}`, "json")) as { u: number; d: HourCandle[] } | null;
@@ -258,6 +262,7 @@ export function mergeFunding(prev: FundingPoint[], next: FundingPoint[], cap = 5
 }
 
 export async function getFunding(kv: KVLike | undefined, symbol: string, devReadThrough = false): Promise<FundingPoint[] | null> {
+  if (!kv && !devReadThrough) return null;
   if (kv) {
     try {
       const v = (await kv.get(`funding:${symbol}`, "json")) as FundingPoint[] | null;

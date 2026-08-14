@@ -12,7 +12,7 @@ const rows = snap.perps
   .sort((a, b) => (b.spread ?? -Infinity) - (a.spread ?? -Infinity));
 const widest = rows[0];
 
-const title = "Crypto funding rates, normalised to APR | Basis";
+const title = "Crypto funding rates, normalised to APR";
 const description =
   "Perpetual funding rates across Hyperliquid, Binance and Bybit, annualised so they are actually comparable. Venues settle on different intervals, so the quoted numbers are not.";
 ---

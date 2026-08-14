@@ -35,7 +35,7 @@ const vesting = (reg.tokens as any[]).flatMap((t) =>
 );
 const totalVested = vesting.reduce((s: number, r: any) => s + r.amount, 0);
 
-const title = "Token unlock calendar, with provenance on every row | Basis";
+const title = "Token unlock calendar, with provenance on every row";
 const description =
   "What unlocks next, how much, and what share of supply — with each row marked contract-verified, project-published or aggregator-sourced, so you know how solid the line is.";
 ---

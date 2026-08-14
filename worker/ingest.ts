@@ -43,6 +43,17 @@ const FUNDING_REFRESH_HOURS = 6;
 /** Canary rows are small but unbounded, so they are pruned on the same schedule. */
 const CANARY_RETAIN_HOURS = 168;
 
+/**
+ * BUILD STAMP. `worker-dist/ingest.bundle.js` is pasted into the dashboard by hand, so the
+ * deployed worker can silently be older than the site that reads its output — and the
+ * symptom (a chart panel that never fills, a timestamp that drifts) looks nothing like a
+ * stale paste. The worker writes this on every run and /status compares it with the value
+ * the site was built with.
+ *
+ * BUMP BOTH when you change this file: here and EXPECTED_WORKER_BUILD in src/lib/version.ts.
+ */
+const WORKER_BUILD = "2026-08-14a";
+
 export default {
   async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext) {
     ctx.waitUntil(run(env));
@@ -80,6 +91,7 @@ async function run(env: Env): Promise<RunResult> {
   const result: RunResult = { ok: false, ms: 0, status: 0, rows: 0, symbols: 0, venues: {} };
 
   try {
+    await env.SNAPSHOT.put("worker:build", JSON.stringify({ build: WORKER_BUILD, at: Date.now() }));
     const snap = await fetchSnapshot();
     result.status = 200;
     result.symbols = snap.perps.length;

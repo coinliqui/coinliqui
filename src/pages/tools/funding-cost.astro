@@ -31,7 +31,7 @@ const margin = notional / leverage;
 const costVsMargin = margin > 0 ? cost / margin : 0;
 const perSettlement = notional * f.rate * signed;
 
-const title = `Funding cost calculator — what it costs to hold ${perp.symbol} | Basis`;
+const title = `Funding cost calculator — what it costs to hold ${perp.symbol}`;
 const description = `What holding a ${perp.symbol} perpetual actually costs in funding, using each venue's real settlement interval rather than treating the quoted rate as a daily number.`;
 ---
 

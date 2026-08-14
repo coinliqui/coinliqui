@@ -16,6 +16,34 @@ if (process.env.CF_PAGES && !SITE_URL) {
   );
 }
 
+/**
+ * And validate its SHAPE, because a malformed one is the most expensive silent failure in
+ * the whole deploy. A trailing slash, an http:// scheme or a www. host all build cleanly
+ * and produce a site that looks perfect — while the host guard decides the live domain is
+ * NOT canonical and serves `noindex, nofollow` on every page. The symptom is "nothing is
+ * indexed", three weeks later, with nothing on the site to see. Twenty seconds of build
+ * failure is the cheaper outcome.
+ */
+if (SITE_URL) {
+  const fail = (why) => {
+    throw new Error(`SITE_URL is "${SITE_URL}" — ${why}. Expected exactly https://example.com`);
+  };
+  let u;
+  try {
+    u = new URL(SITE_URL);
+  } catch {
+    fail("that is not a URL");
+  }
+  const local = u.hostname === "localhost" || u.hostname === "127.0.0.1";
+  if (!local) {
+    if (u.protocol !== "https:") fail("it must use https");
+    if (u.hostname.endsWith(".pages.dev")) fail("that is a preview hostname, not the canonical domain");
+    if (u.hostname.startsWith("www.")) fail("the canonical origin is the apex; www redirects to it");
+  }
+  if (SITE_URL.endsWith("/")) fail("it must not end in a slash");
+  if (u.pathname !== "/" || u.search || u.hash) fail("it must be an origin only, with no path, query or fragment");
+}
+
 export default defineConfig({
   output: "server",
   adapter: cloudflare({ imageService: "passthrough" }),

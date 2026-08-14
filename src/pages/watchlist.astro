@@ -2,6 +2,7 @@
 import Base from "../layouts/Base.astro";
 import { getSnapshot, coldStart } from "../lib/hyperliquid.ts";
 import { pct, usd, paysClass, paysArrow, LEGEND } from "../lib/funding.ts";
+import { PINNED_KEY } from "../lib/site.ts";
 
 // Every covered contract renders server-side, so the page is a complete, useful table for a
 // first-time visitor who has pinned nothing. Pinning only REORDERS what is already here —
@@ -17,7 +18,7 @@ const maxOi = Math.max(...snap.perps.map((p) => p.oiNotional || 0), 1);
 ---
 
 <Base
-  title="Pinned contracts | Basis"
+  title="Pinned contracts"
   description="Pin the perpetual contracts you follow. Stored in your own browser, no account, nothing transmitted."
   fetchedAt={snap.fetchedAt}
   noindex
@@ -91,9 +92,8 @@ const maxOi = Math.max(...snap.perps.map((p) => p.oiNotional || 0), 1);
     · {snap.eligibleCount} of {snap.universeCount} contracts clear the $5M open-interest floor
   </p>
 
-  <script is:inline>
+  <script is:inline define:vars={{ KEY: PINNED_KEY }}>
     (function () {
-      var KEY = "basis.pinned";
       var tbody = document.querySelector("#wl tbody");
       var clear = document.getElementById("wl-clear");
       if (!tbody) return;

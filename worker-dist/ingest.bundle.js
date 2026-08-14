@@ -125,6 +125,7 @@ var CANDLE_REFRESH_HOURS = 12;
 var HOURLY_REFRESH_HOURS = 6;
 var FUNDING_REFRESH_HOURS = 6;
 var CANARY_RETAIN_HOURS = 168;
+var WORKER_BUILD = "2026-08-14a";
 var ingest_default = {
   async scheduled(_event, env, ctx) {
     ctx.waitUntil(run(env));
@@ -145,6 +146,7 @@ async function run(env) {
   const started = Date.now();
   const result = { ok: false, ms: 0, status: 0, rows: 0, symbols: 0, venues: {} };
   try {
+    await env.SNAPSHOT.put("worker:build", JSON.stringify({ build: WORKER_BUILD, at: Date.now() }));
     const snap = await fetchSnapshot();
     result.status = 200;
     result.symbols = snap.perps.length;

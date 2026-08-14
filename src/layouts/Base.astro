@@ -2,7 +2,10 @@
 import { SITE, NAV, FOOTER_LINKS, origin } from "../lib/site.ts";
 
 interface Props {
+  /** Bare page title. The brand suffix is appended here, not typed into every page. */
   title: string;
+  /** "exact" for the homepage, whose title leads with the brand instead of ending in it. */
+  titleMode?: "suffix" | "exact";
   description: string;
   fetchedAt?: number;
   /**
@@ -13,7 +16,8 @@ interface Props {
    */
   noindex?: boolean;
 }
-const { title, description, fetchedAt, noindex } = Astro.props;
+const { title, description, fetchedAt, noindex, titleMode = "suffix" } = Astro.props;
+const fullTitle = titleMode === "exact" ? title : `${title} | ${SITE.name}`;
 const path = Astro.url.pathname;
 // Canonical origin comes from the build-time SITE_URL via Astro.site — never a literal,
 // and never the request host, which may be a *.pages.dev preview.
@@ -41,7 +45,7 @@ const schema = {
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>{title}</title>
+    <title>{fullTitle}</title>
     <meta name="description" content={description} />
     {noindex && <meta name="robots" content="noindex, follow" />}
     <link rel="canonical" href={new URL(path, base).href} />
