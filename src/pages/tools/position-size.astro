@@ -1,0 +1,203 @@
+---
+import Base from "../../layouts/Base.astro";
+import { getSnapshot } from "../../lib/hyperliquid.ts";
+import { usd, pct } from "../../lib/funding.ts";
+import { liquidationPrice, tierFor, maintenanceMarginFraction, type MarginTable, type Side } from "../../lib/margin.ts";
+import tables from "../../data/margin-tables.json";
+
+const snap = await getSnapshot((Astro.locals as any)?.runtime?.env?.SNAPSHOT);
+
+const q = Astro.url.searchParams;
+const symbol = (q.get("symbol") ?? "BTC").toUpperCase();
+const perp = snap.perps.find((p) => p.symbol === symbol) ?? snap.perps[0];
+const table = (tables as Record<string, MarginTable>)[String(perp.marginTableId)];
+const side = (q.get("side") === "short" ? "short" : "long") as Side;
+
+const account = Number(q.get("account") ?? 25_000);
+const riskPct = Number(q.get("risk") ?? 1);
+const entry = Number(q.get("entry") ?? perp.markPx);
+const defaultStop = side === "long" ? entry * 0.95 : entry * 1.05;
+const stop = Number(q.get("stop") ?? defaultStop.toFixed(2));
+const leverage = Number(q.get("leverage") ?? 10);
+
+// The formula every sizing guide gives: risk budget divided by the distance to the stop.
+const riskUsd = account * (riskPct / 100);
+const perUnit = Math.abs(entry - stop);
+const size = perUnit > 0 ? riskUsd / perUnit : 0;
+const notional = size * entry;
+
+// What that formula assumes and never checks: that the stop is reached before liquidation.
+const r = liquidationPrice({ entryPrice: entry, positionSize: size, leverage, side, table });
+const { tier } = tierFor(table, notional);
+const mmf = maintenanceMarginFraction(tier.maxLeverage);
+const liquidatedFirst = side === "long" ? r.liquidationPrice > stop : r.liquidationPrice < stop;
+
+// Largest leverage that still leaves liquidation beyond the stop. Solved from
+// liq = entry(1 ∓ 1/L)/(1 ∓ mmf), set equal to the stop.
+const ratio = stop / entry;
+const denom = side === "long" ? 1 - ratio * (1 - mmf) : ratio * (1 + mmf) - 1;
+const rawSafe = denom > 0 ? 1 / denom : Infinity;
+const safeLeverage = Math.max(1, Math.min(tier.maxLeverage, Math.floor(Number.isFinite(rawSafe) ? rawSafe : tier.maxLeverage)));
+
+// The harm when liquidation lands first is PREMATURE CLOSURE, not a larger loss. At high
+// leverage the margin can be smaller than the risk budget, so framing this as "you lose more"
+// is wrong — the trade is simply killed at a smaller move than it was sized to survive.
+const marginAtRisk = notional / Math.min(leverage, tier.maxLeverage);
+const liqMove = entry > 0 ? Math.abs(r.liquidationPrice - entry) / entry : 0;
+const stopMove = entry > 0 ? Math.abs(stop - entry) / entry : 0;
+
+const title = `Position size calculator with liquidation check | Basis`;
+const description = `Risk-based position sizing for ${perp.symbol} perpetuals that checks the stop against the tier-correct liquidation price — because a stop beyond liquidation is not a stop.`;
+---
+
+<Base title={title} description={description} fetchedAt={snap.fetchedAt}>
+  <div class="page-head">
+    <p class="crumb"><a href="/tools">Tools</a> › Position size</p>
+    <h1>Position size calculator</h1>
+    <p>
+      Risk-based sizing, checked against the price at which the position is actually closed.
+      Opens on {perp.symbol} at {usd(perp.markPx, 2)}.
+    </p>
+  </div>
+
+  <form method="GET" class="calc">
+    <label>Contract
+      <select name="symbol">{snap.perps.map((p) => <option value={p.symbol} selected={p.symbol === perp.symbol}>{p.symbol}</option>)}</select>
+    </label>
+    <label>Side
+      <select name="side">
+        <option value="long" selected={side === "long"}>Long</option>
+        <option value="short" selected={side === "short"}>Short</option>
+      </select>
+    </label>
+    <label>Account size (USD)
+      <input type="number" name="account" value={account} step="any" min="0" />
+    </label>
+    <label>Risk per trade (%)
+      <input type="number" name="risk" value={riskPct} step="any" min="0" max="100" />
+    </label>
+    <label>Entry price
+      <input type="number" name="entry" value={entry} step="any" min="0" />
+    </label>
+    <label>Stop price
+      <input type="number" name="stop" value={stop} step="any" min="0" />
+    </label>
+    <label>Leverage
+      <input type="number" name="leverage" value={leverage} step="1" min="1" max={perp.maxLeverage} />
+    </label>
+    <button class="btn btn--primary" type="submit">Calculate</button>
+  </form>
+
+  <div class="cards" style="margin-top:12px">
+    <div class="card card--lead">
+      <div class="card__label">Position size</div>
+      <div class="card__value" id="out-size">{size.toFixed(4)}</div>
+      <div class="card__meta">{perp.symbol} · notional <span id="out-notional">{usd(notional)}</span></div>
+    </div>
+    <div class="card">
+      <div class="card__label">Liquidation at {leverage}×</div>
+      <div class:list={["card__value", liquidatedFirst && "pays-l"]} id="out-liq">{usd(r.liquidationPrice, 2)}</div>
+      <div class="card__meta" id="out-liqnote">{liquidatedFirst ? "before your stop" : "beyond your stop"}</div>
+    </div>
+    <div class="card">
+      <div class="card__label">Closed out by a move of</div>
+      <div class:list={["card__value", liquidatedFirst && "pays-l"]} id="out-move">{pct(liqMove)}</div>
+      <div class="card__meta">you sized for <span id="out-stopmove">{pct(stopMove)}</span></div>
+    </div>
+    <div class="card">
+      <div class="card__label">Max leverage for this stop</div>
+      <div class="card__value" id="out-safe">{safeLeverage}×</div>
+      <div class="card__meta">keeps liquidation beyond {usd(stop, 2)}</div>
+    </div>
+  </div>
+
+  <div class:list={["verdict", liquidatedFirst ? "verdict--warn" : "verdict--ok"]} id="out-verdict">
+    {liquidatedFirst ? (
+      <div>
+        <b>The stop never executes.</b> At {leverage}× the exchange closes this position at
+        {" "}<b>{usd(r.liquidationPrice, 2)}</b> — a <b>{pct(liqMove)}</b> move — while your stop sits
+        {" "}{pct(stopMove)} away at {usd(stop, 2)}. The trade gets <b>{pct(liqMove)}</b> of room
+        instead of the {pct(stopMove)} it was sized to survive, and the entire
+        {" "}<b>{usd(marginAtRisk, 2)}</b> of margin goes with it.
+        That the margin happens to be {marginAtRisk < riskUsd ? "smaller" : "larger"} than your
+        {" "}{usd(riskUsd, 2)} budget is beside the point: the position never got to be wrong slowly.
+        Drop to <b>{safeLeverage}×</b> or move the stop closer.
+      </div>
+    ) : (
+      <div>
+        <b>The stop is reachable.</b> Liquidation sits at <b>{usd(r.liquidationPrice, 2)}</b>
+        ({pct(liqMove)} away), past your stop at {pct(stopMove)}, so the stop executes first and the
+        loss is bounded by the <b>{usd(riskUsd, 2)}</b> you budgeted. Leverage up to
+        {" "}<b>{safeLeverage}×</b> keeps that true.
+      </div>
+    )}
+  </div>
+
+  <h2 class="section">Why sizing alone is not enough</h2>
+  <p class="prose">
+    The standard formula — <code>risk budget ÷ distance to stop</code> — sizes the position so that
+    <em>if the stop fills</em>, you lose exactly what you budgeted. It says nothing about whether
+    the stop is reachable. Leverage sets the liquidation price independently, and when liquidation
+    falls between entry and stop the exchange closes the position first. The stop is then decoration.
+  </p>
+  <p class="prose">
+    The check has to use the <strong>tier-correct</strong> liquidation price. At {usd(notional)}
+    notional this contract sits in tier {r.tierIndex + 1}, where maintenance margin is
+    {" "}{pct(mmf, 3)} — so liquidation is {usd(r.differenceAbs, 2)} away from what the common
+    <code>entry × (1 ∓ 1/leverage)</code> formula reports.
+    <a class="link" href="/tools/liquidation-price">See that gap in detail →</a>
+  </p>
+  <p class="section-note">
+    Fees, slippage and funding are not deducted here, and a gap through the stop can exceed the
+    budgeted loss regardless of sizing. Maintenance margin is read at the tier your notional falls
+    in; a size large enough to cross a boundary moves it further.
+  </p>
+
+  <p style="margin-top:24px">
+    <a class="link" href="/tools/leverage">What leverage this contract actually allows →</a>
+    · <a class="link" href={`/funding/${perp.symbol.toLowerCase()}`}>{perp.symbol} detail →</a>
+  </p>
+
+  <script is:inline define:vars={{ table, symbol: perp.symbol }}>
+    const form = document.querySelector(".calc");
+    if (form) {
+      const money = (x) => "$" + Math.abs(x).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+      const tiers = [...table.marginTiers].sort((a, b) => a.lowerBound - b.lowerBound);
+      const recalc = () => {
+        const A = Number(form.account.value), R = Number(form.risk.value);
+        const E = Number(form.entry.value), S = Number(form.stop.value), L = Number(form.leverage.value);
+        const isLong = form.side.value === "long";
+        if (!(A >= 0) || !(E > 0) || !(L > 0) || !(Math.abs(E - S) > 0)) return;
+        const riskUsd = A * (R / 100);
+        const size = riskUsd / Math.abs(E - S);
+        const notional = size * E;
+        let idx = 0;
+        tiers.forEach((t, i) => { if (notional >= t.lowerBound) idx = i; });
+        const maxLev = tiers[idx].maxLeverage;
+        const mmf = 1 / (2 * maxLev);
+        const eff = Math.min(L, maxLev);
+        const liq = isLong ? (E * (1 - 1 / eff)) / (1 - mmf) : (E * (1 + 1 / eff)) / (1 + mmf);
+        const first = isLong ? liq > S : liq < S;
+        const ratio = S / E;
+        const denom = isLong ? 1 - ratio * (1 - mmf) : ratio * (1 + mmf) - 1;
+        const safe = Math.max(1, Math.min(maxLev, Math.floor(denom > 0 ? 1 / denom : maxLev)));
+        set("out-size", size.toFixed(4));
+        set("out-notional", "$" + Math.round(notional).toLocaleString("en-US"));
+        set("out-liq", money(liq));
+        set("out-liqnote", first ? "before your stop" : "beyond your stop");
+        set("out-move", ((Math.abs(liq - E) / E) * 100).toFixed(2) + "%");
+        set("out-stopmove", ((Math.abs(S - E) / E) * 100).toFixed(2) + "%");
+        const mv = document.getElementById("out-move");
+        if (mv) mv.className = "card__value" + (first ? " pays-l" : "");
+        set("out-safe", safe + "×");
+        const liqEl = document.getElementById("out-liq");
+        if (liqEl) liqEl.className = "card__value" + (first ? " pays-l" : "");
+        const v = document.getElementById("out-verdict");
+        if (v) v.className = "verdict " + (first ? "verdict--warn" : "verdict--ok");
+      };
+      form.addEventListener("input", recalc);
+      form.addEventListener("change", (e) => { if (e.target.name === "symbol") form.submit(); else recalc(); });
+    }
+  </script>
+</Base>

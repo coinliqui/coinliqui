@@ -1,0 +1,170 @@
+---
+import Base from "../../layouts/Base.astro";
+import { getSnapshot } from "../../lib/hyperliquid.ts";
+import { usd, pct, rawRate, settlementsPerYear, VENUE_LABEL, paysClass, type Venue } from "../../lib/funding.ts";
+
+const snap = await getSnapshot((Astro.locals as any)?.runtime?.env?.SNAPSHOT);
+
+const q = Astro.url.searchParams;
+const symbol = (q.get("symbol") ?? "BTC").toUpperCase();
+const perp = snap.perps.find((p) => p.symbol === symbol) ?? snap.perps[0];
+const venueParam = (q.get("venue") ?? "HlPerp") as Venue;
+const f = perp.venues.find((v) => v.venue === venueParam) ?? perp.venues[0];
+const side = q.get("side") === "short" ? "short" : "long";
+const notional = Number(q.get("notional") ?? 10_000);
+const days = Number(q.get("days") ?? 30);
+const leverage = Number(q.get("leverage") ?? 10);
+
+// Correct: the quoted rate applies PER SETTLEMENT, and the number of settlements in the
+// window is set by the venue's interval. Sign convention: a positive rate means longs pay.
+const settlements = (days * 24) / f.intervalHours;
+const signed = side === "long" ? 1 : -1;
+const cost = notional * f.rate * settlements * signed;
+
+// The naive reading treats the quoted rate as a DAILY number. On an hourly venue that is
+// wrong by 24x; on an 8-hour venue by 3x. It is the single most common funding error.
+const naiveCost = notional * f.rate * days * signed;
+
+const margin = notional / leverage;
+const costVsMargin = margin > 0 ? cost / margin : 0;
+const perSettlement = notional * f.rate * signed;
+
+const title = `Funding cost calculator — what it costs to hold ${perp.symbol} | Basis`;
+const description = `What holding a ${perp.symbol} perpetual actually costs in funding, using each venue's real settlement interval rather than treating the quoted rate as a daily number.`;
+---
+
+<Base title={title} description={description} fetchedAt={snap.fetchedAt}>
+  <div class="page-head">
+    <p class="crumb"><a href="/tools">Tools</a> › Funding cost</p>
+    <h1>Funding cost calculator</h1>
+    <p>
+      What it costs to hold a position, using the venue's real settlement interval.
+      Opens on {perp.symbol} at {usd(perp.markPx, 2)} on {VENUE_LABEL[f.venue]}, which settles
+      every {f.intervalHours} hour{f.intervalHours === 1 ? "" : "s"}.
+    </p>
+  </div>
+
+  <form method="GET" class="calc">
+    <label>Contract
+      <select name="symbol">{snap.perps.map((p) => <option value={p.symbol} selected={p.symbol === perp.symbol}>{p.symbol}</option>)}</select>
+    </label>
+    <label>Venue
+      <select name="venue">{perp.venues.map((v) => <option value={v.venue} selected={v.venue === f.venue}>{VENUE_LABEL[v.venue]}</option>)}</select>
+    </label>
+    <label>Side
+      <select name="side">
+        <option value="long" selected={side === "long"}>Long</option>
+        <option value="short" selected={side === "short"}>Short</option>
+      </select>
+    </label>
+    <label>Position notional (USD)
+      <input type="number" name="notional" value={notional} step="any" min="0" />
+    </label>
+    <label>Days held
+      <input type="number" name="days" value={days} step="any" min="0" />
+    </label>
+    <label>Leverage
+      <input type="number" name="leverage" value={leverage} step="1" min="1" max={perp.maxLeverage} />
+    </label>
+    <button class="btn btn--primary" type="submit">Calculate</button>
+  </form>
+
+  <div class="cards" style="margin-top:12px">
+    <div class="card card--lead">
+      <div class="card__label">{cost >= 0 ? "You pay" : "You receive"}</div>
+      <div class="card__value" id="out-cost">{usd(Math.abs(cost), 2)}</div>
+      <div class="card__meta">over {days} days · <span id="out-settle">{Math.round(settlements).toLocaleString("en-US")}</span> settlements</div>
+    </div>
+    <div class="card">
+      <div class="card__label">Reading the rate as daily</div>
+      <div class="card__value dim" id="out-naive">{usd(Math.abs(naiveCost), 2)}</div>
+      <div class="card__meta">off by <span id="out-factor">{(24 / f.intervalHours).toFixed(0)}</span>×</div>
+    </div>
+    <div class="card">
+      <div class="card__label">Share of your margin</div>
+      <div class="card__value" id="out-margin">{pct(Math.abs(costVsMargin))}</div>
+      <div class="card__meta">at {leverage}× · margin {usd(margin, 0)}</div>
+    </div>
+    <div class="card">
+      <div class="card__label">Per settlement</div>
+      <div class="card__value" style="font-size:20px" id="out-per">{usd(Math.abs(perSettlement), 2)}</div>
+      <div class="card__meta">every {f.intervalHours}h at {rawRate(f.rate)}</div>
+    </div>
+  </div>
+
+  <div class="verdict verdict--warn">
+    <div>
+      Funding is charged on <b>notional</b>, not on your margin. At {leverage}× the same position
+      costs <b>{leverage}×</b> more relative to the capital you put up — which is why a carry that
+      looks negligible as an APR can be the largest line in a leveraged position's P&amp;L.
+    </div>
+  </div>
+
+  <h2 class="section">Where the daily reading goes wrong</h2>
+  <p class="prose">
+    Venues quote funding <strong>per settlement</strong>, not per day. {VENUE_LABEL[f.venue]} settles
+    every {f.intervalHours} hour{f.intervalHours === 1 ? "" : "s"}, so a {days}-day hold crosses
+    <strong>{Math.round(settlements).toLocaleString("en-US")}</strong> settlements, not {days}.
+    Treating the quoted figure as a daily rate understates the cost by
+    <strong>{(24 / f.intervalHours).toFixed(0)}×</strong> on this venue.
+  </p>
+
+  <h2 class="section">Same position, every venue</h2>
+  <p class="section-note">Identical notional and holding period. The ordering by cost is frequently not the ordering by quoted rate.</p>
+  <div class="panel">
+    <table class="tbl">
+      <thead><tr><th>Venue</th><th class="num">Quoted</th><th class="num">Interval</th><th class="num">Settlements</th><th class="num">APR</th><th class="num">Cost over {days}d</th></tr></thead>
+      <tbody>
+        {perp.venues.map((v) => {
+          const s = (days * 24) / v.intervalHours;
+          const c = notional * v.rate * s * signed;
+          return (
+            <tr class={v.venue === f.venue ? "is-active" : undefined}>
+              <td>{VENUE_LABEL[v.venue]}{v.venue === f.venue ? " · yours" : ""}</td>
+              <td class="num">{rawRate(v.rate)}</td>
+              <td class="num">{v.intervalHours}h</td>
+              <td class="num">{Math.round(s).toLocaleString("en-US")}</td>
+              <td class:list={["num", paysClass(v.apr)]}>{pct(v.apr)}</td>
+              <td class="num" style="font-weight:600">{c >= 0 ? "−" : "+"}{usd(Math.abs(c), 2)}</td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  </div>
+  <p class="section-note" style="margin-top:10px">
+    Rates change at every settlement; this projects the current rate forward and is a cost of
+    carry at today's price, not a forecast. <a class="link" href="/methodology">How the rates are normalised →</a>
+  </p>
+
+  <p style="margin-top:24px">
+    <a class="link" href={`/funding/${perp.symbol.toLowerCase()}`}>{perp.symbol} funding detail →</a>
+    · <a class="link" href="/tools/funding-arbitrage">Capture the gap between venues →</a>
+  </p>
+
+  <script is:inline define:vars={{ venues: perp.venues }}>
+    // Mirrors the server formula exactly; only mutates values already in the HTML.
+    const form = document.querySelector(".calc");
+    if (form) {
+      const money = (x) => "$" + Math.abs(x).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      const pc = (x, d = 2) => (Math.abs(x) * 100).toFixed(d) + "%";
+      const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+      const recalc = () => {
+        const v = venues.find((x) => x.venue === form.venue.value) || venues[0];
+        const N = Number(form.notional.value), D = Number(form.days.value), L = Number(form.leverage.value);
+        const sign = form.side.value === "long" ? 1 : -1;
+        if (!(N >= 0) || !(D >= 0) || !(L > 0)) return;
+        const settle = (D * 24) / v.intervalHours;
+        const cost = N * v.rate * settle * sign;
+        set("out-cost", money(cost));
+        set("out-settle", Math.round(settle).toLocaleString("en-US"));
+        set("out-naive", money(N * v.rate * D * sign));
+        set("out-factor", (24 / v.intervalHours).toFixed(0));
+        set("out-margin", pc(cost / (N / L)));
+        set("out-per", money(N * v.rate * sign));
+      };
+      form.addEventListener("input", recalc);
+      form.addEventListener("change", (e) => { if (e.target.name === "symbol") form.submit(); else recalc(); });
+    }
+  </script>
+</Base>

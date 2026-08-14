@@ -1,0 +1,180 @@
+---
+import Base from "../../layouts/Base.astro";
+import { getSnapshot } from "../../lib/hyperliquid.ts";
+import { usd, pct, rawRate, VENUE_LABEL, paysClass, type Venue } from "../../lib/funding.ts";
+
+const snap = await getSnapshot((Astro.locals as any)?.runtime?.env?.SNAPSHOT);
+
+// Default to the contract with the widest live spread, so the page opens on the trade that
+// actually exists right now rather than on an arbitrary symbol.
+const tradable = snap.perps.filter((p) => p.venues.length >= 2);
+const widest = [...tradable].sort((a, b) => (b.aprSpread ?? 0) - (a.aprSpread ?? 0))[0];
+
+const q = Astro.url.searchParams;
+const symbol = (q.get("symbol") ?? widest?.symbol ?? "BTC").toUpperCase();
+const perp = tradable.find((p) => p.symbol === symbol) ?? widest ?? snap.perps[0];
+const capital = Number(q.get("capital") ?? 10_000);
+const days = Number(q.get("days") ?? 30);
+
+const sorted = [...perp.venues].sort((a, b) => b.apr - a.apr);
+const shortLeg = sorted[0];          // highest APR — as a short you are paid
+const longLeg = sorted[sorted.length - 1];
+const spreadApr = shortLeg.apr - longLeg.apr;
+
+// Delta-neutral means margin on BOTH legs, so the capital funds two positions.
+const perLeg = capital / 2;
+const grossPeriod = perLeg * spreadApr * (days / 365);
+const grossYear = perLeg * spreadApr;
+
+// The naive spread: difference the QUOTED rates and annualise both as if every venue
+// settled every 8 hours. This is what a side-by-side funding table implies.
+const ASSUMED = 8;
+const naiveSpreadApr = (shortLeg.rate - longLeg.rate) * (8760 / ASSUMED);
+const naivePeriod = perLeg * naiveSpreadApr * (days / 365);
+
+const sameInterval = shortLeg.intervalHours === longLeg.intervalHours;
+
+const title = `Funding arbitrage calculator — cross-venue spread on ${perp.symbol} | Basis`;
+const description = `What the funding spread between venues is actually worth on a delta-neutral ${perp.symbol} position, with both legs annualised on their own settlement interval rather than assumed to match.`;
+---
+
+<Base title={title} description={description} fetchedAt={snap.fetchedAt}>
+  <div class="page-head">
+    <p class="crumb"><a href="/tools">Tools</a> › Funding arbitrage</p>
+    <h1>Funding arbitrage calculator</h1>
+    <p>
+      Short the venue paying the most, long the venue paying the least, hold both and collect the
+      difference. Opens on <strong>{perp.symbol}</strong>, the widest live spread across the venues
+      covered here.
+    </p>
+  </div>
+
+  <form method="GET" class="calc">
+    <label>Contract
+      <select name="symbol">{tradable.map((p) => <option value={p.symbol} selected={p.symbol === perp.symbol}>{p.symbol}</option>)}</select>
+    </label>
+    <label>Capital deployed (USD)
+      <input type="number" name="capital" value={capital} step="any" min="0" />
+    </label>
+    <label>Days held
+      <input type="number" name="days" value={days} step="any" min="0" />
+    </label>
+    <button class="btn btn--primary" type="submit">Calculate</button>
+  </form>
+
+  <div class="cards" style="margin-top:12px">
+    <div class="card card--lead">
+      <div class="card__label">Spread captured</div>
+      <div class="card__value" id="out-spread">{pct(spreadApr)}</div>
+      <div class="card__meta">annualised · both legs on their own interval</div>
+    </div>
+    <div class="card">
+      <div class="card__label">If both settled 8-hourly</div>
+      <div class="card__value dim" id="out-naive">{pct(naiveSpreadApr)}</div>
+      <div class="card__meta">{sameInterval ? "same here — intervals match" : "the side-by-side reading"}</div>
+    </div>
+    <div class="card">
+      <div class="card__label">Gross over {days} days</div>
+      <div class="card__value" id="out-period">{usd(grossPeriod, 2)}</div>
+      <div class="card__meta">on {usd(perLeg, 0)} per leg</div>
+    </div>
+    <div class="card">
+      <div class="card__label">Gross per year</div>
+      <div class="card__value" id="out-year">{usd(grossYear, 2)}</div>
+      <div class="card__meta">at the current rate, before costs</div>
+    </div>
+  </div>
+
+  {!sameInterval && (
+    <div class="verdict verdict--warn">
+      <div>
+        These two venues settle on <b>different intervals</b> ({shortLeg.intervalHours}h and
+        {" "}{longLeg.intervalHours}h). Differencing the quoted rates gives
+        {" "}<b>{pct(naiveSpreadApr)}</b> where the real spread is <b>{pct(spreadApr)}</b> — a gap of
+        {" "}<b>{usd(Math.abs(grossPeriod - naivePeriod), 2)}</b> on this position over {days} days.
+      </div>
+    </div>
+  )}
+
+  <h2 class="section">The two legs</h2>
+  <div class="panel">
+    <table class="tbl">
+      <thead><tr><th>Leg</th><th>Venue</th><th class="num">Quoted</th><th class="num">Interval</th><th class="num">Annualised</th><th class="num">You</th></tr></thead>
+      <tbody>
+        <tr class="is-active">
+          <td><strong>Short</strong></td>
+          <td>{VENUE_LABEL[shortLeg.venue]}</td>
+          <td class="num">{rawRate(shortLeg.rate)}</td>
+          <td class="num">{shortLeg.intervalHours}h</td>
+          <td class:list={["num", paysClass(shortLeg.apr)]} style="font-weight:600">{pct(shortLeg.apr)}</td>
+          <td class="num">{shortLeg.apr >= 0 ? "receive" : "pay"}</td>
+        </tr>
+        <tr class="is-active">
+          <td><strong>Long</strong></td>
+          <td>{VENUE_LABEL[longLeg.venue]}</td>
+          <td class="num">{rawRate(longLeg.rate)}</td>
+          <td class="num">{longLeg.intervalHours}h</td>
+          <td class:list={["num", paysClass(longLeg.apr)]} style="font-weight:600">{pct(longLeg.apr)}</td>
+          <td class="num">{longLeg.apr >= 0 ? "pay" : "receive"}</td>
+        </tr>
+        {perp.venues.filter((v) => v.venue !== shortLeg.venue && v.venue !== longLeg.venue).map((v) => (
+          <tr>
+            <td class="faint">unused</td>
+            <td class="dim">{VENUE_LABEL[v.venue]}</td>
+            <td class="num dim">{rawRate(v.rate)}</td>
+            <td class="num dim">{v.intervalHours}h</td>
+            <td class:list={["num", paysClass(v.apr)]}>{pct(v.apr)}</td>
+            <td class="num faint">—</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="section">What this number is not</h2>
+  <p class="prose">
+    It is a <strong>gross</strong> carry at the current rate. It does not deduct taker fees on four
+    fills (two to open, two to close), borrowing or margin costs, or slippage — on a spread of a few
+    per cent a year, fees alone can exceed the entire edge.
+  </p>
+  <p class="prose">
+    It also assumes the spread persists. Funding is reset every settlement and the two venues can
+    converge, invert, or gap apart within hours; the position is delta-neutral on price but
+    emphatically not on funding. And both legs must stay solvent — a move against the short leg can
+    liquidate it while the long leg is fine, leaving you directional at the worst moment.
+    <a class="link" href="/tools/liquidation-price">Check where each leg liquidates →</a>
+  </p>
+  <p class="prose">
+    Capital is split evenly across the legs here. Anything else changes the delta and this stops
+    being an arbitrage.
+  </p>
+
+  <p style="margin-top:24px">
+    <a class="link" href={`/funding/${perp.symbol.toLowerCase()}`}>{perp.symbol} funding detail →</a>
+    · <a class="link" href="/funding">All contracts by spread →</a>
+  </p>
+
+  <script is:inline define:vars={{ venues: perp.venues }}>
+    const form = document.querySelector(".calc");
+    if (form) {
+      const money = (x) => (x < 0 ? "−$" : "$") + Math.abs(x).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      const pc = (x) => (x * 100).toFixed(2) + "%";
+      const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+      const s = [...venues].sort((a, b) => b.apr - a.apr);
+      const hi = s[0], lo = s[s.length - 1];
+      const spread = hi.apr - lo.apr;
+      const naive = (hi.rate - lo.rate) * (8760 / 8);
+      const recalc = () => {
+        const C = Number(form.capital.value), D = Number(form.days.value);
+        if (!(C >= 0) || !(D >= 0)) return;
+        const perLeg = C / 2;
+        set("out-spread", pc(spread));
+        set("out-naive", pc(naive));
+        set("out-period", money(perLeg * spread * (D / 365)));
+        set("out-year", money(perLeg * spread));
+      };
+      form.addEventListener("input", recalc);
+      form.addEventListener("change", (e) => { if (e.target.name === "symbol") form.submit(); else recalc(); });
+    }
+  </script>
+</Base>
