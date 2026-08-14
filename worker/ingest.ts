@@ -27,28 +27,39 @@ interface Env {
 const RETAIN_HOURS = 72;
 
 /**
- * Daily candles change once a day, so refreshing them on the 5-minute tick would be 7,200
- * pointless upstream calls a day. Refresh every 6 hours instead: 4 refreshes x 25 symbols
- * = 100 extra upstream calls and ~104 KV writes daily, against a 1,000 writes/day free
- * limit already carrying 288 snapshot writes. The 25 fetches sit inside one invocation's
- * 50-subrequest budget alongside the 2 snapshot calls.
+ * WRITE BUDGET, measured rather than assumed, at 49 published contracts:
+ *
+ *   snapshot   288/day (every tick)
+ *   hourly     49 x 12 cycles + 36 cursor writes = 624/day
+ *   funding    49 x  4 cycles + 16               = 212/day
+ *   candles    49 x  2 cycles +  6               = 104/day
+ *   total    ~1,228/day  =  ~36,800/month
+ *
+ * That is 3.7% of the 1,000,000 writes/month included with Workers Paid, which this account
+ * is on. It is NOT inside the free tier — and the free tier's 1,000/day is an ACCOUNT ceiling
+ * shared with everything else on the account, which in this case is already spending 450-610
+ * a day of it. Both numbers were read from the KV analytics API, not estimated.
+ *
+ * Daily candles change once a day, so the 5-minute tick refreshing them would be 7,200
+ * pointless upstream calls a day.
  */
 const CANDLE_REFRESH_HOURS = 12;
-/** Hourly candles drive the liquidation map and move faster, so they refresh more often.
- *  Daily and hourly are on SEPARATE cadences so a single tick never exceeds the
- *  50-subrequest ceiling: 25 fetches + the 2 snapshot calls, never 50 + 2. */
-/* Every 2 hours, not 6. The liquidation map's right edge is only as current as this, and a
-   6-hour gate meant the newest drawn bar could be seven hours behind a mark price that was
-   five minutes old. Not 1 hour: 26 writes x 24 is 624/day, which with the snapshot's 288
-   puts KV at 1069 against a free-tier ceiling of 1000. Measured, not guessed. */
+/* Every 2 hours. The liquidation map's right edge is only as current as this, and a 6-hour
+   gate meant the newest drawn bar could be seven hours behind a mark price that was five
+   minutes old. Daily, hourly and funding are on SEPARATE cadences, and each sweep is chunked,
+   so a single invocation never approaches the 50-subrequest ceiling. */
 const HOURLY_REFRESH_HOURS = 2;
 /** HL's own funding history, 500 rows a call, merged into what is stored so depth grows. */
 const FUNDING_REFRESH_HOURS = 6;
 /** Canary rows are small but unbounded, so they are pruned on the same schedule. */
 const CANARY_RETAIN_HOURS = 168;
-/** Symbols per invocation. 24 + the snapshot's 2 + the funding rotation's 6 = 32, inside
-    the free Worker's 50-subrequest ceiling with room for a retry. */
+/** Symbols per invocation. 24 + the snapshot's 2 + the funding rotation's 6 = 32, inside the
+    50-subrequest-per-invocation ceiling with room for a retry. At 49 contracts a full sweep
+    is three invocations — fifteen minutes — which is why the cycle list has to be frozen. */
 const CHUNK = 24;
+/** How long a priority fill that wrote nothing stands down for, so one unfetchable contract
+    cannot hold the ordinary refresh cycle hostage. Two ticks' worth plus margin. */
+const FILL_BACKOFF_MS = 10 * 60_000;
 
 /**
  * BUILD STAMP. `worker-dist/ingest.bundle.js` is pasted into the dashboard by hand, so the
@@ -59,7 +70,7 @@ const CHUNK = 24;
  *
  * BUMP BOTH when you change this file: here and EXPECTED_WORKER_BUILD in src/lib/version.ts.
  */
-const WORKER_BUILD = "2026-08-14d";
+const WORKER_BUILD = "2026-08-14e";
 
 export default {
   async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext) {
@@ -91,6 +102,8 @@ interface RunResult {
   hourly?: number;
   funding?: number;
   candleError?: string;
+  /** The set of published contracts changed this run — a URL was added or retired. */
+  coverageChanged?: boolean;
 }
 
 async function run(env: Env): Promise<RunResult> {
@@ -106,9 +119,20 @@ async function run(env: Env): Promise<RunResult> {
         await env.SNAPSHOT.put("worker:build", JSON.stringify({ build: WORKER_BUILD, at: Date.now() }));
       }
     }
-    const snap = await fetchSnapshot();
+    /* The set that already has live URLs, so the coverage floor can be hysteretic. Read
+       before the fetch, written back only when it changes — see OI_RETIRE_FLOOR. */
+    const publishedKey = "published:set";
+    const prevPublished = ((await env.SNAPSHOT.get(publishedKey, "json")) as string[] | null) ?? [];
+
+    const snap = await fetchSnapshot(prevPublished);
     result.status = 200;
     result.symbols = snap.perps.length;
+
+    const nowPublished = snap.perps.map((p) => p.symbol);
+    if (nowPublished.slice().sort().join(",") !== prevPublished.slice().sort().join(",")) {
+      await env.SNAPSHOT.put(publishedKey, JSON.stringify(nowPublished));
+      result.coverageChanged = true;
+    }
 
     const at = snap.fetchedAt;
     const rows: [string, string, number, number][] = [];
@@ -150,33 +174,111 @@ async function run(env: Env): Promise<RunResult> {
        already in progress continues regardless of the gate, so a sweep can never stall
        half-finished. */
     try {
-      const syms = snap.perps.map((p) => p.symbol);
+      const syms = nowPublished;
 
-      /** Chunked sweep. Returns how many symbols were written this invocation. */
+      /**
+       * Chunked sweep. Returns how many symbols were written this invocation, or undefined if
+       * this sweep had nothing to do (which is how the caller knows to try the next one).
+       *
+       * TWO THINGS THIS GOT WRONG BEFORE, both invisible from the outside:
+       *
+       * 1. THE CURSOR INDEXED A LIST SORTED BY OPEN INTEREST. That list reorders between
+       *    invocations, so slice(24, 48) on the second chunk was not the continuation of
+       *    slice(0, 24) on the first — adjacent ranks swap constantly. Symbols were skipped
+       *    and others fetched twice, and the result looked exactly like "it works". The cycle
+       *    list is now FROZEN into the meta record when the cycle starts and walked from
+       *    there, so the cursor means something for the whole cycle.
+       *
+       * 2. A SYMBOL ENTERING COVERAGE WAITED FOR THE NEXT GATE. Its page went live at once,
+       *    but daily candles are on a 12-hour gate, so a freshly covered contract could serve
+       *    a chart-shaped hole for half a day with nothing anywhere to say why. A missing
+       *    series is not a stale refresh, it is a hole, and it now jumps the queue: `h` records
+       *    which symbols have data, and anything absent from it is filled first.
+       */
       const sweep = async (
         key: string,
         hours: number,
         write: (sym: string) => Promise<boolean>,
         extra = 0,
       ): Promise<number | undefined> => {
-        const m = (await env.SNAPSHOT.get(key, "json")) as { u?: number; i?: number } | null;
-        const cursor = m?.i ?? 0;
-        const due = !m?.u || Date.now() - m.u > hours * 3_600_000;
-        if (cursor === 0 && !due) return undefined;          // cycle complete and not yet due
-
+        const m = (await env.SNAPSHOT.get(key, "json")) as
+          | { u?: number; i?: number; l?: string[]; h?: string[]; f?: number }
+          | null;
+        const have = new Set(m?.h ?? []);
         const room = Math.max(1, CHUNK - extra);
-        const slice = syms.slice(cursor, cursor + room);
-        let n = 0;
-        for (const ok of await Promise.all(slice.map((sym) => write(sym).catch(() => false)))) if (ok) n++;
 
-        const next = cursor + slice.length;
-        const wrapped = next >= syms.length;
+        const run = async (slice: string[]) => {
+          const done: string[] = [];
+          const oks = await Promise.all(slice.map((s) => write(s).catch(() => false)));
+          oks.forEach((ok, i) => { if (ok) done.push(slice[i]); });
+          return done;
+        };
+
+        const cursor = m?.i ?? 0;
+        const inCycle = cursor > 0;
+
+        /* Holes first — but a hole that cannot be filled must not become a stop.
+           The first version of this returned as soon as anything was missing, which meant a
+           single symbol whose fetch failed every time would sit in `missing` forever, retry on
+           every 5-minute tick, and — because the caller runs at most one sweep kind per
+           invocation — silently prevent the ordinary refresh of everything else, permanently.
+           Found by stepping the worker through a cold start locally, not by reading it.
+
+           So a fill that achieves nothing backs off, and the tick falls through to the normal
+           cycle. A fill that makes progress is allowed to continue on the next tick. */
+        const stalledSince = m?.f ?? 0;
+        const stalled = stalledSince > 0 && Date.now() - stalledSince < FILL_BACKOFF_MS;
+        if (!inCycle && !stalled) {
+          const missing = syms.filter((s) => !have.has(s));
+          if (missing.length) {
+            const done = await run(missing.slice(0, room));
+            for (const s of done) have.add(s);
+            /* On a genuinely cold store the fill IS the first full cycle, so stamp it rather
+               than immediately re-fetching all of it under the ordinary gate. */
+            const coldComplete = !m?.u && syms.every((s) => have.has(s));
+            await env.SNAPSHOT.put(key, JSON.stringify({
+              u: coldComplete ? Date.now() : (m?.u ?? 0),
+              i: 0,
+              l: m?.l,
+              h: [...have],
+              f: done.length ? 0 : Date.now(),
+              filled: done.length,
+            }));
+            return done.length;
+          }
+        }
+
+        const due = !m?.u || Date.now() - m.u > hours * 3_600_000;
+        if (!inCycle && !due) return undefined;
+
+        const list = inCycle && m?.l?.length ? m.l : syms;
+        const done = await run(list.slice(cursor, cursor + room));
+        for (const s of done) have.add(s);
+
+        const next = cursor + Math.min(room, Math.max(0, list.length - cursor));
+        const wrapped = next >= list.length;
+
+        if (wrapped) {
+          /* A cycle just covered the whole set, so `have` is exactly the set with data —
+             anything else is a leftover from a contract that dropped out of coverage. Its
+             keys would otherwise sit in KV forever. */
+          const covered = new Set(syms);
+          for (const s of have) {
+            if (!covered.has(s)) {
+              await env.SNAPSHOT.delete(`${key.split(":")[0]}:${s}`).catch(() => {});
+              have.delete(s);
+            }
+          }
+        }
+
         await env.SNAPSHOT.put(key, JSON.stringify({
           u: wrapped ? Date.now() : (m?.u ?? 0),
           i: wrapped ? 0 : next,
-          written: n,
+          l: wrapped ? undefined : list,
+          h: [...have],
+          written: done.length,
         }));
-        return n;
+        return done.length;
       };
 
       const hourly = await sweep("hourly:meta", HOURLY_REFRESH_HOURS, async (s) => {
@@ -259,6 +361,7 @@ async function run(env: Env): Promise<RunResult> {
 interface KVNamespace {
   get(key: string, type: "json"): Promise<unknown>;
   put(key: string, value: string): Promise<void>;
+  delete(key: string): Promise<void>;
 }
 interface D1Database {
   prepare(sql: string): D1PreparedStatement;

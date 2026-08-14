@@ -1,0 +1,88 @@
+---
+import Base from "../layouts/Base.astro";
+import { getSnapshot } from "../lib/hyperliquid.ts";
+import { OI_NOTIONAL_FLOOR } from "../lib/hyperliquid.ts";
+import { usd } from "../lib/funding.ts";
+
+/**
+ * Astro ships a stock 404 — a purple-grey page with the framework's name on it, no navigation,
+ * and no way back into the site. It was serving on every mistyped URL and, more importantly,
+ * on every contract that sits below the coverage floor: /funding/crv is a URL a real person
+ * types, and it was landing on something that looked like a broken deployment.
+ *
+ * Deliberately NOT guarded with coldStart(): a 404 that 503s is a worse 404.
+ */
+Astro.response.status = 404;
+const env = (Astro.locals as any)?.runtime?.env;
+const snap = await getSnapshot(env?.SNAPSHOT, import.meta.env.DEV);
+
+/* If a contract page rewrote to here, answer the question the reader actually has rather than
+   a generic apology. The symbol is carried on the rewrite: a rewrite repoints both Astro.url
+   and the request at /404, so the path cannot be read back. The query is never a real URL —
+   nothing links to it and the page is noindex either way. */
+const raw = Astro.url.searchParams.get("symbol");
+const wanted = raw && /^[A-Za-z0-9._-]{1,20}$/.test(raw) ? raw.toUpperCase() : null;
+const covered = snap.perps.some((p) => p.symbol === wanted);
+const nearest = snap.perps.slice(0, 12);
+---
+
+<Base
+  title="Not found"
+  description="That page does not exist."
+  noindex
+>
+  <div class="page-head">
+    <h1>{wanted && !covered ? `${wanted} is not published` : "That page does not exist"}</h1>
+    {wanted && !covered ? (
+      <p>
+        Contracts get a page only above {usd(OI_NOTIONAL_FLOOR)} of open interest — a thin page is
+        worse than no page, so nothing is generated below it. {snap.eligibleCount} of
+        {" "}{snap.universeCount} contracts clear that floor today and {snap.perps.length} are
+        published. If {wanted} crosses it, the page appears on its own.
+      </p>
+    ) : (
+      <p>The link may be old, or mistyped. Everything the site publishes is one click away below.</p>
+    )}
+  </div>
+
+  <h2 class="section">{wanted && !covered ? "Published contracts" : "Start here"}</h2>
+  {wanted && !covered ? (
+    <p class="related">
+      {nearest.map((x) => <a class="chip-link" href={`/funding/${x.symbol.toLowerCase()}`}>{x.symbol}</a>)}
+      <a class="chip-link" href="/funding">All {snap.perps.length} →</a>
+    </p>
+  ) : (
+    <div class="cards">
+      <a class="card" href="/funding">
+        <div class="card__label">Funding</div>
+        <div class="card__value" style="font-size:19px">Every contract</div>
+        <div class="card__meta">Three venues, annualised on their own settlement interval.</div>
+      </a>
+      <a class="card" href="/liquidations">
+        <div class="card__label">Liquidations</div>
+        <div class="card__value" style="font-size:19px">Modelled density</div>
+        <div class="card__meta">Where levels stand, and which ones price already cleared.</div>
+      </a>
+      <a class="card" href="/open-interest">
+        <div class="card__label">Open interest</div>
+        <div class="card__value" style="font-size:19px">OI and turnover</div>
+        <div class="card__meta">Notional open interest against 24-hour volume.</div>
+      </a>
+      <a class="card" href="/methodology">
+        <div class="card__label">Methodology</div>
+        <div class="card__value" style="font-size:19px">How it is computed</div>
+        <div class="card__meta">Every number's derivation, and what is deliberately absent.</div>
+      </a>
+    </div>
+  )}
+
+  <style>
+    .related { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; }
+    .chip-link {
+      display: inline-block; padding: 6px 14px; border-radius: var(--r-pill);
+      background: var(--surface-2); border: 1px solid var(--border-soft);
+      text-decoration: none; font-size: 13px; font-weight: 500;
+    }
+    .chip-link:hover { background: var(--surface-3); color: var(--accent); }
+  </style>
+</Base>

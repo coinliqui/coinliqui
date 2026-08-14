@@ -12,7 +12,7 @@ import { getSnapshot } from "../lib/hyperliquid.ts";
  * the data, the code templates sit still until we touch them.
  */
 const CODE_ROUTES: Record<string, string[]> = {
-  tools: ["/tools", "/tools/liquidation-price", "/tools/position-size", "/tools/leverage", "/tools/funding-cost", "/tools/funding-arbitrage"],
+  tools: ["/tools", "/tools/position-size", "/tools/leverage", "/tools/funding-cost", "/tools/funding-arbitrage"],
   unlocks: ["/unlocks"],
 };
 

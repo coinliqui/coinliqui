@@ -21,8 +21,22 @@ let failures = 0;
 const bad = (m) => { failures++; console.log("   FAIL  " + m); };
 const ok = (m) => console.log("   ok    " + m);
 
-async function fetchAs(path, ua = "Mozilla/5.0") {
-  const r = await fetch(ORIGIN + path, { headers: { "user-agent": ua }, redirect: "manual" });
+/**
+ * SEND WHAT A BROWSER SENDS.
+ *
+ * This mattered more than it looks. Node's fetch defaults to `Accept: * / *`, and Cloudflare
+ * only injects its Web Analytics beacon into responses for requests whose Accept header asks
+ * for HTML. So the beacon check below — the one guarding the published claim that this site
+ * loads no third-party scripts — passed for a year of runs while every real visitor was being
+ * served exactly the script it was written to catch. A verifier that does not look like the
+ * thing it is verifying is worse than no verifier: it produces confident green.
+ */
+const ACCEPT = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8";
+async function fetchAs(path, ua = "Mozilla/5.0", accept = ACCEPT) {
+  const r = await fetch(ORIGIN + path, {
+    headers: { "user-agent": ua, accept, "accept-language": "en-GB,en;q=0.9" },
+    redirect: "manual",
+  });
   return { status: r.status, headers: r.headers, body: await r.text() };
 }
 
@@ -91,14 +105,31 @@ console.log("\n5. sitemap");
   }
   const offOrigin = urls.filter((u) => !u.startsWith(ORIGIN + "/") && u !== ORIGIN);
   offOrigin.length ? bad(`${offOrigin.length} URLs off-origin`) : ok(`${maps.length} sitemaps, ${urls.length} URLs, all on ${ORIGIN}`);
-  let broken = [], thin = [];
+  let broken = [], thin = [], hollow = [], gone = [];
   for (const u of urls) {
     const r = await fetchAs(pathOf(u) || "/", "GPTBot/1.1");
     if (r.status !== 200) broken.push(`${u} ${r.status}`);
     else if (!/Coinliqui/.test(r.body)) thin.push(u);
+    /* 200 IS NOT COMPLETE. /funding/uni returned 200, carried the brand, and rendered a
+       timeframe bar above an empty space where the chart should have been — this check
+       passed for every hour that page was broken. A contract page promises a chart; if the
+       selected timeframe has no panel, the page is hollow and the check has to say so. */
+    if (/\/funding\/[a-z0-9]/i.test(u) && r.status === 200 && !/data-tfpanel="[^"]+" [^>]*data-on/.test(r.body)) {
+      hollow.push(u);
+    }
   }
   broken.length ? bad(`non-200: ${broken.join(", ")}`) : ok("every sitemap URL 200 as GPTBot");
   thin.length ? bad(`missing brand: ${thin.join(", ")}`) : ok("every sitemap URL carries the brand");
+  hollow.length ? bad(`contract page with no chart panel: ${hollow.join(", ")}`) : ok("every contract page renders a chart");
+
+  /* Withdrawn URLs must stay withdrawn. A 410 that silently becomes a 200 or a 301 puts a
+     commodity page back into the index, which is the whole thing the removal was for. */
+  for (const [p, want] of [["/tools/liquidation-price", 410]]) {
+    const r = await fetchAs(p, "Googlebot/2.1 (+http://www.google.com/bot.html)");
+    if (r.status !== want) gone.push(`${p} is ${r.status}, expected ${want}`);
+    if (urls.some((u) => pathOf(u) === p)) gone.push(`${p} is still listed in a sitemap`);
+  }
+  gone.length ? bad(gone.join("; ")) : ok("withdrawn URLs return 410 and are absent from the sitemaps");
 }
 
 /* 6. The /privacy claim: no analytics, no third-party script, zero off-origin requests. */
@@ -111,7 +142,15 @@ for (const p of ["/", "/funding/btc"]) {
   const ext = [...r.body.matchAll(/<(?:script|img|iframe)[^>]*src="(https?:\/\/[^"]+)"|<link(?![^>]*rel="(?:canonical|alternate)")[^>]*href="(https?:\/\/[^"]+)"/g)]
     .map((m) => m[1] || m[2]).filter((u) => u && !u.startsWith(ORIGIN) && !u.startsWith("https://schema.org"));
   ext.length ? bad(`${p} loads off-origin: ${ext.join(", ")}`) : ok(`${p} zero off-origin subresources`);
-  /beacon\.min\.js|cloudflareinsights/.test(r.body) ? bad(`${p} has an analytics beacon`) : ok(`${p} no beacon`);
+  /* Checked under BOTH Accept headers, because the injection is conditional on it and the
+     browser case is the one the claim is about. Keeping the `* / *` probe alongside is not
+     redundancy — a difference between the two is itself the finding. */
+  const beacon = /beacon\.min\.js|cloudflareinsights|\/cdn-cgi\/(rum|challenge-platform|zaraz)/;
+  const wild = await fetchAs(p, "Mozilla/5.0", "*/*");
+  const inBrowser = beacon.test(r.body), inWild = beacon.test(wild.body);
+  inBrowser || inWild
+    ? bad(`${p} has an injected beacon (browser Accept: ${inBrowser}, */*: ${inWild})`)
+    : ok(`${p} no beacon, under a browser Accept header and */*`);
   r.headers.get("set-cookie") ? bad(`${p} sets a cookie: ${r.headers.get("set-cookie")}`) : ok(`${p} sets no cookie`);
 }
 

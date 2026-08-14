@@ -10,7 +10,8 @@ function toApr(ratePerInterval, intervalHours) {
 // src/lib/hyperliquid.ts
 var INFO = "https://api.hyperliquid.xyz/info";
 var OI_NOTIONAL_FLOOR = 5e6;
-var PHASE0_SYMBOL_CAP = 25;
+var OI_RETIRE_FLOOR = 35e5;
+var SYMBOL_CAP = 50;
 async function info(body) {
   const r = await fetch(INFO, {
     method: "POST",
@@ -21,7 +22,7 @@ async function info(body) {
   return await r.json();
 }
 var n = (x) => typeof x === "string" || typeof x === "number" ? Number(x) : NaN;
-async function fetchSnapshot() {
+async function fetchSnapshot(published = []) {
   const [meta, predicted] = await Promise.all([
     info({ type: "metaAndAssetCtxs" }),
     info({ type: "predictedFundings" })
@@ -62,12 +63,17 @@ async function fetchSnapshot() {
       aprSpread: aprs.length >= 2 ? Math.max(...aprs) - Math.min(...aprs) : null
     };
   });
-  const eligible = all.filter((p) => Number.isFinite(p.oiNotional) && p.oiNotional >= OI_NOTIONAL_FLOOR).sort((a, b) => b.oiNotional - a.oiNotional);
+  const live = new Set(published);
+  const eligible = all.filter(
+    (p) => Number.isFinite(p.oiNotional) && (p.oiNotional >= OI_NOTIONAL_FLOOR || live.has(p.symbol) && p.oiNotional >= OI_RETIRE_FLOOR)
+  ).sort((a, b) => b.oiNotional - a.oiNotional);
   return {
     available: true,
     fetchedAt: Date.now(),
-    perps: eligible.slice(0, PHASE0_SYMBOL_CAP),
-    eligibleCount: eligible.length,
+    perps: eligible.slice(0, SYMBOL_CAP),
+    // Reported on the site as "N of M clear the floor", so it counts the ENTRY floor only —
+    // a number inflated by contracts kept alive on hysteresis would not match its own label.
+    eligibleCount: all.filter((p) => Number.isFinite(p.oiNotional) && p.oiNotional >= OI_NOTIONAL_FLOOR).length,
     universeCount: all.length
   };
 }
@@ -126,7 +132,8 @@ var HOURLY_REFRESH_HOURS = 2;
 var FUNDING_REFRESH_HOURS = 6;
 var CANARY_RETAIN_HOURS = 168;
 var CHUNK = 24;
-var WORKER_BUILD = "2026-08-14d";
+var FILL_BACKOFF_MS = 10 * 6e4;
+var WORKER_BUILD = "2026-08-14e";
 var ingest_default = {
   async scheduled(_event, env, ctx) {
     ctx.waitUntil(run(env));
@@ -153,9 +160,16 @@ async function run(env) {
         await env.SNAPSHOT.put("worker:build", JSON.stringify({ build: WORKER_BUILD, at: Date.now() }));
       }
     }
-    const snap = await fetchSnapshot();
+    const publishedKey = "published:set";
+    const prevPublished = await env.SNAPSHOT.get(publishedKey, "json") ?? [];
+    const snap = await fetchSnapshot(prevPublished);
     result.status = 200;
     result.symbols = snap.perps.length;
+    const nowPublished = snap.perps.map((p) => p.symbol);
+    if (nowPublished.slice().sort().join(",") !== prevPublished.slice().sort().join(",")) {
+      await env.SNAPSHOT.put(publishedKey, JSON.stringify(nowPublished));
+      result.coverageChanged = true;
+    }
     const at = snap.fetchedAt;
     const rows = [];
     for (const p of snap.perps) {
@@ -176,24 +190,65 @@ async function run(env) {
     result.ok = rows.length > 0;
     if (!result.ok) result.error = "upstream returned no usable funding rows";
     try {
-      const syms = snap.perps.map((p) => p.symbol);
+      const syms = nowPublished;
       const sweep = async (key, hours, write, extra = 0) => {
         const m = await env.SNAPSHOT.get(key, "json");
-        const cursor = m?.i ?? 0;
-        const due = !m?.u || Date.now() - m.u > hours * 36e5;
-        if (cursor === 0 && !due) return void 0;
+        const have = new Set(m?.h ?? []);
         const room = Math.max(1, CHUNK - extra);
-        const slice = syms.slice(cursor, cursor + room);
-        let n2 = 0;
-        for (const ok of await Promise.all(slice.map((sym) => write(sym).catch(() => false)))) if (ok) n2++;
-        const next = cursor + slice.length;
-        const wrapped = next >= syms.length;
+        const run2 = async (slice) => {
+          const done2 = [];
+          const oks = await Promise.all(slice.map((s) => write(s).catch(() => false)));
+          oks.forEach((ok, i) => {
+            if (ok) done2.push(slice[i]);
+          });
+          return done2;
+        };
+        const cursor = m?.i ?? 0;
+        const inCycle = cursor > 0;
+        const stalledSince = m?.f ?? 0;
+        const stalled = stalledSince > 0 && Date.now() - stalledSince < FILL_BACKOFF_MS;
+        if (!inCycle && !stalled) {
+          const missing = syms.filter((s) => !have.has(s));
+          if (missing.length) {
+            const done2 = await run2(missing.slice(0, room));
+            for (const s of done2) have.add(s);
+            const coldComplete = !m?.u && syms.every((s) => have.has(s));
+            await env.SNAPSHOT.put(key, JSON.stringify({
+              u: coldComplete ? Date.now() : m?.u ?? 0,
+              i: 0,
+              l: m?.l,
+              h: [...have],
+              f: done2.length ? 0 : Date.now(),
+              filled: done2.length
+            }));
+            return done2.length;
+          }
+        }
+        const due = !m?.u || Date.now() - m.u > hours * 36e5;
+        if (!inCycle && !due) return void 0;
+        const list = inCycle && m?.l?.length ? m.l : syms;
+        const done = await run2(list.slice(cursor, cursor + room));
+        for (const s of done) have.add(s);
+        const next = cursor + Math.min(room, Math.max(0, list.length - cursor));
+        const wrapped = next >= list.length;
+        if (wrapped) {
+          const covered = new Set(syms);
+          for (const s of have) {
+            if (!covered.has(s)) {
+              await env.SNAPSHOT.delete(`${key.split(":")[0]}:${s}`).catch(() => {
+              });
+              have.delete(s);
+            }
+          }
+        }
         await env.SNAPSHOT.put(key, JSON.stringify({
           u: wrapped ? Date.now() : m?.u ?? 0,
           i: wrapped ? 0 : next,
-          written: n2
+          l: wrapped ? void 0 : list,
+          h: [...have],
+          written: done.length
         }));
-        return n2;
+        return done.length;
       };
       const hourly = await sweep("hourly:meta", HOURLY_REFRESH_HOURS, async (s) => {
         const c = await fetchHourly(s);

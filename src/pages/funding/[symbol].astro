@@ -14,8 +14,12 @@ if (!snap.available) return coldStart();
 
 const wanted = (Astro.params.symbol ?? "").toUpperCase();
 const p = snap.perps.find((x) => x.symbol === wanted);
-// Conditional emission: no entity page below the coverage floor. A thin page is worse than none.
-if (!p) return new Response(null, { status: 404 });
+/* Conditional emission: no entity page below the coverage floor. A thin page is worse than
+   none — but an EMPTY 404 body is worse still. A bare `new Response(null, {status: 404})` was
+   handed to Astro's stock not-found page: unbranded, no navigation, no explanation, on a URL
+   like /funding/crv that a real reader types. Rewritten to the site's own 404, which reads the
+   requested symbol back off the request and says why it is not published. */
+if (!p) return Astro.rewrite(`/404?symbol=${encodeURIComponent(wanted)}`);
 
 const table = (tables as Record<string, MarginTable>)[String(p.marginTableId)];
 const ORDER: Venue[] = ["HlPerp", "BinPerp", "BybitPerp"];
@@ -49,8 +53,19 @@ const charts = TIMEFRAMES.map((tf) => {
   if (!base || base.length < 6) return { tf, chart: null };
   return { tf, chart: buildPriceChart(aggregate(base, tf.factor).slice(-tf.bars), funding, tf) };
 });
-const active = charts.find((c) => c.tf.key === tfKey) ?? charts[0];
-const hasChart = charts.some((c) => c.chart);
+
+/* ONLY OFFER TIMEFRAMES THAT EXIST.
+   The two candle series are collected on separate cadences, so a contract that has just
+   entered coverage can hold hourly bars and no daily ones for a while. Previously the bar
+   rendered all four buttons regardless: pressing one that had no data selected it, showed no
+   panel at all, and dropped every hero figure to "—". A control for something that is not
+   there is worse than its absence — so the bar lists what exists, an unavailable request
+   falls back instead of emptying the page, and the gap is stated rather than left to be
+   inferred from a missing button. */
+const available = charts.filter((c): c is { tf: (typeof charts)[number]["tf"]; chart: NonNullable<(typeof charts)[number]["chart"]> } => Boolean(c.chart));
+const active = available.find((c) => c.tf.key === tfKey) ?? available[0];
+const hasChart = available.length > 0;
+const missingTf = charts.filter((c) => !c.chart).map((c) => c.tf.label);
 const span = (k: string) => (k === "1h" ? "hourly bars" : k === "4h" ? "4-hour bars" : k === "1d" ? "daily bars" : "weekly bars");
 
 const arrow = (n: number) => (n >= 0 ? "▲" : "▼");
@@ -58,7 +73,7 @@ const compact = (n: number) => (Math.abs(n) >= 1e9 ? (n / 1e9).toFixed(2) + "B" 
 const stat = (fn: (c: (typeof charts)[number]) => string) =>
   Object.fromEntries(charts.filter((c) => c.chart).map((c) => [`data-v${c.tf.key}`, fn(c)]));
 
-const rows = active.chart ? active.chart.points.slice(-200) : [];
+const rows = active ? active.chart.points.slice(-200) : [];
 const title = `${p.symbol} price, funding rate and margin tiers`;
 const description = `${p.symbol} perpetual candles from 1H to 1W with the funding rate charted on the same time axis, funding across Hyperliquid, Binance and Bybit annualised, open interest ${usd(p.oiNotional)} and the published margin tiers.`;
 ---
@@ -72,17 +87,17 @@ const description = `${p.symbol} perpetual candles from 1H to 1W with the fundin
   <div class="hero">
     <span class="hero__price">{px(p.markPx)}</span>
     <span class="hero__chg" data-tfstat data-group="px" {...stat((c) => `${arrow(c.chart!.change)} ${(Math.abs(c.chart!.change) * 100).toFixed(2)}%`)}>
-      {active.chart ? `${arrow(active.chart.change)} ${(Math.abs(active.chart.change) * 100).toFixed(2)}%` : `${arrow(p.change24h)} ${(Math.abs(p.change24h) * 100).toFixed(2)}%`}
+      {active ? `${arrow(active.chart.change)} ${(Math.abs(active.chart.change) * 100).toFixed(2)}%` : `${arrow(p.change24h)} ${(Math.abs(p.change24h) * 100).toFixed(2)}%`}
     </span>
     <span class="hero__span" data-tfstat data-group="px" {...stat((c) => `over ${c.chart!.bars} ${span(c.tf.key)}`)}>
-      {active.chart ? `over ${active.chart.bars} ${span(active.tf.key)}` : "24-hour change"}
+      {active ? `over ${active.chart.bars} ${span(active.tf.key)}` : "24-hour change"}
     </span>
   </div>
 
   <div class="hero__meta">
-    <div>Period high<b data-tfstat data-group="px" {...stat((c) => px(c.chart!.high))}>{active.chart ? px(active.chart.high) : "—"}</b></div>
-    <div>Period low<b data-tfstat data-group="px" {...stat((c) => px(c.chart!.low))}>{active.chart ? px(active.chart.low) : "—"}</b></div>
-    <div>Period volume<b data-tfstat data-group="px" {...stat((c) => compact(c.chart!.volume) + " " + p.symbol)}>{active.chart ? compact(active.chart.volume) + " " + p.symbol : "—"}</b></div>
+    <div>Period high<b data-tfstat data-group="px" {...stat((c) => px(c.chart!.high))}>{active ? px(active.chart.high) : "—"}</b></div>
+    <div>Period low<b data-tfstat data-group="px" {...stat((c) => px(c.chart!.low))}>{active ? px(active.chart.low) : "—"}</b></div>
+    <div>Period volume<b data-tfstat data-group="px" {...stat((c) => compact(c.chart!.volume) + " " + p.symbol)}>{active ? compact(active.chart.volume) + " " + p.symbol : "—"}</b></div>
     <div>Open interest<b>{usd(p.oiNotional)}</b></div>
     <div>Max leverage<b>{p.maxLeverage}×</b></div>
   </div>
@@ -91,15 +106,22 @@ const description = `${p.symbol} perpetual candles from 1H to 1W with the fundin
     <>
       <form method="GET" class="tfbar" data-tfgroup="px">
         <div class="tf" role="group" aria-label="Chart timeframe">
-          {TIMEFRAMES.map((tf) => (
-            <button type="submit" name="tf" value={tf.key} data-tf={tf.key} aria-pressed={tf.key === tfKey}>{tf.label}</button>
+          {available.map(({ tf }) => (
+            <button type="submit" name="tf" value={tf.key} data-tf={tf.key} aria-pressed={tf.key === active!.tf.key}>{tf.label}</button>
           ))}
         </div>
-        <span class="tfbar__note">Real traded candles only — Hyperliquid's pre-launch backfill carries zero volume and is excluded.</span>
+        <span class="tfbar__note">
+          Real traded candles only — Hyperliquid's pre-launch backfill carries zero volume and is excluded.
+          {missingTf.length > 0 && (
+            <> {missingTf.join(" and ")}{" "}{missingTf.length === 1 ? "is" : "are"} not offered yet: this contract
+            entered coverage recently and its daily candles are still being collected.</>
+          )}
+        </span>
       </form>
 
-      {charts.map(({ tf, chart }) => chart && (
-        <div data-tfpanel={tf.key} data-group="px" data-on={tf.key === tfKey ? "" : undefined} class="chart chart--price">
+      {available.map(({ tf, chart }) => (
+        <div data-tfpanel={tf.key} data-group="px" data-on={tf.key === active!.tf.key ? "" : undefined} class="chart chart--price"
+             style={`--chartRatio: ${CH.w} / ${CHART_H}`}>
           <Fragment set:html={chart.svg.replace("<svg ",
             `<svg data-xhair="pts-${tf.key}" data-plot="${chart.plot.join(",")}" data-prange="${chart.range[0]},${chart.range[1]}" ` +
             `data-axx="${chart.axisX}" data-slot="${chart.slot.toFixed(2)}" data-taxisy="${CHART_H - 27}" data-unit="${p.symbol}" data-dp="${chart.dp}" data-intraday="${tf.hours < 24 ? 1 : 0}" `)} />
@@ -112,18 +134,20 @@ const description = `${p.symbol} perpetual candles from 1H to 1W with the fundin
         site mean one thing only: <b class="pays-l">longs paying shorts</b> and
         <b class="pays-s">shorts paying longs</b>. That is the band under the volume histogram, on the
         same time axis as the price, and it is the reason this chart is not the one everybody else draws.
-        {active.chart?.fundingFrom && (
-          <> Hyperliquid publishes its own funding hourly; this series reaches back to {shortDate(active.chart.fundingFrom)},
+        {active!.chart.fundingFrom && (
+          <> Hyperliquid publishes its own funding hourly; this series reaches back to {shortDate(active!.chart.fundingFrom)},
           and the shaded region to its left is the part of the window with no funding to show.</>
         )}
-        {active.chart && active.chart.fundingClipped > 0 && (
-          <> The band is scaled to ±{(active.chart.fundingMax * 100).toFixed(0)}% APR, the 96th percentile —
-          {" "}{active.chart.fundingClipped} bar{active.chart.fundingClipped === 1 ? "" : "s"} exceed it and are drawn at the edge; hover reads the true figure.</>
+        {active!.chart.fundingClipped > 0 && (
+          <> The band is scaled to ±{(active!.chart.fundingMax * 100).toFixed(0)}% APR, the 96th percentile —
+          {" "}{active!.chart.fundingClipped} bar{active!.chart.fundingClipped === 1 ? "" : "s"} exceed it and are drawn at the edge; hover reads the true figure.</>
         )}
       </p>
 
-      <details class="src">
-        <summary>{active.tf.label} bars as a table ({rows.length} rows, open · high · low · close · volume · funding)</summary>
+      {/* The rows are rebuilt from the panel's own pts-* JSON when the timeframe is switched
+          client-side, so the table can never disagree with the chart above it. */}
+      <details class="src" data-tftable data-group="px" data-unit={p.symbol} data-dp={active!.chart.dp}>
+        <summary><span data-tflabel>{active!.tf.label}</span> bars as a table (<span data-tfcount>{rows.length}</span> rows, open · high · low · close · volume · funding)</summary>
         <div class="panel" style="margin-top:10px">
           <table class="tbl">
             <thead><tr><th>Time (UTC)</th><th class="num">Open</th><th class="num">High</th><th class="num">Low</th><th class="num">Close</th><th class="num">Volume</th><th class="num">Funding APR</th></tr></thead>
@@ -148,7 +172,7 @@ const description = `${p.symbol} perpetual candles from 1H to 1W with the fundin
     <div class="empty">
       <div class="empty__body">
         <p class="empty__title">Candles not collected yet</p>
-        <p class="empty__text">The ingest worker refreshes hourly candles every six hours and daily candles every twelve. The chart appears on the first run; everything below is unaffected.</p>
+        <p class="empty__text">A contract that has just entered coverage is fetched on the next ingest tick, so this resolves within minutes rather than on the ordinary refresh gate. Everything below is unaffected — funding, venue comparison and margin tiers all come from the snapshot, not the candle store.</p>
       </div>
     </div>
   )}
@@ -183,15 +207,23 @@ const description = `${p.symbol} perpetual candles from 1H to 1W with the fundin
     <table class="tbl">
       <thead><tr><th>Venue</th><th class="num">Quoted rate</th><th class="num">Interval</th><th class="num">Settlements / yr</th><th class="num">Annualised</th></tr></thead>
       <tbody>
+        {/* Every cell is guarded on the INTERVAL being a real number, not just on the venue
+            being present. Nineteen contracts in the upstream universe publish a Binance rate
+            with no fundingIntervalHours, and an unguarded row rendered "undefinedh" and "NaN"
+            — and, because NaN >= 0 is false, tinted the annualised cell green, which on this
+            site is a claim that shorts are paying. None of the published contracts hits this
+            today; that is not a reason to render it wrong when one does. */}
         {ORDER.map((v) => {
           const f = by.get(v);
+          const iv = f && Number.isFinite(f.intervalHours) ? f.intervalHours : null;
+          const dash = <span class="faint">—</span>;
           return (
             <tr>
               <td>{VENUE_LABEL[v]}</td>
-              <td class="num">{f ? rawRate(f.rate) : <span class="faint">—</span>}</td>
-              <td class="num">{f ? `${f.intervalHours}h` : <span class="faint">—</span>}</td>
-              <td class="num">{f ? Math.round(settlementsPerYear(f.intervalHours)).toLocaleString("en-US") : <span class="faint">—</span>}</td>
-              <td class:list={["num", f && paysClass(f.apr)]} style="font-weight:600">{f ? pct(f.apr) : "—"}</td>
+              <td class="num">{f ? rawRate(f.rate) : dash}</td>
+              <td class="num">{iv ? `${iv}h` : dash}</td>
+              <td class="num">{iv ? Math.round(settlementsPerYear(iv)).toLocaleString("en-US") : dash}</td>
+              <td class:list={["num", f && Number.isFinite(f.apr) && paysClass(f.apr)]} style="font-weight:600">{f ? pct(f.apr) : "—"}</td>
             </tr>
           );
         })}
@@ -223,10 +255,10 @@ const description = `${p.symbol} perpetual candles from 1H to 1W with the fundin
 
   <div class="banner">
     <div>
-      <div class="banner__title">Work out your own liquidation price</div>
-      <div class="banner__sub">Pre-filled with {p.symbol} at its current mark, using these tiers.</div>
+      <div class="banner__title">Where these levels sit across the book</div>
+      <div class="banner__sub">The modelled liquidation density for {p.symbol}, built from these same tiers, over the real candles.</div>
     </div>
-    <a class="btn btn--primary" href={`/tools/liquidation-price?symbol=${p.symbol}`}>Open calculator</a>
+    <a class="btn btn--primary" href={`/liquidations?symbol=${p.symbol}`}>Open the map</a>
   </div>
 
   <h2 class="section">Other contracts</h2>
@@ -236,7 +268,11 @@ const description = `${p.symbol} perpetual candles from 1H to 1W with the fundin
     ))}
   </p>
 
-  <style define:vars={{ chartRatio: `${CH.w} / ${CHART_H}` }}>
+  {/* NO define:vars HERE. Astro implements it by stamping the variable onto every element
+      the scoped stylesheet touches — on this page that was 1,736 style="--chartRatio: …"
+      attributes, about 55 KB of the raw HTML, restating one constant. The variable is set
+      once, on the chart panel that actually reads it. */}
+  <style>
     .hero__span { font-size: var(--fs-sm); color: var(--text-faint); }
     .tfbar { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin: 18px 0 10px; }
     .tfbar__note { font-size: var(--fs-xs); color: var(--text-faint); }

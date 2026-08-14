@@ -25,7 +25,7 @@ exact key instead of a copy that drifts.
 | `/liquidations/survival` | derived | What the rules did to a position opened on each day at each leverage. Nothing modelled |
 | `/unlocks` | calendar | Supply events with per-row provenance |
 | `/tools` | hub | Lists only shipped tools |
-| `/tools/liquidation-price` | tool | Tier-correct vs naive, with the gap shown |
+| `/tools/liquidation-price` | **410 Gone** | Withdrawn as a commodity. Serves 410, not a redirect: the URL was already in a submitted sitemap, and 410 removes it instead of retrying it for weeks. The tier maths stays in `src/lib/margin.ts` |
 | `/tools/funding-cost`, `/tools/funding-arbitrage`, `/tools/position-size`, `/tools/leverage` | tools | |
 | `/watchlist` | utility | All contracts server-rendered; pinning is `localStorage`. `noindex, follow` in its own head — crawlable so the directive is seen |
 | `/methodology`, `/methodology/liquidations` | reference | Why quoted rates are not comparable; why no liquidation totals are published |

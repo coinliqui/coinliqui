@@ -42,11 +42,33 @@ export const onRequest = defineMiddleware(async (ctx, next) => {
   const isDocument = type.includes("text/html");
   const cacheable = ctx.request.method === "GET" && res.status === 200;
 
+  // Astro emits `text/html` bare here. Not fatal — every page carries <meta charset> — but a
+  // declared charset outranks the meta tag and costs nothing.
+  if (isDocument && !type.includes("charset")) {
+    res.headers.set("content-type", "text/html; charset=utf-8");
+  }
+
   if (isDocument && cacheable && !res.headers.has("cache-control")) {
-    // 120s shared cache, 10 minutes of stale-while-revalidate. The freshness pill on the
-    // page reports the SNAPSHOT time, not the cache time, so a cached page never claims
-    // to be newer than the data behind it.
-    res.headers.set("cache-control", "public, s-maxage=120, stale-while-revalidate=600");
+    /* THE RAIL COOKIE MAKES THE RESPONSE PERSONAL.
+       Every page reads the `rail` cookie on the server to decide whether the navigation is
+       collapsed, and every page was being sent `public, s-maxage=120` with no Vary. Nothing
+       broke, because Cloudflare does not cache HTML unless a Cache Rule says so — which is
+       precisely what makes it dangerous: the bug is armed and waiting for whoever adds that
+       rule, and the symptom would be visitors seeing each other's navigation state.
+
+       So the two cases are separated at the source. A request carrying the cookie gets a
+       response nothing may share. A request without it — every crawler, and every first-time
+       visitor — gets the cacheable one.
+
+       `no-transform` is on both: this site publishes that it loads no third-party scripts,
+       and no-transform is the standard way to tell an intermediary not to rewrite the body,
+       which is how injected analytics beacons arrive. */
+    const personal = ctx.cookies.has("rail");
+    res.headers.set(
+      "cache-control",
+      personal ? "private, no-store, no-transform" : "public, s-maxage=120, stale-while-revalidate=600, no-transform",
+    );
+    res.headers.append("vary", "cookie");
   }
 
   // The rail toggle sets a cookie and redirects; a shared cache must never hold that.

@@ -5,8 +5,27 @@ const INFO = "https://api.hyperliquid.xyz/info";
 
 /** Only symbols above this notional open interest get an entity page (rule 3: no thin pages). */
 export const OI_NOTIONAL_FLOOR = 5_000_000;
-/** Phase 0 caps the entity set; phase 1 raises it to the full set above the floor. */
-export const PHASE0_SYMBOL_CAP = 25;
+
+/**
+ * A published contract is NOT dropped the moment it dips back under the floor — it is dropped
+ * when it falls under this lower one.
+ *
+ * Without the gap, a contract sitting near $5M oscillates in and out of the set on ordinary
+ * market noise, and every oscillation 404s a URL that Google has already crawled and indexed.
+ * That is an expensive, entirely silent way to lose coverage: nothing in the build fails,
+ * nothing on the site looks wrong, the page simply stops existing and comes back later.
+ *
+ * The gap is 30%, which is wider than a day's move in open interest on anything in this band
+ * and narrower than a genuine collapse in interest.
+ */
+export const OI_RETIRE_FLOOR = 3_500_000;
+
+/**
+ * Hard ceiling on the entity set. 50 rather than "everything above the floor" so that a burst
+ * of new listings cannot silently multiply the page count, the sweep length and the publishing
+ * rate all at once. 49 contracts clear the floor today.
+ */
+export const SYMBOL_CAP = 50;
 
 export interface Perp {
   symbol: string;
@@ -67,8 +86,14 @@ type PredictedFundings = [string, [string, { fundingRate: string; nextFundingTim
 
 const n = (x: unknown) => (typeof x === "string" || typeof x === "number" ? Number(x) : NaN);
 
-/** Fetch and normalise. Two upstream calls, no key, no other data source. */
-export async function fetchSnapshot(): Promise<Snapshot> {
+/**
+ * Fetch and normalise. Two upstream calls, no key, no other data source.
+ *
+ * `published` is the set that already has live URLs, supplied by the ingest worker from KV.
+ * It is what makes the floor hysteretic: a contract already in it survives down to
+ * OI_RETIRE_FLOOR instead of vanishing the first time it slips under OI_NOTIONAL_FLOOR.
+ */
+export async function fetchSnapshot(published: string[] = []): Promise<Snapshot> {
   const [meta, predicted] = await Promise.all([
     info<MetaAndCtxs>({ type: "metaAndAssetCtxs" }),
     info<PredictedFundings>({ type: "predictedFundings" }),
@@ -117,15 +142,22 @@ export async function fetchSnapshot(): Promise<Snapshot> {
     };
   });
 
+  const live = new Set(published);
   const eligible = all
-    .filter((p) => Number.isFinite(p.oiNotional) && p.oiNotional >= OI_NOTIONAL_FLOOR)
+    .filter(
+      (p) =>
+        Number.isFinite(p.oiNotional) &&
+        (p.oiNotional >= OI_NOTIONAL_FLOOR || (live.has(p.symbol) && p.oiNotional >= OI_RETIRE_FLOOR)),
+    )
     .sort((a, b) => b.oiNotional - a.oiNotional);
 
   return {
     available: true,
     fetchedAt: Date.now(),
-    perps: eligible.slice(0, PHASE0_SYMBOL_CAP),
-    eligibleCount: eligible.length,
+    perps: eligible.slice(0, SYMBOL_CAP),
+    // Reported on the site as "N of M clear the floor", so it counts the ENTRY floor only —
+    // a number inflated by contracts kept alive on hysteresis would not match its own label.
+    eligibleCount: all.filter((p) => Number.isFinite(p.oiNotional) && p.oiNotional >= OI_NOTIONAL_FLOOR).length,
     universeCount: all.length,
   };
 }

@@ -49,6 +49,38 @@ const bindings = [
   { name: "SNAPSHOT", kind: "KV", present: Boolean(env?.SNAPSHOT) },
   { name: "DB", kind: "D1", present: Boolean(env?.DB) },
 ];
+
+/* SERIES COVERAGE — the layer this page used to say nothing about.
+ *
+ * Everything above answers "is ingest running". None of it answers "does every published
+ * contract actually have the data its page draws", and those came apart in exactly the way
+ * that is hardest to notice: /funding/uni was live and indexed with no daily candles at all,
+ * while this page reported green on every check it had.
+ *
+ * Each sweep records the symbols it has written in its own meta record, so the comparison is
+ * three KV reads rather than one per contract.
+ */
+const SERIES = [
+  { key: "hourly", label: "Hourly candles", gate: "2 h", drives: "the liquidation map and the 1H/4H charts" },
+  { key: "candles", label: "Daily candles", gate: "12 h", drives: "the 1D/1W charts and leverage survival" },
+  { key: "funding", label: "Funding history", gate: "6 h", drives: "the funding band under every price chart" },
+];
+const covered = snap.perps.map((p) => p.symbol);
+const series = await Promise.all(
+  SERIES.map(async (s) => {
+    let have: string[] = [];
+    let at = 0;
+    try {
+      const m = (await env?.SNAPSHOT?.get(`${s.key}:meta`, "json")) as { h?: string[]; u?: number } | null;
+      have = m?.h ?? [];
+      at = m?.u ?? 0;
+    } catch { /* leave empty — reported as unknown, not as healthy */ }
+    const set = new Set(have);
+    const missing = covered.filter((c) => !set.has(c));
+    return { ...s, at, missing, known: have.length > 0 };
+  }),
+);
+const seriesGap = series.some((s) => s.known && s.missing.length > 0);
 const utc = (ms: number) => new Date(ms).toISOString().slice(0, 16).replace("T", " ") + " UTC";
 ---
 
@@ -123,6 +155,41 @@ const utc = (ms: number) => new Date(ms).toISOString().slice(0, 16).replace("T",
         {ageMin === null ? " never" : ` ${ageMin} minutes ago`}, against a 5-minute cron. Pages are
         still serving — they read the last good value and never call upstream — but every figure on
         the site is now as old as the timestamp says. Check the cron trigger and the runs below.
+      </div>
+    </div>
+  )}
+
+  <h2 class="section">Series coverage</h2>
+  <p class="section-note">
+    A published contract with no series behind it renders a page-shaped hole: the chart panel is
+    simply absent, every other figure is fine, and nothing above this line would notice. The
+    counts are against the {covered.length} contracts currently published.
+  </p>
+  <div class="panel" style="max-width:860px">
+    <table class="tbl">
+      <thead><tr><th>Series</th><th class="num">Covered</th><th>Refresh gate</th><th>Missing</th></tr></thead>
+      <tbody>
+        {series.map((s) => (
+          <tr class={s.known && s.missing.length ? "is-active" : undefined}>
+            <td>{s.label}<div class="reason" style="margin-top:2px">drives {s.drives}</div></td>
+            <td class:list={["num", s.known ? (s.missing.length ? "pays-l" : "pays-s") : "dim"]} style="font-weight:600">
+              {s.known ? `${covered.length - s.missing.length} / ${covered.length}` : "—"}
+            </td>
+            <td>{s.gate}{s.at ? <div class="reason" style="margin-top:2px">last full sweep {utc(s.at)}</div> : null}</td>
+            <td class="reason">{!s.known ? "no sweep has recorded coverage yet" : s.missing.length ? s.missing.join(", ") : "none"}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+
+  {seriesGap && (
+    <div class="verdict verdict--warn">
+      <div>
+        <b>A published contract is missing a series.</b> This is normal for a few minutes after a
+        contract crosses the coverage floor — a missing series jumps the refresh gate and is filled
+        on the next tick rather than waiting for it. If a name is still listed here after fifteen
+        minutes, the fetch for it is failing rather than pending.
       </div>
     </div>
   )}

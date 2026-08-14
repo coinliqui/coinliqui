@@ -157,7 +157,7 @@ const description = `For every entry day and every leverage, whether a ${perp.sy
   {grid ? (
     <>
       <figure class="chart">
-        <svg viewBox={`0 0 ${HW} ${HH}`} class="heat" role="img" data-tips
+        <svg viewBox={`0 0 ${HW} ${HH}`} class="heat" role="img" data-tips style={`--heatRatio: ${HW} / ${HH}`}
              aria-label={`Survival map for ${perp.symbol}: ${grid.levels.length} leverage levels by ${grid.entries.length} entry days, ${mapSide} positions held ${hold} days.`}>
           <Fragment set:html={heatSvg} />
         </svg>
@@ -218,10 +218,10 @@ const description = `For every entry day and every leverage, whether a ${perp.sy
 
   <p style="margin-top:24px">
     <a class="link" href="/liquidations">Modelled liquidation density →</a>
-    · <a class="link" href="/tools/liquidation-price">Work out a specific position →</a>
+    · <a class="link" href="/tools/position-size">Size a position against a stop →</a>
   </p>
 
-  <style define:vars={{ heatRatio: `${HW} / ${HH}` }}>
+  <style>
     .heat { display: block; width: 100%; height: auto; aspect-ratio: var(--heatRatio); }
     .heat :global(rect) { shape-rendering: crispEdges; }
     .src { margin-top: 14px; }

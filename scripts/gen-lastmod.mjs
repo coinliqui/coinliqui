@@ -23,7 +23,6 @@ const ROUTES = {
   "/data-sources": ["src/pages/data-sources.astro"],
   "/privacy": ["src/pages/privacy.astro"],
   "/tools": ["src/pages/tools/index.astro"],
-  "/tools/liquidation-price": ["src/pages/tools/liquidation-price.astro", "src/lib/margin.ts"],
   "/tools/position-size": ["src/pages/tools/position-size.astro", "src/lib/margin.ts"],
   "/tools/leverage": ["src/pages/tools/leverage.astro", "src/lib/margin.ts"],
   "/tools/funding-cost": ["src/pages/tools/funding-cost.astro", "src/lib/funding.ts"],

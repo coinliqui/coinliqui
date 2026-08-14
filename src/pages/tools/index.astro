@@ -1,7 +1,7 @@
 ---
 import Base from "../../layouts/Base.astro";
 import { getSnapshot, coldStart } from "../../lib/hyperliquid.ts";
-import { usd, pct } from "../../lib/funding.ts";
+import { pct } from "../../lib/funding.ts";
 const snap = await getSnapshot((Astro.locals as any)?.runtime?.env?.SNAPSHOT, import.meta.env.DEV);
 // Cold store: 503 + Retry-After rather than a page rendered from nothing.
 if (!snap.available) return coldStart();
@@ -13,12 +13,6 @@ const hl = btc.venues.find((v) => v.venue === "HlPerp") ?? btc.venues[0];
 // Each blurb names the specific thing the common formula gets wrong, because that is the
 // only reason to use this calculator over the twenty that already rank.
 const tools = [
-  {
-    href: "/tools/liquidation-price",
-    name: "Liquidation price",
-    blurb: "Uses the published maintenance-margin tiers, and shows how far the common entry × (1 ∓ 1/leverage) formula is wrong.",
-    live: `${btc.symbol} mark ${usd(btc.markPx, 2)}`,
-  },
   {
     href: "/tools/position-size",
     name: "Position size",

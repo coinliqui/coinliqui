@@ -116,7 +116,7 @@ const description = `A modelled liquidation density map for ${perp.symbol}: wher
 
   {map && paint ? (
     <>
-      <div class="chart">
+      <div class="chart" style={`--mapRatio: ${CH.w} / 576`}>
         <Fragment set:html={paint.svg.replace("<svg ",
           `<svg data-heat="1" data-ramp="${RAMP.join(",")}" data-scale="${paint.scale}" data-gamma="${paint.gamma}" ` +
           `data-plot="${paint.plot.join(",")}" data-prange="${map.loPrice},${map.hiPrice}" data-axx="${paint.axisX}" ` +
@@ -243,7 +243,7 @@ const description = `A modelled liquidation density map for ${perp.symbol}: wher
     No assumptions here. Given the tier table and a mark these prices are arithmetic: the upper cap
     is where a short is closed, the lower cap where a long is closed.
   </p>
-  <div class="chart">
+  <div class="chart" style={`--corrRatio: ${CW} / ${CHT}`}>
     <svg viewBox={`0 0 ${CW} ${CHT}`} class="corr" role="img" data-tips
          aria-label={`Liquidation corridor for ${perp.symbol} at a mark of ${px(mark)}. Every value is in the table beneath.`}>
       <rect x="0" y="0" width={CW} height={CHT} rx="10" fill="#14171b" />
@@ -328,11 +328,12 @@ const description = `A modelled liquidation density map for ${perp.symbol}: wher
   <p style="margin-top:24px">
     <a class="link" href="/liquidations/sweep">The 5 February sweep, on real candles →</a>
     · <a class="link" href="/liquidations/survival">Leverage survival — nothing modelled →</a>
-    · <a class="link" href="/tools/liquidation-price">Work out a specific position →</a>
-    · <a class="link" href={`/funding/${perp.symbol.toLowerCase()}`}>{perp.symbol} funding →</a>
+    · <a class="link" href={`/funding/${perp.symbol.toLowerCase()}`}>{perp.symbol} funding and margin tiers →</a>
   </p>
 
-  <style define:vars={{ mapRatio: `${CH.w} / 576`, corrRatio: `${CW} / ${CHT}` }}>
+  {/* The ratios are set inline on the two elements that read them. define:vars would
+      stamp them onto every scoped element on the page — see the note in funding/[symbol]. */}
+  <style>
     .chart :global(svg[data-heat]) { aspect-ratio: var(--mapRatio); }
     .corr { aspect-ratio: var(--corrRatio); }
     .scalebar { display: flex; align-items: flex-start; gap: 24px; flex-wrap: wrap; margin: 14px 0 0; }

@@ -6,7 +6,7 @@ export const GET: APIRoute = async ({ locals }) => {
   const snap = await getSnapshot((locals as any)?.runtime?.env?.SNAPSHOT);
   const rows = [
     ...snap.perps.map((p) => ({ label: p.symbol, href: `/funding/${p.symbol.toLowerCase()}`, kind: "funding" })),
-    { label: "Liquidation price calculator", href: "/tools/liquidation-price", kind: "tool" },
+    { label: "Position size", href: "/tools/position-size", kind: "tool" },
     { label: "Funding rates", href: "/funding", kind: "section" },
     { label: "Open interest", href: "/open-interest", kind: "section" },
     { label: "Methodology", href: "/methodology", kind: "reference" },

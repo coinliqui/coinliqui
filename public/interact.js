@@ -280,18 +280,62 @@
           s.setAttribute("data-swap", "1");
           setTimeout(() => { s.textContent = next; s.removeAttribute("data-swap"); }, 110);
         });
+        syncTable(tf, btn.textContent.trim());
         try { history.replaceState(null, "", location.pathname); } catch {}
       });
     });
+
+    /* THE TABLE HAS TO FOLLOW THE CHART.
+       Switching timeframe swapped the panel and the hero figures but left the "bars as a
+       table" block holding the server-rendered timeframe — the chart said 1H while the table
+       under it said 1D. Both were individually true, which is exactly why nobody would catch
+       it; together they are a contradiction on one screen.
+
+       No number is invented here. The rows are rebuilt from the SAME pts-* JSON the chart was
+       drawn from, which is server-rendered into the page at first byte — this only re-reads
+       what is already there, which is the rule the rest of this file obeys. */
+    const table = document.querySelector(`[data-tftable][data-group="${id}"]`);
+    const syncTable = (tf, label) => {
+      if (!table) return;
+      const src = document.getElementById(`pts-${tf}`);
+      const body = table.querySelector("tbody");
+      if (!src || !body) return;
+      let pts;
+      try { pts = JSON.parse(src.textContent).slice(-200); } catch { return; }
+      const dp = +table.dataset.dp || 2;
+      const money = (v) => "$" + nf(v, dp);
+      body.innerHTML = pts
+        .map((q) => {
+          const f = Number.isFinite(q[7]);
+          return (
+            "<tr>" +
+            `<td>${new Date(q[1]).toISOString().slice(0, 16).replace("T", " ")}</td>` +
+            `<td class="num">${money(q[2])}</td><td class="num">${money(q[3])}</td>` +
+            `<td class="num">${money(q[4])}</td><td class="num">${money(q[5])}</td>` +
+            `<td class="num">${qty(q[6])}</td>` +
+            `<td class="num ${f ? (q[7] >= 0 ? "pays-l" : "pays-s") : "faint"}">${f ? (q[7] * 100).toFixed(2) + "%" : "—"}</td>` +
+            "</tr>"
+          );
+        })
+        .join("");
+      table.querySelector("[data-tflabel]").textContent = label;
+      table.querySelector("[data-tfcount]").textContent = String(pts.length);
+    };
   });
 
   /* --------------------------------------------------------- live freshness ticker */
   const fresh = document.querySelector("[data-fresh]");
   if (fresh) {
     const at = +fresh.dataset.fresh;
+    // Same unit ladder as the server renders, or the number would change form on hydration.
     const tick = () => {
       const m = Math.max(0, Math.round((Date.now() - at) / 60000));
-      const next = m === 0 ? "just now" : m === 1 ? "1 min ago" : `${m} min ago`;
+      const next =
+        m === 0 ? "just now"
+        : m === 1 ? "1 min ago"
+        : m < 60 ? `${m} min ago`
+        : m < 48 * 60 ? `${Math.round(m / 60)} h ago`
+        : `${Math.round(m / 1440)} d ago`;
       if (fresh.textContent !== next) fresh.textContent = next;
     };
     tick();

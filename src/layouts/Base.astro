@@ -15,8 +15,16 @@ interface Props {
    * page and see the directive. noindex only works if the page is crawlable.
    */
   noindex?: boolean;
+  /**
+   * The page's data is a FROZEN historical set, not a live feed. The freshness pill is a
+   * statement about how current the market data is, so on a page whose window deliberately
+   * never moves it is not merely useless — it counts up forever. /liquidations/sweep was
+   * showing "Updated 243 min ago" for a February event and rising. The footer still records
+   * when the file was captured, which is the honest form of the same fact.
+   */
+  frozen?: boolean;
 }
-const { title, description, fetchedAt, noindex, titleMode = "suffix" } = Astro.props;
+const { title, description, fetchedAt, noindex, frozen, titleMode = "suffix" } = Astro.props;
 const fullTitle = titleMode === "exact" ? title : `${title} | ${SITE.name}`;
 const path = Astro.url.pathname;
 // Canonical origin comes from the build-time SITE_URL via Astro.site — never a literal,
@@ -27,7 +35,13 @@ const isActive = (href: string) => (href === "/" ? path === "/" : path === href 
 // Rail state is decided on the SERVER from a cookie: no flash, no layout shift, and a
 // crawler (which sends no cookie) always receives the expanded rail with visible labels.
 const collapsed = Astro.cookies.get("rail")?.value === "0";
-const ageMin = fetchedAt ? Math.max(0, Math.round((Date.now() - fetchedAt) / 60000)) : null;
+const ageMin = fetchedAt && !frozen ? Math.max(0, Math.round((Date.now() - fetchedAt) / 60000)) : null;
+
+/* "361 min ago" is arithmetic homework, not a reading. Minutes up to an hour, then hours,
+   then days — the unit changes so the number stays small enough to mean something at a
+   glance, which is the only reason the pill is there. */
+const age = (m: number) =>
+  m === 0 ? "just now" : m < 60 ? `${m} min ago` : m < 48 * 60 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} d ago`;
 
 // WebSite carries name/url/alternateName only. SearchAction is deliberately absent —
 // Google removed the sitelinks searchbox on 2024-11-21 and no other consumer parses it.
@@ -523,7 +537,7 @@ const schema = {
                     site's own legend reserves for "shorts pay longs" — so it was making a
                     semantic claim it did not mean. */}
                 <svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="10" cy="10" r="7.25" /><path d="M10 6v4.2l2.6 1.8" /></svg>
-                <span>Updated <time datetime={new Date(fetchedAt!).toISOString()} data-fresh={fetchedAt}>{ageMin === 0 ? "just now" : `${ageMin} min ago`}</time></span>
+                <span>Updated <time datetime={new Date(fetchedAt!).toISOString()} data-fresh={fetchedAt}>{age(ageMin)}</time></span>
               </div>
             )}
             <a class="btn btn--primary cta" href="/watchlist" aria-current={path === "/watchlist" ? "page" : undefined}>
