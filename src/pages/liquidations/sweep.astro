@@ -38,8 +38,8 @@ const DISPLAY_TO = Date.parse("2026-02-12T12:00:00Z");
 const start = series.findIndex((c) => c[0] >= DISPLAY_FROM);
 const end = series.findIndex((c) => c[0] >= DISPLAY_TO);
 const cols = (end < 0 ? series.length : end) - start;
-const TURNOVER_DAYS = 14;
-const ageBars = (TURNOVER_DAYS * 24) / FACTOR;
+const POSITION_LIFE_DAYS = 14;
+const ageBars = (POSITION_LIFE_DAYS * 24) / FACTOR;
 
 const map = buildLiqMap({
   candles: series, start, cols, mmf, maxLeverage: frozen.maxLeverage,
@@ -130,9 +130,9 @@ const description =
     <Fragment set:html={paint.legend} />
     <p class="scalebar__note">
       1–12 February 2026, two-hour bars. Brighter is more modelled notional standing at that price
-      at that moment; the peak cell is {compact(map.peak)}. A band ends one of two ways: price trades
+      at that moment; the most crowded spot holds {compact(map.peak)}. A band ends one of two ways: price trades
       through it, which is why the picture goes dark behind the candles, or the positions behind
-      it age past the {TURNOVER_DAYS}-day turnover window and it fades out in four steps.
+      it age past the {POSITION_LIFE_DAYS}-day position life and it fades out in four steps.
     </p>
   </div>
 
@@ -205,11 +205,11 @@ const description =
       <tbody>
         <tr><td>Candles</td><td>{hourly.length} hourly bars, {new Date(frozen.from).toISOString().slice(0, 10)} to {new Date(frozen.to).toISOString().slice(0, 10)}, from <code>{frozen.source}</code>, fetched {fetched}</td><td class="num">observed</td></tr>
         <tr><td>Drawn window</td><td>1–12 February 2026, aggregated to {FACTOR}-hour bars ({map.cols} columns)</td><td class="num">observed</td></tr>
-        <tr><td>Warm-up</td><td>{map.warmBars} bars — {(map.warmBars * FACTOR / 24).toFixed(0)} days — of book built off-screen before the first drawn column{map.warmBars >= ageBars ? "" : ", short of a full turnover window"}</td><td class="num">assumed</td></tr>
+        <tr><td>Positions open before the chart starts</td><td>{map.warmBars} bars — {(map.warmBars * FACTOR / 24).toFixed(0)} days — of positions built up off-screen before the first drawn column{map.warmBars >= ageBars ? "" : ", short of the assumed lifetime"}</td><td class="num">assumed</td></tr>
         <tr><td>Maintenance margin</td><td>{pct(mmf, 3)}, from Hyperliquid's tier 1 at {frozen.maxLeverage}× max leverage</td><td class="num">observed</td></tr>
-        <tr class="is-active"><td>Modelled book size</td><td>{usd(frozen.oiNotional)} — open interest when this file was frozen on {fetched}. Historical open interest is not published, so this sets the model's <em>scale</em>, not its shape.</td><td class="num">assumed</td></tr>
+        <tr class="is-active"><td>Modelled open positions</td><td>{usd(frozen.oiNotional)} — open interest when this file was frozen on {fetched}. Historical open interest is not published, so this sets the model's <em>scale</em>, not its shape.</td><td class="num">assumed</td></tr>
         <tr><td>Leverage mix</td><td><strong>{profile.label}</strong> — {profile.note}</td><td class="num">assumed</td></tr>
-        <tr><td>Drawn price range</td><td>{px(map.loPrice)} – {px(map.hiPrice)}, set by {map.spanRule === "traded" ? "the traded range" : "the ±8% floor, the traded range being narrower"}. {pct(map.clipped)} of modelled notional liquidates outside it.</td><td class="num">observed</td></tr>
+        <tr><td>Drawn price range</td><td>{px(map.loPrice)} – {px(map.hiPrice)}, set by {map.spanRule === "traded" ? "the traded range" : "the ±8% minimum, the traded range being narrower"}. {pct(map.clipped)} of modelled notional liquidates outside it.</td><td class="num">observed</td></tr>
       </tbody>
     </table>
   </div>

@@ -2,6 +2,7 @@
 import Base from "../layouts/Base.astro";
 import { getSnapshot } from "../lib/hyperliquid.ts";
 import { EXPECTED_WORKER_BUILD } from "../lib/version.ts";
+import { VENUE_LABEL, type Venue } from "../lib/funding.ts";
 
 // Deliberately NOT guarded with coldStart(): this is the page you open to find out why
 // everything else is returning 503, so it has to render when the snapshot store is empty.
@@ -88,7 +89,7 @@ const utc = (ms: number) => new Date(ms).toISOString().slice(0, 16).replace("T",
   <div class="page-head">
     <h1>Status</h1>
     <p>
-      Ingest health. This page reads the canary table directly and renders even when the snapshot
+      Ingest health. This page reads the ingest run log in D1 directly and renders even when the snapshot
       store is empty. The weekly <a class="link" href="/status/indexation">indexation report</a> is
       built by the same worker.
     </p>
@@ -97,7 +98,7 @@ const utc = (ms: number) => new Date(ms).toISOString().slice(0, 16).replace("T",
   <div class="cards">
     <div class="card">
       <div class="card__label">Snapshot age</div>
-      <div class:list={["card__value", stale && "pays-l"]}>{ageMin === null ? "—" : ageMin === 0 ? "under 1 min" : `${ageMin} min`}</div>
+      <div class:list={["card__value", stale && "is-bad"]}>{ageMin === null ? "—" : ageMin === 0 ? "under 1 min" : `${ageMin} min`}</div>
       <div class="card__meta">{snap.fetchedAt ? utc(snap.fetchedAt) : "never written"}</div>
     </div>
     <div class="card">
@@ -107,17 +108,17 @@ const utc = (ms: number) => new Date(ms).toISOString().slice(0, 16).replace("T",
     </div>
     <div class="card">
       <div class="card__label">Last ingest</div>
-      <div class:list={["card__value", latest && !latest.ok && "pays-l"]} style="font-size:20px">{latest ? (latest.ok ? "ok" : `failed (${latest.status || "no response"})`) : "—"}</div>
+      <div class:list={["card__value", latest && !latest.ok && "is-bad"]} style="font-size:20px">{latest ? (latest.ok ? "ok" : `failed (${latest.status || "no response"})`) : "—"}</div>
       <div class="card__meta">{latest ? `${latest.ms} ms · ${utc(latest.at)}` : "no runs recorded"}</div>
     </div>
     <div class="card">
       <div class="card__label">Failures in last 24 runs</div>
-      <div class:list={["card__value", fails > 0 && "pays-l"]}>{checks.length ? fails : "—"}</div>
+      <div class:list={["card__value", fails > 0 && "is-bad"]}>{checks.length ? fails : "—"}</div>
       <div class="card__meta">{checks.length} runs recorded</div>
     </div>
   </div>
 
-  <h2 class="section">Deploy wiring</h2>
+  <h2 class="section">Bindings and worker version</h2>
   <p class="section-note">
     The three things that can be wrong while every page still renders correctly. Each is a
     deploy step that fails quietly rather than loudly, so it is checked here instead.
@@ -129,7 +130,7 @@ const utc = (ms: number) => new Date(ms).toISOString().slice(0, 16).replace("T",
         {bindings.map((b) => (
           <tr class={b.present ? undefined : "is-active"}>
             <td>{b.kind} binding <code>{b.name}</code></td>
-            <td class:list={[b.present ? "pays-s" : "pays-l"]} style="font-weight:600">{b.present ? "attached" : "MISSING"}</td>
+            <td class:list={[b.present ? "is-ok" : "is-bad"]} style="font-weight:600">{b.present ? "attached" : "MISSING"}</td>
             <td class="reason">
               {b.name === "SNAPSHOT"
                 ? "Pages would serve 503 rather than fall back to the upstream API — deliberately, so a missing binding cannot hide behind a working-looking site."
@@ -138,8 +139,8 @@ const utc = (ms: number) => new Date(ms).toISOString().slice(0, 16).replace("T",
           </tr>
         ))}
         <tr class={workerDrift ? "is-active" : undefined}>
-          <td>Worker bundle</td>
-          <td class:list={[workerBuild === null ? "dim" : workerDrift ? "pays-l" : "pays-s"]} style="font-weight:600">
+          <td>Ingest worker version</td>
+          <td class:list={[workerBuild === null ? "dim" : workerDrift ? "is-bad" : "is-ok"]} style="font-weight:600">
             {workerBuild === null ? "not reported yet" : workerDrift ? "STALE" : "current"}
           </td>
           <td class="reason">
@@ -171,16 +172,16 @@ const utc = (ms: number) => new Date(ms).toISOString().slice(0, 16).replace("T",
   </p>
   <div class="panel" style="max-width:860px">
     <table class="tbl">
-      <thead><tr><th>Series</th><th class="num">Covered</th><th>Refresh gate</th><th>Missing</th></tr></thead>
+      <thead><tr><th>Series</th><th class="num">Covered</th><th>Refresh interval</th><th>Missing</th></tr></thead>
       <tbody>
         {series.map((s) => (
           <tr class={s.known && s.missing.length ? "is-active" : undefined}>
             <td>{s.label}<div class="reason" style="margin-top:2px">drives {s.drives}</div></td>
-            <td class:list={["num", s.known ? (s.missing.length ? "pays-l" : "pays-s") : "dim"]} style="font-weight:600">
+            <td class:list={["num", s.known ? (s.missing.length ? "is-bad" : "is-ok") : "dim"]} style="font-weight:600">
               {s.known ? `${covered.length - s.missing.length} / ${covered.length}` : "—"}
             </td>
-            <td>{s.gate}{s.at ? <div class="reason" style="margin-top:2px">last full sweep {utc(s.at)}</div> : null}</td>
-            <td class="reason">{!s.known ? "no sweep has recorded coverage yet" : s.missing.length ? s.missing.join(", ") : "none"}</td>
+            <td>{s.gate}{s.at ? <div class="reason" style="margin-top:2px">last full refresh {utc(s.at)}</div> : null}</td>
+            <td class="reason">{!s.known ? "unknown — no refresh has recorded coverage yet" : s.missing.length ? s.missing.join(", ") : "none"}</td>
           </tr>
         ))}
       </tbody>
@@ -191,8 +192,8 @@ const utc = (ms: number) => new Date(ms).toISOString().slice(0, 16).replace("T",
     <div class="verdict verdict--warn">
       <div>
         <b>A published contract is missing a series.</b> This is normal for a few minutes after a
-        contract crosses the coverage floor — a missing series jumps the refresh gate and is filled
-        on the next tick rather than waiting for it. If a name is still listed here after fifteen
+        contract crosses the coverage floor — a missing series is filled on the next five-minute
+        tick rather than waiting for the refresh interval. If a name is still listed here after fifteen
         minutes, the fetch for it is failing rather than pending.
       </div>
     </div>
@@ -207,10 +208,10 @@ const utc = (ms: number) => new Date(ms).toISOString().slice(0, 16).replace("T",
     <table class="tbl">
       <thead><tr><th>Venue</th><th class="num">Rows last run</th></tr></thead>
       <tbody>
-        {["HlPerp", "BinPerp", "BybitPerp"].map((v) => (
+        {(["HlPerp", "BinPerp", "BybitPerp"] as Venue[]).map((v) => (
           <tr>
-            <td>{v}</td>
-            <td class:list={["num", !latestVenues[v] && "pays-l"]}>{latestVenues[v] ?? 0}</td>
+            <td>{VENUE_LABEL[v]} <code>{v}</code></td>
+            <td class:list={["num", !latestVenues[v] && "is-bad"]}>{latestVenues[v] ?? 0}</td>
           </tr>
         ))}
       </tbody>
@@ -221,7 +222,7 @@ const utc = (ms: number) => new Date(ms).toISOString().slice(0, 16).replace("T",
   {storeError ? (
     <div class="empty">
       <div class="empty__body">
-        <p class="empty__title">Canary table unreadable</p>
+        <p class="empty__title">Run log unreadable</p>
         <p class="empty__text">{storeError}</p>
       </div>
     </div>
@@ -243,7 +244,7 @@ const utc = (ms: number) => new Date(ms).toISOString().slice(0, 16).replace("T",
               <td>{c.source}</td>
               <td class="num">{c.status || "—"}</td>
               <td class="num">{c.ms}</td>
-              <td class:list={["num", !c.ok && "pays-l"]}>{c.ok ? "ok" : "failed"}</td>
+              <td class:list={["num", !c.ok && "is-bad"]}>{c.ok ? "ok" : "failed"}</td>
             </tr>
           ))}
         </tbody>
@@ -252,6 +253,15 @@ const utc = (ms: number) => new Date(ms).toISOString().slice(0, 16).replace("T",
   )}
 
   <style>
+    /* THE ONE PAGE ALLOWED A HEALTH COLOUR.
+       Red and green mean the direction of a funding payment everywhere else on this site, and
+       this page was borrowing .pays-l / .pays-s to mean "broken" and "fine" — the same two
+       hues doing a second job. It is defensible only because /status renders no funding rate
+       at all, so there is nothing here to confuse; but borrowing the class was still wrong,
+       because the next person to read .pays-l would learn the wrong rule from it. These are
+       named for what they mean, defined once, and used for every health signal on the page. */
+    .is-bad { color: #ef6b5e; }
+    .is-ok  { color: #58c48c; }
     .reason { color: var(--text-dim); white-space: normal; }
     .tbl code { font-size: 12px; }
   </style>

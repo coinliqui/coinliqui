@@ -210,7 +210,7 @@ const description = `Which leveraged ${perp.symbol} positions were liquidated an
     <div class="empty">
       <div class="empty__body">
         <p class="empty__title">Candle history not collected yet</p>
-        <p class="empty__text">This needs {hold + 13} days of traded daily candles for {perp.symbol}. Either the series is still being collected — a twelve-hour sweep, jumped on the next tick when a series is missing entirely — or {perp.symbol} has not traded here that long, in which case a shorter hold window needs less history.</p>
+        <p class="empty__text">This needs {hold + 13} days of traded daily candles for {perp.symbol}. Either the series is still being collected — refreshed every twelve hours, and filled on the next five-minute tick when a series is missing entirely — or {perp.symbol} has not traded here that long, in which case a shorter hold window needs less history.</p>
       </div>
     </div>
   )}

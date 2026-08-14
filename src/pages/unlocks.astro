@@ -7,7 +7,7 @@ import reg from "../data/vesting-contracts.json";
 
 /**
  * Forward-looking supply calendar. Provenance is a BADGE ON EACH ROW, never a gate on the
- * page: a reader is better served by many rows with honest marks than by two rows that
+ * page: a reader is better served by many rows with honest badges than by two rows that
  * happen to clear the strictest bar.
  */
 const now = Date.now();
@@ -21,7 +21,7 @@ const horizon = HORIZONS.includes(Number(new URL(Astro.request.url).searchParams
 
 /* DAYS OF VOLUME TO ABSORB — the column this page says matters most, and which was blank
    because the covered contract set and the readable-schedule set did not overlap. Raising the
-   coverage floor to fifty put CRV and AAVE on both sides of that gap, so it fills for them.
+   published set to fifty coins put CRV and AAVE on both sides of that gap, so it fills for them.
    It is computed from the same snapshot every other page reads, at first byte, and stays
    blank — not guessed — for any token with no perpetual here. */
 const snap = await getSnapshot((Astro.locals as any)?.runtime?.env?.SNAPSHOT, import.meta.env.DEV);
@@ -67,7 +67,7 @@ const description =
     <h1>Token unlocks</h1>
     <p>
       Supply arriving on the market, and — the part nobody else shows — <strong>how solid each
-      line is</strong>. Every row carries a provenance mark: read from the contract, published by
+      line is</strong>. Every row carries a provenance badge: read from the contract, published by
       the project, or taken from an aggregator. A date is not a fact just because it is in a table.
     </p>
   </div>
@@ -153,16 +153,16 @@ const description =
   </p>
   <p class="prose">
     It fills only where this site already carries a perpetual for the token, because that is the
-    only volume series it trusts. Raising the coverage floor to
+    only volume series it trusts. Raising the published set to
     {" "}<a class="link" href="/funding">{snap.perps.length || 50} coins</a> is what put CRV and AAVE
     on both sides of that gap. For anything else the cell stays blank rather than borrowing a
     number from a source the rest of the page would not accept.
   </p>
 
-  <h2 class="section">How to read the provenance marks</h2>
+  <h2 class="section">How to read the provenance badges</h2>
   <div class="panel" style="max-width:860px">
     <table class="tbl">
-      <thead><tr><th>Mark</th><th>What it means</th><th class="num">Rows</th></tr></thead>
+      <thead><tr><th>Provenance</th><th>What it means</th><th class="num">Rows</th></tr></thead>
       <tbody>
         {reg.provenanceScale.map((p: any) => (
           <tr>
@@ -175,7 +175,7 @@ const description =
     </table>
   </div>
   <p class="section-note">
-    Every row on this page is currently the strongest mark. That is not a boast — it is what
+    Every row on this page currently carries the strongest provenance. That is not a boast — it is what
     happens when the weaker sources are unavailable, and it is why the calendar is short.
   </p>
 

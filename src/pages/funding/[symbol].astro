@@ -216,7 +216,7 @@ const description = `What a ${p.symbol} perpetual costs to hold: funding across 
     <div class="empty">
       <div class="empty__body">
         <p class="empty__title">Candles not collected yet</p>
-        <p class="empty__text">A contract that has just entered coverage is fetched on the next ingest tick, so this resolves within minutes rather than on the ordinary refresh gate. Everything below is unaffected — funding, venue comparison and margin tiers all come from the snapshot, not the candle store.</p>
+        <p class="empty__text">A contract that has just entered coverage is fetched within five minutes, rather than waiting hours for the ordinary refresh, so this fills in shortly. Everything below is unaffected — funding, venue comparison and margin tiers all come from the snapshot, not from the stored candles.</p>
       </div>
     </div>
   )}
@@ -229,7 +229,7 @@ const description = `What a ${p.symbol} perpetual costs to hold: funding across 
       <div class="card__meta">{hl ? paysLabel(hl.apr) : "—"}</div>
     </div>
     <div class="card">
-      <div class="card__label">Gap between venues</div>
+      <div class="card__label">Spread between venues</div>
       <div class="card__value">{p.aprSpread != null ? pct(p.aprSpread) : "—"}</div>
       <div class="card__meta">annualised difference</div>
     </div>
@@ -300,7 +300,7 @@ const description = `What a ${p.symbol} perpetual costs to hold: funding across 
 
   <div class="banner">
     <div>
-      <div class="banner__title">Where these levels sit across the book</div>
+      <div class="banner__title">Where these levels sit across the modelled positions</div>
       <div class="banner__sub">The modelled liquidation density for {p.symbol}, built from these same tiers, over the real candles.</div>
     </div>
     <a class="btn btn--primary" href={`/liquidations?symbol=${p.symbol}`}>Open the map</a>

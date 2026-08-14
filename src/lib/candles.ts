@@ -31,7 +31,7 @@ const INFO = "https://api.hyperliquid.xyz/info";
 export const CANDLE_DAYS = 800;
 /** Hours retained for the liquidation map. 45 days: the longest drawn window is 30 days and
     the model needs a further 14 days of warm-up before it, so column zero already holds a
-    full book instead of filling up in view. */
+    full position-life window of positions instead of filling up in view. */
 export const CANDLE_HOURS = 1080;
 
 export async function fetchCandles(symbol: string, days = CANDLE_DAYS): Promise<CandleSet> {

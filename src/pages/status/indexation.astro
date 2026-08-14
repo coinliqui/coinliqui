@@ -97,12 +97,12 @@ const utc = (ms: number) => new Date(ms).toISOString().slice(0, 16).replace("T",
     </div>
   )}
 
-  {err && <div class="verdict verdict--warn"><div><b>Store unreadable.</b> <code>{err}</code></div></div>}
+  {err && <div class="verdict verdict--warn"><div><b>Snapshot store unreadable.</b> <code>{err}</code></div></div>}
 
   {doc ? (
     <>
       <p class="section-note">
-        {doc.week} · generated {utc(doc.at)} · took {Math.round(doc.tookMs / 60000)} min of tick time
+        {doc.week} · generated {utc(doc.at)} · {Math.round(doc.tookMs / 60000)} min from first tick to last
       </p>
       <div class="report" set:html={render(doc.md)} />
     </>

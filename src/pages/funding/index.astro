@@ -15,7 +15,7 @@ const widest = rows[0];
 
 const title = "Crypto funding rates, normalised to APR";
 const description =
-  "Live funding rates for BTC, ETH, SOL and every other perpetual covered here, annualised across Hyperliquid, Binance and Bybit — with the gap between venues, open interest and 24-hour volume on every row.";
+  "Live funding rates for BTC, ETH, SOL and every other perpetual covered here, annualised across Hyperliquid, Binance and Bybit — with the spread between venues, open interest and 24-hour volume on every row.";
 ---
 
 <Base title={title} description={description} fetchedAt={snap.fetchedAt}>
@@ -25,7 +25,7 @@ const description =
       {snap.perps.length} perpetual contracts across three venues, annualised. Hyperliquid settles
       hourly; Binance and Bybit settle every 4 or 8 hours — so comparing the quoted numbers directly
       makes the shorter interval look cheaper by exactly the interval ratio.
-      {widest?.spread != null && <> The widest gap right now is <strong>{widest.p.symbol}</strong> at {pct(widest.spread)} APR.</>}
+      {widest?.spread != null && <> The widest spread right now is <strong>{widest.p.symbol}</strong> at {pct(widest.spread)} APR.</>}
       <a class="link" href="/methodology"> How it is computed →</a>
     </p>
   </div>
@@ -42,7 +42,7 @@ const description =
         <tr>
           <th>Coin</th>
           {ORDER.map((v) => <th class="num">{VENUE_LABEL[v]} APR</th>)}
-          <th class="num">Venue gap (APR)</th>
+          <th class="num">Venue spread (APR)</th>
           <th class="num">Open interest</th>
           <th class="num">24h volume</th>
         </tr>

@@ -60,7 +60,7 @@ export const NAV: NavGroup[] = [
     ],
   },
   {
-    title: "Yours",
+    title: "Saved",
     items: [{ label: "Watchlist", href: "/watchlist", mobile: true, icon: "M10 3.5 12 8l4.8.4-3.6 3.1 1.1 4.7L10 13.7l-4.3 2.5 1.1-4.7L3.2 8.4 8 8l2-4.5Z" }],
   },
   {

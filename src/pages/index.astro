@@ -37,7 +37,7 @@ const parts: [string, boolean][] = [
   [", on ", false], [usd(totalVol), true],
   [" of 24-hour volume. Funding is most expensive on ", false], [richest?.symbol ?? "—", true],
   [" at ", false], [richest ? pct(richest.hlApr) : "—", true],
-  [" a year. The widest gap between venues is ", false], [widest?.symbol ?? "—", true],
+  [" a year. The widest spread between venues is ", false], [widest?.symbol ?? "—", true],
   [", ", false], [widest?.aprSpread != null ? pct(widest.aprSpread) : "—", true], [".", false],
 ];
 
@@ -55,7 +55,7 @@ const description =
 
     <div class="cards">
       <a class="card" href="/funding">
-        <div class="card__label">Widest venue gap</div>
+        <div class="card__label">Widest venue spread</div>
         <div class="card__value">{widest?.aprSpread != null ? pct(widest.aprSpread) : "—"}</div>
         <div class="card__meta">{widest?.symbol ?? "—"} · across three venues</div>
       </a>
@@ -163,7 +163,7 @@ const description =
     <div class="panel">
       <table class="tbl">
         <thead>
-          <tr><th>Coin</th><th class="num">Hyperliquid funding APR</th><th class="num">Venue gap (APR)</th><th class="num">Open interest</th><th class="num">24h volume</th></tr>
+          <tr><th>Coin</th><th class="num">Hyperliquid funding APR</th><th class="num">Venue spread (APR)</th><th class="num">Open interest</th><th class="num">24h volume</th></tr>
         </thead>
         <tbody>
           {top.map((p) => (

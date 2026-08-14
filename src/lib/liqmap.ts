@@ -13,10 +13,10 @@ import type { Candle } from "./candles.ts";
     1. HOW MUCH is open — set equal to the contract's current open interest, which is
        observed. The model redistributes a real quantity; it does not invent one.
     2. WHEN it was opened — spread across bars in proportion to TRADED VOLUME, observed.
-    3. HOW LONG it stays open — a bounded life, decaying in four tranches over the turnover
-       window. This replaces the previous "a position is only ever removed by liquidation",
+    3. HOW LONG it stays open — a bounded position life, decaying in four tranches over that
+       span. This replaces the previous "a position is only ever removed by liquidation",
        which was both wrong and the direct cause of a picture that brightened left to right
-       because the book never stopped accumulating.
+       because open positions never stopped accumulating.
     4. AT WHAT LEVERAGE — a weight per leverage tier, chosen by the reader. Most influence,
        least evidence.
     5. WHICH WAY — long and short in equal measure.
@@ -25,13 +25,13 @@ import type { Candle } from "./candles.ts";
 
    TWO CORRECTIONS OVER THE FIRST VERSION, both structural:
 
-   * WARM-UP. The book is built for `ageBars` before the first drawn column, so column zero
-     already holds a full book. Without it the field brightens monotonically left to right
+   * WARM-UP. Open positions are built for `ageBars` before the first drawn column, so column zero
+     already holds a full position-life window of positions. Without it the field brightens monotonically left to right
      and the picture says "time passed" rather than "levels cluster here".
 
    * DISCRETE LEVERAGE. Interpolating the profile onto a smooth 20-rung ladder produced a
      uniform field — 87% of cells non-zero, median at half the 97th percentile, nothing to
-     see. Real books cluster on round leverages, and that discreteness is exactly what makes
+     see. Real positions cluster on round leverages, and that discreteness is exactly what makes
      the picture legible: each tier traces a shadow of the price path, and where price dwelt,
      the shadows stack into a band.
    ========================================================================================= */
@@ -45,7 +45,7 @@ export interface LevProfile {
 export const PROFILES: LevProfile[] = [
   {
     key: "aggressive", label: "Aggressive",
-    note: "Most size at high leverage. Closest to what a retail-dominated perp book is usually assumed to look like.",
+    note: "Most size at high leverage. Closest to what a retail-dominated perp market is usually assumed to look like.",
     weights: [[2, 0.05], [5, 0.11], [10, 0.18], [20, 0.20], [25, 0.24], [40, 0.22]],
   },
   {
@@ -55,7 +55,7 @@ export const PROFILES: LevProfile[] = [
   },
   {
     key: "conservative", label: "Conservative",
-    note: "Most size at low leverage, as a book dominated by funded desks rather than retail would look.",
+    note: "Most size at low leverage, as a market dominated by funded desks rather than retail would look.",
     weights: [[2, 0.23], [5, 0.32], [10, 0.25], [20, 0.12], [25, 0.06], [40, 0.02]],
   },
 ];
@@ -63,9 +63,9 @@ export const PROFILES: LevProfile[] = [
 /** A position's life, as four tranches of a decaying survival curve. A single hard cut-off
     would make every unswept band exactly `ageBars` long — a regularity you can see. */
 const TRANCHES: [number, number][] = [[0.25, 0.42], [0.5, 0.26], [0.75, 0.18], [1, 0.14]];
-/** Mean life of a cohort as a fraction of the turnover window: 0.51 here.
+/** Mean life of a cohort as a fraction of the full position life: 0.51 here.
     Cohorts are sized so that the ones OPENED over a window sum to open interest, but each
-    survives only part of it, so without dividing this back out the book STANDING at any
+    survives only part of it, so without dividing this back out the notional STANDING at any
     instant is 0.51x OI — and every dollar printed beside the picture is half what the page
     claims it is. Caught by review; the picture's shape never showed it, because the transfer
     function is solved from the data and absorbs a constant factor silently. */
@@ -99,8 +99,8 @@ export interface LiqMap {
   totalNotional: number;
   ageBars: number;
   /** which rule set the drawn price span */
-  spanRule: "traded" | "floor";
-  /** bars of book modelled before the first drawn column; short of ageBars means partial */
+  spanRule: "traded" | "minSpan";
+  /** bars of warm-up modelled before the first drawn column; short of ageBars means partial */
   warmBars: number;
 }
 
@@ -115,9 +115,9 @@ export function buildLiqMap(opts: {
   openInterest: number;
   profile: LevProfile;
   rows?: number;
-  /** turnover window, in bars of this series */
+  /** assumed position life, in bars of this series */
   ageBars?: number;
-  /** floor on the drawn price span, as a fraction of last price */
+  /** minimum drawn price span, as a fraction of last price */
   minSpan?: number;
 }): LiqMap {
   const rows = opts.rows ?? 150;
@@ -128,7 +128,7 @@ export function buildLiqMap(opts: {
   const disp = all.slice(warm);
   const cols = disp.length;
 
-  /* Each cohort is sized so that a book left unswept would total exactly current OI. The
+  /* Each cohort is sized so that positions left unswept would total exactly current OI. The
      trailing-window denominator is what removes the accumulation trend: without it, older
      bars keep adding and the right of the picture is always brighter than the left. */
   const vol = all.map((c) => c[5]);
@@ -143,18 +143,18 @@ export function buildLiqMap(opts: {
   /* PRICE AXIS FITTED TO THE TRADED RANGE. Fitting to the extremes of the model let a 2x
      level 50% away stretch the axis until real price movement was a flat squiggle. The
      traded range sets the axis; levels beyond it clip, and the clipped share is disclosed.
-     The floor stops a very quiet window from zooming into noise, and the 6% headroom keeps
+     The minimum span stops a very quiet window from zooming into noise, and the 6% headroom keeps
      the outermost band off the frame edge, where it would read as a border artifact. */
   const tradedLo = Math.min(...disp.map((c) => c[3]));
   const tradedHi = Math.max(...disp.map((c) => c[2]));
   const last = disp[disp.length - 1][4];
   const fromTraded = (tradedHi - tradedLo) * 1.14;
-  const fromFloor = last * (opts.minSpan ?? 0.16);
+  const fromMinSpan = last * (opts.minSpan ?? 0.16);
   /* Which rule won matters to the reader, so it is reported rather than assumed. In a quiet
-     window the floor wins and the axis is NOT fitted to the traded range — saying it is would
+     window the minimum span wins and the axis is NOT fitted to the traded range — saying it is would
      be a false statement on a page whose whole argument is that its inputs are stated. */
-  const spanRule: "traded" | "floor" = fromTraded >= fromFloor ? "traded" : "floor";
-  const span = Math.max(fromTraded, fromFloor) * 1.06;
+  const spanRule: "traded" | "minSpan" = fromTraded >= fromMinSpan ? "traded" : "minSpan";
+  const span = Math.max(fromTraded, fromMinSpan) * 1.06;
   const mid = (tradedHi + tradedLo) / 2;
   const hiPrice = mid + span / 2, loPrice = Math.max(0, mid - span / 2);
   const band = (hiPrice - loPrice) / rows;

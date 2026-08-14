@@ -151,7 +151,7 @@ const description = `Live ${coin.name} (${coin.symbol}) spot price from ${SPOT_S
     <div class="empty">
       <div class="empty__body">
         <p class="empty__title">Spot candles not collected yet</p>
-        <p class="empty__text">{SPOT_SOURCE} candles are collected on a two-hour sweep, and a series that is missing entirely jumps that gate on the next five-minute tick. Every figure above and below is unaffected.</p>
+        <p class="empty__text">{SPOT_SOURCE} candles are refreshed every two hours, and a series that is missing entirely is filled on the next five-minute tick rather than waiting for that. Every figure above and below is unaffected.</p>
       </div>
     </div>
   )}

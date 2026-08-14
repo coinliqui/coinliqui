@@ -38,9 +38,9 @@ const WINDOWS = [
 ];
 const win = WINDOWS.find((w) => String(w.days) === q.get("win")) ?? WINDOWS[2];
 const profile = PROFILES.find((p) => p.key === q.get("profile")) ?? PROFILES[1];
-/** Turnover window: how long a modelled position stays open before it is assumed closed. */
-const TURNOVER_DAYS = 14;
-const ageBars = Math.round((TURNOVER_DAYS * 24) / win.factor);
+/** Position life: how long a modelled position stays open before it is assumed closed. */
+const POSITION_LIFE_DAYS = 14;
+const ageBars = Math.round((POSITION_LIFE_DAYS * 24) / win.factor);
 
 const hourly = await getHourly(env?.SNAPSHOT, perp.symbol, import.meta.env.DEV);
 const series: Candle[] = hourly ? aggregate(hourly.d, win.factor) : [];
@@ -125,11 +125,11 @@ const description = `Where ${perp.symbol} liquidation levels sit and which ones 
       <div class="scalebar">
         <Fragment set:html={paint.legend} />
         <p class="scalebar__note">
-          Modelled notional standing at a price, at a moment. Scaled against the 99.5th percentile
-          so one dominant cluster cannot drag everything else to the floor; the peak cell is
+          Modelled notional standing at a price, at a moment. Colour tops out at the busiest 0.5% of the map
+          so one dominant cluster cannot drag everything else to the floor; the most crowded spot holds
           {" "}{compact(map.peak)}. A band ends where price trades through it — drawn in white,
           both as scars on the field and as the strip beneath — or fades out in four steps as the
-          positions behind it age past the {TURNOVER_DAYS}-day turnover window. Hover any point for
+          positions behind it age past the {POSITION_LIFE_DAYS}-day position life. Hover any point for
           the value band it sits in.
         </p>
       </div>
@@ -170,14 +170,14 @@ const description = `Where ${perp.symbol} liquidation levels sit and which ones 
             <tr><td class="num">2</td><td>When positions were opened</td><td>Spread over the bars of the window in proportion to each bar's traded volume</td><td class="num">observed</td></tr>
             <tr class="is-active"><td class="num">3</td><td>Leverage mix</td><td><strong>{profile.label}</strong> — {profile.note}</td><td class="num">assumed</td></tr>
             <tr><td class="num">4</td><td>Direction</td><td>Half long, half short at every leverage</td><td class="num">assumed</td></tr>
-            <tr><td class="num">5</td><td>How long a position stays open</td><td>A bounded life of {TURNOVER_DAYS} days, decaying in four tranches. Removed earlier if price trades through its level.</td><td class="num">assumed</td></tr>
+            <tr><td class="num">5</td><td>How long a position stays open</td><td>A bounded life of {POSITION_LIFE_DAYS} days, decaying in four tranches. Removed earlier if price trades through its level.</td><td class="num">assumed</td></tr>
             <tr><td class="num">6</td><td>Maintenance margin</td><td>{pct(mmf, 3)} at tier 1, from the published table</td><td class="num">observed</td></tr>
-            <tr><td class="num">7</td><td>Book before the window opens</td><td>{warmBars} bars of warm-up are modelled off-screen{warmBars >= ageBars
-                ? <>, so the first drawn column already holds a full book</>
-                : <>. That is short of the {ageBars} a full book needs, so the left of the picture is still filling up</>}</td><td class="num">assumed</td></tr>
+            <tr><td class="num">7</td><td>Positions before the window opens</td><td>{warmBars} bars before the chart starts are modelled off-screen{warmBars >= ageBars
+                ? <>, so the first drawn column already holds a full position-life window of positions</>
+                : <>. That is short of the {ageBars} bars a full set needs, so the left of the picture is still filling up</>}</td><td class="num">assumed</td></tr>
             <tr><td class="num">8</td><td>Drawn price range</td><td>{map.spanRule === "traded"
                 ? <>Fitted to the traded range, {axisPx(map.tradedLo)}–{axisPx(map.tradedHi)}, plus headroom.</>
-                : <>The traded range was quieter than the ±8% floor, so the <strong>floor</strong> set the axis — not the traded range.</>}
+                : <>The traded range was quieter than the ±8% minimum, so the <strong>minimum</strong> set the axis — not the traded range.</>}
               {" "}{pct(map.clipped)} of modelled notional liquidates further away than this and is not drawn.</td><td class="num">observed</td></tr>
           </tbody>
         </table>
@@ -186,8 +186,8 @@ const description = `Where ${perp.symbol} liquidation levels sit and which ones 
         Row 8 is the one most worth reading twice. Tying the axis to what actually traded is
         what gives the price path presence — the previous version spanned a third of the price
         to accommodate 2× levels half a market away, and flattened real movement into a
-        squiggle. A floor of ±8% stops a very quiet window from zooming into noise, and in a
-        quiet window it is the floor rather than the traded range that sets the axis. Either
+        squiggle. A minimum of ±8% stops a very quiet window from zooming into noise, and in a
+        quiet window it is that minimum rather than the traded range that sets the axis. Either
         way the cost is that low-leverage levels fall off the picture.
         {offAxis.length > 0 && <> Here that is {offAxis.map(([L]) => `${L}×`).join(", ").replace(/, ([^,]*)$/, " and $1")}.</>}
       </p>
@@ -232,7 +232,7 @@ const description = `Where ${perp.symbol} liquidation levels sit and which ones 
     <div class="empty">
       <div class="empty__body">
         <p class="empty__title">Hourly candles not collected yet</p>
-        <p class="empty__text">The density map needs hourly candles for {perp.symbol}. The ingest worker refreshes them every two hours, and a series that is missing entirely jumps that gate on the next five-minute tick. Everything below is unaffected.</p>
+        <p class="empty__text">The density map needs hourly candles for {perp.symbol}. The ingest worker refreshes them every two hours, and a series that is missing entirely is filled on the next five-minute tick rather than waiting for that. Everything below is unaffected.</p>
       </div>
     </div>
   )}
