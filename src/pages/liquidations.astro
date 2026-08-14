@@ -2,171 +2,299 @@
 import Base from "../layouts/Base.astro";
 import { getSnapshot, coldStart } from "../lib/hyperliquid.ts";
 import { usd, pct } from "../lib/funding.ts";
-import { tierFor, maintenanceMarginFraction, type MarginTable } from "../lib/margin.ts";
+import { maintenanceMarginFraction, nextTierBoundary, type MarginTable } from "../lib/margin.ts";
 import tables from "../data/margin-tables.json";
 
 const snap = await getSnapshot((Astro.locals as any)?.runtime?.env?.SNAPSHOT, import.meta.env.DEV);
 if (!snap.available) return coldStart();
 
-// Everything here is COMPUTED from published contract parameters — margin tiers and the
-// current mark. Nothing on this page is an event feed, and nothing claims to know where
-// anyone's position actually sits. See the honesty section below.
-interface Row {
-  symbol: string; markPx: number; oiNotional: number; maxLeverage: number;
-  mmf: number; longDist: number; shortDist: number; tierCount: number;
-  nextBoundary: number | null; oiTier: number;
-}
-const rows: Row[] = snap.perps
+const q = Astro.url.searchParams;
+const symbol = (q.get("symbol") ?? "BTC").toUpperCase();
+const perp = snap.perps.find((p) => p.symbol === symbol) ?? snap.perps[0];
+const table = (tables as Record<string, MarginTable>)[String(perp.marginTableId)];
+const tiers = [...table.marginTiers].sort((a, b) => a.lowerBound - b.lowerBound);
+const tier1 = tiers[0];
+const mark = perp.markPx;
+const mmf = maintenanceMarginFraction(tier1.maxLeverage);
+
+// Price precision follows the magnitude of the instrument. A sub-dollar contract rendered
+// at two decimals turns every threshold into the same number, which is worse than useless
+// on a page whose whole subject is where two nearby prices sit.
+const dp = mark >= 100 ? 2 : mark >= 1 ? 3 : mark >= 0.01 ? 5 : 7;
+const px = (v: number) => usd(v, dp);
+// Axis ticks are for orientation, not for reading a threshold off — they drop the cents a
+// five-figure price does not need, which also keeps the label inside its gutter.
+const axisDp = mark >= 100 ? 0 : mark >= 1 ? 2 : dp;
+const axisPx = (v: number) => usd(v, axisDp);
+
+/* ---------------------------------------------------------------------------------------
+   THE LADDER
+
+   For each leverage, the two prices at which equity reaches maintenance margin:
+       long  liq = mark x (1 - 1/L) / (1 - mmf)
+       short liq = mark x (1 + 1/L) / (1 + mmf)
+   The span between them is the corridor a position at that leverage survives inside.
+
+   Chart rungs stop at max/4. Below that the corridor is so wide that everything tighter
+   collapses into an invisible sliver on a linear price axis, and the comparison — which is
+   the whole point — stops being readable. The TABLE runs further down the range, so nothing
+   is hidden; only the drawing is bounded.
+   --------------------------------------------------------------------------------------- */
+const CHART_FRACTIONS = [1, 0.75, 0.6, 0.5, 0.4, 0.3, 0.25];
+const TABLE_FRACTIONS = [...CHART_FRACTIONS, 0.175, 0.125, 0.075, 0.05];
+
+const rung = (L: number) => {
+  const longLiq = (mark * (1 - 1 / L)) / (1 - mmf);
+  const shortLiq = (mark * (1 + 1 / L)) / (1 + mmf);
+  return {
+    L,
+    longLiq,
+    shortLiq,
+    longDist: (mark - longLiq) / mark,
+    shortDist: (shortLiq - mark) / mark,
+    corridor: (shortLiq - longLiq) / mark,
+    margin: 1 / L,
+  };
+};
+const mkLevels = (fracs: number[]) =>
+  [...new Set(fracs.map((f) => Math.max(2, Math.round(tier1.maxLeverage * f))))]
+    .filter((l) => l <= tier1.maxLeverage && l >= 2)
+    .sort((a, b) => b - a);
+
+const rungs = mkLevels(CHART_FRACTIONS).map(rung);
+const tableRungs = mkLevels(TABLE_FRACTIONS).map(rung);
+
+/* --- SVG geometry, all server-computed. Fixed viewBox, so the box never reflows. --- */
+const W = 980, H = 460, padL = 92, padR = 108, padT = 26, padB = 64;
+const plotW = W - padL - padR, plotH = H - padT - padB;
+const lo = Math.min(...rungs.map((r) => r.longLiq));
+const hi = Math.max(...rungs.map((r) => r.shortLiq));
+const gap = (hi - lo) * 0.06;
+const yMin = lo - gap, yMax = hi + gap;
+const y = (p: number) => padT + ((yMax - p) / (yMax - yMin)) * plotH;
+// With only two or three rungs, spreading them across the full plot reads as an accident.
+// Cap the group width and centre it.
+const groupW = Math.min(plotW, rungs.length * 132);
+const groupX = padL + (plotW - groupW) / 2;
+const colW = groupW / rungs.length;
+const cx = (i: number) => groupX + (i + 0.5) * colW;
+const barW = Math.min(72, colW * 0.58);
+const yMark = y(mark);
+const gridPrices = Array.from({ length: 6 }, (_, i) => yMin + ((yMax - yMin) * i) / 5);
+const nextTier = nextTierBoundary(table, tier1.lowerBound);
+
+/* --- cross-contract comparison: the tightest corridor each contract permits --- */
+const across = snap.perps
   .map((p) => {
-    const table = (tables as Record<string, MarginTable>)[String(p.marginTableId)];
-    if (!table) return null;
-    const sorted = [...table.marginTiers].sort((a, b) => a.lowerBound - b.lowerBound);
-    const top = sorted[0];
-    const mmf = maintenanceMarginFraction(top.maxLeverage);
-    // Adverse move that reaches maintenance margin, at the contract's own maximum leverage.
-    // long:  liq = entry(1 - 1/L) / (1 - mmf)   =>  distance = 1 - (1 - 1/L)/(1 - mmf)
-    const longDist = 1 - (1 - 1 / top.maxLeverage) / (1 - mmf);
-    const shortDist = (1 + 1 / top.maxLeverage) / (1 + mmf) - 1;
-    const { index } = tierFor(table, p.oiNotional);
-    return {
-      symbol: p.symbol,
-      markPx: p.markPx,
-      oiNotional: p.oiNotional,
-      maxLeverage: top.maxLeverage,
-      mmf,
-      longDist,
-      shortDist,
-      tierCount: sorted.length,
-      nextBoundary: sorted[1]?.lowerBound ?? null,
-      oiTier: index + 1,
-    };
+    const t = (tables as Record<string, MarginTable>)[String(p.marginTableId)];
+    if (!t) return null;
+    const top = [...t.marginTiers].sort((a, b) => a.lowerBound - b.lowerBound)[0];
+    const m = maintenanceMarginFraction(top.maxLeverage);
+    const ld = 1 - (1 - 1 / top.maxLeverage) / (1 - m);
+    const sd = (1 + 1 / top.maxLeverage) / (1 + m) - 1;
+    return { symbol: p.symbol, maxLeverage: top.maxLeverage, mmf: m, corridor: ld + sd, oi: p.oiNotional, tiers: t.marginTiers.length };
   })
-  .filter((r): r is Row => r !== null);
+  .filter((r): r is NonNullable<typeof r> => r !== null)
+  .sort((a, b) => a.corridor - b.corridor);
+const widestAcross = Math.max(...across.map((r) => r.corridor), 0.0001);
 
-// Most fragile first: the smallest adverse move that closes a maximum-leverage position.
-rows.sort((a, b) => a.longDist - b.longDist);
-const tightest = rows[0];
-const loosest = rows[rows.length - 1];
-const maxDist = Math.max(...rows.map((r) => r.longDist), 0.0001);
-
-const title = "Liquidation risk by contract — how far each perpetual can move | Basis";
-const description =
-  "The adverse price move that liquidates a maximum-leverage position on each perpetual, computed from published maintenance-margin tiers. Not a liquidation feed — no exchange publishes a complete one.";
+const title = `${perp.symbol} liquidation thresholds — the corridor each leverage permits | Basis`;
+const description = `Where a ${perp.symbol} perpetual position is closed at every leverage the contract allows, computed from published maintenance-margin tiers. Not a liquidation heatmap: no venue publishes where positions actually sit.`;
 ---
 
 <Base title={title} description={description} fetchedAt={snap.fetchedAt}>
   <div class="page-head">
-    <h1>Liquidation risk by contract</h1>
+    <h1>Liquidation thresholds</h1>
     <p>
-      How far the price has to move against a position opened at each contract's <strong>own
-      maximum leverage</strong> before the exchange closes it. Computed from the published
-      maintenance-margin tiers, not from a feed of what has been liquidated —
-      <a class="link" href="/methodology/liquidations">no exchange publishes a complete one of those</a>.
+      The price corridor a position survives inside, at every leverage
+      {" "}<strong>{perp.symbol}</strong> permits. Computed from the contract's published
+      maintenance-margin tiers at a mark of <strong>{px(mark)}</strong> — not from any
+      estimate of where positions are.
     </p>
   </div>
 
-  <div class="cards">
-    <div class="card card--lead">
-      <div class="card__label">Thinnest margin for error</div>
-      <div class="card__value pays-l">{pct(tightest.longDist)}</div>
-      <div class="card__meta">{tightest.symbol} at {tightest.maxLeverage}× · {usd(tightest.markPx, 2)}</div>
-    </div>
-    <div class="card">
-      <div class="card__label">Widest margin for error</div>
-      <div class="card__value">{pct(loosest.longDist)}</div>
-      <div class="card__meta">{loosest.symbol} at {loosest.maxLeverage}×</div>
-    </div>
-    <div class="card">
-      <div class="card__label">Contracts covered</div>
-      <div class="card__value">{rows.length}</div>
-      <div class="card__meta">each with its own published tier table</div>
-    </div>
-    <div class="card">
-      <div class="card__label">Leverage range offered</div>
-      <div class="card__value">{Math.min(...rows.map((r) => r.maxLeverage))}–{Math.max(...rows.map((r) => r.maxLeverage))}×</div>
-      <div class="card__meta">tier 1 maximum, across the set</div>
-    </div>
-  </div>
+  <form method="GET" class="calc" style="margin-bottom:16px">
+    <label>Contract
+      <select name="symbol">{snap.perps.map((p) => <option value={p.symbol} selected={p.symbol === perp.symbol}>{p.symbol}</option>)}</select>
+    </label>
+    <button class="btn btn--primary" type="submit">Show</button>
+  </form>
 
-  <div class="verdict verdict--warn">
-    <div>
-      <b>This is what the contract permits, not where positions are.</b> No venue publishes the
-      distribution of open positions by leverage or entry price, so nobody — including this site —
-      can honestly say how much notional is at risk at a given price. Any figure you have seen
-      framed that way is a guess wearing a number. What is knowable is printed here: the rules
-      each contract sets, and the arithmetic that follows from them.
-    </div>
-  </div>
+  <figure class="chart">
+    <div class="chart__scroll">
+      <svg viewBox={`0 0 ${W} ${H}`} class="chart__svg" role="img"
+           aria-label={`Liquidation corridor for ${perp.symbol} at a mark of ${px(mark)}. Every value is listed in the table beneath this chart.`}>
+        {gridPrices.map((p) => (
+          <g>
+            <line x1={padL} x2={W - padR} y1={y(p)} y2={y(p)} class="grid" />
+            <text x={padL - 12} y={y(p) + 4} class="axis" text-anchor="end">{axisPx(p)}</text>
+          </g>
+        ))}
 
-  <h2 class="section">Every covered contract</h2>
+        {rungs.map((r, i) => {
+          const yTop = y(r.shortLiq), yBot = y(r.longLiq);
+          const op = 0.5 - (0.36 * i) / Math.max(1, rungs.length - 1);
+          return (
+            <g>
+              <rect x={cx(i) - barW / 2} y={yTop} width={barW} height={Math.max(2, yBot - yTop)}
+                    rx="4" fill="var(--accent)" fill-opacity={op} stroke="var(--accent)" stroke-opacity="0.55" />
+              <line x1={cx(i) - barW / 2} x2={cx(i) + barW / 2} y1={yTop} y2={yTop} class="cap" />
+              <line x1={cx(i) - barW / 2} x2={cx(i) + barW / 2} y1={yBot} y2={yBot} class="cap" />
+              <text x={cx(i)} y={H - padB + 26} class="lev" text-anchor="middle">{r.L}×</text>
+              <text x={cx(i)} y={H - padB + 44} class="levsub" text-anchor="middle">±{(((r.longDist + r.shortDist) / 2) * 100).toFixed(1)}%</text>
+            </g>
+          );
+        })}
+
+        <line x1={padL} x2={W - padR} y1={yMark} y2={yMark} class="mark" />
+        <text x={W - padR + 10} y={yMark - 6} class="marklab">mark</text>
+        <text x={W - padR + 10} y={yMark + 13} class="markval">{px(mark)}</text>
+
+        <text x={padL} y={padT - 8} class="edge">↑ short is closed here</text>
+        <text x={padL} y={H - padB - 10} class="edge">↓ long is closed here</text>
+      </svg>
+    </div>
+    <figcaption>
+      Each bar is the range a position at that leverage survives inside: upper cap where a short is
+      closed, lower cap where a long is closed. All bars share one price axis, so the collapse from
+      {" "}{rungs[rungs.length - 1].L}× to {rungs[0].L}× is to scale. Every value is in the table below.
+    </figcaption>
+  </figure>
+
+  <h2 class="section">Every threshold, as numbers</h2>
   <p class="section-note">
-    Sorted by the tightest margin for error first. The move column is the distance from the
-    current mark to the maintenance-margin threshold at tier 1's maximum leverage — the most
-    aggressive position the contract allows. Lower leverage moves it proportionally further away.
+    The table runs further down the leverage range than the chart draws. Maintenance margin is set
+    by the tier, not by the leverage you choose — at tier 1 it is {pct(mmf, 3)} of notional.
   </p>
   <div class="panel">
     <table class="tbl">
       <thead>
         <tr>
-          <th>Contract</th>
-          <th class="num">Max leverage</th>
-          <th class="num">Maintenance</th>
-          <th class="num">Move to liquidate (long)</th>
-          <th class="num">Short</th>
-          <th class="num">Tiers</th>
-          <th class="num">Open interest</th>
+          <th class="num">Leverage</th>
+          <th class="num">Initial margin</th>
+          <th class="num">Long liquidation</th>
+          <th class="num">Move</th>
+          <th class="num">Short liquidation</th>
+          <th class="num">Move</th>
+          <th class="num">Corridor width</th>
         </tr>
       </thead>
       <tbody>
-        {rows.map((r) => (
-          <tr>
-            <td class="sym"><a href={`/funding/${r.symbol.toLowerCase()}`}>{r.symbol}</a></td>
-            <td class="num">{r.maxLeverage}×</td>
-            <td class="num">{pct(r.mmf, 3)}</td>
-            <td class="num">
-              <span class="magnitude">
-                <span class="magnitude__track"><span class="magnitude__fill" style={`width:${Math.max(3, Math.round((r.longDist / maxDist) * 100))}%`}></span></span>
-                <span>{pct(r.longDist)}</span>
-              </span>
-            </td>
-            <td class="num">{pct(r.shortDist)}</td>
-            <td class="num">{r.tierCount}</td>
-            <td class="num">{usd(r.oiNotional)}</td>
+        {tableRungs.map((r) => (
+          <tr class={r.L === tier1.maxLeverage ? "is-active" : undefined}>
+            <td class="num">{r.L}×{r.L === tier1.maxLeverage ? " · max" : ""}</td>
+            <td class="num">{pct(r.margin)}</td>
+            <td class="num">{px(r.longLiq)}</td>
+            <td class="num">−{(r.longDist * 100).toFixed(2)}%</td>
+            <td class="num">{px(r.shortLiq)}</td>
+            <td class="num">+{(r.shortDist * 100).toFixed(2)}%</td>
+            <td class="num">{(r.corridor * 100).toFixed(2)}%</td>
           </tr>
         ))}
       </tbody>
     </table>
   </div>
 
-  <h2 class="section">Why the maximum leverage is the interesting number</h2>
-  <p class="prose">
-    A contract offering {Math.max(...rows.map((r) => r.maxLeverage))}× and one offering
-    {" "}{Math.min(...rows.map((r) => r.maxLeverage))}× are not the same instrument with a
-    different dial. The maximum sets how thin the thinnest position on that contract can be, and
-    therefore how small a move can start forced selling. {tightest.symbol} permits a position that
-    dies on a <strong>{pct(tightest.longDist)}</strong> move; {loosest.symbol} does not allow
-    anything tighter than <strong>{pct(loosest.longDist)}</strong>.
+  <div class="verdict verdict--warn">
+    <div>
+      <b>This chart shows the rules, not the positions.</b> It is drawn entirely from
+      {" "}{perp.symbol}'s published margin tiers and its current mark. It does <b>not</b> show
+      where anyone is positioned, how much notional sits at any price, or where a cascade would
+      start — no venue publishes the distribution of open positions by leverage or entry, so
+      nobody can compute that honestly. A liquidation heatmap that appears to show it is a model
+      of assumed positions, which is why such products ship several models and invite you to pick
+      one. There is nothing to pick here: given the tier table and a mark, these prices are
+      arithmetic.
+    </div>
+  </div>
+
+  <h2 class="section">Where {perp.symbol} steps down</h2>
+  <p class="section-note">
+    Maintenance margin is set by the tier the notional falls in, and permitted leverage falls as
+    the position grows. Every threshold above assumes tier 1.
+    {nextTier && <> Above {usd(nextTier.lowerBound)} the corridor widens, because maintenance margin rises to {pct(maintenanceMarginFraction(nextTier.maxLeverage), 3)}.</>}
   </p>
-  <p class="prose">
-    The distance is not simply <code>1/leverage</code>. Liquidation happens at the
-    <strong>maintenance margin</strong>, a positive fraction of notional, so the real threshold is
-    always reached <em>sooner</em> than the naive figure suggests — and the gap widens as leverage
-    falls, because maintenance margin rises as the tier steps down.
-    <a class="link" href="/tools/liquidation-price">Work out a specific position →</a>
+  <div class="panel" style="max-width:720px">
+    <table class="tbl">
+      <thead><tr><th>Tier</th><th class="num">Notional from</th><th class="num">Max leverage</th><th class="num">Maintenance margin</th><th class="num">Corridor at that max</th></tr></thead>
+      <tbody>
+        {tiers.map((t, i) => {
+          const m = maintenanceMarginFraction(t.maxLeverage);
+          const ld = 1 - (1 - 1 / t.maxLeverage) / (1 - m);
+          const sd = (1 + 1 / t.maxLeverage) / (1 + m) - 1;
+          return (
+            <tr class={i === 0 ? "is-active" : undefined}>
+              <td>{i + 1}{i === 0 ? " · charted" : ""}</td>
+              <td class="num">{usd(t.lowerBound)}</td>
+              <td class="num">{t.maxLeverage}×</td>
+              <td class="num">{pct(m, 3)}</td>
+              <td class="num">{((ld + sd) * 100).toFixed(2)}%</td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="section">Tightest corridor each contract permits</h2>
+  <p class="section-note">
+    At every contract's own maximum leverage. A contract offering 40× allows a position that dies
+    on a move a 3× contract would barely register.
   </p>
+  <div class="panel">
+    <table class="tbl">
+      <thead><tr><th>Contract</th><th class="num">Max leverage</th><th class="num">Maintenance</th><th class="num">Corridor at max</th><th class="num">Tiers</th><th class="num">Open interest</th></tr></thead>
+      <tbody>
+        {across.map((r) => (
+          <tr class={r.symbol === perp.symbol ? "is-active" : undefined}>
+            <td class="sym"><a href={`/liquidations?symbol=${r.symbol}`}>{r.symbol}</a></td>
+            <td class="num">{r.maxLeverage}×</td>
+            <td class="num">{pct(r.mmf, 3)}</td>
+            <td class="num">
+              <span class="magnitude">
+                <span class="magnitude__track"><span class="magnitude__fill" style={`width:${Math.max(3, Math.round((r.corridor / widestAcross) * 100))}%`}></span></span>
+                <span>{(r.corridor * 100).toFixed(2)}%</span>
+              </span>
+            </td>
+            <td class="num">{r.tiers}</td>
+            <td class="num">{usd(r.oi)}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
 
   <h2 class="section">What is deliberately absent</h2>
   <p class="prose">
-    No liquidation totals, no cascade tracker, no "$X liquidated in the last hour". Those require
-    an event feed, and every available one is throttled: Binance publishes at most one liquidation
-    per symbol per second, so a sum over it understates by an unknown and variable factor, worst
-    exactly when the number is most quoted.
+    No liquidation totals and no cascade tracker. Those need an event feed, and every available
+    one is throttled — Binance publishes at most one liquidation per symbol per second, so a sum
+    over it understates by an unknown factor, worst exactly when the number is most quoted.
     <a class="link" href="/methodology/liquidations">The full reasoning, with the measured scale of the error →</a>
   </p>
 
   <p style="margin-top:24px">
-    <a class="link" href="/tools/leverage">What leverage a given size actually allows →</a>
-    · <a class="link" href="/tools/position-size">Size a position against a stop →</a>
-    · <a class="link" href="/funding">Funding rates →</a>
+    <a class="link" href="/tools/liquidation-price">Work out a specific position →</a>
+    · <a class="link" href="/tools/leverage">What leverage a given size allows →</a>
+    · <a class="link" href={`/funding/${perp.symbol.toLowerCase()}`}>{perp.symbol} funding →</a>
   </p>
+
+  <style>
+    /* aspect-ratio reserves the box before paint, so the chart cannot shift what follows */
+    .chart { margin: 0; }
+    .chart__scroll { overflow-x: auto; background: var(--surface-2); border: 1px solid var(--border-soft); border-radius: var(--r-md); }
+    .chart__svg { display: block; width: 100%; min-width: 660px; aspect-ratio: 980 / 460; height: auto; }
+    figcaption { font-size: 13px; color: var(--text-faint); margin-top: 10px; max-width: 82ch; }
+
+    .grid { stroke: var(--border-soft); stroke-width: 1; }
+    /* the caps ARE the thresholds, so they carry more weight than the band they bound */
+    .cap { stroke: var(--accent); stroke-width: 2.5; stroke-linecap: round; }
+    .mark { stroke: var(--text); stroke-width: 1.5; stroke-dasharray: 5 4; opacity: .8; }
+    text { font-family: var(--sans); font-variant-numeric: tabular-nums; }
+    .axis { font-size: 12.5px; fill: var(--text-faint); }
+    .lev { font-size: 15px; font-weight: 600; fill: var(--text); }
+    .levsub { font-size: 12px; fill: var(--text-faint); }
+    .marklab { font-size: 11.5px; fill: var(--text-faint); }
+    .markval { font-size: 13px; font-weight: 600; fill: var(--text); }
+    .edge { font-size: 12px; fill: var(--text-faint); }
+  </style>
 </Base>
