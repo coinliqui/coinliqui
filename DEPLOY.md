@@ -206,6 +206,7 @@ Then verify from outside, in a browser:
 - `https://yourdomain.com/sitemap-index.xml` → 5 child sitemaps, 38 URLs total.
 - `https://yourdomain.com/status` → snapshot age under 15 minutes, per-venue row counts all
   non-zero.
+- `https://yourdomain.com/privacy` → loads, and the shield in the top-right corner is lit.
 
 ---
 
@@ -244,3 +245,5 @@ Google the wrong hostname.
 - The git repository is initialised with a `.gitignore` covering `.env`, `.dev.vars`,
   `.wrangler` and `dist`, and four commits of history.
 - Pages read KV only. An upstream outage can make the timestamp older and nothing else.
+- There are no accounts, no notification channel and no secrets to provision. The only
+  environment variable this project has is `SITE_URL`, and it is not a secret.

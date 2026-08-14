@@ -88,10 +88,19 @@ identical label text nodes; JSON-LD is `WebSite` + `Organization` only; `/method
 
 ## Not built yet
 
-Four calculators (funding arbitrage, cost of carry, position size, leverage), OG image
-generation, the Telegram alert path that the `funding_snapshot` table exists to feed, and the
-account entry in the shell — deliberately absent until an account system exists, since a
-button pointing at an empty page would break the no-thin-pages rule.
+OG image generation, at build time in GitHub Actions into R2 — not on-demand in a Worker,
+which has a 10ms CPU limit that image rendering exceeds by orders of magnitude.
+
+## Deliberately not built
+
+**Accounts, and any notification channel.** There is no sign-up, no identity, no email, no
+wallet connection and no Telegram bot; none are planned. The watchlist is `localStorage`, the
+calculators compute in-page, and `/privacy` states the whole of it. The topbar corner control
+points there.
+
+The `funding_snapshot` cron and its D1 writes stay regardless: they exist for the **on-site
+flip feed**, the only event surface on the homepage. That history cannot be backfilled, which
+is why ingest runs from day one.
 
 Liquidation **events** are out of scope by decision, not oversight: Hyperliquid exposes
 liquidations only through a per-address subscription, so a market-wide series would require a

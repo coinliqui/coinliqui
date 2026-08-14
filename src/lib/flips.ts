@@ -7,7 +7,8 @@
  * with the worst measured session depth in this category.
  *
  * Derived entirely from snapshots the cron already fetches — no new data source. The same
- * table later feeds Telegram alerts, so retention history starts accruing from day one.
+ * table backs the on-site flip feed, the only event surface on the homepage. History cannot
+ * be backfilled, so it starts accruing from day one.
  */
 
 export interface Flip {

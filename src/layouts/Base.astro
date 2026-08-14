@@ -181,13 +181,15 @@ const schema = {
       }
       .freshness svg { color: var(--text-faint); flex: 0 0 15px; }
       .freshness time { color: var(--text); font-variant-numeric: tabular-nums; }
-      .account {
+      /* A person icon pointing at a page that says there are no accounts would be its own
+         small lie. Shield, because the page is about what is not collected. */
+      .corner {
         flex: 0 0 40px; width: 40px; height: 40px; display: grid; place-items: center;
         border-radius: var(--r-pill); color: var(--text-dim); text-decoration: none;
         background: var(--surface-2); border: 1px solid var(--border-soft);
       }
-      .account:hover { background: var(--surface-3); color: var(--text); }
-      .account[aria-current="page"] { background: var(--accent-fill); border-color: transparent; color: var(--accent); }
+      .corner:hover { background: var(--surface-3); color: var(--text); }
+      .corner[aria-current="page"] { background: var(--accent-fill); border-color: transparent; color: var(--accent); }
 
       /* The one surface on the page: a single large rounded card holding all content.
          The topbar keeps a fill matching the page background so scrolled content cannot
@@ -408,9 +410,9 @@ const schema = {
                 <span>Updated <time datetime={new Date(fetchedAt!).toISOString()}>{ageMin === 0 ? "just now" : `${ageMin} min ago`}</time></span>
               </div>
             )}
-            <a class="account" href="/account" title="Account" aria-current={path === "/account" ? "page" : undefined}>
-              <svg width="19" height="19" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="10" cy="7.2" r="3" /><path d="M4.3 16.2a5.9 5.9 0 0 1 11.4 0" /></svg>
-              <span class="vh">Account</span>
+            <a class="corner" href="/privacy" title="Privacy" aria-current={path === "/privacy" ? "page" : undefined}>
+              <svg width="19" height="19" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M10 2.6 4.4 5v4.3c0 3.4 2.3 6.5 5.6 7.6 3.3-1.1 5.6-4.2 5.6-7.6V5Z" /><path d="m7.6 9.9 1.8 1.8 3.2-3.6" /></svg>
+              <span class="vh">Privacy</span>
             </a>
           </div>
         </header>
