@@ -1,249 +1,324 @@
-# Deploying Basis — dashboard only
+# Deploying coinliqui.com — dashboard only
 
-Every step below is a web UI. No terminal, no CLI, no wrangler.
+Every step is a web UI. The one exception is pushing the repository to GitHub the first
+time, and there is a GUI app for that too (step 5).
 
 **Order matters.** Data must be flowing *before* the domain is attached. The point of
 deploying now is to start accruing funding history, and history cannot be backfilled — but
 you also do not want Google to meet the site on a `*.pages.dev` hostname. So: worker and
 database first, DNS last.
 
-Total: about 45 minutes, all of it free tier.
+About 50 minutes. All of it on free tiers.
 
----
+Names used below, all fixed — copy them exactly:
 
-## 0. What to buy, before anything else
-
-**Buy one domain.** Register it at **Cloudflare Registrar** (Dashboard → Domain
-Registration → Register Domain). Cloudflare sells at wholesale cost with no markup and
-includes WHOIS privacy, and buying it there means the DNS zone is already in the account —
-which removes the entire nameserver step below.
-
-If you buy elsewhere (Porkbun and Namecheap are both fine), you must then point the
-domain's **nameservers** at Cloudflare — the registrar gives you two `*.ns.cloudflare.com`
-addresses when you add the site. Nothing else works: Cloudflare Pages custom domains
-require Cloudflare to be authoritative for the zone.
-
-**What to buy:**
-
-- `.com` if you can get it. Not `.io` (rising renewals, and it has a live ccTLD-retirement
-  question hanging over it), not `.xyz` or `.finance` (spam-adjacent in this niche).
-- One or two words, no hyphens, no numbers.
-- **Do not buy a "Basis" domain on my say-so.** "Basis" is a working name in the code, not
-  a cleared one — it is a common financial term and almost certainly conflicts. Run the
-  name through the [USPTO TESS search](https://tmsearch.uspto.gov/) and the
-  [EUIPO register](https://euipo.europa.eu/eSearch/) before you spend money. Renaming
-  after launch means redirecting every indexed URL, which is exactly the cost we are
-  deploying early to avoid.
-
-**Where DNS points:** nowhere yet. You attach the domain in step 8, and Cloudflare creates
-the record itself. Do not hand-create an A record to an IP — there isn't one.
+| Thing | Name |
+|---|---|
+| Domain | `coinliqui.com` |
+| KV namespace | `coinliqui-snapshot` |
+| D1 database | `coinliqui` |
+| Ingest worker | `coinliqui-ingest` |
+| Pages project | `coinliqui` |
+| GitHub repo | `coinliqui` (public) |
+| R2 bucket | `coinliqui-og` |
 
 ---
 
 ## 1. Cloudflare account
 
-1. Sign up at **dash.cloudflare.com** — free plan.
-2. Verify the email. Enable 2FA (My Profile → Authentication) before anything is attached
-   to this account.
-
-Nothing here costs money and nothing below leaves the free tier.
+1. Sign up at **dash.cloudflare.com** — Free plan.
+2. Verify the email, then **My Profile → Authentication → Two-Factor Authentication** and
+   turn it on. Do this before anything is attached to the account.
 
 ---
 
-## 2. KV namespace — where pages read from
+## 2. Add coinliqui.com to Cloudflare, and repoint it at Namecheap
+
+Cloudflare has to be authoritative for the zone; Pages custom domains do not work otherwise.
+
+1. Dashboard → **Add a domain** → type `coinliqui.com` → **Continue**.
+2. Choose the **Free** plan.
+3. Cloudflare scans existing DNS. There is nothing to keep on a fresh domain — **Continue**.
+4. Cloudflare shows **two nameservers**, like
+   `adam.ns.cloudflare.com` and `bree.ns.cloudflare.com`. **They are unique to your
+   account — use the two it shows you, not these.** Copy both.
+5. In a second tab, **namecheap.com → Sign in → Domain List → Manage** next to
+   `coinliqui.com`.
+6. On the **Domain** tab find **NAMESERVERS**. Change the dropdown from *Namecheap
+   BasicDNS* to **Custom DNS**.
+7. Paste nameserver 1 and nameserver 2. Remove any other rows. Click the **green tick** to
+   save — Namecheap does not save until you click it.
+8. Back on Cloudflare → **Check nameservers now**.
+
+Status goes **Pending → Active**. Usually 5–30 minutes, occasionally a few hours. **Carry
+on with steps 3–7 while you wait** — none of them need DNS.
+
+> Namecheap may show "Domain is not using Namecheap BasicDNS" as a warning. That is the
+> intended state.
+
+---
+
+## 3. KV namespace — what the pages read from
 
 1. Dashboard → **Storage & Databases → KV**.
-2. **Create namespace**. Name it `basis-snapshot`.
-3. Copy the **Namespace ID** into a scratch note. You need it twice.
+2. **Create namespace**, name `coinliqui-snapshot`.
+3. Copy the **Namespace ID** into a scratch note. You need it once.
 
 ---
 
-## 3. D1 database — the history that cannot be backfilled
+## 4. D1 database — the history that cannot be backfilled
 
 1. Dashboard → **Storage & Databases → D1 SQL Database**.
-2. **Create database**. Name it exactly `basis`.
-3. Copy the **Database ID** into your note.
-4. Open the database → **Console** tab.
-5. Open `db/paste-into-d1-console.sql` from the repo, copy the whole file, paste it into
-   the console, and run it.
-6. Confirm two tables now exist: `funding_snapshot` and `upstream_check`.
+2. **Create database**, name exactly `coinliqui`.
+3. Open it → **Console** tab.
+4. Open `db/paste-into-d1-console.sql` in the repo, copy the whole file, paste, **Execute**.
+5. Confirm two tables exist: `funding_snapshot` and `upstream_check`.
+
+That file is both migrations concatenated, so there is nothing to run in order.
 
 ---
 
-## 4. The ingest worker
+## 5. GitHub repository — public
+
+1. **github.com/new** → name `coinliqui` → **Public** → do *not* add a README, .gitignore
+   or licence (the repo has them) → **Create repository**.
+2. Push the local repo. GUI route: **GitHub Desktop** → *Add → Add Existing Repository* →
+   `~/Documents/basis` → **Publish repository** → untick *Keep this code private*.
+
+**What is in it:** 64 tracked files, scanned — no credential patterns, no `.env`, no
+`.dev.vars`. The KV and D1 IDs that go in `wrangler.toml` are identifiers rather than
+secrets: they are reachable only through a binding on a Worker inside your account. This
+project has no API keys at all, because it reads public market data and stores nothing
+private. The only environment variable is `SITE_URL`, and it is a public URL.
+
+Public is deliberate: GitHub Actions minutes are unlimited only on public repositories,
+and that is where OG image rendering will run.
+
+---
+
+## 6. The ingest worker
 
 1. Dashboard → **Compute (Workers) → Create → Start with Hello World** → **Deploy**.
-   Name it `basis-ingest`.
-2. Click **Edit code**.
-3. Open `worker-dist/ingest.bundle.js` from the repo. Select all, copy, and replace the
-   entire contents of the editor with it. **Deploy**.
+   Name it `coinliqui-ingest`.
+2. **Edit code**.
+3. Open `worker-dist/ingest.bundle.js` from the repo on GitHub, click **Raw**, select all,
+   copy. In the Cloudflare editor select all and paste over it. **Deploy**.
 
-   *(This file is a build artifact committed on purpose, so it can be copied from GitHub's
-   web UI without a build step.)*
+   *(That file is a build artefact committed on purpose, so it can be copied from GitHub's
+   web UI with no build step. If you ever change `worker/ingest.ts`, the bundle must be
+   rebuilt and re-pasted — the dashboard does not build from source.)*
 
-4. Worker → **Settings → Bindings → Add**:
-   - **KV namespace** — variable name `SNAPSHOT`, namespace `basis-snapshot`.
-   - **D1 database** — variable name `DB`, database `basis`.
+4. Worker → **Settings → Bindings → Add binding**:
+   - **KV namespace** — variable name `SNAPSHOT`, namespace `coinliqui-snapshot`
+   - **D1 database** — variable name `DB`, database `coinliqui`
 
-   The variable names must be exactly `SNAPSHOT` and `DB`.
+   The variable names must be exactly `SNAPSHOT` and `DB`, capitals included.
 
-5. Worker → **Settings → Triggers → Cron Triggers → Add**: `*/5 * * * *` (every 5 minutes).
+5. Worker → **Settings → Triggers → Cron Triggers → Add Cron Trigger** → **Schedule**
+   → `*/5 * * * *` → **Add**.
 
 ---
 
-## 5. Start the clock
+## 7. Start the clock
 
-1. Open `https://basis-ingest.<your-subdomain>.workers.dev/ingest` in a browser tab.
-2. You should get JSON with `"ok": true` and roughly 75 rows.
-3. Go back to the D1 console and run:
+1. Open `https://coinliqui-ingest.<your-subdomain>.workers.dev/ingest` in a tab. The
+   subdomain is shown on the worker's page.
+2. Expect JSON with `"ok": true` and roughly 75 rows.
+3. D1 → `coinliqui` → Console:
    ```sql
-   SELECT COUNT(*) FROM funding_snapshot;
+   SELECT COUNT(*) AS rows, MAX(at) AS newest FROM funding_snapshot;
    ```
-   Non-zero means history is accruing. **From this moment the 24-hour clock on the flip
-   feed is running**, whether or not the site is public.
+   Non-zero means history is accruing. **From this moment the funding history is
+   recording**, whether or not the site is public. That is the thing that cannot be
+   backfilled.
 
-If `ok` is false, the JSON carries the upstream status and error string. Nothing else in
-this checklist depends on it succeeding, but don't continue until it does — a deployed site
-with an empty store serves 503s.
-
----
-
-## 6. GitHub repository — public
-
-1. **github.com/new**.
-2. Name it `basis`. Set it to **Public**.
-3. Do not add a README, .gitignore or licence — the repo already has them.
-4. Create.
-
-Public is deliberate: GitHub Actions minutes are unlimited only on public repos, and that
-is where OG image rendering and any heavy ETL will run. Private would meter all of it.
-
-**Before you make it public, know what is in it.** I checked: no credential patterns, no
-`.env`, no `.dev.vars`, 49 files. The KV and D1 IDs in `wrangler.toml` are identifiers, not
-secrets — they are reachable only through a binding on a Worker inside your account. There
-are no API keys anywhere in this project because the site reads public market data and
-stores nothing private.
-
-Pushing the local repository needs a terminal once. If you want to stay GUI-only, use
-**GitHub Desktop** → Add Local Repository → `~/Documents/basis` → Publish repository
-(uncheck "Keep this code private").
+If `ok` is false, the JSON carries the upstream status and the error string. Do not
+continue until it is true — a deployed site with an empty KV serves 503s by design.
 
 ---
 
-## 7. The Pages project
+## 8. The Pages project
 
 1. Dashboard → **Compute (Workers) → Pages → Connect to Git**.
-2. Authorise GitHub, pick the `basis` repo.
+2. Authorise GitHub, select the `coinliqui` repo.
 3. Build settings:
-   - Framework preset: **Astro**
-   - Build command: `npm run build`
-   - Build output directory: `dist`
-4. **Environment variables → Add** (Production *and* Preview):
-   - `SITE_URL` = `https://yourdomain.com` — the final domain, exactly, no trailing slash.
+   - Framework preset **Astro**
+   - Build command `npm run build`
+   - Build output directory `dist`
+4. **Environment variables (Production and Preview) → Add variable**:
+
+   | Name | Value |
+   |---|---|
+   | `SITE_URL` | `https://coinliqui.com` |
+
+   Exactly that. No trailing slash, `https`, apex with no `www`.
+
 5. **Save and Deploy.**
 
-> **`SITE_URL` is not optional.** The build throws if it is missing on Cloudflare. That is
-> deliberate: without it, canonicals and the sitemap would point at a placeholder while the
-> site is live on `*.pages.dev`, which is how indexing starts on a URL you later have to
-> migrate away from. A failed build is the cheaper outcome.
+> **`SITE_URL` is not optional.** The build throws if it is missing on Cloudflare. Without
+> it, canonicals and the sitemap would point at a placeholder while the site was live on
+> `*.pages.dev` — which is how indexing starts on a URL you then have to migrate away from.
+> A failed build is the cheaper outcome.
 
-6. After the first deploy: **Settings → Bindings → Add** the same two bindings as the
-   worker — KV `SNAPSHOT` → `basis-snapshot`, D1 `DB` → `basis`. Then **Deployments →
-   Retry deployment**, because bindings only attach on a fresh deploy.
+6. After the first deploy: **Settings → Bindings → Add** the same two:
+   KV `SNAPSHOT` → `coinliqui-snapshot`, D1 `DB` → `coinliqui`.
+7. **Deployments → … → Retry deployment.** Bindings only attach on a fresh deploy, so the
+   first build does not have them.
 
-At this point `https://basis-xxx.pages.dev` works, and it serves
-`robots.txt` containing `Disallow: /` plus an `X-Robots-Tag: noindex` header on every
-response, because the request host does not match `SITE_URL`. That is intended. It stays
-that way until the real domain is attached.
-
----
-
-## 8. Attach the domain
-
-1. If the domain is not in this account: Dashboard → **Add a site**, enter the domain, pick
-   **Free**, and set the nameservers at your registrar as instructed. Wait for "Active"
-   (minutes to a few hours).
-2. Pages project → **Custom domains → Set up a custom domain**.
-3. Enter the apex, `yourdomain.com`. Cloudflare creates the CNAME itself (flattened at the
-   apex). Accept it.
-4. Add `www.yourdomain.com` as a second custom domain.
-5. Decide which one is canonical — **use the apex**, since `SITE_URL` is the apex. Then
-   Dashboard → **Rules → Redirect Rules → Create**:
-   - When incoming requests match: `Hostname equals www.yourdomain.com`
-   - Then: **Dynamic redirect**, 301, expression
-     `concat("https://yourdomain.com", http.request.uri.path)`
-
-   Two hostnames serving the same content with no redirect is a duplicate-content split.
-
-6. Wait for the certificate to say **Active** (usually under 15 minutes).
-
-The moment the apex resolves, `robots.txt` flips to the full crawler allowlist and the
-`noindex` header disappears — the host guard is what did that, automatically.
+At this point `https://coinliqui-xxx.pages.dev` works and deliberately refuses indexing:
+`robots.txt` returns `Disallow: /` and every response carries
+`X-Robots-Tag: noindex, nofollow`, because the request host does not match `SITE_URL`.
+That is the host guard. It switches itself off the moment the real domain resolves.
 
 ---
 
-## 9. Bot protection — the settings that decide whether this project is visible at all
+## 9. Attach the domain
 
-This is the step that matters most and is easiest to skip. DeFiLlama is effectively
-invisible to AI assistants because of settings like these. Go to the **domain's** dashboard
-(not the Pages project) and confirm every one:
+Requires step 2 to show **Active**.
+
+1. Pages project → **Custom domains → Set up a custom domain** → `coinliqui.com` →
+   **Activate domain**. Cloudflare creates the record itself (CNAME, flattened at the
+   apex). Do not hand-create an A record; there is no IP to point at.
+2. Add a second custom domain: `www.coinliqui.com`.
+3. **Rules → Redirect Rules → Create rule**:
+   - Name: `www to apex`
+   - When incoming requests match → **Custom filter expression**:
+     Field *Hostname*, Operator *equals*, Value `www.coinliqui.com`
+   - Then → **Dynamic redirect**, Type **301**, Expression:
+     ```
+     concat("https://coinliqui.com", http.request.uri.path)
+     ```
+   - **Deploy**
+4. **SSL/TLS → Overview** → mode **Full (strict)**.
+5. **SSL/TLS → Edge Certificates** → **Always Use HTTPS: ON**. Wait for the certificate to
+   read **Active** (usually under 15 minutes).
+
+The apex is canonical because `SITE_URL` is the apex. Two hostnames serving the same
+content with no redirect is a duplicate-content split.
+
+---
+
+## 10. Bot protection — the step that decides whether this project is visible at all
+
+Easiest to skip, most expensive to get wrong. DeFiLlama is effectively invisible to AI
+assistants because of settings like these. **Cloudflare has blocked AI crawlers by default
+on new zones since July 2025**, so the default is against you — this is not a
+belt-and-braces check.
+
+Go to the **domain's** dashboard (`coinliqui.com`, not the Pages project) and set every one:
 
 | Where | Setting | Must be |
 |---|---|---|
+| **AI Crawl Control** (was *AI Audit*) | every crawler's action | **Allow.** Check `GPTBot`, `OAI-SearchBot`, `ChatGPT-User`, `ClaudeBot`, `Claude-User`, `Claude-SearchBot`, `PerplexityBot`, `Google-Extended`, `Applebot-Extended`, `Bytespider`, `Amazonbot` |
 | Security → Bots | **Bot Fight Mode** | **OFF** — it challenges non-browser traffic, which is every crawler we want |
-| Security → Settings | **Block AI bots** / AI Scrapers and Crawlers | **OFF** — this is the DeFiLlama failure exactly |
-| Security → Settings | **AI Labyrinth** | **OFF** — feeds crawlers decoy pages |
-| Security → Settings | **Security Level** | **Medium** or lower. Never "I'm Under Attack" — it challenges Googlebot |
-| Security → Settings | **Browser Integrity Check** | **OFF** — it drops clients with unusual user agents |
+| Security → Settings | **Block AI bots** / *AI Scrapers and Crawlers* | **OFF** |
+| Security → Settings | **AI Labyrinth** | **OFF** — serves crawlers decoy pages |
+| Security → Settings | **Browser Integrity Check** | **OFF** — drops clients with unusual user agents |
+| Security → Settings | **Security Level** | **Medium** or lower. Never *I'm Under Attack*: it challenges Googlebot |
 | Scrape Shield | **Managed robots.txt** | **OFF** — Cloudflare would otherwise append AI-blocking rules to the file we serve |
-| Security → WAF | Custom rules | none blocking by user agent or ASN |
-| Security → Settings | Rate limiting | none on `/sitemaps/*` or `/robots.txt` |
+| Security → WAF → Custom rules | — | none blocking by user agent, ASN or country |
+| Security → WAF → Rate limiting rules | — | none matching `/robots.txt`, `/sitemap-index.xml` or `/sitemaps/*` |
+| Caching → Configuration | **Crawler Hints** | ON (optional, harmless, helps freshness) |
 
-Then verify from outside, in a browser:
+Cloudflare moves these around between dashboard versions. If a row is not where the table
+says, use the dashboard's search box with the setting's name — the required value does not
+change.
 
-- `https://yourdomain.com/robots.txt` → the full allowlist, ending with a `Sitemap:` line
-  on your real domain.
-- `https://yourdomain.com/sitemap-index.xml` → 5 child sitemaps, 38 URLs total.
-- `https://yourdomain.com/status` → snapshot age under 15 minutes, per-venue row counts all
-  non-zero.
-- `https://yourdomain.com/privacy` → loads, and the shield in the top-right corner is lit.
+**Then prove it from outside**, not from the dashboard. In a terminal on any machine, or
+ask me to run them:
 
----
+```bash
+curl -sI -A "GPTBot/1.1"       https://coinliqui.com/funding/btc | head -1
+curl -sI -A "ClaudeBot/1.0"    https://coinliqui.com/           | head -1
+curl -sI -A "PerplexityBot/1.0" https://coinliqui.com/robots.txt | head -1
+curl -sI -A "Googlebot/2.1"    https://coinliqui.com/sitemap-index.xml | head -1
+```
 
-## 10. R2 bucket — create it now, use it later
-
-Needed for OG images. Making it now means the next task has nothing blocking it.
-
-1. Dashboard → **R2 → Create bucket**. Name it `basis-og`. Location: automatic.
-2. Bucket → **Settings → Public access → Connect a domain** → `img.yourdomain.com`.
-   Cloudflare creates the DNS record.
-
-Free tier: 10 GB storage, 1M writes/month. OG images are a few hundred KB total.
+All four must be `HTTP/2 200`. A `403`, a `503`, or an HTML challenge page means one of the
+rows above is still on.
 
 ---
 
-## 11. Search Console — start the indexing clock
+## 11. Email on the domain
 
-1. **search.google.com/search-console** → Add property → **Domain** → `yourdomain.com`.
-2. It asks for a TXT record. Cloudflare DNS → Records → Add → TXT, paste, save. Verify.
-3. Sitemaps → submit `sitemap-index.xml`.
-4. Bing Webmaster Tools (**bing.com/webmasters**) — import directly from Search Console.
-   Worth doing: Bing's index feeds ChatGPT search.
+Free, and it gives you `hello@coinliqui.com` without a mailbox to run.
 
-Submit sitemaps **only after** step 8. Submitting while the site is on `pages.dev` teaches
-Google the wrong hostname.
+1. Domain dashboard → **Email → Email Routing** → **Get started**.
+2. Cloudflare offers to add the MX and TXT records for you → **Add records automatically**.
+3. **Destination addresses → Create** → your personal address → confirm the verification
+   email Cloudflare sends to it.
+4. **Routing rules → Create address**: `hello@coinliqui.com` → forward to that destination.
+5. Optional but worth it: **Catch-all address → Enable** → forward to the same place. That
+   catches typos and anything you print later.
+
+Sending *from* the address needs an SMTP provider and is a separate job; receiving is done.
 
 ---
 
-## What is already done, that you do not need to do
+## 12. R2 bucket — create it now, use it later
 
-- D1 migrations are written and consolidated into one pasteable file.
-- The worker is bundled to a single file with no build step.
+Needed for OG images, which are the next task after the charts.
+
+1. Dashboard → **R2 → Create bucket** → `coinliqui-og`, location Automatic.
+2. Bucket → **Settings → Public access → Custom domains → Connect domain** →
+   `img.coinliqui.com`. Cloudflare creates the DNS record.
+
+Free tier: 10 GB storage, 1M writes/month. OG images total a few hundred KB.
+
+---
+
+## 13. Google Search Console
+
+Do this **only after step 9**, when the apex resolves. Submitting while the site is on
+`pages.dev` teaches Google the wrong hostname.
+
+1. **search.google.com/search-console** → **Add property** → **Domain** (the left box, not
+   URL prefix) → `coinliqui.com`.
+2. It gives you a TXT record. Cloudflare → **DNS → Records → Add record**:
+   Type `TXT`, Name `@`, Content = the string Google gave you. **Save**.
+3. Back in Search Console → **Verify**. If it fails, wait two minutes and retry — DNS
+   propagation inside Cloudflare is fast but not instant.
+4. **Sitemaps** → add `sitemap-index.xml` → **Submit**. One entry; Google reads the seven
+   child sitemaps from it.
+5. **Settings → Crawl stats** — check back in a week; it is the first place a bot block
+   shows up.
+6. **bing.com/webmasters** → **Import from Google Search Console**. Worth the two minutes:
+   Bing's index is what ChatGPT search reads.
+
+### What to watch from week 4
+
+Search Console → **Pages** and **Performance**, filtered by URL path. One row per template:
+
+| Filter | What it tells you | Healthy by week 6 |
+|---|---|---|
+| `/funding/` | the 25 entity pages — the volume play | 20+ indexed |
+| `/tools/` | the 5 calculators — highest intent | all 5 indexed, impressions rising |
+| `/liquidations` | the model pages | all 3 indexed |
+| `/methodology`, `/data-sources` | the citation surface | indexed, few impressions, that is fine |
+| `/` and `/funding` | the hubs | indexed first, always |
+
+Two numbers matter more than rank: **Indexed vs Discovered-not-indexed** in the Pages
+report, and **average position by template** in Performance. If a whole template sits in
+*Discovered – currently not indexed* past week 6, the template is thin, not unlucky.
+
+Also check **Performance → Search appearance** for the first branded queries. A domain with
+no brand history takes 6–10 weeks before `coinliqui` returns the site first.
+
+---
+
+## What is already done, that you do not have to do
+
+- The build is verified against `https://coinliqui.com`: 42 URLs across 7 sitemaps, every
+  one resolving, every one on the apex, and **zero occurrences of any `pages.dev` or
+  `localhost` origin anywhere in the build output**.
+- The host guard is verified: on any hostname that is not `SITE_URL`, `robots.txt` returns
+  `Disallow: /` and every response carries `X-Robots-Tag: noindex, nofollow`.
+- D1 migrations are consolidated into one pasteable file.
+- The worker is bundled to a single file with no build step, rebuilt from the current
+  source on 14 Aug 2026 — it includes the funding-history accumulation the price chart
+  needs.
 - Cron schedule, canary table and `/status` are built.
-- `robots.txt`, sitemaps and canonicals derive from `SITE_URL` — nothing is hardcoded, and
-  no `*.pages.dev` origin appears anywhere in the build output.
-- The git repository is initialised with a `.gitignore` covering `.env`, `.dev.vars`,
-  `.wrangler` and `dist`, and four commits of history.
-- Pages read KV only. An upstream outage can make the timestamp older and nothing else.
-- There are no accounts, no notification channel and no secrets to provision. The only
-  environment variable this project has is `SITE_URL`, and it is not a secret.
+- Pages read KV only. Verified in the compiled output: the page passes `false` for the dev
+  read-through, so with a KV binding present an upstream outage can make the timestamp
+  older and nothing else.
+- No accounts, no notification channel, no secrets to provision.

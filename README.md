@@ -1,107 +1,145 @@
-# Basis — phase 0
+# coinliqui.com — phase 0
 
 Perpetual funding, normalised. Built to the project's SEO constitution: every displayed
 number is in the server-rendered HTML at first byte, every navigation link is a real
 `<a href>`, no page ships without real data behind it.
 
-**The brand name is a placeholder.** "Basis" is a working name — clear it against trademark
-databases and domain availability before launch. It lives in one constant, `src/lib/site.ts`.
+Deployment runbook: **[DEPLOY.md](DEPLOY.md)** — dashboard only.
 
-## What is built
+> **The wordmark and the domain do not match yet.** The domain is `coinliqui.com`; the
+> brand string in the UI is still `Basis`, the working name. It lives in exactly one
+> constant, `SITE.name` in `src/lib/site.ts`, and it feeds every `<title>` suffix, the rail
+> wordmark and the JSON-LD. Changing it is a one-line edit — but it changes every indexed
+> title, so it is cheap this week and progressively less so after.
+
+## Routes
 
 | Route | Template | Notes |
 |---|---|---|
-| `/` | homepage | Dated factual H1 (the citable unit), 6 change cards, flip feed, top-20 table |
+| `/` | homepage | Dated factual H1, change cards, flip feed, top-20 table |
 | `/funding` | hub | 25 contracts × 3 venues, annualised. One link per row |
-| `/funding/{symbol}` | entity | 25 pages. 404s below the coverage floor rather than rendering thin |
+| `/funding/{symbol}` | entity | 25 pages. Candles, volume and the funding band on one time axis. 404s below the coverage floor rather than rendering thin |
 | `/open-interest` | hub | OI, volume, turnover multiple |
+| `/liquidations` | model | Modelled liquidation density, every assumption printed and adjustable, plus the derived corridor chart |
+| `/liquidations/sweep` | case | The 5–6 Feb 2026 event, frozen with its provenance — the model tested against real candles |
+| `/liquidations/survival` | derived | What the rules did to a position opened on each day at each leverage. Nothing modelled |
+| `/unlocks` | calendar | Supply events with per-row provenance |
 | `/tools` | hub | Lists only shipped tools |
 | `/tools/liquidation-price` | tool | Tier-correct vs naive, with the gap shown |
-| `/watchlist` | utility | All contracts server-rendered; pinning is client-side. `Disallow`ed in robots.txt |
-| `/methodology` | reference | Why quoted rates are not comparable, with a live worked example |
-| `/methodology/liquidations` | reference | Why no liquidation totals are published |
+| `/tools/funding-cost`, `/tools/funding-arbitrage`, `/tools/position-size`, `/tools/leverage` | tools | |
+| `/watchlist` | utility | All contracts server-rendered; pinning is `localStorage`. `noindex, follow` in its own head — crawlable so the directive is seen |
+| `/methodology`, `/methodology/liquidations` | reference | Why quoted rates are not comparable; why no liquidation totals are published |
 | `/data-sources` | reference | Every endpoint, cadence, and what is deliberately absent |
-| `/robots.txt`, `/sitemap-index.xml`, `/sitemaps/*.xml` | — | One sitemap per template |
+| `/privacy` | reference | No accounts, no identity, no tracking — the whole of it |
+| `/status` | operational | Snapshot age, per-venue coverage, canary history. `Disallow`ed |
+| `/robots.txt`, `/sitemap-index.xml`, `/sitemaps/*.xml` | — | One sitemap per template. 42 URLs across 7 |
 
 ## Data
 
-Two keyless Hyperliquid calls, verified 2026-08-14:
+Keyless Hyperliquid calls, verified 2026-08-14:
 
 - `POST /info {"type":"metaAndAssetCtxs"}` — 232 contracts: funding, openInterest, markPx,
   oraclePx, prevDayPx, dayNtlVlm, premium, maxLeverage, marginTableId
 - `POST /info {"type":"predictedFundings"}` — 232 × 3 venues (Hyperliquid, Binance, Bybit)
+- `POST /info {"type":"candleSnapshot"}` — 1d and 1h series. Pre-launch backfill carries
+  zero volume and is excluded everywhere
+- `POST /info {"type":"fundingHistory"}` — Hyperliquid's own hourly rate, paged backwards
+  and accumulated in KV so depth grows with each cron pass
 - `POST /info {"type":"marginTable","id":N}` — margin tiers, fetched at build time
 
 Coverage floor: $5M notional open interest. 50 contracts clear it; phase 0 publishes 25.
 
-**OKX is not a source.** Its API Agreement §9.4 (2026-07-28) forbids publishing or displaying
-its market data, explicitly including public endpoints and non-commercial use. It may only be
-used internally to compute derived values, never displayed or attributed.
+**OKX is not a source.** Its API Agreement §9.4 (2026-07-28) forbids publishing or
+displaying its market data, explicitly including public endpoints and non-commercial use.
+It may only be used internally to compute derived values, never displayed or attributed.
 
 ## Architecture
 
 ```
-GitHub Actions (build)      Cron Worker (5 min)          Pages Function (request)
-margin tables -> JSON       metaAndAssetCtxs      \
-OG images     -> R2         predictedFundings      ---> KV -----> HTML with numbers
-                            -> KV + D1 history           D1        at first byte
+Cron Worker (5 min)                    Pages Function (per request)
+metaAndAssetCtxs  \
+predictedFundings  \
+candleSnapshot      ---> KV --------->  HTML with every number at first byte
+fundingHistory     /     D1 (history)
 ```
 
-Pages read KV, never the upstream API. An upstream outage cannot take a page down — it can
-only make the timestamp older. The dev server fetches upstream directly, which is why a
-timeout there produces an error page and in production would not.
+Pages read KV, never the upstream API. Verified in the compiled output: the dev
+read-through is a parameter that compiles to `false`, so with a KV binding present an
+upstream outage can make the timestamp older and nothing else. The dev server does fetch
+upstream directly, which is why a rate-limit there produces a 503 and in production would
+not.
+
+The worker stages its bulk refreshes — at most one of hourly / daily / funding per
+invocation — because a free Worker allows 50 subrequests per invocation and each sweep is
+25 fetches. Steady state is 33.
+
+## Charts
+
+`src/lib/chart.ts` is the single scale every chart is drawn to: a 4px unit that all
+padding, gutters and panel heights are multiples of, the ink palette, round tick values,
+calendar-boundary time ticks, and the crosshair furniture.
+
+Two rules the chart code exists to enforce:
+
+1. **Nothing is eyeballed.** A number in a chart file that is not derived from `chart.ts`
+   is a defect.
+2. **Every generated SVG styles itself inline.** Astro scopes `<style>` selectors to a
+   `data-astro-cid-*` attribute that markup injected with `set:html` never carries, so a
+   class on a generated element silently resolves to nothing and the shape falls back to
+   black. That shipped three times before the rule was written down.
+
+Red and green mean the direction of a funding payment and nothing else, which is why
+candles are monochrome and the density ramp is built to avoid both hues.
 
 ## Setup
 
 ```bash
 npm install
+npm run dev                 # http://localhost:4321
 npm run gen:margin          # refresh committed margin tiers
-npm run dev
+npm run build:worker        # rebuild worker-dist/ingest.bundle.js after editing worker/
+node scripts/fetch-sweep.mjs  # re-freeze the showcase window
 ```
 
-Before deploy: create the KV namespace and D1 database, put their ids in `wrangler.toml`,
-apply `worker/schema.sql`, then trigger `/ingest` once so KV is populated before first render.
+`worker-dist/ingest.bundle.js` is committed on purpose: the dashboard-only deploy copies it
+from GitHub's web UI, so it must be visible there. **It is a build artefact — after any
+change to `worker/ingest.ts` it must be rebuilt and re-pasted into the Worker editor.**
 
 ## Acceptance tests
 
-These are the build's real contract. Run them in CI, not once.
+The build's real contract.
 
 ```bash
-# 1. numbers present for a non-JS AI crawler
-curl -s -A "GPTBot/1.1" $URL/funding/btc | grep -q "10.95%"
+# numbers present for a non-JS AI crawler
+curl -s -A "GPTBot/1.1" $URL/funding/btc | grep -c "Open interest"
 
-# 2. nav labels are text nodes, not aria-label
-curl -s $URL/funding | grep -q '<span class="rail__label">Funding</span>'
+# nav labels are text nodes, not aria-label
+curl -s $URL/funding | grep -q 'nav-item__label'
 
-# 3. collapsed and expanded markup identical apart from the state class
+# collapsed and expanded markup have identical href sets
 diff <(curl -s $URL/funding | grep -o 'href="[^"]*"' | sort) \
      <(curl -s -H "Cookie: rail=0" $URL/funding | grep -o 'href="[^"]*"' | sort)
 
-# 4. no destination is desktop-only (mobile-first parity)
-# 5. SearchAction absent — Google removed the sitelinks searchbox 2024-11-21
+# SearchAction absent — Google removed the sitelinks searchbox 2024-11-21
 curl -s $URL/ | grep -c SearchAction   # must be 0
+
+# every sitemap URL resolves and is on the canonical origin
 ```
-
-Verified 2026-08-14: 44 anchors on `/funding` in both rail states, identical href sets,
-identical label text nodes; JSON-LD is `WebSite` + `Organization` only; `/methodology` and
-`/data-sources` are mobile-hidden in the rail but present in the footer.
-
-## Not built yet
-
-OG image generation, at build time in GitHub Actions into R2 — not on-demand in a Worker,
-which has a 10ms CPU limit that image rendering exceeds by orders of magnitude.
 
 ## Deliberately not built
 
-**Accounts, and any notification channel.** There is no sign-up, no identity, no email, no
-wallet connection and no Telegram bot; none are planned. The watchlist is `localStorage`, the
-calculators compute in-page, and `/privacy` states the whole of it. The topbar corner control
-points there.
+**Accounts, and any notification channel.** No sign-up, no identity, no email, no wallet
+connection, no bot. The watchlist is `localStorage`, the calculators compute in-page, and
+`/privacy` states the whole of it.
 
-The `funding_snapshot` cron and its D1 writes stay regardless: they exist for the **on-site
-flip feed**, the only event surface on the homepage. That history cannot be backfilled, which
-is why ingest runs from day one.
+The `funding_snapshot` cron and its D1 writes stay regardless: they exist for the on-site
+flip feed, and that history cannot be backfilled, which is why ingest runs from day one.
 
-Liquidation **events** are out of scope by decision, not oversight: Hyperliquid exposes
-liquidations only through a per-address subscription, so a market-wide series would require a
-block indexer. See `/methodology/liquidations`.
+Liquidation **events** are out of scope by decision, not oversight: no venue publishes a
+complete feed, and the two routes to one were costed and rejected. See
+`/methodology/liquidations`.
+
+## Not built yet
+
+OG image generation, at build time in GitHub Actions into R2 — not on demand in a Worker,
+whose 10ms CPU limit image rendering exceeds by orders of magnitude.

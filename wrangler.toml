@@ -1,7 +1,7 @@
 # Ingest worker ONLY. The site itself deploys as a Cloudflare Pages project and gets its
 # KV/D1 bindings from the Pages dashboard — the two deployables share the same namespace
 # and database but are configured separately.
-name = "basis-ingest"
+name = "coinliqui-ingest"
 main = "worker/ingest.ts"
 compatibility_date = "2026-08-01"
 
@@ -20,6 +20,6 @@ id = "REPLACE_WITH_KV_ID"
 
 [[d1_databases]]
 binding = "DB"
-database_name = "basis"
+database_name = "coinliqui"
 database_id = "REPLACE_WITH_D1_ID"
 migrations_dir = "migrations"

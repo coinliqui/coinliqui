@@ -1,6 +1,7 @@
 -- Consecutive funding snapshots, one row per symbol per venue per cron tick.
--- This is the only retained history in phase 0. It powers the flip feed today and
--- Telegram alerts later, which is why it starts accruing from day one.
+-- The only retained history in phase 0, and the reason ingest runs from day one: it powers
+-- the on-site flip feed, and it cannot be backfilled. There is no notification channel and
+-- none is planned — see /privacy.
 CREATE TABLE IF NOT EXISTS funding_snapshot (
   symbol TEXT NOT NULL,
   venue  TEXT NOT NULL,
