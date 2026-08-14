@@ -1,5 +1,5 @@
 import type { LiqMap } from "./liqmap.ts";
-import { CH, INK, RAMP, transfer, rampIndex, rampValue, niceTicks, timeTicks, text, rect, fint, compact, crosshair, n2, MONO } from "./chart.ts";
+import { CH, INK, RAMP, transfer, rampIndex, rampValue, niceTicks, timeTicks, text, rect, fint, compact, crosshair, n2, MONO, FS_AXIS, FS_MICRO } from "./chart.ts";
 
 /* =========================================================================================
    Painting the density field.
@@ -63,8 +63,11 @@ export function paintHeatMap(m: LiqMap, opts: { height?: number; mid?: number; m
     const c = m.candles[i], x = plotX + slot * (i + 0.5);
     const wy = yOf(c[2]), wh = Math.max(0.7, yOf(c[3]) - yOf(c[2]));
     const bt = yOf(Math.max(c[1], c[4])), bh = Math.max(1, yOf(Math.min(c[1], c[4])) - bt);
-    s.push(rect(x - ww / 2 - 1.4, wy - 1.4, ww + 2.8, wh + 2.8, "#04070a", ' opacity=".85"'));
-    s.push(rect(x - bw / 2 - 1.4, bt - 1.4, bw + 2.8, bh + 2.8, "#04070a", ' opacity=".85"'));
+    /* The halo is proportional. A flat 1.4 around a 1px wick made the dark outline two and a
+       half times the wick itself, so the price path read as a dark line with a bright seam. */
+    const hw = Math.max(0.7, ww * 0.55), hb = Math.max(0.8, Math.min(1.5, bw * 0.22));
+    s.push(rect(x - ww / 2 - hw, wy - hw, ww + 2 * hw, wh + 2 * hw, "#04070a", ' opacity=".8"'));
+    s.push(rect(x - bw / 2 - hb, bt - hb, bw + 2 * hb, bh + 2 * hb, "#04070a", ' opacity=".8"'));
     const k = c[4] >= c[1] ? "#ffffff" : "#8a97a8";
     s.push(rect(x - ww / 2, wy, ww, wh, k));
     s.push(rect(x - bw / 2, bt, bw, bh, k));
@@ -81,17 +84,17 @@ export function paintHeatMap(m: LiqMap, opts: { height?: number; mid?: number; m
     const lx = Math.max(plotX + 2, Math.min(plotX + plotW - lw - 2, mx - lw / 2));
     s.push(rect(lx, plotY + 6, lw, 20, "rgba(8,11,15,.82)", ' rx="4"'));
     s.push(rect(lx, plotY + 6, 2, 20, "#ffffff", ' rx="1" opacity=".65"'));
-    s.push(text(lx + lw / 2 + 1, plotY + 20, opts.mark.label, "#e9edf2", 10.5, "middle", 600, MONO));
+    s.push(text(lx + lw / 2 + 1, plotY + 20, opts.mark.label, "#e9edf2", FS_MICRO, "middle", 600, MONO));
   }
 
   s.push(`<g data-ax="y">${niceTicks(m.loPrice, m.hiPrice, 5)
-    .map((v) => text(axisX + 10, yOf(v) + 3.5, fint(v), INK.dim, 11)).join("")}</g>`);
+    .map((v) => text(axisX + 10, yOf(v) + 3.5, fint(v), INK.dim, FS_AXIS)).join("")}</g>`);
   s.push(`<g data-ax="x">${timeTicks(m.candles.map((c) => c[0]), 10)
-    .map(({ i, label }) => text(plotX + slot * (i + 0.5), h - 9, label, INK.faint, 11, "middle")).join("")}</g>`);
+    .map(({ i, label }) => text(plotX + slot * (i + 0.5), h - 9, label, INK.faint, FS_AXIS, "middle")).join("")}</g>`);
 
   // MODELLED, said inside the picture — not only in the caption underneath it
   s.push(rect(plotX + 8, plotY + 8, 76, 19, "rgba(10,13,18,.72)", ' rx="4"'));
-  s.push(text(plotX + 46, plotY + 21, "MODELLED", "#c7cfda", 10, "middle", 600, MONO));
+  s.push(text(plotX + 46, plotY + 21, "MODELLED", "#c7cfda", FS_MICRO, "middle", 600, MONO));
 
   s.push(`</g>`);
   s.push(crosshair(plotX, plotY, plotW, plotH, axisX));
@@ -114,17 +117,21 @@ function legendSvg(scale: number, gamma: number, peak: number): string {
   const s: string[] = [];
   const cw = (w - 2) / RAMP.length;
   for (let i = 0; i < RAMP.length; i++) {
-    s.push(rect(1 + i * cw, barY, cw + 0.4, barH, RAMP[i], i === 0 || i === RAMP.length - 1 ? ' rx="2"' : ""));
+    s.push(rect(1 + i * cw, barY, cw + 0.4, barH, RAMP[i]));
   }
-  const step = niceTicks(0, scale, 4).filter((v) => v > 0);
-  s.push(text(1, 26, "none", INK.faint, 10.5, "start"));
+  const step = niceTicks(0, scale, 4).filter((v) => v > 0 && v < scale * 0.94);
+  s.push(text(1, 26, "none", INK.faint, FS_MICRO, "start"));
   for (const v of step) {
     const t = Math.min(1, (v / scale) ** gamma);
     const x = 1 + t * (w - 2);
     s.push(rect(x - 0.5, barH, 1, 3, "#4b535d"));
-    s.push(text(Math.min(w - 22, Math.max(26, x)), 26, compact(v), INK.dim, 10.5, "middle"));
+    s.push(text(Math.min(w - 40, Math.max(26, x)), 26, compact(v), INK.dim, FS_MICRO, "middle"));
   }
-  s.push(text(w, 26, `peak ${compact(peak)}`, INK.faint, 10.5, "end"));
+  /* The last swatch is open-ended — it covers everything from where it starts up to the peak.
+     Printing the peak at the end of the bar implied the ramp finished there, so a cell at the
+     top of the scale read 1.5x higher than the legend actually promised. */
+  const topStart = scale * ((RAMP.length - 1.5) / (RAMP.length - 1)) ** (1 / gamma);
+  s.push(text(w, 26, `≥ ${compact(topStart)}`, INK.dim, FS_MICRO, "end"));
   return `<svg viewBox="0 0 ${w} 30" width="${w}" height="30" role="img" aria-label="Intensity scale">${s.join("")}</svg>`;
 }
 

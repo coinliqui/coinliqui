@@ -396,11 +396,14 @@ const schema = {
       @media (max-width: 760px) {
         .chart {
           overflow-x: auto; overscroll-behavior-x: contain;
-          /* the fade is the only signal that there is more chart to the right */
-          -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 26px), transparent);
-                  mask-image: linear-gradient(to right, #000 calc(100% - 26px), transparent);
+          /* Both edges fade: the chart opens scrolled to the newest bars, so there is more of
+             it to the LEFT, and a right-only cue would point the wrong way. */
+          -webkit-mask-image: linear-gradient(to right, transparent, #000 24px, #000 calc(100% - 24px), transparent);
+                  mask-image: linear-gradient(to right, transparent, #000 24px, #000 calc(100% - 24px), transparent);
         }
-        .chart > svg, .chart > figure > svg, figure.chart > svg { min-width: 720px; }
+        /* 720px put the axis type at 6.3 CSS px. 1140 keeps it at ~10px, which is the whole
+           point of scrolling rather than scaling. */
+        .chart > svg, .chart > figure > svg, figure.chart > svg { min-width: 1140px; }
       }
       .chart > svg, .chart > figure > svg, .chart__scroll > svg { display: block; width: 100%; height: auto; }
       figure.chart > figcaption { font-size: 13px; color: var(--text-faint); margin-top: 10px; max-width: 84ch; line-height: 1.55; }

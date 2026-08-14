@@ -50,21 +50,27 @@
   const placeTip = () => {
     tipRaf = 0;
     if (!tipNext) return;
-    const { html, cx, cy, touch } = tipNext;
+    const { html, cx, cy, touch, clear } = tipNext;
     const el = tipEl();
-    if (el._h !== html) { el.innerHTML = html; el._h = html; }
+    /* Measuring is the expensive part, so it happens only when the content changed shape. */
+    if (el._h !== html) { el.innerHTML = html; el._h = html; el._r = null; }
     el.setAttribute("data-on", "1");
-    const r = el.getBoundingClientRect(), pad = 16;
+    const r = el._r && el._r.height ? el._r : (el._r = el.getBoundingClientRect());
+    const pad = 16;
     let x = cx + pad;
     if (x + r.width > innerWidth - 10) x = cx - r.width - pad;
     if (x < 10) x = 10;
-    let y = touch ? cy - r.height - 30 : cy - r.height / 2;
+    /* `clear` charts (the density field) put the card ABOVE or BELOW the cursor rather than
+       centred on it, because centring lays it exactly over the band being read out. */
+    let y = touch ? cy - r.height - 30
+      : clear ? (cy < innerHeight / 2 ? cy + 26 : cy - r.height - 26)
+      : cy - r.height / 2;
     if (y < 10) y = touch ? cy + 30 : 10;
     if (y + r.height > innerHeight - 10) y = innerHeight - r.height - 10;
     el.style.transform = `translate3d(${Math.round(x)}px,${Math.round(y)}px,0)`;
   };
-  const showTip = (html, cx, cy, touch) => {
-    tipNext = { html, cx, cy, touch };
+  const showTip = (html, cx, cy, touch, clear) => {
+    tipNext = { html, cx, cy, touch, clear };
     if (!tipRaf) tipRaf = requestAnimationFrame(placeTip);
   };
   const hideTip = () => { tipNext = null; if (tip) tip.removeAttribute("data-on"); };
@@ -86,7 +92,9 @@
      while it is on screen. Opacity only — nothing moves, nothing reflows. */
   const axisFade = (svg) => {
     const gs = [...svg.querySelectorAll('[data-ax]')];
-    return (on) => gs.forEach((g) => g.setAttribute("opacity", on ? "0.22" : "1"));
+    /* 0.22 measured 1.46:1 against the well — that is not stepping back, it is vanishing.
+       0.45 is 2.39:1: clearly secondary, still readable. */
+    return (on) => gs.forEach((g) => g.setAttribute("opacity", on ? "0.45" : "1"));
   };
 
   const wire = (svg, onMove) => {
@@ -151,10 +159,15 @@
       col.setAttribute("x", (a[0] - cwv / 2).toFixed(2));
       col.setAttribute("width", cwv.toFixed(2));
       dot.setAttribute("cx", a[0]); dot.setAttribute("cy", a[8]);
+      /* Outside the price panel there is no price to report. Clamping produced a confident
+         number at the top of the plot while the cursor was over the volume histogram. */
+      const inPlot = vy >= plotY && vy <= plotY + plotH;
       const y = Math.max(plotY, Math.min(plotY + plotH, vy));
       hl.setAttribute("y1", y); hl.setAttribute("y2", y);
+      hl.setAttribute("opacity", inPlot ? ".62" : "0");
       const price = pHi - ((y - plotY) / plotH) * (pHi - pLo);
-      setPill(py, axisX + 5, y - 9.5, "$" + nf(price, dp));
+      if (inPlot) setPill(py, axisX + 5, y - 10, "$" + nf(price, dp));
+      else py.setAttribute("opacity", "0");
       setPill(tx, a[0], axisY || plotY + plotH + 5, stamp(a[1], withTime), plotX, axisX);
 
       const up = a[5] >= a[2], apr = a[7];
@@ -207,7 +220,7 @@
       const ri = Math.max(0, Math.min(rows - 1, Math.floor(((y - plotY) / plotH) * rows)));
       const bandLo = pHi - ((ri + 1) / rows) * (pHi - pLo);
       const bandHi = pHi - (ri / rows) * (pHi - pLo);
-      setPill(py, axisX + 5, y - 9.5, "$" + nf(price, 0));
+      setPill(py, axisX + 5, y - 10, "$" + nf(price, 0));
       setPill(tx, x, plotY + plotH + 5, stamp(t0 + ci * stepMs, true), plotX, axisX);
 
       const fill = target && target.getAttribute ? target.getAttribute("fill") : null;
@@ -220,13 +233,22 @@
           : `<span>Modelled</span><b class="dim">nothing standing here</b>`) +
         `<span>At</span><b>${stamp(t0 + ci * stepMs, true)} UTC</b></div>` +
         `<div class="tip__f">Model output, not an observed liquidation</div>`,
-        cx, cy, touch,
+        cx, cy, touch, true,
       );
     });
     const off = () => { g.setAttribute("opacity", "0"); fade(false); hideTip(); };
     svg.addEventListener("pointerleave", off);
     svg.addEventListener("pointercancel", off);
   });
+
+  /* --------------------------------------------------------- mobile: open at the right
+     A scroll container starts at scrollLeft 0, which on a chart means the OLDEST bars with
+     the price axis off screen entirely. The interesting end is the right one. */
+  const openRight = () => document.querySelectorAll(".chart").forEach((c) => {
+    if (c.scrollWidth > c.clientWidth + 4 && !c._sx) { c.scrollLeft = c.scrollWidth; c._sx = 1; }
+  });
+  openRight();
+  addEventListener("resize", openRight, { passive: true });
 
   /* ------------------------------------------------- simple tooltips on marked shapes */
   document.querySelectorAll("svg[data-tips]").forEach((svg) => {

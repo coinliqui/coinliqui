@@ -21,6 +21,12 @@ import frozen from "../../data/sweep-2026-02.json";
    already established why any number offered for it is wrong by an unknown factor.
    ========================================================================================= */
 
+const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const fmtT = (t: number) => {
+  const d = new Date(t);
+  return `${d.getUTCDate()} ${MON[d.getUTCMonth()]}, ${String(d.getUTCHours()).padStart(2, "0")}:00`;
+};
+
 const hourly = (frozen.candles as number[][]) as Candle[];
 const mmf = 1 / (2 * frozen.maxLeverage);
 const profile = PROFILES.find((p) => p.key === Astro.url.searchParams.get("profile")) ?? PROFILES[1];
@@ -40,7 +46,16 @@ const map = buildLiqMap({
   openInterest: frozen.oiNotional, profile, rows: 150, ageBars, minSpan: 0.16,
 });
 const WICK_AT = Date.parse("2026-02-06T00:00:00Z");
-const paint = paintHeatMap(map, { mark: { t: WICK_AT, label: "6 Feb 00:00 — low $60,000" } });
+/* aggregate() chunks backwards from the end, so a 2-hour bar does not necessarily start on an
+   even hour. The bar to point at is the one whose window CONTAINS the wick, found by index —
+   comparing timestamps matched nothing and silently dropped the highlight. */
+const wickIdx = (() => {
+  let k = 0;
+  for (let i = 0; i < map.candles.length; i++) if (map.candles[i][0] <= WICK_AT) k = i;
+  return k;
+})();
+const wickBarT = map.candles[wickIdx]?.[0] ?? WICK_AT;
+const paint = paintHeatMap(map, { mark: { t: wickBarT, label: `${fmtT(wickBarT)} — low $60,000` } });
 const stepMs = FACTOR * 3_600_000;
 
 // The five bars that cleared the most modelled notional, largest first.
@@ -62,17 +77,21 @@ const dayOpen = event[0][1];
 const dayLow = Math.min(...event.map((c) => c[3]));
 const wick = hourAt("2026-02-06T00:00:00Z");
 const biggestHour = event.reduce((a, b) => (b[5] > a[5] ? b : a));
-/* Volume is compared hour-to-hour. A 30-hour total against a one-hour median is the kind of
-   ratio that produces an impressive number and means nothing. */
+/* The comparison is total-to-total, over the SAME span. Multiplying a one-hour median by
+   thirty-one fixes the units and not the statistic: prior hourly volume is right-skewed
+   (mean/median 1.87), so that denominator is too small and the ratio comes out ~1.8x too
+   big. The honest denominator is the median of every prior thirty-one-hour total. */
 const eventVol = event.reduce((s, c) => s + c[5], 0);
-const typicalOverSameSpan = medVol * event.length;
+const priorBars = hourly.filter((c) => c[0] < EVENT_FROM).map((c) => c[5]);
+const rolling: number[] = [];
+for (let i = 0; i + event.length <= priorBars.length; i++) {
+  rolling.push(priorBars.slice(i, i + event.length).reduce((a, b) => a + b, 0));
+}
+rolling.sort((a, b) => a - b);
+const typicalOverSameSpan = rolling.length ? rolling[Math.floor(rolling.length / 2)] : medVol * event.length;
 
-const fmtT = (t: number) => {
-  const d = new Date(t);
-  const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-  return `${d.getUTCDate()} ${MON[d.getUTCMonth()]}, ${String(d.getUTCHours()).padStart(2, "0")}:00`;
-};
 const px = (v: number) => usd(v, 0);
+const btc = (v: number) => Math.round(v).toLocaleString("en-US");
 const fetched = new Date(frozen.fetchedAt).toISOString().slice(0, 10);
 
 const title = "The 5 February 2026 sweep — a liquidation model tested against real candles | Basis";
@@ -111,8 +130,9 @@ const description =
     <Fragment set:html={paint.legend} />
     <p class="scalebar__note">
       1–12 February 2026, two-hour bars. Brighter is more modelled notional standing at that price
-      at that moment; the peak cell is {compact(map.peak)}. A band ends where price trades through
-      it, which is why the picture goes dark behind the candles.
+      at that moment; the peak cell is {compact(map.peak)}. A band ends one of two ways: price trades
+      through it, which is why the picture goes dark behind the candles, or the positions behind
+      it age past the {TURNOVER_DAYS}-day turnover window and it fades out in four steps.
     </p>
   </div>
 
@@ -141,13 +161,13 @@ const description =
       </thead>
       <tbody>
         {peaks.map((p) => (
-          <tr class={p.t === Date.parse("2026-02-06T00:00:00Z") ? "is-active" : undefined}>
+          <tr class={p.i === wickIdx ? "is-active" : undefined}>
             <td>{fmtT(p.t)}</td>
             <td class="num">{px(p.c[1])}</td>
             <td class="num">{px(p.c[2])}</td>
             <td class="num">{px(p.c[3])}</td>
             <td class="num">{px(p.c[4])}</td>
-            <td class="num">{p.c[5].toFixed(0)} BTC</td>
+            <td class="num">{btc(p.c[5])} BTC</td>
             <td class="num">{compact(p.v)}</td>
           </tr>
         ))}
@@ -161,7 +181,7 @@ const description =
     <strong>{fmtT(wick[0])} UTC</strong> BTC opened at {px(wick[1])}, printed a low of
     <strong>{px(wick[3])}</strong>, and closed back at {px(wick[4])} — a
     {(((wick[1] - wick[3]) / wick[1]) * 100).toFixed(1)}% excursion recovered inside sixty minutes,
-    on {wick[5].toFixed(0)} BTC of volume against a prior median of {medVol.toFixed(0)}. A wick with
+    on {btc(wick[5])} BTC of volume against a prior hourly median of {btc(medVol)}. A wick with
     no close behind it is the shape a forced-seller cascade leaves: the sells are not discretionary,
     so they take whatever bid is there, and the price snaps back once they stop. The model puts a
     dense band exactly in the path of that wick, and afterwards the band is gone.
@@ -169,13 +189,13 @@ const description =
 
   <h2 class="section">How this window was chosen</h2>
   <p class="prose">
-    Not from memory. The model was run forward over every hour Hyperliquid has traded BTC data for
-    — {hourly.length.toLocaleString("en-US")} bars in this file, and the full series behind it —
-    accumulating the modelled notional each bar's range crossed. Ranked by 24-hour total, 5 February
-    2026 is first by a wide margin, and it is also the largest volume spike in the series. The
-    second and third candidates were rises rather than falls, which demonstrate the same mechanism
-    on the short side but with less force. Any of them could have been drawn; this one shows the
-    most.
+    Not from memory. The model was run forward over the full hourly series Hyperliquid publishes
+    for BTC, accumulating the modelled notional each bar's range crossed, and the windows were
+    ranked. By 24-hour total, 5 February 2026 comes first by a wide margin, and it is also the
+    largest volume spike anywhere in the series. The next two candidates were rises rather than
+    falls — the same mechanism on the short side, with less force behind it. Any of them could
+    have been drawn; this one shows the most. The {hourly.length.toLocaleString("en-US")} bars
+    needed to redraw it are frozen in this repository.
   </p>
 
   <h2 class="section">Inputs, frozen</h2>
@@ -185,11 +205,11 @@ const description =
       <tbody>
         <tr><td>Candles</td><td>{hourly.length} hourly bars, {new Date(frozen.from).toISOString().slice(0, 10)} to {new Date(frozen.to).toISOString().slice(0, 10)}, from <code>{frozen.source}</code>, fetched {fetched}</td><td class="num">observed</td></tr>
         <tr><td>Drawn window</td><td>1–12 February 2026, aggregated to {FACTOR}-hour bars ({map.cols} columns)</td><td class="num">observed</td></tr>
-        <tr><td>Warm-up</td><td>{TURNOVER_DAYS} days of book built off-screen before the first column</td><td class="num">assumed</td></tr>
+        <tr><td>Warm-up</td><td>{map.warmBars} bars — {(map.warmBars * FACTOR / 24).toFixed(0)} days — of book built off-screen before the first drawn column{map.warmBars >= ageBars ? "" : ", short of a full turnover window"}</td><td class="num">assumed</td></tr>
         <tr><td>Maintenance margin</td><td>{pct(mmf, 3)}, from Hyperliquid's tier 1 at {frozen.maxLeverage}× max leverage</td><td class="num">observed</td></tr>
         <tr class="is-active"><td>Modelled book size</td><td>{usd(frozen.oiNotional)} — open interest when this file was frozen on {fetched}. Historical open interest is not published, so this sets the model's <em>scale</em>, not its shape.</td><td class="num">assumed</td></tr>
         <tr><td>Leverage mix</td><td><strong>{profile.label}</strong> — {profile.note}</td><td class="num">assumed</td></tr>
-        <tr><td>Drawn price range</td><td>{px(map.loPrice)} – {px(map.hiPrice)}, fitted to the traded range. {pct(map.clipped)} of modelled notional liquidates outside it.</td><td class="num">observed</td></tr>
+        <tr><td>Drawn price range</td><td>{px(map.loPrice)} – {px(map.hiPrice)}, set by {map.spanRule === "traded" ? "the traded range" : "the ±8% floor, the traded range being narrower"}. {pct(map.clipped)} of modelled notional liquidates outside it.</td><td class="num">observed</td></tr>
       </tbody>
     </table>
   </div>
@@ -218,7 +238,7 @@ const description =
             <td class="num">{px(c[2])}</td>
             <td class="num">{px(c[3])}</td>
             <td class="num">{px(c[4])}</td>
-            <td class="num">{c[5].toFixed(0)}</td>
+            <td class="num">{btc(c[5])}</td>
             <td class="num">{(c[5] / medVol).toFixed(1)}×</td>
           </tr>
         ))}

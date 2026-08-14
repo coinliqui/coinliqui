@@ -6,7 +6,7 @@ import { maintenanceMarginFraction, nextTierBoundary, type MarginTable } from ".
 import { getHourly, type Candle } from "../lib/candles.ts";
 import { buildLiqMap, PROFILES } from "../lib/liqmap.ts";
 import { paintHeatMap } from "../lib/heatmap.ts";
-import { RAMP, CH, compact } from "../lib/chart.ts";
+import { RAMP, CH, compact, niceTicks } from "../lib/chart.ts";
 import { aggregate } from "../lib/series.ts";
 import tables from "../data/margin-tables.json";
 
@@ -54,7 +54,7 @@ const map =
       })
     : null;
 const paint = map ? paintHeatMap(map) : null;
-const warmBars = map ? Math.min(start, ageBars) : 0;
+const warmBars = map ? map.warmBars : 0;
 const stepMs = win.factor * 3_600_000;
 const totalClustered = map ? map.clusters.reduce((s, c) => s + c.notional, 0) : 0;
 const offAxis = profile.weights.filter(([L]) => L <= tier1.maxLeverage && map && (mark * (1 - 1 / L)) / (1 - mmf) < map.loPrice);
@@ -82,7 +82,8 @@ const groupX = cpL + (cPlotW - groupW) / 2;
 const colW2 = groupW / rungs.length;
 const cx = (i: number) => groupX + (i + 0.5) * colW2;
 const barW = Math.min(72, colW2 * 0.58);
-const gridPrices = Array.from({ length: 6 }, (_, i) => yMin + ((yMax - yMin) * i) / 5);
+// round tick values here too — one scale for every chart on the site
+const gridPrices = niceTicks(yMin, yMax, 5);
 
 const title = `${perp.symbol} liquidation map — modelled density, with the model on the page | Basis`;
 const description = `A modelled liquidation density map for ${perp.symbol}: where levels stand, where price has already cleared them, and every assumption printed and adjustable — alongside the tier-correct corridor, which is derived rather than modelled.`;
@@ -127,14 +128,16 @@ const description = `A modelled liquidation density map for ${perp.symbol}: wher
         <p class="scalebar__note">
           Modelled notional standing at a price, at a moment. Scaled against the 99.5th percentile
           so one dominant cluster cannot drag everything else to the floor; the peak cell is
-          {" "}{compact(map.peak)}. Hover any point for the band it sits in.
+          {" "}{compact(map.peak)}. A band ends where price trades through it, or fades out in four
+          steps as the positions behind it age past the {TURNOVER_DAYS}-day turnover window. Hover
+          any point for the value band it sits in.
         </p>
       </div>
 
       <div class="reads">
         <div><b>{compact(sweptTotal)}</b><span>modelled notional price traded through inside this window</span></div>
         <div><b>{pct(map.clipped)}</b><span>of modelled notional sits outside the drawn price range</span></div>
-        <div><b>{axisPx(map.tradedLo)} – {axisPx(map.tradedHi)}</b><span>the traded range the axis is fitted to</span></div>
+        <div><b>{axisPx(map.tradedLo)} – {axisPx(map.tradedHi)}</b><span>the range that actually traded in this window</span></div>
       </div>
 
       <div class="verdict verdict--warn">
@@ -161,17 +164,24 @@ const description = `A modelled liquidation density map for ${perp.symbol}: wher
             <tr><td class="num">4</td><td>Direction</td><td>Half long, half short at every leverage</td><td class="num">assumed</td></tr>
             <tr><td class="num">5</td><td>How long a position stays open</td><td>A bounded life of {TURNOVER_DAYS} days, decaying in four tranches. Removed earlier if price trades through its level.</td><td class="num">assumed</td></tr>
             <tr><td class="num">6</td><td>Maintenance margin</td><td>{pct(mmf, 3)} at tier 1, from the published table</td><td class="num">observed</td></tr>
-            <tr><td class="num">7</td><td>Book before the window opens</td><td>{warmBars} bars of warm-up are modelled off-screen, so the first drawn column already holds a full book</td><td class="num">assumed</td></tr>
-            <tr><td class="num">8</td><td>Drawn price range</td><td>Fitted to the traded range. {pct(map.clipped)} of modelled notional liquidates further away than this and is not drawn.</td><td class="num">observed</td></tr>
+            <tr><td class="num">7</td><td>Book before the window opens</td><td>{warmBars} bars of warm-up are modelled off-screen{warmBars >= ageBars
+                ? <>, so the first drawn column already holds a full book</>
+                : <>. That is short of the {ageBars} a full book needs, so the left of the picture is still filling up</>}</td><td class="num">assumed</td></tr>
+            <tr><td class="num">8</td><td>Drawn price range</td><td>{map.spanRule === "traded"
+                ? <>Fitted to the traded range, {axisPx(map.tradedLo)}–{axisPx(map.tradedHi)}, plus headroom.</>
+                : <>The traded range was quieter than the ±8% floor, so the <strong>floor</strong> set the axis — not the traded range.</>}
+              {" "}{pct(map.clipped)} of modelled notional liquidates further away than this and is not drawn.</td><td class="num">observed</td></tr>
           </tbody>
         </table>
       </div>
       <p class="section-note" style="max-width:88ch">
-        Row 8 is the one most worth reading twice. Fitting the axis to the traded range is what
-        gives the price path presence — the previous version spanned a third of the price to
-        accommodate 2× levels half a market away, and flattened real movement into a squiggle.
-        The cost is that low-leverage levels fall off the picture.
-        {offAxis.length > 0 && <> Here that is {offAxis.map(([L]) => `${L}×`).join(", ")} and below.</>}
+        Row 8 is the one most worth reading twice. Tying the axis to what actually traded is
+        what gives the price path presence — the previous version spanned a third of the price
+        to accommodate 2× levels half a market away, and flattened real movement into a
+        squiggle. A floor of ±8% stops a very quiet window from zooming into noise, and in a
+        quiet window it is the floor rather than the traded range that sets the axis. Either
+        way the cost is that low-leverage levels fall off the picture.
+        {offAxis.length > 0 && <> Here that is {offAxis.map(([L]) => `${L}×`).join(", ").replace(/, ([^,]*)$/, " and $1")}.</>}
       </p>
 
       <h2 class="section">Leverage mix used: {profile.label}</h2>
@@ -199,7 +209,7 @@ const description = `A modelled liquidation density map for ${perp.symbol}: wher
           <tbody>
             {map.clusters.map((c) => (
               <tr>
-                <td class="num">{px(c.price)}</td>
+                <td class="num">{axisPx(c.price)}</td>
                 <td class="num">{c.distance >= 0 ? "+" : ""}{(c.distance * 100).toFixed(2)}%</td>
                 <td>{c.side === "long" ? "longs" : "shorts"}</td>
                 <td class="num">{usd(c.notional)}</td>
@@ -228,10 +238,13 @@ const description = `A modelled liquidation density map for ${perp.symbol}: wher
     <svg viewBox={`0 0 ${CW} ${CHT}`} class="corr" role="img" data-tips
          aria-label={`Liquidation corridor for ${perp.symbol} at a mark of ${px(mark)}. Every value is in the table beneath.`}>
       <rect x="0" y="0" width={CW} height={CHT} rx="10" fill="#14171b" />
+      {/* the tick nearest the mark is dropped: the live pill is already the reading there */}
       {gridPrices.map((p) => (
         <g>
           <line x1={cpL} x2={CW - cpR} y1={cy(p)} y2={cy(p)} stroke="#22272e" stroke-width="1" />
-          <text x={CW - cpR + 10} y={cy(p) + 4} fill="#9aa1ab" font-size="11" font-family="ui-monospace,Menlo,monospace">{axisPx(p)}</text>
+          {Math.abs(cy(p) - cy(mark)) > 16 && (
+            <text x={CW - cpR + 10} y={cy(p) + 4} fill="#9aa1ab" font-size="11" font-family="ui-monospace,Menlo,monospace">{axisPx(p)}</text>
+          )}
         </g>
       ))}
       {rungs.map((r, i) => {

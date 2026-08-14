@@ -4,7 +4,7 @@ import { getSnapshot, coldStart } from "../../lib/hyperliquid.ts";
 import { usd, pct } from "../../lib/funding.ts";
 import { maintenanceMarginFraction, type MarginTable } from "../../lib/margin.ts";
 import { getCandles, survivalGrid, gridLevels } from "../../lib/candles.ts";
-import { CH, INK, RAMP, text, rect, timeTicks, fint, SANS } from "../../lib/chart.ts";
+import { CH, INK, RAMP, text, rect, timeTicks, niceTicks, fint, SANS, FS_AXIS, FS_MICRO } from "../../lib/chart.ts";
 import tables from "../../data/margin-tables.json";
 
 const env = (Astro.locals as any)?.runtime?.env;
@@ -70,31 +70,35 @@ if (grid && grid.entries.length > 4) {
   out.push(rect(0, 0, HW, HH, INK.well, ` rx="${CH.radius}"`));
 
   // legend: one swatch per bucket, labelled underneath, then the survived key
-  out.push(text(hpL, 22, "closed after", INK.faint, 11, "start", 400, SANS));
+  out.push(text(hpL, 22, "closed after", INK.faint, FS_AXIS, "start", 400, SANS));
   let lx = hpL + 76;
   for (const b of BUCKETS) {
     out.push(rect(lx, 13, 34, 11, RAMP[b.ramp], ' rx="2"'));
-    out.push(text(lx + 17, 37, b.label, INK.faint, 10.5, "middle"));
+    out.push(text(lx + 17, 37, b.label, INK.faint, FS_MICRO, "middle"));
     lx += 39;
   }
-  out.push(text(lx + 4, 22, "days", INK.faint, 11, "start", 400, SANS));
+  out.push(text(lx + 4, 22, "days", INK.faint, FS_AXIS, "start", 400, SANS));
   out.push(rect(lx + 44, 13, 14, 11, SURVIVED, ' rx="2"'));
-  out.push(text(lx + 64, 22, `never closed in ${hold} days`, INK.faint, 11, "start", 400, SANS));
+  out.push(text(lx + 64, 22, `never closed in ${hold} days`, INK.faint, FS_AXIS, "start", 400, SANS));
 
   // price strip — the same entry-day closes the grid below is computed from
   const cl = grid.entries.map((c) => c[4]);
   const pmin = Math.min(...cl), pmax = Math.max(...cl);
   const sy = (v: number) => stripT + stripH - ((v - pmin) / Math.max(1e-12, pmax - pmin)) * stripH;
   const pts = cl.map((v, i) => `${(hpL + i * colW + colW / 2).toFixed(1)},${sy(v).toFixed(1)}`);
-  out.push(`<path d="M${hpL},${(stripT + stripH).toFixed(1)} L${pts.join(" L")} L${(hpL + cols * colW).toFixed(1)},${(stripT + stripH).toFixed(1)} Z" fill="${INK.acc}" fill-opacity="0.09"/>`);
+  const ax0 = (hpL + colW / 2).toFixed(1), ax1 = (hpL + (cols - 0.5) * colW).toFixed(1);
+  out.push(`<path d="M${ax0},${(stripT + stripH).toFixed(1)} L${pts.join(" L")} L${ax1},${(stripT + stripH).toFixed(1)} Z" fill="${INK.acc}" fill-opacity="0.09"/>`);
   out.push(`<polyline points="${pts.join(" ")}" fill="none" stroke="${INK.up}" stroke-width="1.5" stroke-linejoin="round"/>`);
-  out.push(text(HW - hpR + 10, stripT + 4, fint(pmax), INK.dim, 11));
-  out.push(text(HW - hpR + 10, stripT + stripH + 4, fint(pmin), INK.dim, 11));
-  out.push(text(hpL, stripT - 9, `${perp.symbol} close on the entry day`, INK.faint, 11, "start", 400, SANS));
+  /* Round ticks, like every other price axis here — the raw extremes of a window are not
+     numbers anyone holds in their head. */
+  for (const v of niceTicks(pmin, pmax, 2)) {
+    out.push(text(HW - hpR + 10, Math.max(stripT + 4, Math.min(stripT + stripH + 4, sy(v) + 4)), fint(v), INK.dim, FS_AXIS));
+  }
+  out.push(text(hpL, stripT - 9, `${perp.symbol} close on the entry day`, INK.faint, FS_AXIS, "start", 400, SANS));
 
   grid.levels.forEach((lv, r) => {
     const yy = hpT + r * rowH;
-    out.push(text(hpL - 10, yy + rowH / 2 + 4, `${lv.L}×`, INK.dim, 11.5, "end", 500));
+    out.push(text(hpL - 10, yy + rowH / 2 + 4, `${lv.L}×`, INK.dim, FS_AXIS, "end", 500));
     lv.cells.forEach((c, ci) => {
       const surv = c.liqDay === null;
       const b = surv ? null : bucketOf(c.liqDay!);
@@ -112,7 +116,7 @@ if (grid && grid.entries.length > 4) {
   });
 
   for (const { i, label } of timeTicks(grid.entries.map((c) => c[0]), 8)) {
-    out.push(text(hpL + i * colW + colW / 2, HH - 9, label, INK.faint, 11, "middle"));
+    out.push(text(hpL + i * colW + colW / 2, HH - 9, label, INK.faint, FS_AXIS, "middle"));
   }
   heatSvg = out.join("");
 }

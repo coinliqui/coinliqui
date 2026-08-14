@@ -1,5 +1,5 @@
 import { type Candle, type FundingPoint, T, O, H, L, C, V } from "./candles.ts";
-import { U, CH, INK, SANS, niceTicks, timeTicks, text, rect, line, fint, crosshair, n2 } from "./chart.ts";
+import { U, CH, INK, SANS, niceTicks, timeTicks, text, rect, line, fint, crosshair, n2, FS_AXIS, FS_MICRO, PILL_H, PILL_R, PILL_GAP } from "./chart.ts";
 
 /* =========================================================================================
    PRICE CHART — candles, volume, and the funding band.
@@ -126,7 +126,7 @@ export function buildPriceChart(candles: Candle[], funding: FundingPoint[] | nul
   for (const v of niceTicks(lo, hi, 5)) {
     const y = yOf(v);
     s.push(line(plotX, y, axisX, y, INK.hair));
-    if (Math.abs(y - lastY) > 16) yLabels.push(text(axisX + 10, y + 3.5, dp ? v.toFixed(dp) : fint(v), INK.dim, 11));
+    if (Math.abs(y - lastY) > 16) yLabels.push(text(axisX + 10, y + 3.5, dp ? v.toFixed(dp) : fint(v), INK.dim, FS_AXIS));
   }
   s.push(`<g data-ax="y">${yLabels.join("")}</g>`);
 
@@ -153,7 +153,7 @@ export function buildPriceChart(candles: Candle[], funding: FundingPoint[] | nul
          the panel reads as "not collected" rather than "nothing happened". */
       s.push(rect(plotX, fundY, x0 - plotX, fundH, "#1b2026"));
       s.push(line(x0, fundY, x0, fundY + fundH, "#39414a"));
-      s.push(text(x0 - 10, fz + 3.8, "no funding history before " + shortDate(fundingFrom), INK.faint, 10.5, "end", 400, SANS));
+      s.push(text(x0 - 10, fz + 3.8, "no funding history before " + shortDate(fundingFrom), INK.faint, FS_MICRO, "end", 400, SANS));
     }
     s.push(
       `<defs><linearGradient id="${gid}l" x1="0" y1="0" x2="0" y2="1">` +
@@ -170,16 +170,16 @@ export function buildPriceChart(candles: Candle[], funding: FundingPoint[] | nul
       s.push(`<polyline points="${pts}" fill="none" stroke="${side > 0 ? INK.paysL : INK.paysS}" stroke-width="1.1" stroke-linejoin="round" opacity=".9"/>`);
     }
     s.push(line(plotX, fz, axisX, fz, INK.zero));
-    s.push(text(axisX + 10, fundY + 11, `+${(fmax * 100).toFixed(0)}%`, INK.faint, 10));
-    s.push(text(axisX + 10, fundY + fundH - 2, `−${(fmax * 100).toFixed(0)}%`, INK.faint, 10));
+    s.push(text(axisX + 10, fundY + 11, `+${(fmax * 100).toFixed(0)}%`, INK.faint, FS_MICRO));
+    s.push(text(axisX + 10, fundY + fundH - 2, `−${(fmax * 100).toFixed(0)}%`, INK.faint, FS_MICRO));
   }
 
   s.push(line(plotX, lastY, axisX, lastY, INK.acc, 1, ' stroke-dasharray="2 5" opacity=".6"'));
-  s.push(rect(axisX + 5, lastY - 10, 70, 20, INK.acc, ' rx="5"'));
-  s.push(text(axisX + 40, lastY + 4, dp ? px.toFixed(dp) : fint(px), INK.accInk, 11.5, "middle", 600));
+  s.push(rect(axisX + PILL_GAP, lastY - PILL_H / 2, 74, PILL_H, INK.acc, ` rx="${PILL_R}"`));
+  s.push(text(axisX + PILL_GAP + 37, lastY + 4, "$" + (dp ? px.toFixed(dp) : fint(px)), INK.accInk, 11.5, "middle", 600));
 
   s.push(`<g data-ax="x">${timeTicks(candles.map((c) => c[T]), 8)
-    .map(({ i, label }) => text(xOf(i), LY.h - 9, label, INK.faint, 11, "middle")).join("")}</g>`);
+    .map(({ i, label }) => text(xOf(i), LY.h - 9, label, INK.faint, FS_AXIS, "middle")).join("")}</g>`);
   s.push(crosshair(plotX, priceY, plotW, LY.h - CH.padB - priceY, axisX, { dot: true }));
 
   const first = candles[0][C];

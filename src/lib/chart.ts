@@ -154,6 +154,10 @@ export function timeTicks(times: number[], want = 8): { i: number; label: string
 }
 
 /* ------------------------------------------------------------------- svg primitives */
+/** Axis furniture: two sizes, two weights, nothing between them. */
+export const FS_AXIS = 11, FS_MICRO = 10;
+export const PILL_H = 20, PILL_R = 5, PILL_GAP = 5;
+
 export const esc = (s: unknown) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
 export const MONO = "ui-monospace,SFMono-Regular,Menlo,monospace";
 export const SANS = "ui-sans-serif,system-ui,-apple-system,sans-serif";
@@ -185,16 +189,20 @@ export function compact(v: number): string {
  * geometry is fixed here so the script never has to compute a size at runtime.
  */
 export function crosshair(plotX: number, plotY: number, plotW: number, plotH: number, axisX: number, opts: { dot?: boolean } = {}) {
+  /* Same geometry as the static last-price pill (PILL_H / PILL_R / left edge), so the two
+     never read as two different kinds of object sharing one axis slot. */
   const pill = (id: string, w: number) =>
     `<g data-xh="${id}" opacity="0" transform="translate(0,0)">` +
-    `<rect x="0" y="0" width="${w}" height="19" rx="4" fill="#39424e"/>` +
-    `<text x="${w / 2}" y="13.5" fill="#eef1f5" font-size="11" font-family="${MONO}" font-weight="500" text-anchor="middle"></text></g>`;
+    `<rect x="0" y="0" width="${w}" height="${PILL_H}" rx="${PILL_R}" fill="#3c4650"/>` +
+    `<text x="${w / 2}" y="${PILL_H / 2 + 4}" fill="#f2f5f8" font-size="11.5" font-family="${MONO}" font-weight="600" text-anchor="middle"></text></g>`;
+  /* The crosshair is NEUTRAL. The accent dashed rule already means "last price"; drawing the
+     cursor in the same blue dashed line made two different facts look like one. */
   return (
     `<g data-xh="g" opacity="0" pointer-events="none">` +
-    `<line data-xh="v" x1="0" y1="${n2(plotY)}" x2="0" y2="${n2(plotY + plotH)}" stroke="#8ab4f8" stroke-width="1" stroke-dasharray="2 3" opacity=".85"/>` +
-    `<line data-xh="h" x1="${n2(plotX)}" y1="0" x2="${n2(plotX + plotW)}" y2="0" stroke="#8ab4f8" stroke-width="1" stroke-dasharray="2 3" opacity=".7"/>` +
-    (opts.dot ? `<circle data-xh="dot" cx="0" cy="0" r="3.2" fill="#8ab4f8" stroke="#14171b" stroke-width="1.4"/>` : "") +
-    pill("py", 74).replace('translate(0,0)', `translate(${n2(axisX + 5)},0)`) +
+    `<line data-xh="v" x1="0" y1="${n2(plotY)}" x2="0" y2="${n2(plotY + plotH)}" stroke="#c3ccd6" stroke-width="1" stroke-dasharray="1 3" opacity=".8"/>` +
+    `<line data-xh="h" x1="${n2(plotX)}" y1="0" x2="${n2(plotX + plotW)}" y2="0" stroke="#c3ccd6" stroke-width="1" stroke-dasharray="1 3" opacity=".62"/>` +
+    (opts.dot ? `<circle data-xh="dot" cx="0" cy="0" r="3.2" fill="#eef1f5" stroke="#14171b" stroke-width="1.4"/>` : "") +
+    pill("py", 74).replace("translate(0,0)", `translate(${n2(axisX + 5)},0)`) +
     pill("tx", 92) +
     `</g>`
   );

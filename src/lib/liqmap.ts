@@ -63,6 +63,13 @@ export const PROFILES: LevProfile[] = [
 /** A position's life, as four tranches of a decaying survival curve. A single hard cut-off
     would make every unswept band exactly `ageBars` long — a regularity you can see. */
 const TRANCHES: [number, number][] = [[0.25, 0.42], [0.5, 0.26], [0.75, 0.18], [1, 0.14]];
+/** Mean life of a cohort as a fraction of the turnover window: 0.51 here.
+    Cohorts are sized so that the ones OPENED over a window sum to open interest, but each
+    survives only part of it, so without dividing this back out the book STANDING at any
+    instant is 0.51x OI — and every dollar printed beside the picture is half what the page
+    claims it is. Caught by review; the picture's shape never showed it, because the transfer
+    function is solved from the data and absorbs a constant factor silently. */
+const LIFE = TRANCHES.reduce((a, [frac, w]) => a + frac * w, 0);
 /** Softens each tier across three price rows so a band is a band, not a hairline. */
 const KERNEL: [number, number][] = [[-1, 0.16], [0, 0.68], [1, 0.16]];
 
@@ -85,6 +92,10 @@ export interface LiqMap {
   tradedLo: number; tradedHi: number;
   totalNotional: number;
   ageBars: number;
+  /** which rule set the drawn price span */
+  spanRule: "traded" | "floor";
+  /** bars of book modelled before the first drawn column; short of ageBars means partial */
+  warmBars: number;
 }
 
 export function buildLiqMap(opts: {
@@ -131,7 +142,13 @@ export function buildLiqMap(opts: {
   const tradedLo = Math.min(...disp.map((c) => c[3]));
   const tradedHi = Math.max(...disp.map((c) => c[2]));
   const last = disp[disp.length - 1][4];
-  const span = Math.max((tradedHi - tradedLo) * 1.14, last * (opts.minSpan ?? 0.16)) * 1.06;
+  const fromTraded = (tradedHi - tradedLo) * 1.14;
+  const fromFloor = last * (opts.minSpan ?? 0.16);
+  /* Which rule won matters to the reader, so it is reported rather than assumed. In a quiet
+     window the floor wins and the axis is NOT fitted to the traded range — saying it is would
+     be a false statement on a page whose whole argument is that its inputs are stated. */
+  const spanRule: "traded" | "floor" = fromTraded >= fromFloor ? "traded" : "floor";
+  const span = Math.max(fromTraded, fromFloor) * 1.06;
   const mid = (tradedHi + tradedLo) / 2;
   const hiPrice = mid + span / 2, loPrice = Math.max(0, mid - span / 2);
   const band = (hiPrice - loPrice) / rows;
@@ -160,7 +177,7 @@ export function buildLiqMap(opts: {
   let clipped = 0, placed = 0;
 
   for (let i = 0; i < NC; i++) {
-    const base = (opts.openInterest * vol[i]) / Math.max(1e-9, trail[i]);
+    const base = (opts.openInterest * vol[i]) / Math.max(1e-9, trail[i]) / LIFE;
     if (!(base > 0)) continue;
     const close = all[i][4];
     for (const [Lv, w] of lev) {
@@ -227,6 +244,6 @@ export function buildLiqMap(opts: {
     clipped: clipped / Math.max(1e-9, clipped + placed),
     tradedLo, tradedHi,
     totalNotional: opts.openInterest,
-    ageBars,
+    ageBars, spanRule, warmBars: warm,
   };
 }
