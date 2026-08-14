@@ -1,4 +1,5 @@
 import { fetchSnapshot } from "../src/lib/hyperliquid.ts";
+import { fetchCandles } from "../src/lib/candles.ts";
 
 /**
  * Ingest worker. Runs on a 5-minute cron, writes the current snapshot to KV (which the
@@ -24,6 +25,15 @@ interface Env {
 
 /** Snapshots older than this are pruned; the flip feed only looks back 24h. */
 const RETAIN_HOURS = 72;
+
+/**
+ * Daily candles change once a day, so refreshing them on the 5-minute tick would be 7,200
+ * pointless upstream calls a day. Refresh every 6 hours instead: 4 refreshes x 25 symbols
+ * = 100 extra upstream calls and ~104 KV writes daily, against a 1,000 writes/day free
+ * limit already carrying 288 snapshot writes. The 25 fetches sit inside one invocation's
+ * 50-subrequest budget alongside the 2 snapshot calls.
+ */
+const CANDLE_REFRESH_HOURS = 6;
 /** Canary rows are small but unbounded, so they are pruned on the same schedule. */
 const CANARY_RETAIN_HOURS = 168;
 
@@ -53,6 +63,8 @@ interface RunResult {
   symbols: number;
   venues: Record<string, number>;
   error?: string;
+  candles?: number;
+  candleError?: string;
 }
 
 async function run(env: Env): Promise<RunResult> {
@@ -92,6 +104,29 @@ async function run(env: Env): Promise<RunResult> {
 
     result.ok = rows.length > 0;
     if (!result.ok) result.error = "upstream returned no usable funding rows";
+
+    // Candles feed the survival map. Failure here must never fail the ingest: the funding
+    // history is the asset that cannot be backfilled, candles can be re-fetched any time.
+    try {
+      const meta = (await env.SNAPSHOT.get("candles:meta", "json")) as { u: number } | null;
+      const stale = !meta || Date.now() - meta.u > CANDLE_REFRESH_HOURS * 3_600_000;
+      if (stale) {
+        const syms = snap.perps.map((p) => p.symbol);
+        const sets = await Promise.all(
+          syms.map((sym) => fetchCandles(sym).then((c) => [sym, c] as const).catch(() => null)),
+        );
+        let written = 0;
+        for (const entry of sets) {
+          if (!entry) continue;
+          await env.SNAPSHOT.put(`candles:${entry[0]}`, JSON.stringify(entry[1]));
+          written++;
+        }
+        await env.SNAPSHOT.put("candles:meta", JSON.stringify({ u: Date.now(), symbols: syms, written }));
+        result.candles = written;
+      }
+    } catch (e) {
+      result.candleError = (e instanceof Error ? e.message : String(e)).slice(0, 120);
+    }
   } catch (e) {
     // A thrown upstream error carries its status in the message ("hyperliquid 503").
     const msg = e instanceof Error ? e.message : String(e);
@@ -129,6 +164,7 @@ async function run(env: Env): Promise<RunResult> {
 
 // Minimal ambient types so this file compiles without @cloudflare/workers-types.
 interface KVNamespace {
+  get(key: string, type: "json"): Promise<unknown>;
   put(key: string, value: string): Promise<void>;
 }
 interface D1Database {
