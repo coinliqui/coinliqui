@@ -46,6 +46,9 @@ const HOURLY_REFRESH_HOURS = 2;
 const FUNDING_REFRESH_HOURS = 6;
 /** Canary rows are small but unbounded, so they are pruned on the same schedule. */
 const CANARY_RETAIN_HOURS = 168;
+/** Symbols per invocation. 24 + the snapshot's 2 + the funding rotation's 6 = 32, inside
+    the free Worker's 50-subrequest ceiling with room for a retry. */
+const CHUNK = 24;
 
 /**
  * BUILD STAMP. `worker-dist/ingest.bundle.js` is pasted into the dashboard by hand, so the
@@ -56,7 +59,7 @@ const CANARY_RETAIN_HOURS = 168;
  *
  * BUMP BOTH when you change this file: here and EXPECTED_WORKER_BUILD in src/lib/version.ts.
  */
-const WORKER_BUILD = "2026-08-14c";
+const WORKER_BUILD = "2026-08-14d";
 
 export default {
   async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext) {
@@ -136,60 +139,83 @@ async function run(env: Env): Promise<RunResult> {
     result.ok = rows.length > 0;
     if (!result.ok) result.error = "upstream returned no usable funding rows";
 
-    /* Bulk refreshes are STAGGERED: at most one per invocation. Daily, hourly and funding
-       are 25 fetches each, and a free Worker allows 50 subrequests per invocation — running
-       two together would blow the ceiling and drop the tick silently. */
+    /* Bulk refreshes are STAGGERED — at most one kind per invocation — and CHUNKED, at most
+       CHUNK symbols per invocation.
+
+       A free Worker allows 50 subrequests per invocation. At 25 symbols a whole sweep was
+       25 + 2 and fitted; at 49 it is 51 and does not, and the failure mode is the tick being
+       dropped with nothing on /status to say why. So a sweep now walks the symbol list a
+       chunk at a time, carrying its cursor in the meta record, and only stamps the cycle
+       complete when it wraps. A gate that has come due therefore starts a cycle; a cycle
+       already in progress continues regardless of the gate, so a sweep can never stall
+       half-finished. */
     try {
       const syms = snap.perps.map((p) => p.symbol);
-      const stale = async (key: string, hours: number) => {
-        const m = (await env.SNAPSHOT.get(key, "json")) as { u: number } | null;
-        return !m || Date.now() - m.u > hours * 3_600_000;
+
+      /** Chunked sweep. Returns how many symbols were written this invocation. */
+      const sweep = async (
+        key: string,
+        hours: number,
+        write: (sym: string) => Promise<boolean>,
+        extra = 0,
+      ): Promise<number | undefined> => {
+        const m = (await env.SNAPSHOT.get(key, "json")) as { u?: number; i?: number } | null;
+        const cursor = m?.i ?? 0;
+        const due = !m?.u || Date.now() - m.u > hours * 3_600_000;
+        if (cursor === 0 && !due) return undefined;          // cycle complete and not yet due
+
+        const room = Math.max(1, CHUNK - extra);
+        const slice = syms.slice(cursor, cursor + room);
+        let n = 0;
+        for (const ok of await Promise.all(slice.map((sym) => write(sym).catch(() => false)))) if (ok) n++;
+
+        const next = cursor + slice.length;
+        const wrapped = next >= syms.length;
+        await env.SNAPSHOT.put(key, JSON.stringify({
+          u: wrapped ? Date.now() : (m?.u ?? 0),
+          i: wrapped ? 0 : next,
+          written: n,
+        }));
+        return n;
       };
 
-      if (await stale("hourly:meta", HOURLY_REFRESH_HOURS)) {
-        const sets = await Promise.all(syms.map((s) => fetchHourly(s).then((c) => [s, c] as const).catch(() => null)));
-        let n = 0;
-        for (const e of sets) { if (!e) continue; await env.SNAPSHOT.put(`hourly:${e[0]}`, JSON.stringify(e[1])); n++; }
-        await env.SNAPSHOT.put("hourly:meta", JSON.stringify({ u: Date.now(), written: n }));
-        result.hourly = n;
-      } else if (await stale("funding:meta", FUNDING_REFRESH_HOURS)) {
-        /* Each pass fetches the latest 500 rows for every symbol, and ALSO pages one step
-           further back for a rotating slice of 6. A refresh alone only ever accumulates
-           forward; the rotation is what deepens history, and it keeps the tick at
-           25 + 6 + 2 = 33 subrequests, inside the 50 ceiling. */
-        /* 500 rows is Hyperliquid's cap on a fundingHistory response, and rows are hourly —
-           so a startTime further back than ~20.8 days returns a window that ENDS before now.
-           At 25 days the newest four days were never fetched: the series accumulated a
-           permanent trailing gap, and the chart's funding band would have stopped short of
-           today forever. 19 days is 456 rows, comfortably inside the cap, so the response
-           always reaches the present. Backfill depth comes from the rotating pass below,
-           not from this start time. */
+      const hourly = await sweep("hourly:meta", HOURLY_REFRESH_HOURS, async (s) => {
+        const c = await fetchHourly(s);
+        await env.SNAPSHOT.put(`hourly:${s}`, JSON.stringify(c));
+        return true;
+      });
+      if (hourly !== undefined) result.hourly = hourly;
+      else {
+        /* Each pass fetches the newest window for its chunk and ALSO pages one step further
+           back for a rotating slice of 6 — a refresh alone only accumulates forward, and the
+           rotation is what deepens history. The 6 are counted against the chunk so the
+           ceiling holds. */
         const since = Date.now() - 19 * 86_400_000;
-        const meta = (await env.SNAPSHOT.get("funding:meta", "json")) as { cursor?: number } | null;
-        const cursor = meta?.cursor ?? 0;
-        let n = 0;
-        for (let i = 0; i < syms.length; i++) {
-          const s = syms[i];
-          try {
-            const prev = ((await env.SNAPSHOT.get(`funding:${s}`, "json")) as FundingPoint[] | null) ?? [];
-            let merged = mergeFunding(prev, await fetchFundingHistory(s, since));
-            const inSlice = (i - cursor + syms.length) % syms.length < 6;
-            if (inSlice && merged.length) {
-              const oldest = merged[0][0];
-              try { merged = mergeFunding(await fetchFundingHistory(s, oldest - 21 * 86_400_000), merged); } catch {}
-            }
-            await env.SNAPSHOT.put(`funding:${s}`, JSON.stringify(merged));
-            n++;
-          } catch { /* one symbol failing must not abort the sweep */ }
+        const rot = (await env.SNAPSHOT.get("funding:rot", "json")) as { c?: number } | null;
+        const cursor = rot?.c ?? 0;
+        let deep = 0;
+        const funding = await sweep("funding:meta", FUNDING_REFRESH_HOURS, async (s) => {
+          const prev = ((await env.SNAPSHOT.get(`funding:${s}`, "json")) as FundingPoint[] | null) ?? [];
+          let merged = mergeFunding(prev, await fetchFundingHistory(s, since));
+          const idx = syms.indexOf(s);
+          if (deep < 6 && (idx - cursor + syms.length) % syms.length < 6 && merged.length) {
+            deep++;
+            try { merged = mergeFunding(await fetchFundingHistory(s, merged[0][0] - 21 * 86_400_000), merged); } catch { /* depth is optional */ }
+          }
+          await env.SNAPSHOT.put(`funding:${s}`, JSON.stringify(merged));
+          return true;
+        }, 6);
+        if (funding !== undefined) {
+          result.funding = funding;
+          await env.SNAPSHOT.put("funding:rot", JSON.stringify({ c: (cursor + 6) % Math.max(1, syms.length) }));
+        } else {
+          const candles = await sweep("candles:meta", CANDLE_REFRESH_HOURS, async (s) => {
+            const c = await fetchCandles(s);
+            await env.SNAPSHOT.put(`candles:${s}`, JSON.stringify(c));
+            return true;
+          });
+          if (candles !== undefined) result.candles = candles;
         }
-        await env.SNAPSHOT.put("funding:meta", JSON.stringify({ u: Date.now(), written: n, cursor: (cursor + 6) % Math.max(1, syms.length) }));
-        result.funding = n;
-      } else if (await stale("candles:meta", CANDLE_REFRESH_HOURS)) {
-        const sets = await Promise.all(syms.map((s) => fetchCandles(s).then((c) => [s, c] as const).catch(() => null)));
-        let n = 0;
-        for (const e of sets) { if (!e) continue; await env.SNAPSHOT.put(`candles:${e[0]}`, JSON.stringify(e[1])); n++; }
-        await env.SNAPSHOT.put("candles:meta", JSON.stringify({ u: Date.now(), written: n }));
-        result.candles = n;
       }
     } catch (e) {
       result.candleError = (e instanceof Error ? e.message : String(e)).slice(0, 120);

@@ -125,7 +125,8 @@ var CANDLE_REFRESH_HOURS = 12;
 var HOURLY_REFRESH_HOURS = 2;
 var FUNDING_REFRESH_HOURS = 6;
 var CANARY_RETAIN_HOURS = 168;
-var WORKER_BUILD = "2026-08-14c";
+var CHUNK = 24;
+var WORKER_BUILD = "2026-08-14d";
 var ingest_default = {
   async scheduled(_event, env, ctx) {
     ctx.waitUntil(run(env));
@@ -176,55 +177,60 @@ async function run(env) {
     if (!result.ok) result.error = "upstream returned no usable funding rows";
     try {
       const syms = snap.perps.map((p) => p.symbol);
-      const stale = async (key, hours) => {
+      const sweep = async (key, hours, write, extra = 0) => {
         const m = await env.SNAPSHOT.get(key, "json");
-        return !m || Date.now() - m.u > hours * 36e5;
+        const cursor = m?.i ?? 0;
+        const due = !m?.u || Date.now() - m.u > hours * 36e5;
+        if (cursor === 0 && !due) return void 0;
+        const room = Math.max(1, CHUNK - extra);
+        const slice = syms.slice(cursor, cursor + room);
+        let n2 = 0;
+        for (const ok of await Promise.all(slice.map((sym) => write(sym).catch(() => false)))) if (ok) n2++;
+        const next = cursor + slice.length;
+        const wrapped = next >= syms.length;
+        await env.SNAPSHOT.put(key, JSON.stringify({
+          u: wrapped ? Date.now() : m?.u ?? 0,
+          i: wrapped ? 0 : next,
+          written: n2
+        }));
+        return n2;
       };
-      if (await stale("hourly:meta", HOURLY_REFRESH_HOURS)) {
-        const sets = await Promise.all(syms.map((s) => fetchHourly(s).then((c) => [s, c]).catch(() => null)));
-        let n2 = 0;
-        for (const e of sets) {
-          if (!e) continue;
-          await env.SNAPSHOT.put(`hourly:${e[0]}`, JSON.stringify(e[1]));
-          n2++;
-        }
-        await env.SNAPSHOT.put("hourly:meta", JSON.stringify({ u: Date.now(), written: n2 }));
-        result.hourly = n2;
-      } else if (await stale("funding:meta", FUNDING_REFRESH_HOURS)) {
+      const hourly = await sweep("hourly:meta", HOURLY_REFRESH_HOURS, async (s) => {
+        const c = await fetchHourly(s);
+        await env.SNAPSHOT.put(`hourly:${s}`, JSON.stringify(c));
+        return true;
+      });
+      if (hourly !== void 0) result.hourly = hourly;
+      else {
         const since = Date.now() - 19 * 864e5;
-        const meta = await env.SNAPSHOT.get("funding:meta", "json");
-        const cursor = meta?.cursor ?? 0;
-        let n2 = 0;
-        for (let i = 0; i < syms.length; i++) {
-          const s = syms[i];
-          try {
-            const prev = await env.SNAPSHOT.get(`funding:${s}`, "json") ?? [];
-            let merged = mergeFunding(prev, await fetchFundingHistory(s, since));
-            const inSlice = (i - cursor + syms.length) % syms.length < 6;
-            if (inSlice && merged.length) {
-              const oldest = merged[0][0];
-              try {
-                merged = mergeFunding(await fetchFundingHistory(s, oldest - 21 * 864e5), merged);
-              } catch {
-              }
+        const rot = await env.SNAPSHOT.get("funding:rot", "json");
+        const cursor = rot?.c ?? 0;
+        let deep = 0;
+        const funding = await sweep("funding:meta", FUNDING_REFRESH_HOURS, async (s) => {
+          const prev = await env.SNAPSHOT.get(`funding:${s}`, "json") ?? [];
+          let merged = mergeFunding(prev, await fetchFundingHistory(s, since));
+          const idx = syms.indexOf(s);
+          if (deep < 6 && (idx - cursor + syms.length) % syms.length < 6 && merged.length) {
+            deep++;
+            try {
+              merged = mergeFunding(await fetchFundingHistory(s, merged[0][0] - 21 * 864e5), merged);
+            } catch {
             }
-            await env.SNAPSHOT.put(`funding:${s}`, JSON.stringify(merged));
-            n2++;
-          } catch {
           }
+          await env.SNAPSHOT.put(`funding:${s}`, JSON.stringify(merged));
+          return true;
+        }, 6);
+        if (funding !== void 0) {
+          result.funding = funding;
+          await env.SNAPSHOT.put("funding:rot", JSON.stringify({ c: (cursor + 6) % Math.max(1, syms.length) }));
+        } else {
+          const candles = await sweep("candles:meta", CANDLE_REFRESH_HOURS, async (s) => {
+            const c = await fetchCandles(s);
+            await env.SNAPSHOT.put(`candles:${s}`, JSON.stringify(c));
+            return true;
+          });
+          if (candles !== void 0) result.candles = candles;
         }
-        await env.SNAPSHOT.put("funding:meta", JSON.stringify({ u: Date.now(), written: n2, cursor: (cursor + 6) % Math.max(1, syms.length) }));
-        result.funding = n2;
-      } else if (await stale("candles:meta", CANDLE_REFRESH_HOURS)) {
-        const sets = await Promise.all(syms.map((s) => fetchCandles(s).then((c) => [s, c]).catch(() => null)));
-        let n2 = 0;
-        for (const e of sets) {
-          if (!e) continue;
-          await env.SNAPSHOT.put(`candles:${e[0]}`, JSON.stringify(e[1]));
-          n2++;
-        }
-        await env.SNAPSHOT.put("candles:meta", JSON.stringify({ u: Date.now(), written: n2 }));
-        result.candles = n2;
       }
     } catch (e) {
       result.candleError = (e instanceof Error ? e.message : String(e)).slice(0, 120);
