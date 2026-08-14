@@ -65,7 +65,12 @@ if (map) {
       if (!col) { c++; continue; }
       let e = c;
       while (e + 1 < map.cols && rampColor(map.grid[r][e + 1], map.maxDensity) === col) e++;
-      o.push(`<rect x="${(mL + c * colW).toFixed(1)}" y="${(mT + r * rowH).toFixed(1)}" width="${((e - c + 1) * colW + 0.4).toFixed(1)}" height="${(rowH + 0.4).toFixed(1)}" fill="${col}"/>`);
+      const bandHi = map.bucketHi[r], bandLo = map.bucketLo[r];
+      const notion = map.grid[r][c];
+      o.push(
+        `<rect x="${(mL + c * colW).toFixed(1)}" y="${(mT + r * rowH).toFixed(1)}" width="${((e - c + 1) * colW + 0.4).toFixed(1)}" height="${(rowH + 0.4).toFixed(1)}" fill="${col}"` +
+        ` data-tip="&lt;div class=&quot;tip__h&quot;&gt;Modelled — not observed&lt;/div&gt;&lt;div class=&quot;tip__g&quot;&gt;&lt;span&gt;Price band&lt;/span&gt;&lt;b&gt;${axisPx(bandLo)}–${axisPx(bandHi)}&lt;/b&gt;&lt;span&gt;Notional here&lt;/span&gt;&lt;b&gt;${usd(notion)}&lt;/b&gt;&lt;span&gt;Of open interest&lt;/span&gt;&lt;b&gt;${pct(notion / Math.max(1, perp.oiNotional))}&lt;/b&gt;&lt;/div&gt;"/>`,
+      );
       c = e + 1;
     }
   }
@@ -158,7 +163,7 @@ const description = `A modelled liquidation density map for ${perp.symbol} with 
     <>
       <figure class="chart">
         <div class="chart__scroll">
-          <svg viewBox={`0 0 ${MW} ${MH}`} class="chart__svg lmap" role="img"
+          <svg viewBox={`0 0 ${MW} ${MH}`} class="chart__svg lmap" role="img" data-time-axis={`${map.times[0]},${map.times.length > 1 ? map.times[1] - map.times[0] : 3600000},${mL},${(MW - mL - mR) / map.cols}`}
                aria-label={`Modelled liquidation density for ${perp.symbol} over ${WINDOWS.find((w) => w.h === winH)!.label} using the ${profile.label} leverage mix. Assumptions and the resulting clusters are tabulated below.`}>
             <Fragment set:html={mapSvg} />
           </svg>
@@ -262,7 +267,8 @@ const description = `A modelled liquidation density map for ${perp.symbol} with 
           return (
             <g>
               <rect x={cx(i) - barW / 2} y={yTop} width={barW} height={Math.max(2, yBot - yTop)} rx="4"
-                    fill="var(--accent)" fill-opacity={op} stroke="var(--accent)" stroke-opacity="0.55" />
+                    fill="var(--accent)" fill-opacity={op} stroke="var(--accent)" stroke-opacity="0.55"
+                    data-tip={`<div class="tip__h">${r.L}× on ${perp.symbol}</div><div class="tip__g"><span>Short closed</span><b>${px(r.shortLiq)}</b><span>Long closed</span><b>${px(r.longLiq)}</b><span>Corridor</span><b>${(r.corridor * 100).toFixed(2)}%</b><span>Initial margin</span><b>${pct(r.margin)}</b></div>`} />
               <line x1={cx(i) - barW / 2} x2={cx(i) + barW / 2} y1={yTop} y2={yTop} class="cap" />
               <line x1={cx(i) - barW / 2} x2={cx(i) + barW / 2} y1={yBot} y2={yBot} class="cap" />
               <text x={cx(i)} y={CH - cpB + 26} class="lev" text-anchor="middle">{r.L}×</text>

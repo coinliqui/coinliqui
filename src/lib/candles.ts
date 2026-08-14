@@ -13,7 +13,11 @@
  * assumed. It is checkable against the candle series printed on the page.
  */
 
-export type Candle = [t: number, high: number, low: number, close: number];
+/** ONE canonical tuple everywhere: [time, open, high, low, close, volume].
+ *  Positional indexing across four call sites is how off-by-one bugs get shipped, so the
+ *  positions are named and every consumer uses the names. */
+export const T = 0, O = 1, H = 2, L = 3, C = 4, V = 5;
+export type Candle = [t: number, o: number, h: number, l: number, c: number, v: number];
 
 export interface CandleSet {
   /** epoch ms of the write */
@@ -37,19 +41,21 @@ export async function fetchCandles(symbol: string, days = CANDLE_DAYS): Promise<
     body: JSON.stringify({ type: "candleSnapshot", req: { coin: symbol, interval: "1d", startTime: start, endTime: end } }),
   });
   if (!r.ok) throw new Error(`candles ${symbol} ${r.status}`);
-  const raw = (await r.json()) as { t: number; h: string; l: string; c: string; v: string }[];
+  const raw = (await r.json()) as { t: number; o: string; h: string; l: string; c: string; v: string }[];
   // Hyperliquid backfills pre-launch days as zero-volume price marks. Those are not this
   // venue's traded data and must never be presented as such — drop them.
+  // Hyperliquid backfills pre-launch days as zero-volume, zero-trade price marks. They are
+  // not this venue's traded data and must never be drawn as such.
   const d: Candle[] = raw
     .filter((c) => Number(c.v) > 0)
-    .map((c) => [c.t, Number(c.h), Number(c.l), Number(c.c)]);
+    .map((c) => [c.t, Number(c.o), Number(c.h), Number(c.l), Number(c.c), Number(c.v)]);
   return { u: Date.now(), d };
 }
 
 /** Hourly candles carry VOLUME too: the liquidation model weights each bar by how much
  *  actually traded in it, which is the one part of "when were positions opened" that is
  *  observable rather than assumed. */
-export type HourCandle = [t: number, high: number, low: number, close: number, volume: number];
+export type HourCandle = Candle;
 
 export async function fetchHourly(symbol: string, hours = CANDLE_HOURS): Promise<{ u: number; d: HourCandle[] }> {
   const end = Date.now();
@@ -60,10 +66,10 @@ export async function fetchHourly(symbol: string, hours = CANDLE_HOURS): Promise
     body: JSON.stringify({ type: "candleSnapshot", req: { coin: symbol, interval: "1h", startTime: start, endTime: end } }),
   });
   if (!r.ok) throw new Error(`hourly ${symbol} ${r.status}`);
-  const raw = (await r.json()) as { t: number; h: string; l: string; c: string; v: string }[];
+  const raw = (await r.json()) as { t: number; o: string; h: string; l: string; c: string; v: string }[];
   const d: HourCandle[] = raw
     .filter((c) => Number(c.v) > 0)
-    .map((c) => [c.t, Number(c.h), Number(c.l), Number(c.c), Number(c.v)]);
+    .map((c) => [c.t, Number(c.o), Number(c.h), Number(c.l), Number(c.c), Number(c.v)]);
   return { u: Date.now(), d };
 }
 
@@ -146,11 +152,11 @@ export function survivalGrid(opts: {
     const days: number[] = [];
     for (let e = 0; e < entries.length; e++) {
       const abs = startIdx + e;
-      const close = candles[abs][3];
+      const close = candles[abs][C];
       const threshold = side === "long" ? (close * (1 - 1 / L)) / (1 - mmf) : (close * (1 + 1 / L)) / (1 + mmf);
       let liqDay: number | null = null;
       for (let j = abs + 1; j <= abs + holdDays && j < candles.length; j++) {
-        const crossed = side === "long" ? candles[j][2] <= threshold : candles[j][1] >= threshold;
+        const crossed = side === "long" ? candles[j][3] <= threshold : candles[j][2] >= threshold; // [3]=low [2]=high
         if (crossed) {
           liqDay = j - abs;
           days.push(liqDay);
@@ -162,7 +168,7 @@ export function survivalGrid(opts: {
     days.sort((a, b) => a - b);
     return {
       L,
-      threshold0: entries.length ? (side === "long" ? (entries[entries.length - 1][3] * (1 - 1 / L)) / (1 - mmf) : (entries[entries.length - 1][3] * (1 + 1 / L)) / (1 + mmf)) : 0,
+      threshold0: entries.length ? (side === "long" ? (entries[entries.length - 1][C] * (1 - 1 / L)) / (1 - mmf) : (entries[entries.length - 1][C] * (1 + 1 / L)) / (1 + mmf)) : 0,
       cells,
       tested: entries.length,
       liquidated: days.length,

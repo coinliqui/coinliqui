@@ -86,7 +86,7 @@ async function fetchCandles(symbol, days = CANDLE_DAYS) {
   });
   if (!r.ok) throw new Error(`candles ${symbol} ${r.status}`);
   const raw = await r.json();
-  const d = raw.filter((c) => Number(c.v) > 0).map((c) => [c.t, Number(c.h), Number(c.l), Number(c.c)]);
+  const d = raw.filter((c) => Number(c.v) > 0).map((c) => [c.t, Number(c.o), Number(c.h), Number(c.l), Number(c.c), Number(c.v)]);
   return { u: Date.now(), d };
 }
 async function fetchHourly(symbol, hours = CANDLE_HOURS) {
@@ -99,7 +99,7 @@ async function fetchHourly(symbol, hours = CANDLE_HOURS) {
   });
   if (!r.ok) throw new Error(`hourly ${symbol} ${r.status}`);
   const raw = await r.json();
-  const d = raw.filter((c) => Number(c.v) > 0).map((c) => [c.t, Number(c.h), Number(c.l), Number(c.c), Number(c.v)]);
+  const d = raw.filter((c) => Number(c.v) > 0).map((c) => [c.t, Number(c.o), Number(c.h), Number(c.l), Number(c.c), Number(c.v)]);
   return { u: Date.now(), d };
 }
 

@@ -24,7 +24,8 @@
  * Everything downstream of those five inputs is arithmetic on published margin tiers.
  */
 
-export type HCandle = [t: number, high: number, low: number, close: number, volume: number];
+import type { Candle } from "./candles.ts";
+export type HCandle = Candle; // [t,o,h,l,c,v]
 
 export interface LevProfile {
   key: string;
@@ -122,13 +123,13 @@ export function buildLiqMap(opts: {
      extremes let a 2x level 50% away stretch the axis and squeeze the region that matters
      into a thin strip. Take the central 92% of notional by price, then make sure the traded
      range is included — the price path must never leave its own chart. */
-  const volSumForFit = candles.reduce((s, c) => s + (c[4] || 0), 0) || 1;
+  const volSumForFit = candles.reduce((s, c) => s + (c[5] || 0), 0) || 1;
   const pts: [number, number][] = [];
   for (const c of candles) {
-    const bar = (c[4] || 0) / volSumForFit;
+    const bar = (c[5] || 0) / volSumForFit;
     for (const [L, w] of weights) {
-      pts.push([(c[3] * (1 - 1 / L)) / (1 - mmf), bar * w]);
-      pts.push([(c[3] * (1 + 1 / L)) / (1 + mmf), bar * w]);
+      pts.push([(c[4] * (1 - 1 / L)) / (1 - mmf), bar * w]);
+      pts.push([(c[4] * (1 + 1 / L)) / (1 + mmf), bar * w]);
     }
   }
   pts.sort((a, b) => a[0] - b[0]);
@@ -139,7 +140,7 @@ export function buildLiqMap(opts: {
     return pts[pts.length - 1][0];
   };
   let lvLo = pick(0.04), lvHi = pick(0.96);
-  for (const c of candles) { lvLo = Math.min(lvLo, c[2]); lvHi = Math.max(lvHi, c[1]); }
+  for (const c of candles) { lvLo = Math.min(lvLo, c[3]); lvHi = Math.max(lvHi, c[2]); }
   const clippedMass = pts.filter(([pr]) => pr < lvLo || pr > lvHi).reduce((s, x) => s + x[1], 0) / massTotal;
   const padPx = (lvHi - lvLo) * 0.04;
   const loPrice = lvLo - padPx;
@@ -147,15 +148,15 @@ export function buildLiqMap(opts: {
   const band = (hiPrice - loPrice) / rows;
   const rowOf = (p: number) => Math.floor((hiPrice - p) / band);
 
-  const volSum = candles.reduce((s, c) => s + (c[4] || 0), 0) || 1;
+  const volSum = candles.reduce((s, c) => s + (c[5] || 0), 0) || 1;
 
   const diff: number[][] = Array.from({ length: rows }, () => new Array(cols + 1).fill(0));
   const clusterAcc = new Map<string, Cluster>();
 
   for (let i = 0; i < cols; i++) {
-    const barNotional = openInterest * ((candles[i][4] || 0) / volSum);
+    const barNotional = openInterest * ((candles[i][5] || 0) / volSum);
     if (barNotional <= 0) continue;
-    const close = candles[i][3];
+    const close = candles[i][4];
 
     for (const [L, w] of weights) {
       const share = (barNotional * w) / wSum / 2; // half long, half short
@@ -168,7 +169,7 @@ export function buildLiqMap(opts: {
         // the level survives until price trades through it
         let end = cols;
         for (let j = i + 1; j < cols; j++) {
-          if (side === "long" ? candles[j][2] <= price : candles[j][1] >= price) { end = j; break; }
+          if (side === "long" ? candles[j][3] <= price : candles[j][2] >= price) { end = j; break; }
         }
         diff[r][i] += share;
         diff[r][end] -= share;
@@ -208,7 +209,7 @@ export function buildLiqMap(opts: {
     bucketLo: Array.from({ length: rows }, (_, r) => hiPrice - (r + 1) * band),
     bucketHi: Array.from({ length: rows }, (_, r) => hiPrice - r * band),
     times: candles.map((c) => c[0]),
-    closes: candles.map((c) => c[3]),
+    closes: candles.map((c) => c[4]),
     maxDensity,
     totalNotional: openInterest,
     clusters,

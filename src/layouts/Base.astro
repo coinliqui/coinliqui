@@ -81,6 +81,11 @@ const schema = {
         /* shell metrics — comfortable, reference-set sized */
         --rail-w: 260px; --rail-w-collapsed: 72px; --topbar-h: 60px; --tabbar-h: 58px;
 
+        /* type scale — one number leads, everything else defers to it */
+        --fs-hero: 46px; --fs-xl: 28px; --fs-lg: 19px; --fs-md: 15px;
+        --fs-base: 14px; --fs-sm: 13px; --fs-xs: 11.5px;
+        --ease: cubic-bezier(.22,.61,.36,1);
+
         --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
         --mono: ui-monospace, "SF Mono", Menlo, monospace;
       }
@@ -345,6 +350,76 @@ const schema = {
       footer a { text-decoration: none; }
       footer a:hover { color: var(--text); }
 
+      /* ==========================================================================
+         INTERACTION LAYER
+         Everything here is presentation. No value on the page comes from JS.
+         ========================================================================== */
+
+      /* --- tooltip: one element, reused by every chart --- */
+      .tip {
+        position: fixed; top: 0; left: 0; z-index: 60; pointer-events: none;
+        min-width: 168px; padding: 11px 13px;
+        background: color-mix(in srgb, var(--surface-2) 92%, black);
+        border: 1px solid var(--border); border-radius: var(--r-md);
+        box-shadow: 0 10px 30px rgba(0,0,0,.5), 0 2px 6px rgba(0,0,0,.4);
+        font-size: var(--fs-sm); color: var(--text); line-height: 1.45;
+        opacity: 0; transition: opacity .12s var(--ease);
+        font-variant-numeric: tabular-nums;
+      }
+      .tip.is-on { opacity: 1; }
+      .tip__h { font-size: var(--fs-xs); color: var(--text-faint); margin-bottom: 7px; }
+      .tip__g { display: grid; grid-template-columns: auto auto; gap: 3px 18px; }
+      .tip__g span { color: var(--text-dim); }
+      .tip__g b { font-weight: 600; text-align: right; }
+      .tip__f { margin-top: 7px; padding-top: 7px; border-top: 1px solid var(--border-soft); font-size: var(--fs-xs); color: var(--text-faint); }
+
+      /* --- crosshair --- */
+      .xh-v { stroke: var(--text-dim); stroke-width: 1; stroke-dasharray: 3 3; opacity: .75; }
+      .xh-dot { fill: var(--accent); stroke: var(--bg); stroke-width: 2.5; }
+      svg[data-xhair] { cursor: crosshair; touch-action: none; }
+
+      /* --- hovered cell in a grid or bar chart --- */
+      [data-tip] { transition: opacity .1s var(--ease); }
+      .is-hot { stroke: var(--text); stroke-width: 1.4; paint-order: stroke; }
+
+      /* --- table rows respond, and the magnitude bar responds with them --- */
+      .tbl tbody tr { transition: background .12s var(--ease); }
+      .tbl tbody tr:hover .magnitude__fill { background: var(--accent); }
+      .tbl tbody tr:hover .magnitude__track { background: var(--surface-1); }
+      .magnitude__fill { transition: background .14s var(--ease), width .3s var(--ease); }
+
+      /* --- timeframe group: the active control has depth, the rest are quiet --- */
+      .tf { display: inline-flex; gap: 2px; padding: 3px; background: var(--surface-2); border: 1px solid var(--border-soft); border-radius: var(--r-pill); }
+      .tf button {
+        appearance: none; border: 0; background: none; cursor: pointer;
+        font: 600 var(--fs-sm)/1 var(--sans); color: var(--text-dim);
+        padding: 8px 15px; border-radius: var(--r-pill);
+        transition: background .16s var(--ease), color .16s var(--ease), box-shadow .16s var(--ease);
+      }
+      .tf button:hover { color: var(--text); background: var(--surface-3); }
+      .tf button[aria-pressed="true"] {
+        background: var(--accent-fill); color: var(--accent);
+        box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent);
+      }
+
+      /* --- timeframe panels: cross-fade rather than snap --- */
+      [data-tfpanel] { display: none; }
+      [data-tfpanel].is-on { display: block; animation: tfin .22s var(--ease); }
+      @keyframes tfin { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+      .is-swap { opacity: 0; transform: translateY(-3px); }
+      [data-tfstat] { transition: opacity .11s var(--ease), transform .11s var(--ease); display: inline-block; }
+
+      /* --- hero figure: the one number a page is about --- */
+      .hero { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; margin: 2px 0 4px; }
+      .hero__price { font-size: var(--fs-hero); font-weight: 650; letter-spacing: -.032em; line-height: 1.05; font-variant-numeric: tabular-nums; }
+      .hero__chg { font-size: var(--fs-lg); font-weight: 600; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+      .hero__meta { display: flex; gap: 22px; flex-wrap: wrap; margin-top: 10px; font-size: var(--fs-sm); color: var(--text-faint); }
+      .hero__meta b { display: block; color: var(--text); font-weight: 600; font-size: var(--fs-md); font-variant-numeric: tabular-nums; margin-top: 2px; }
+
+      @media (prefers-reduced-motion: reduce) {
+        * { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+      }
+
       /* --- mobile: same anchors, re-laid-out. Never a second DOM copy. --- */
       .tabbar { display: none; }
       @media (max-width: 900px) {
@@ -418,7 +493,7 @@ const schema = {
                     site's own legend reserves for "shorts pay longs" — so it was making a
                     semantic claim it did not mean. */}
                 <svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="10" cy="10" r="7.25" /><path d="M10 6v4.2l2.6 1.8" /></svg>
-                <span>Updated <time datetime={new Date(fetchedAt!).toISOString()}>{ageMin === 0 ? "just now" : `${ageMin} min ago`}</time></span>
+                <span>Updated <time datetime={new Date(fetchedAt!).toISOString()} data-fresh={fetchedAt}>{ageMin === 0 ? "just now" : `${ageMin} min ago`}</time></span>
               </div>
             )}
             <a class="btn btn--primary cta" href="/watchlist" aria-current={path === "/watchlist" ? "page" : undefined}>
@@ -451,5 +526,6 @@ const schema = {
     </nav>
 
     <script type="module" src="/typeahead.js"></script>
+    <script type="module" src="/interact.js"></script>
   </body>
 </html>
