@@ -159,7 +159,11 @@ const description = `${p.symbol} perpetual candles from 1H to 1W with the fundin
 
       {/* The rows are rebuilt from the panel's own pts-* JSON when the timeframe is switched
           client-side, so the table can never disagree with the chart above it. */}
-      <details class="src" data-tftable data-group="px" data-unit={p.symbol} data-dp={active!.chart.dp}>
+      {/* data-dp is the PAGE's precision, not the chart's. chart.dp is chosen for axis labels,
+          where four significant digits is plenty; the table prints the same figures the server
+          rendered, and on a sub-cent contract that is seven decimals. Using the chart's value
+          silently rounded kPEPE's rows from $0.0029000 to $0.0029 on a client-side switch. */}
+      <details class="src" data-tftable data-group="px" data-unit={p.symbol} data-dp={dp}>
         <summary><span data-tflabel>{active!.tf.label}</span> bars as a table (<span data-tfcount>{rows.length}</span> rows, open · high · low · close · volume · funding)</summary>
         <div class="panel" style="margin-top:10px">
           <table class="tbl">
