@@ -18,15 +18,15 @@ const maxOi = Math.max(...snap.perps.map((p) => p.oiNotional || 0), 1);
 ---
 
 <Base
-  title="Pinned contracts"
-  description="Pin the perpetual contracts you follow. Stored in your own browser, no account, nothing transmitted."
+  title="Watchlist — pin the coins you follow"
+  description="Pin the coins you follow — BTC, ETH, SOL and the rest — with funding, open interest and 24-hour volume on every row. Stored in your own browser, no account, nothing transmitted."
   fetchedAt={snap.fetchedAt}
   noindex
 >
   <div class="page-head">
-    <h1>Pinned</h1>
+    <h1>Your watchlist</h1>
     <p>
-      All {snap.perps.length} covered contracts, with the ones you pin held at the top.
+      All {snap.perps.length} covered coins, with the ones you pin held at the top.
       Pinning is saved in <strong>this browser only</strong> — nothing is sent anywhere, there is
       no account, and clearing your browser data clears the list.
       <a class="link" href="/privacy">What the site stores →</a>
@@ -35,7 +35,7 @@ const maxOi = Math.max(...snap.perps.map((p) => p.oiNotional || 0), 1);
 
   <div class="wl-bar">
     <p class="legend" style="margin:0">{LEGEND} — colour encodes the direction of payment only.</p>
-    <button class="btn wl-clear" type="button" id="wl-clear" hidden>Clear pinned</button>
+    <button class="btn wl-clear" type="button" id="wl-clear" hidden>Clear pinned coins</button>
   </div>
 
   <div class="panel">
@@ -43,8 +43,8 @@ const maxOi = Math.max(...snap.perps.map((p) => p.oiNotional || 0), 1);
       <thead>
         <tr>
           <th style="width:38px"><span class="vh">Pinned</span></th>
-          <th>Contract</th>
-          <th class="num">Annualised</th>
+          <th>Coin</th>
+          <th class="num">Hyperliquid funding APR</th>
           <th class="num">Venue gap</th>
           <th class="num">Open interest</th>
           <th class="num">24h volume</th>
@@ -88,8 +88,8 @@ const maxOi = Math.max(...snap.perps.map((p) => p.oiNotional || 0), 1);
   </p>
 
   <p class="section-note" style="margin-top:20px">
-    <a class="link" href="/funding">All contracts with per-venue detail →</a>
-    · {snap.eligibleCount} of {snap.universeCount} contracts clear the $5M open-interest floor
+    <a class="link" href="/funding">All coins with per-venue detail →</a>
+    · {snap.eligibleCount} of {snap.universeCount} coins clear the $5M open-interest floor
   </p>
 
   <script is:inline define:vars={{ KEY: PINNED_KEY }}>
@@ -148,7 +148,7 @@ const maxOi = Math.max(...snap.perps.map((p) => p.oiNotional || 0), 1);
     .wl-clear { margin-left: auto; height: 32px; padding: 0 12px; font-size: 13px; }
     .pin {
       display: grid; place-items: center; width: 28px; height: 28px; padding: 0;
-      background: none; border: 0; border-radius: var(--r-sm); color: var(--text-faint); cursor: pointer;
+      background: none; border: 0; border-radius: var(--r-pill); color: var(--text-faint); cursor: pointer;
     }
     .pin:hover { background: var(--surface-3); color: var(--text); }
     .pin[aria-pressed="true"] { color: var(--accent); }

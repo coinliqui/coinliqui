@@ -6,7 +6,7 @@ import { maintenanceMarginFraction, nextTierBoundary, type MarginTable } from ".
 import { getHourly, type Candle } from "../lib/candles.ts";
 import { buildLiqMap, PROFILES } from "../lib/liqmap.ts";
 import { paintHeatMap } from "../lib/heatmap.ts";
-import { RAMP, CH, compact, niceTicks } from "../lib/chart.ts";
+import { RAMP, CH, INK, MONO, FS_AXIS, compact, niceTicks } from "../lib/chart.ts";
 import { aggregate } from "../lib/series.ts";
 import tables from "../data/margin-tables.json";
 
@@ -84,8 +84,8 @@ const barW = Math.min(72, colW2 * 0.58);
 // round tick values here too — one scale for every chart on the site
 const gridPrices = niceTicks(yMin, yMax, 5);
 
-const title = `${perp.symbol} liquidation map — modelled density, with the model on the page`;
-const description = `A modelled liquidation density map for ${perp.symbol}: where levels stand, where price has already cleared them, and every assumption printed and adjustable — alongside the tier-correct corridor, which is derived rather than modelled.`;
+const title = `${perp.symbol} liquidation heatmap (modelled)`;
+const description = `Where ${perp.symbol} liquidation levels sit and which ones price has already cleared — a modelled heatmap with every assumption printed on the page and adjustable, beside the liquidation prices derived from the published margin tiers.`;
 ---
 
 <Base title={title} description={description} fetchedAt={snap.fetchedAt}>
@@ -101,7 +101,7 @@ const description = `A modelled liquidation density map for ${perp.symbol}: wher
   </div>
 
   <form method="GET" class="calc" style="margin-bottom:16px">
-    <label>Contract
+    <label>Coin
       <select name="symbol">{snap.perps.map((p) => <option value={p.symbol} selected={p.symbol === perp.symbol}>{p.symbol}</option>)}</select>
     </label>
     <label>Assumed leverage mix
@@ -110,7 +110,7 @@ const description = `A modelled liquidation density map for ${perp.symbol}: wher
     <label>Window
       <select name="win">{WINDOWS.map((w) => <option value={w.days} selected={w.days === win.days}>{w.label}</option>)}</select>
     </label>
-    <button class="btn btn--primary" type="submit">Redraw</button>
+    <button class="btn btn--primary" type="submit">Redraw the map</button>
   </form>
 
   {map && paint ? (
@@ -134,7 +134,7 @@ const description = `A modelled liquidation density map for ${perp.symbol}: wher
         </p>
       </div>
 
-      <p class="freshness">
+      <p class="datanote">
         Hourly candles to <b>{hourly ? new Date(hourly.d[hourly.d.length - 1][0]).toISOString().slice(11, 16) : "—"} UTC</b>,
         refreshed every 2 hours and drawn here in {win.factor}-hour steps. The dashed line is the
         <b>live mark, {axisPx(mark)}</b>, from a snapshot
@@ -164,7 +164,7 @@ const description = `A modelled liquidation density map for ${perp.symbol}: wher
       <h2 class="section">The assumptions, in full</h2>
       <div class="panel" style="max-width:940px">
         <table class="tbl">
-          <thead><tr><th class="num">#</th><th>Assumption</th><th>Value used</th><th class="num">Observed?</th></tr></thead>
+          <thead><tr><th class="num">#</th><th>Assumption</th><th>Value used</th><th class="num">Observed or assumed</th></tr></thead>
           <tbody>
             <tr><td class="num">1</td><td>Total notional modelled</td><td>Equal to current open interest, {usd(perp.oiNotional)}</td><td class="num">observed</td></tr>
             <tr><td class="num">2</td><td>When positions were opened</td><td>Spread over the bars of the window in proportion to each bar's traded volume</td><td class="num">observed</td></tr>
@@ -196,7 +196,7 @@ const description = `A modelled liquidation density map for ${perp.symbol}: wher
       <p class="section-note">The exact weight vector behind the picture. Every other profile is one form submission away.</p>
       <div class="panel" style="max-width:600px">
         <table class="tbl">
-          <thead><tr><th class="num">Leverage</th><th class="num">Share of notional</th><th class="num">Modelled notional</th><th class="num">Long level, from mark</th></tr></thead>
+          <thead><tr><th class="num">Leverage</th><th class="num">Share of notional</th><th class="num">Modelled notional</th><th class="num">Long liquidation, % from mark</th></tr></thead>
           <tbody>
             {profile.weights.filter(([L]) => L <= tier1.maxLeverage).map(([L, w]) => (
               <tr><td class="num">{L}×</td><td class="num">{pct(w)}</td><td class="num">{usd(perp.oiNotional * w)}</td><td class="num">−{(((1 / L - mmf) / (1 - mmf)) * 100).toFixed(1)}%</td></tr>
@@ -232,12 +232,12 @@ const description = `A modelled liquidation density map for ${perp.symbol}: wher
     <div class="empty">
       <div class="empty__body">
         <p class="empty__title">Hourly candles not collected yet</p>
-        <p class="empty__text">The density map needs hourly candles for {perp.symbol}. The ingest worker refreshes them every six hours; this section fills in on the first run. Everything below is unaffected.</p>
+        <p class="empty__text">The density map needs hourly candles for {perp.symbol}. The ingest worker refreshes them every two hours, and a series that is missing entirely jumps that gate on the next five-minute tick. Everything below is unaffected.</p>
       </div>
     </div>
   )}
 
-  <h2 class="section">The corridor each leverage permits — derived, not modelled</h2>
+  <h2 class="section">How far price can move before each leverage liquidates — derived, not modelled</h2>
   <p class="section-note">
     No assumptions here. Given the tier table and a mark these prices are arithmetic: the upper cap
     is where a short is closed, the lower cap where a long is closed.
@@ -245,13 +245,13 @@ const description = `A modelled liquidation density map for ${perp.symbol}: wher
   <div class="chart" style={`--corrRatio: ${CW} / ${CHT}`}>
     <svg viewBox={`0 0 ${CW} ${CHT}`} class="corr" role="img" data-tips
          aria-label={`Liquidation corridor for ${perp.symbol} at a mark of ${px(mark)}. Every value is in the table beneath.`}>
-      <rect x="0" y="0" width={CW} height={CHT} rx="10" fill="#14171b" />
+      <rect x="0" y="0" width={CW} height={CHT} rx={CH.radius} fill={INK.well} />
       {/* the tick nearest the mark is dropped: the live pill is already the reading there */}
       {gridPrices.map((p) => (
         <g>
           <line x1={cpL} x2={CW - cpR} y1={cy(p)} y2={cy(p)} stroke="#22272e" stroke-width="1" />
           {Math.abs(cy(p) - cy(mark)) > 16 && (
-            <text x={CW - cpR + 10} y={cy(p) + 4} fill="#9aa1ab" font-size="11" font-family="ui-monospace,Menlo,monospace">{axisPx(p)}</text>
+            <text x={CW - cpR + 10} y={cy(p) + 4} fill={INK.dim} font-size={FS_AXIS} font-family={MONO}>{axisPx(p)}</text>
           )}
         </g>
       ))}
@@ -278,7 +278,7 @@ const description = `A modelled liquidation density map for ${perp.symbol}: wher
 
   <div class="panel" style="margin-top:14px">
     <table class="tbl">
-      <thead><tr><th class="num">Leverage</th><th class="num">Initial margin</th><th class="num">Long liquidation</th><th class="num">Move</th><th class="num">Short liquidation</th><th class="num">Move</th><th class="num">Corridor width</th></tr></thead>
+      <thead><tr><th class="num">Leverage</th><th class="num">Initial margin</th><th class="num">Long liquidation</th><th class="num">Move down</th><th class="num">Short liquidation</th><th class="num">Move up</th><th class="num">Corridor width</th></tr></thead>
       <tbody>
         {rungs.map((r) => (
           <tr class={r.L === tier1.maxLeverage ? "is-active" : undefined}>
@@ -295,7 +295,7 @@ const description = `A modelled liquidation density map for ${perp.symbol}: wher
     </table>
   </div>
 
-  <h2 class="section">Where {perp.symbol} steps down</h2>
+  <h2 class="section">Where {perp.symbol}'s margin tiers step down</h2>
   <p class="section-note">
     Maintenance margin is set by the tier the notional falls in.
     {nextTier && <> Above {usd(nextTier.lowerBound)} the corridor widens, because maintenance margin rises to {pct(maintenanceMarginFraction(nextTier.maxLeverage), 3)}.</>}
@@ -340,7 +340,7 @@ const description = `A modelled liquidation density map for ${perp.symbol}: wher
     .reads { display: flex; flex-wrap: wrap; gap: 10px 40px; margin: 18px 0 4px; }
     .reads b { display: block; font-size: 21px; font-weight: 650; letter-spacing: -.012em; font-variant-numeric: tabular-nums; }
     .reads span { font-size: 12.5px; color: var(--text-faint); }
-    .freshness { margin: 12px 0 0; font-size: 12.5px; color: var(--text-faint); max-width: 80ch; }
-    .freshness b { color: var(--text-dim); font-weight: 600; }
+    .datanote { margin: 12px 0 0; font-size: var(--fs-sm); color: var(--text-faint); max-width: 80ch; }
+    .datanote b { color: var(--text-dim); font-weight: 600; font-variant-numeric: tabular-nums; }
   </style>
 </Base>

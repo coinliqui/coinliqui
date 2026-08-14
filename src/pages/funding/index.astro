@@ -14,7 +14,7 @@ const widest = rows[0];
 
 const title = "Crypto funding rates, normalised to APR";
 const description =
-  "Perpetual funding rates across Hyperliquid, Binance and Bybit, annualised so they are actually comparable. Venues settle on different intervals, so the quoted numbers are not.";
+  "Live funding rates for BTC, ETH, SOL and every other perpetual covered here, annualised across Hyperliquid, Binance and Bybit — with the gap between venues, open interest and 24-hour volume on every row.";
 ---
 
 <Base title={title} description={description} fetchedAt={snap.fetchedAt}>
@@ -35,9 +35,9 @@ const description =
     <table class="tbl">
       <thead>
         <tr>
-          <th>Contract</th>
-          {ORDER.map((v) => <th class="num">{VENUE_LABEL[v]}</th>)}
-          <th class="num">Gap</th>
+          <th>Coin</th>
+          {ORDER.map((v) => <th class="num">{VENUE_LABEL[v]} APR</th>)}
+          <th class="num">Venue gap (APR)</th>
           <th class="num">Open interest</th>
           <th class="num">24h volume</th>
         </tr>
@@ -72,8 +72,8 @@ const description =
   </div>
 
   <p class="section-note" style="margin-top:12px">
-    Showing {snap.perps.length} of {snap.eligibleCount} contracts above the $5M open-interest floor
-    ({snap.universeCount} exist in total). Contracts below the floor are excluded rather than shown with sparse data.
+    Showing the largest {snap.perps.length} coins by open interest; {snap.eligibleCount} clear the $5M floor
+    ({snap.universeCount} exist in total). A coin below the floor is left out rather than published with sparse data; one already published keeps its page until open interest falls below $3.5M, so a URL does not appear and vanish on ordinary noise.
   </p>
 
   <style>

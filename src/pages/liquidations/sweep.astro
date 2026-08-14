@@ -94,7 +94,7 @@ const px = (v: number) => usd(v, 0);
 const btc = (v: number) => Math.round(v).toLocaleString("en-US");
 const fetched = new Date(frozen.fetchedAt).toISOString().slice(0, 10);
 
-const title = "The 5 February 2026 sweep — a liquidation model tested against real candles";
+const title = "The 5 February 2026 BTC crash — liquidation model vs real candles";
 const description =
   "BTC fell from $73,139 to a $60,000 wick in thirty hours on 5–6 February 2026. Here is the modelled liquidation field for that window, with the price path drawn over it, so you can watch price run into the bands and clear them.";
 ---
@@ -102,7 +102,7 @@ const description =
 <Base title={title} description={description} fetchedAt={frozen.fetchedAt} frozen>
   <div class="page-head">
     <p class="crumb"><a href="/liquidations">Liquidations</a> › The 5 February sweep</p>
-    <h1>Price ran into the band, and cleared it</h1>
+    <h1>The 5 February 2026 BTC sweep: price ran into the bands and cleared them</h1>
     <p>
       A liquidation map is a model, and a model that is never tested is decoration. On
       <strong>5–6 February 2026</strong> Bitcoin fell from {px(dayOpen)} to a {px(dayLow)} wick in
@@ -218,7 +218,7 @@ const description =
     <label>Assumed leverage mix
       <select name="profile">{PROFILES.map((p) => <option value={p.key} selected={p.key === profile.key}>{p.label}</option>)}</select>
     </label>
-    <button class="btn btn--primary" type="submit">Redraw</button>
+    <button class="btn btn--primary" type="submit">Redraw the map</button>
   </form>
   <p class="section-note">
     Change it and the bands move. That is the point of printing the assumption rather than hiding
@@ -229,7 +229,7 @@ const description =
   <p class="section-note">Hyperliquid's own candles from 5 February 00:00 to 6 February 06:00 UTC, unmodified. The chart above is drawn from these.</p>
   <div class="panel">
     <table class="tbl">
-      <thead><tr><th>Hour (UTC)</th><th class="num">Open</th><th class="num">High</th><th class="num">Low</th><th class="num">Close</th><th class="num">Volume (BTC)</th><th class="num">vs median</th></tr></thead>
+      <thead><tr><th>Hour (UTC)</th><th class="num">Open</th><th class="num">High</th><th class="num">Low</th><th class="num">Close</th><th class="num">Volume (BTC)</th><th class="num">vs prior hourly median</th></tr></thead>
       <tbody>
         {event.map((c) => (
           <tr class={c[5] > medVol * 10 ? "is-active" : undefined}>
@@ -257,7 +257,7 @@ const description =
     .scalebar { display: flex; align-items: flex-start; gap: 24px; flex-wrap: wrap; margin: 14px 0 0; }
     .scalebar__note { flex: 1 1 320px; margin: 0; font-size: 12.5px; color: var(--text-faint); max-width: 62ch; line-height: 1.55; }
     .reads { display: flex; flex-wrap: wrap; gap: 12px 44px; margin: 16px 0 0; }
-    .reads b { display: block; font-size: 25px; font-weight: 650; letter-spacing: -.012em; font-variant-numeric: tabular-nums; }
+    .reads b { display: block; font-size: 21px; font-weight: 650; letter-spacing: -.012em; font-variant-numeric: tabular-nums; }
     .reads span { font-size: 12.5px; color: var(--text-faint); }
   </style>
 </Base>

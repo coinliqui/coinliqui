@@ -120,8 +120,8 @@ if (grid && grid.entries.length > 4) {
   heatSvg = out.join("");
 }
 
-const title = `${perp.symbol} leverage survival — what the rules did to a position opened here`;
-const description = `For every entry day and every leverage, whether a ${perp.symbol} position held ${hold} days was closed by the exchange. Derived from real traded candles and published margin tiers — nothing modelled.`;
+const title = `${perp.symbol} leverage backtest: liquidated or survived`;
+const description = `Which leveraged ${perp.symbol} positions were liquidated and which survived — every entry day, every leverage, held ${hold} days. Derived from real traded candles and the published margin tiers, nothing modelled.`;
 ---
 
 <Base title={title} description={description} fetchedAt={snap.fetchedAt}>
@@ -138,7 +138,7 @@ const description = `For every entry day and every leverage, whether a ${perp.sy
   </div>
 
   <form method="GET" class="calc" style="margin-bottom:16px">
-    <label>Contract
+    <label>Coin
       <select name="symbol">{snap.perps.map((p) => <option value={p.symbol} selected={p.symbol === perp.symbol}>{p.symbol}</option>)}</select>
     </label>
     <label>Side
@@ -150,7 +150,7 @@ const description = `For every entry day and every leverage, whether a ${perp.sy
     <label>Held for
       <select name="hold">{HOLDS.map((h) => <option value={h} selected={h === hold}>{h} days</option>)}</select>
     </label>
-    <button class="btn btn--primary" type="submit">Show</button>
+    <button class="btn btn--primary" type="submit">Redraw the map</button>
   </form>
 
   {grid ? (
@@ -171,7 +171,7 @@ const description = `For every entry day and every leverage, whether a ${perp.sy
       <h2 class="section">The same map, counted</h2>
       <div class="panel">
         <table class="tbl">
-          <thead><tr><th class="num">Leverage</th><th class="num">Entry days</th><th class="num">Closed within {hold}d</th><th class="num">Survived</th><th class="num">Survival rate</th><th class="num">Median days to closure</th></tr></thead>
+          <thead><tr><th class="num">Leverage</th><th class="num">Entry days tested</th><th class="num">Closed within {hold}d</th><th class="num">Survived</th><th class="num">Survival rate</th><th class="num">Median days to closure</th></tr></thead>
           <tbody>
             {grid.levels.map((lv) => (
               <tr class={lv.L === tier1.maxLeverage ? "is-active" : undefined}>
@@ -210,7 +210,7 @@ const description = `For every entry day and every leverage, whether a ${perp.sy
     <div class="empty">
       <div class="empty__body">
         <p class="empty__title">Candle history not collected yet</p>
-        <p class="empty__text">This needs {hold + 12} days of daily candles for {perp.symbol}. The ingest worker refreshes them every twelve hours.</p>
+        <p class="empty__text">This needs {hold + 13} days of traded daily candles for {perp.symbol}. Either the series is still being collected — a twelve-hour sweep, jumped on the next tick when a series is missing entirely — or {perp.symbol} has not traded here that long, in which case a shorter hold window needs less history.</p>
       </div>
     </div>
   )}

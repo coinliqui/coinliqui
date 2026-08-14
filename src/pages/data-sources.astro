@@ -10,17 +10,17 @@ const sources = [
   { what: "Funding rate, per venue", ep: "POST /info {\"type\":\"predictedFundings\"}", who: "Hyperliquid", freq: "5 min" },
   { what: "Open interest, volume, mark and oracle price, premium", ep: "POST /info {\"type\":\"metaAndAssetCtxs\"}", who: "Hyperliquid", freq: "5 min" },
   { what: "Maintenance-margin tiers", ep: "POST /info {\"type\":\"marginTable\",\"id\":N}", who: "Hyperliquid", freq: "build time" },
-  { what: "Spot price, 24h open/high/low/volume", ep: "GET /products/stats", who: "Coinbase Exchange", freq: "5 min" },
+  { what: "Spot price, 24h open/high/low/volume", ep: "GET /products/stats", who: "Coinbase Exchange", freq: "1 min" },
   { what: "Spot candles, hourly and daily", ep: "GET /products/{id}/candles", who: "Coinbase Exchange", freq: "2 h" },
 ];
 ---
 <Base title="Data sources" description="Every endpoint behind every number on this site, its refresh cadence, and an explicit list of what is deliberately absent." fetchedAt={snap.fetchedAt}>
-  <h1 style="margin:0 0 14px;font-size:26px;letter-spacing:-.02em">Data sources</h1>
+  <div class="page-head"><h1>Data sources</h1></div>
   <p class="prose">Every displayed figure comes from the table below and is rendered on the server before the page is sent, so it is present for readers, search crawlers and answer engines alike.</p>
-  <table class="tbl">
+  <div class="panel"><table class="tbl">
     <thead><tr><th>Figure</th><th>Endpoint</th><th>Source</th><th>Refresh</th></tr></thead>
     <tbody>{sources.map((s) => (<tr><td>{s.what}</td><td><code>{s.ep}</code></td><td>{s.who}</td><td>{s.freq}</td></tr>))}</tbody>
-  </table>
+  </table></div>
   <h2>Why spot comes from Coinbase</h2>
   <p class="prose">
     Hyperliquid supplies everything derivative here, but it has no Bitcoin spot market — its spot book is
@@ -33,7 +33,7 @@ const sources = [
   </p>
 
   <h2>Coverage</h2>
-  <p class="prose">A contract is published only above {usd(OI_NOTIONAL_FLOOR)} of open interest. {snap.eligibleCount} of {snap.universeCount} contracts clear that floor today; {snap.perps.length} are published.</p>
+  <p class="prose">A coin is published once its perpetual holds {usd(OI_NOTIONAL_FLOOR)} of open interest, and keeps its page until that falls below $3.5M. {snap.eligibleCount} of {snap.universeCount} perpetuals clear that floor today; {snap.perps.length} are published.</p>
   <h2>What is deliberately absent</h2>
   <ul class="prose">
     <li><strong>Liquidation totals.</strong> Exchange feeds are throttled and any total would be understated — <a href="/methodology/liquidations">the full explanation</a>.</li>
@@ -57,8 +57,7 @@ const sources = [
   ]} />
 
   <style>
-    h2 { font-size: 17px; margin: 30px 0 10px; }
+    h2 { font-size: 16px; font-weight: 600; letter-spacing: -.01em; margin: 32px 0 10px; }
     .p { max-width: 72ch; }
-    code { background: #14181d; padding: 1px 5px; border-radius: 4px; font-size: 12px; }
   </style>
 </Base>

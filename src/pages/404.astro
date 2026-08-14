@@ -34,17 +34,17 @@ const nearest = snap.perps.slice(0, 12);
     <h1>{wanted && !covered ? `${wanted} is not published` : "That page does not exist"}</h1>
     {wanted && !covered ? (
       <p>
-        Contracts get a page only above {usd(OI_NOTIONAL_FLOOR)} of open interest — a thin page is
+        A coin gets a page once its perpetual holds {usd(OI_NOTIONAL_FLOOR)} of open interest — a thin page is
         worse than no page, so nothing is generated below it. {snap.eligibleCount} of
-        {" "}{snap.universeCount} contracts clear that floor today and {snap.perps.length} are
-        published. If {wanted} crosses it, the page appears on its own.
+        {" "}{snap.universeCount} coins clear that floor today and {snap.perps.length} are
+        published. If {wanted} crosses it and ranks inside the largest {SYMBOL_CAP} by open interest, the page appears on its own.
       </p>
     ) : (
       <p>The link may be old, or mistyped. Everything the site publishes is one click away below.</p>
     )}
   </div>
 
-  <h2 class="section">{wanted && !covered ? "Published contracts" : "Start here"}</h2>
+  <h2 class="section">{wanted && !covered ? "Coins with a funding page" : "Start here"}</h2>
   {wanted && !covered ? (
     <p class="related">
       {nearest.map((x) => <a class="chip-link" href={`/funding/${x.symbol.toLowerCase()}`}>{x.symbol}</a>)}
@@ -54,7 +54,7 @@ const nearest = snap.perps.slice(0, 12);
     <div class="cards">
       <a class="card" href="/funding">
         <div class="card__label">Funding</div>
-        <div class="card__value" style="font-size:19px">Every contract</div>
+        <div class="card__value" style="font-size:19px">Every coin</div>
         <div class="card__meta">Three venues, annualised on their own settlement interval.</div>
       </a>
       <a class="card" href="/liquidations">

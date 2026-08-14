@@ -50,7 +50,7 @@ export interface NavGroup {
  */
 export const NAV: NavGroup[] = [
   {
-    title: "Changes",
+    title: "Markets",
     items: [
       { label: "Overview", href: "/", mobile: true, icon: "M3 9.5 10 4l7 5.5V16a1 1 0 0 1-1 1h-4v-5H8v5H4a1 1 0 0 1-1-1V9.5Z" },
       { label: "Funding", href: "/funding", mobile: true, icon: "M3 14.5 7 9l3.5 3.5L17 5M17 5h-4.5M17 5v4.5" },
@@ -61,12 +61,16 @@ export const NAV: NavGroup[] = [
   },
   {
     title: "Yours",
-    items: [{ label: "Pinned", href: "/watchlist", mobile: true, icon: "M10 3.5 12 8l4.8.4-3.6 3.1 1.1 4.7L10 13.7l-4.3 2.5 1.1-4.7L3.2 8.4 8 8l2-4.5Z" }],
+    items: [{ label: "Watchlist", href: "/watchlist", mobile: true, icon: "M10 3.5 12 8l4.8.4-3.6 3.1 1.1 4.7L10 13.7l-4.3 2.5 1.1-4.7L3.2 8.4 8 8l2-4.5Z" }],
   },
   {
     title: "Reference",
     items: [
-      { label: "Open interest", href: "/open-interest", mobile: true, icon: "M4 16V8m4 8V5m4 11v-6m4 6V7" },
+      /* Not in the mobile bar. Adding Coins made six tabs, and at 375px "Open interest"
+         wrapped to two lines and pushed its own label out of alignment with the other five.
+         Five is what the bar fits; open interest keeps its rail entry, its footer link and a
+         card on every page that leads to it. */
+      { label: "Open interest", href: "/open-interest", icon: "M4 16V8m4 8V5m4 11v-6m4 6V7" },
       { label: "Chains", icon: "M8 12a3 3 0 0 1 0-4l2-2a3 3 0 0 1 4 4l-1 1m-1 1a3 3 0 0 1 0 4l-2 2a3 3 0 0 1-4-4l1-1" },
       { label: "Seasonality", icon: "M4 16h12M4 16V8m4 8V5m4 11v-6m4 6V9" },
       { label: "Metrics", icon: "M4 10h3l2-5 2 10 2-5h3" },
@@ -86,6 +90,8 @@ export const NAV: NavGroup[] = [
 /** Footer carries every built destination, so nothing is reachable only at desktop widths. */
 export const FOOTER_LINKS = [
   { href: "/coins", label: "Coins" },
+  { href: "/liquidations", label: "Liquidation map" },
+  { href: "/unlocks", label: "Token unlocks" },
   { href: "/funding", label: "Funding" },
   { href: "/open-interest", label: "Open interest" },
   { href: "/tools", label: "Tools" },

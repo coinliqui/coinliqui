@@ -33,7 +33,7 @@ const stamp = new Date(snap.fetchedAt).toISOString().slice(0, 16).replace("T", "
 // not as a wall of bold.
 const parts: [string, boolean][] = [
   ["Open interest across ", false], [String(snap.perps.length), true],
-  [" perpetual contracts is ", false], [usd(totalOi), true],
+  [" coins is ", false], [usd(totalOi), true],
   [", on ", false], [usd(totalVol), true],
   [" of 24-hour volume. Funding is most expensive on ", false], [richest?.symbol ?? "—", true],
   [" at ", false], [richest ? pct(richest.hlApr) : "—", true],
@@ -41,9 +41,9 @@ const parts: [string, boolean][] = [
   [", ", false], [widest?.aprSpread != null ? pct(widest.aprSpread) : "—", true], [".", false],
 ];
 
-const title = `${SITE.name} — perpetual funding, normalised`;
+const title = `${SITE.name} — crypto funding rates and open interest`;
 const description =
-  "Funding rates across Hyperliquid, Binance and Bybit annualised so they are comparable, open interest, and a tier-correct liquidation price calculator.";
+  "Funding rates across Hyperliquid, Binance and Bybit, annualised so they are comparable — with open interest, the funding sign flips of the last 24 hours, and a modelled liquidation map.";
 ---
 
 <Base title={title} titleMode="exact" description={description} fetchedAt={snap.fetchedAt}>
@@ -72,7 +72,7 @@ const description =
       <a class="card" href="/open-interest">
         <div class="card__label">Open interest</div>
         <div class="card__value">{usd(totalOi)}</div>
-        <div class="card__meta">{snap.perps.length} contracts{btc ? ` · BTC ${usd(btc.markPx, 0)}` : ""}</div>
+        <div class="card__meta">{snap.perps.length} coins{btc ? ` · BTC ${usd(btc.markPx, 0)}` : ""}</div>
       </a>
     </div>
 
@@ -89,7 +89,7 @@ const description =
     {flips.status === "ready" && flips.rows.length > 0 ? (
       <div class="panel">
         <table class="tbl">
-          <thead><tr><th>Contract</th><th>Venue</th><th class="num">Was</th><th class="num">Now</th><th class="num">Flipped</th></tr></thead>
+          <thead><tr><th>Coin</th><th>Venue</th><th class="num">Was (APR)</th><th class="num">Now (APR)</th><th class="num">Flipped at (UTC)</th></tr></thead>
           <tbody>
             {flips.rows.map((f) => (
               <tr>
@@ -112,7 +112,7 @@ const description =
           <p class="empty__title">Collecting funding history</p>
           <p class="empty__text">
             A flip needs two readings to compare, so this feed reports nothing until the window
-            covers a full 24 hours. That way an empty list means <em>no contract flipped</em>,
+            covers a full 24 hours. That way an empty list means <em>no coin flipped</em>,
             rather than <em>we have not been watching long enough to say</em>.
           </p>
           {/* A 0% bar reads as "nothing is happening". Before the first snapshot there is
@@ -139,7 +139,7 @@ const description =
         <div class="empty__body">
           <p class="empty__title">No flips in the last 24 hours</p>
           <p class="empty__text">
-            Every contract kept the same side paying across all three venues for the full window.
+            Every coin kept the same side paying across all three venues for the full window.
             This is a result, not a gap — the feed is live and has the history to say so.
           </p>
           <p class="empty__meta">Window <b>{utc(Date.now() - 86_400_000)}</b> → <b>{utc(Date.now())}</b></p>
@@ -158,12 +158,12 @@ const description =
       </div>
     )}
 
-    <h2 class="section">Funding by contract</h2>
+    <h2 class="section">Funding rates by coin</h2>
     <p class="legend">{LEGEND} — colour encodes the direction of payment only. Every other figure is neutral.</p>
     <div class="panel">
       <table class="tbl">
         <thead>
-          <tr><th>Contract</th><th class="num">Annualised</th><th class="num">Venue gap</th><th class="num">Open interest</th><th class="num">24h volume</th></tr>
+          <tr><th>Coin</th><th class="num">Hyperliquid funding APR</th><th class="num">Venue gap (APR)</th><th class="num">Open interest</th><th class="num">24h volume</th></tr>
         </thead>
         <tbody>
           {top.map((p) => (
@@ -184,8 +184,8 @@ const description =
       </table>
     </div>
     <p class="section-note" style="margin-top:12px">
-      <a class="link" href="/funding">All {snap.perps.length} contracts with per-venue detail →</a>
-      · {snap.eligibleCount} of {snap.universeCount} contracts clear the $5M open-interest floor
+      <a class="link" href="/funding">All {snap.perps.length} coins with per-venue detail →</a>
+      · {snap.eligibleCount} of {snap.universeCount} coins clear the $5M open-interest floor
     </p>
 
     <style>

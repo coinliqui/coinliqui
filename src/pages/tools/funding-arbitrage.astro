@@ -35,8 +35,8 @@ const naivePeriod = perLeg * naiveSpreadApr * (days / 365);
 
 const sameInterval = shortLeg.intervalHours === longLeg.intervalHours;
 
-const title = `Funding arbitrage calculator — cross-venue spread on ${perp.symbol}`;
-const description = `What the funding spread between venues is actually worth on a delta-neutral ${perp.symbol} position, with both legs annualised on their own settlement interval rather than assumed to match.`;
+const title = `Funding arbitrage calculator — cross-venue spread`;
+const description = `What the funding spread between venues is actually worth on a delta-neutral position, with both legs annualised on their own settlement interval rather than assumed to match. Opens on the widest live spread.`;
 ---
 
 <Base title={title} description={description} fetchedAt={snap.fetchedAt}>
@@ -51,7 +51,7 @@ const description = `What the funding spread between venues is actually worth on
   </div>
 
   <form method="GET" class="calc">
-    <label>Contract
+    <label>Coin
       <select name="symbol">{tradable.map((p) => <option value={p.symbol} selected={p.symbol === perp.symbol}>{p.symbol}</option>)}</select>
     </label>
     <label>Capital deployed (USD)
@@ -100,7 +100,7 @@ const description = `What the funding spread between venues is actually worth on
   <h2 class="section">The two legs</h2>
   <div class="panel">
     <table class="tbl">
-      <thead><tr><th>Leg</th><th>Venue</th><th class="num">Quoted</th><th class="num">Interval</th><th class="num">Annualised</th><th class="num">You</th></tr></thead>
+      <thead><tr><th>Leg</th><th>Venue</th><th class="num">Quoted rate, per settlement</th><th class="num">Interval</th><th class="num">Annualised</th><th class="num">You pay or receive</th></tr></thead>
       <tbody>
         <tr class="is-active">
           <td><strong>Short</strong></td>
@@ -143,7 +143,7 @@ const description = `What the funding spread between venues is actually worth on
     converge, invert, or gap apart within hours; the position is delta-neutral on price but
     emphatically not on funding. And both legs must stay solvent — a move against the short leg can
     liquidate it while the long leg is fine, leaving you directional at the worst moment.
-    <a class="link" href="/liquidations">See where the levels sit for a contract →</a>
+    <a class="link" href={`/liquidations?symbol=${perp.symbol}`}>See where the levels sit for {perp.symbol} →</a>
   </p>
   <p class="prose">
     Capital is split evenly across the legs here. Anything else changes the delta and this stops
@@ -152,7 +152,7 @@ const description = `What the funding spread between venues is actually worth on
 
   <p style="margin-top:24px">
     <a class="link" href={`/funding/${perp.symbol.toLowerCase()}`}>{perp.symbol} funding detail →</a>
-    · <a class="link" href="/funding">All contracts by spread →</a>
+    · <a class="link" href="/funding">All coins by spread →</a>
   </p>
 
   <script is:inline define:vars={{ venues: perp.venues }}>

@@ -62,7 +62,7 @@ const description = `Risk-based position sizing for ${perp.symbol} perpetuals th
   </div>
 
   <form method="GET" class="calc">
-    <label>Contract
+    <label>Coin
       <select name="symbol">{snap.perps.map((p) => <option value={p.symbol} selected={p.symbol === perp.symbol}>{p.symbol}</option>)}</select>
     </label>
     <label>Side
@@ -77,10 +77,10 @@ const description = `Risk-based position sizing for ${perp.symbol} perpetuals th
     <label>Risk per trade (%)
       <input type="number" name="risk" value={riskPct} step="any" min="0" max="100" />
     </label>
-    <label>Entry price
+    <label>Entry price (USD)
       <input type="number" name="entry" value={entry} step="any" min="0" />
     </label>
-    <label>Stop price
+    <label>Stop price (USD)
       <input type="number" name="stop" value={stop} step="any" min="0" />
     </label>
     <label>Leverage

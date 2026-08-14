@@ -15,7 +15,7 @@ const rows = ORDER.map((v) => example?.venues.find((x) => x.venue === v)).filter
   (typeof example)["venues"][number]
 >[];
 
-const title = "Methodology — how funding rates are normalised";
+const title = "How crypto funding rates are annualised across venues";
 const description =
   "Perpetual venues settle funding on different intervals, so their quoted rates are not comparable. This is how the rates on this site are annualised, and why the raw comparison everyone else publishes is wrong.";
 ---
@@ -56,7 +56,7 @@ const description =
       <h2>Worked example, live right now</h2>
       <p class="prose">Current {example.symbol} funding, as quoted and as annualised:</p>
       <div class="panel"><table class="tbl">
-        <thead><tr><th>Venue</th><th class="num">Quoted</th><th class="num">Interval</th><th class="num">Settlements / yr</th><th class="num">APR</th></tr></thead>
+        <thead><tr><th>Venue</th><th class="num">Quoted rate, per settlement</th><th class="num">Interval</th><th class="num">Settlements / yr</th><th class="num">APR</th></tr></thead>
         <tbody>
           {rows.map((f) => (
             <tr>
@@ -81,7 +81,7 @@ const description =
     Hyperliquid lists <strong>{snap.universeCount}</strong> perpetual contracts.
     <strong> {snap.eligibleCount}</strong> of them carry more than $5,000,000 of open interest,
     and this site publishes a page for the largest <strong>{snap.perps.length}</strong> of those.
-    Contracts below the floor are not published at all rather than published with sparse or
+    A coin that has not cleared the floor is not published at all rather than published with sparse or
     misleading figures — a page that exists only to exist is worse than no page.
   </p>
 
@@ -92,7 +92,7 @@ const description =
     <a href="/methodology/liquidations">why we do not publish liquidation totals</a>.
   </p>
   <p class="prose">
-    No spot prices, market capitalisations or supply figures. Those would require data whose
+    No market capitalisations or supply figures. Those would require data whose
     licence terms do not permit publication, so they are absent rather than sourced quietly.
     Everything displayed comes from <a href="/data-sources">the sources listed here</a>.
   </p>

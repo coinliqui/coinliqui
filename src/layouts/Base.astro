@@ -98,7 +98,7 @@ const schema = {
         --r-sm: 8px; --r-md: 12px; --r-pill: 999px;
 
         /* shell metrics — comfortable, reference-set sized */
-        --rail-w: 260px; --rail-w-collapsed: 72px; --topbar-h: 60px; --tabbar-h: 58px;
+        --rail-w: 260px; --rail-w-collapsed: 72px; --topbar-h: 60px; --tabbar-h: 56px;
 
         /* type scale — one number leads, everything else defers to it */
         --fs-hero: 46px; --fs-xl: 28px; --fs-lg: 19px; --fs-md: 15px;
@@ -191,8 +191,8 @@ const schema = {
       .search { flex: 1 1 auto; max-width: 560px; position: relative; display: flex; align-items: center; }
       .search svg { position: absolute; left: 16px; color: var(--text-faint); pointer-events: none; }
       .search input {
-        width: 100%; height: 44px; padding: 0 18px 0 46px; font: 14px var(--sans); color: var(--text);
-        background: var(--surface-2); border: 1px solid transparent; border-radius: var(--r-pill);
+        width: 100%; height: 44px; padding: 0 16px 0 48px; font: 14px var(--sans); color: var(--text);
+        background: var(--surface-3); border: 1px solid var(--border-soft); border-radius: var(--r-pill);
       }
       .search input::placeholder { color: var(--text-faint); }
       .search input:hover { background: var(--surface-3); }
@@ -204,9 +204,9 @@ const schema = {
          controls — the account entry is a plain anchor to a page that exists, not
          a modal trigger and not a disabled teaser.
          ------------------------------------------------------------------------- */
-      .topbar__end { margin-left: auto; display: flex; align-items: center; gap: 8px; flex: 0 0 auto; height: 40px; }
+      .topbar__end { margin-left: auto; display: flex; align-items: center; gap: 8px; flex: 0 0 auto; height: 44px; }
       .freshness {
-        display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 16px;
+        display: flex; align-items: center; gap: 8px; height: 44px; padding: 0 16px;
         font-size: 13px; color: var(--text-dim); white-space: nowrap;
         background: var(--surface-2); border: 1px solid var(--border-soft);
         border-radius: var(--r-pill);
@@ -218,7 +218,7 @@ const schema = {
       /* The primary action. Accent fill, not a ghost outline — this is the one place on
          the page allowed to look like a button you are meant to press. It goes to a real
          working feature, not a signup. */
-      .cta { flex: 0 0 auto; height: 40px; border-radius: var(--r-pill); padding: 0 18px; white-space: nowrap; }
+      .cta { flex: 0 0 auto; height: 44px; border-radius: var(--r-pill); padding: 0 16px; white-space: nowrap; }
       .cta svg { flex: 0 0 17px; }
 
       /* The one surface on the page: a single large rounded card holding all content.
@@ -258,7 +258,7 @@ const schema = {
          shift. Label and meta are static copy and may wrap freely; clipping them to a
          fixed height (as an earlier pass did) truncates real text for no benefit. */
       .card__value { font-size: 26px; font-weight: 600; letter-spacing: -.02em; line-height: 32px; height: 32px; font-variant-numeric: tabular-nums; }
-      .card__meta { font-size: 13px; color: var(--text-faint); margin-top: 6px; margin-bottom: 0; min-height: 20px; }
+      .card__meta { font-size: var(--fs-sm); color: var(--text-faint); font-variant-numeric: tabular-nums; margin-top: 6px; margin-bottom: 0; min-height: 20px; }
       .card__label + .card__value { margin-top: auto; }
 
       /* --- buttons --- */
@@ -295,6 +295,7 @@ const schema = {
       }
       .calc label { display: grid; gap: 6px; font-size: 13px; color: var(--text-dim); }
       .calc input, .calc select {
+        appearance: none; -webkit-appearance: none;
         height: 40px; min-width: 148px; padding: 0 12px; font: 14px var(--sans); color: var(--text);
         background: var(--surface-3); border: 1px solid var(--border); border-radius: var(--r-sm);
         font-variant-numeric: tabular-nums;
@@ -355,9 +356,9 @@ const schema = {
       table.tbl { border-collapse: collapse; width: 100%; font-size: 13px; }
       .tbl th {
         font-size: 12px; font-weight: 500; color: var(--text-faint); text-align: left;
-        padding: 10px 14px; background: var(--surface-3); border-bottom: 1px solid var(--border-soft); white-space: nowrap;
+        padding: 12px 12px; background: var(--surface-3); border-bottom: 1px solid var(--border-soft); white-space: nowrap;
       }
-      .tbl td { padding: 7px 14px; border-bottom: 1px solid var(--border-soft); }
+      .tbl td { padding: 8px 12px; border-bottom: 1px solid var(--border-soft); }
       .tbl tbody tr:last-child td { border-bottom: 0; }
       .tbl th.num, .tbl td.num { text-align: right; }
       .tbl tbody tr:hover { background: var(--surface-3); }
@@ -371,7 +372,7 @@ const schema = {
       .magnitude__track { flex: 0 0 56px; height: 4px; border-radius: 2px; background: var(--surface-3); overflow: hidden; }
       .magnitude__fill { display: block; height: 100%; border-radius: 2px; background: var(--text-faint); }
 
-      .legend { font-size: 12.5px; color: var(--text-faint); margin: 0 0 10px; }
+      .legend { font-size: var(--fs-sm); color: var(--text-faint); margin: 0 0 10px; }
       .legend b { font-weight: 500; }
 
       footer { margin-top: 40px; padding: 20px 0 0; color: var(--text-faint); font-size: 13px; }
@@ -480,7 +481,7 @@ const schema = {
         .app, .app.is-collapsed { grid-template-columns: minmax(0,1fr); }
         .rail { display: none; }
         .topbar { padding: 0 16px; }
-        .page { margin: 0 12px 12px; padding: 16px 14px calc(var(--tabbar-h) + 24px); min-height: 0; }
+        .page { margin: 0 12px 12px; padding: 16px 16px calc(var(--tabbar-h) + 24px); min-height: 0; }
         /* Narrow viewports drop the relative timestamp and keep the clock, so the
            cluster stays two even 40px controls instead of one wide pill + one round. */
         .freshness { padding: 0; width: 40px; justify-content: center; gap: 0; }
@@ -494,6 +495,22 @@ const schema = {
         }
         .tabbar a { display: grid; place-items: center; gap: 3px; text-decoration: none; color: var(--text-faint); font-size: 11px; }
         .tabbar a[aria-current="page"] { color: var(--accent); }
+
+        /* TOUCH TARGETS. A finger is not a cursor: the chart's timeframe pills were 29px,
+           the related-coin chips 34px and the primary action 40px, all under the 44px
+           minimum. Only the mobile geometry changes — the desktop pills stay compact,
+           because a pointer does not need the padding and the row would look inflated. */
+        .tf button { padding: 0 16px; min-height: 44px; }
+        .tf { padding: 2px; }
+        .chip-link { padding: 12px 16px; }
+        .btn { height: 44px; }
+        /* A stacked form is a column, so its controls should share one edge rather than
+           each sizing to its own content — selects to their longest option, number inputs
+           to a default character count. */
+        .calc { gap: 16px; }
+        .calc label { width: 100%; }
+        .calc input, .calc select { width: 100%; }
+        .calc .btn, .calc button { width: 100%; }
       }
     </style>
   </head>
@@ -537,7 +554,7 @@ const schema = {
           <div class="search">
             <label class="vh" for="q">Search</label>
             <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true" focusable="false"><circle cx="9" cy="9" r="5.5" /><path d="m13 13 4 4" /></svg>
-            <input id="q" type="search" autocomplete="off" placeholder="Search token, chain, unlock, protocol" />
+            <input id="q" type="search" autocomplete="off" placeholder="Search a coin, tool or page" />
             <div class="search__results" id="qr"></div>
           </div>
           <div class="topbar__end">
@@ -552,7 +569,7 @@ const schema = {
             )}
             <a class="btn btn--primary cta" href="/watchlist" aria-current={path === "/watchlist" ? "page" : undefined}>
               <svg width="17" height="17" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M10 3.2l2.1 4.3 4.7.7-3.4 3.3.8 4.7-4.2-2.2-4.2 2.2.8-4.7L3.2 8.2l4.7-.7z" /></svg>
-              <span class="cta__label">Pin contracts</span>
+              <span class="cta__label">Pin coins</span>
             </a>
           </div>
         </header>

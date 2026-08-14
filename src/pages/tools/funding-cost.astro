@@ -46,7 +46,7 @@ const description = `What holding a ${perp.symbol} perpetual actually costs in f
   </div>
 
   <form method="GET" class="calc">
-    <label>Contract
+    <label>Coin
       <select name="symbol">{snap.perps.map((p) => <option value={p.symbol} selected={p.symbol === perp.symbol}>{p.symbol}</option>)}</select>
     </label>
     <label>Venue
@@ -114,7 +114,7 @@ const description = `What holding a ${perp.symbol} perpetual actually costs in f
   <p class="section-note">Identical notional and holding period. The ordering by cost is frequently not the ordering by quoted rate.</p>
   <div class="panel">
     <table class="tbl">
-      <thead><tr><th>Venue</th><th class="num">Quoted</th><th class="num">Interval</th><th class="num">Settlements</th><th class="num">APR</th><th class="num">Cost over {days}d</th></tr></thead>
+      <thead><tr><th>Venue</th><th class="num">Quoted rate, per settlement</th><th class="num">Interval</th><th class="num">Settlements over {days}d</th><th class="num">APR</th><th class="num">Cost over {days}d</th></tr></thead>
       <tbody>
         {perp.venues.map((v) => {
           const s = (days * 24) / v.intervalHours;

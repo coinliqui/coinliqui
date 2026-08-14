@@ -52,7 +52,7 @@ const description = `Maximum leverage on ${perp.symbol} perpetuals steps down as
   </div>
 
   <form method="GET" class="calc">
-    <label>Contract
+    <label>Coin
       <select name="symbol">{snap.perps.map((p) => <option value={p.symbol} selected={p.symbol === perp.symbol}>{p.symbol}</option>)}</select>
     </label>
     <label>Side
@@ -130,7 +130,7 @@ const description = `Maximum leverage on ${perp.symbol} perpetuals steps down as
   </p>
   <div class="panel" style="max-width:720px">
     <table class="tbl">
-      <thead><tr><th>Tier</th><th class="num">Notional from</th><th class="num">Max leverage</th><th class="num">Maintenance margin</th><th class="num">Margin on {usd(notional)}</th></tr></thead>
+      <thead><tr><th>Tier</th><th class="num">Notional from</th><th class="num">Max leverage</th><th class="num">Maintenance margin</th><th class="num">Initial margin on {usd(notional)}</th></tr></thead>
       <tbody>
         {table.marginTiers.map((t, i) => (
           <tr class={i === index ? "is-active" : undefined}>

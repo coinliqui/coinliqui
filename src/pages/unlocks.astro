@@ -64,7 +64,7 @@ const description =
 
 <Base title={title} description={description}>
   <div class="page-head">
-    <h1>Unlocks</h1>
+    <h1>Token unlocks</h1>
     <p>
       Supply arriving on the market, and — the part nobody else shows — <strong>how solid each
       line is</strong>. Every row carries a provenance mark: read from the contract, published by
@@ -76,7 +76,7 @@ const description =
     <label>Horizon
       <select name="days">{HORIZONS.map((h) => <option value={h} selected={h === horizon}>{h} days</option>)}</select>
     </label>
-    <button class="btn btn--primary" type="submit">Show</button>
+    <button class="btn btn--primary" type="submit">Show the calendar</button>
   </form>
 
   <h2 class="section">Arriving in the next {horizon} days</h2>
@@ -85,7 +85,7 @@ const description =
       <table class="tbl">
         <thead>
           <tr>
-            <th>Token</th><th>Event</th><th class="num">Tokens</th><th class="num">Share of supply</th>
+            <th>Token</th><th>Event</th><th class="num">Amount</th><th class="num">Share of supply</th>
             <th class="num">Days of volume to absorb</th><th>Provenance</th>
           </tr>
         </thead>
@@ -154,7 +154,7 @@ const description =
   <p class="prose">
     It fills only where this site already carries a perpetual for the token, because that is the
     only volume series it trusts. Raising the coverage floor to
-    {" "}<a class="link" href="/funding">{snap.perps.length || 50} contracts</a> is what put CRV and AAVE
+    {" "}<a class="link" href="/funding">{snap.perps.length || 50} coins</a> is what put CRV and AAVE
     on both sides of that gap. For anything else the cell stays blank rather than borrowing a
     number from a source the rest of the page would not accept.
   </p>
@@ -300,12 +300,12 @@ const description =
   ]} />
 
   <style>
-    .prov { display: inline-block; font-size: 11.5px; font-weight: 500; padding: 3px 9px; border-radius: var(--r-pill); white-space: nowrap; }
+    .prov { display: inline-block; font-size: var(--fs-xs); font-weight: 500; padding: 2px 8px; border-radius: var(--r-pill); white-space: nowrap; }
     .prov--contract { background: var(--accent-fill); color: var(--accent); }
     .prov--project { background: var(--surface-3); color: var(--text-dim); }
     .prov--aggregator { background: none; color: var(--text-faint); border: 1px dashed var(--border); }
     .addr { font-size: 11.5px; color: var(--text-faint); background: none; padding: 0; }
-    .sub { font-size: 12px; color: var(--text-faint); }
+    .sub { font-size: var(--fs-xs); color: var(--text-faint); font-variant-numeric: tabular-nums; }
     .reason { color: var(--text-dim); white-space: normal; }
     .tbl td { vertical-align: top; }
     h2.section { margin-top: 32px; }

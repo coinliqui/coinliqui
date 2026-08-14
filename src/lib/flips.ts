@@ -80,7 +80,7 @@ export async function readFlips(db: D1Like | undefined, hours = 24): Promise<Fli
 
 export function describeCoverage(r: FlipsResult): string {
   if (r.status === "no-store") {
-    return "The flip feed needs the snapshot store, which is not bound in this environment.";
+    return "The flip feed reads the funding-history database, and it is not answering here.";
   }
   if (r.status === "warming") {
     if (!r.since) return "Collecting funding snapshots now. The first flips appear once 24 hours of history exist.";

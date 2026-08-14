@@ -90,8 +90,8 @@ const stat = (fn: (c: (typeof charts)[number]) => string) =>
   Object.fromEntries(charts.filter((c) => c.chart).map((c) => [`data-v${c.tf.key}`, fn(c)]));
 
 const rows = active ? active.chart.points.slice(-200) : [];
-const title = `${p.symbol} price, funding rate and margin tiers`;
-const description = `${p.symbol} perpetual candles from 1H to 1W with the funding rate charted on the same time axis, funding across Hyperliquid, Binance and Bybit annualised, open interest ${usd(p.oiNotional)} and the published margin tiers.`;
+const title = `${p.symbol} funding rate, perpetual price and margin tiers`;
+const description = `What a ${p.symbol} perpetual costs to hold: funding across Hyperliquid, Binance and Bybit annualised side by side, the price chart from 1H to 1W with funding on the same axis, ${usd(p.oiNotional)} of open interest and the published margin tiers.`;
 ---
 
 <Base title={title} description={description} fetchedAt={snap.fetchedAt}>
@@ -130,7 +130,7 @@ const description = `${p.symbol} perpetual candles from 1H to 1W with the fundin
           Real traded candles only — Hyperliquid's pre-launch backfill carries zero volume and is excluded.
           {missingTf.length > 0 && (
             <> {missingTf.join(" and ")}{" "}{missingTf.length === 1 ? "is" : "are"} not offered yet: this contract
-            entered coverage recently and its daily candles are still being collected.</>
+            entered coverage recently and the candle series behind them is still being collected.</>
           )}
         </span>
       </form>
@@ -170,7 +170,7 @@ const description = `${p.symbol} perpetual candles from 1H to 1W with the fundin
         <summary><span data-tflabel>{active!.tf.label}</span> bars as a table (<span data-tfcount>{rows.length}</span> rows, open · high · low · close · volume · funding)</summary>
         <div class="panel" style="margin-top:10px">
           <table class="tbl">
-            <thead><tr><th>Time (UTC)</th><th class="num">Open</th><th class="num">High</th><th class="num">Low</th><th class="num">Close</th><th class="num">Volume</th><th class="num">Funding APR</th></tr></thead>
+            <thead><tr><th>Time (UTC)</th><th class="num">Open</th><th class="num">High</th><th class="num">Low</th><th class="num">Close</th><th class="num">Volume ({p.symbol})</th><th class="num">Funding APR</th></tr></thead>
             <tbody>
               {rows.map((q) => (
                 <tr>
@@ -210,9 +210,9 @@ const description = `${p.symbol} perpetual candles from 1H to 1W with the fundin
       <div class="card__meta">annualised difference</div>
     </div>
     <div class="card">
-      <div class="card__label">Cost to hold $10,000</div>
+      <div class="card__label">Cost to hold $10,000 long</div>
       <div class="card__value">{Number.isFinite(carry7d) ? usd(Math.abs(carry7d), 2) : "—"}</div>
-      <div class="card__meta">over 7 days, at the current rate</div>
+      <div class="card__meta">over 7 days at the current rate{hl ? ` · ${hl.apr >= 0 ? "you pay" : "you receive"}` : ""}</div>
     </div>
     <div class="card">
       <div class="card__label">Next settlement</div>
@@ -281,7 +281,7 @@ const description = `${p.symbol} perpetual candles from 1H to 1W with the fundin
     <a class="btn btn--primary" href={`/liquidations?symbol=${p.symbol}`}>Open the map</a>
   </div>
 
-  <h2 class="section">Other contracts</h2>
+  <h2 class="section">Funding rates for other coins</h2>
   {/* Twenty-four rather than ten. A contract page's neighbours are the most useful links it
       can carry — and a fifty-page template where every page links to ten of its siblings
       leaves most of the set two or three hops from anywhere, which is the shape that gets a

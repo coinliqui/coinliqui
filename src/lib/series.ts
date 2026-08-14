@@ -195,7 +195,7 @@ export function buildPriceChart(
       s.push(`<polyline points="${pts}" fill="none" stroke="${side > 0 ? INK.paysL : INK.paysS}" stroke-width="1.1" stroke-linejoin="round" opacity=".9"/>`);
     }
     s.push(line(plotX, fz, axisX, fz, INK.zero));
-    s.push(text(axisX + 10, fundY + 11, `+${(fmax * 100).toFixed(0)}%`, INK.faint, FS_MICRO));
+    s.push(text(axisX + 10, fundY + 11, `+${(fmax * 100).toFixed(0)}% APR`, INK.faint, FS_MICRO));
     s.push(text(axisX + 10, fundY + fundH - 2, `−${(fmax * 100).toFixed(0)}%`, INK.faint, FS_MICRO));
   }
 
