@@ -125,7 +125,7 @@ var CANDLE_REFRESH_HOURS = 12;
 var HOURLY_REFRESH_HOURS = 6;
 var FUNDING_REFRESH_HOURS = 6;
 var CANARY_RETAIN_HOURS = 168;
-var WORKER_BUILD = "2026-08-14a";
+var WORKER_BUILD = "2026-08-14b";
 var ingest_default = {
   async scheduled(_event, env, ctx) {
     ctx.waitUntil(run(env));
@@ -186,7 +186,7 @@ async function run(env) {
         await env.SNAPSHOT.put("hourly:meta", JSON.stringify({ u: Date.now(), written: n2 }));
         result.hourly = n2;
       } else if (await stale("funding:meta", FUNDING_REFRESH_HOURS)) {
-        const since = Date.now() - 25 * 864e5;
+        const since = Date.now() - 19 * 864e5;
         const meta = await env.SNAPSHOT.get("funding:meta", "json");
         const cursor = meta?.cursor ?? 0;
         let n2 = 0;

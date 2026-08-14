@@ -52,7 +52,7 @@ const CANARY_RETAIN_HOURS = 168;
  *
  * BUMP BOTH when you change this file: here and EXPECTED_WORKER_BUILD in src/lib/version.ts.
  */
-const WORKER_BUILD = "2026-08-14a";
+const WORKER_BUILD = "2026-08-14b";
 
 export default {
   async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext) {
@@ -146,7 +146,14 @@ async function run(env: Env): Promise<RunResult> {
            further back for a rotating slice of 6. A refresh alone only ever accumulates
            forward; the rotation is what deepens history, and it keeps the tick at
            25 + 6 + 2 = 33 subrequests, inside the 50 ceiling. */
-        const since = Date.now() - 25 * 86_400_000;
+        /* 500 rows is Hyperliquid's cap on a fundingHistory response, and rows are hourly —
+           so a startTime further back than ~20.8 days returns a window that ENDS before now.
+           At 25 days the newest four days were never fetched: the series accumulated a
+           permanent trailing gap, and the chart's funding band would have stopped short of
+           today forever. 19 days is 456 rows, comfortably inside the cap, so the response
+           always reaches the present. Backfill depth comes from the rotating pass below,
+           not from this start time. */
+        const since = Date.now() - 19 * 86_400_000;
         const meta = (await env.SNAPSHOT.get("funding:meta", "json")) as { cursor?: number } | null;
         const cursor = meta?.cursor ?? 0;
         let n = 0;
