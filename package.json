@@ -11,7 +11,8 @@
     "build:worker": "esbuild worker/ingest.ts --bundle --format=esm --target=es2022 --outfile=worker-dist/ingest.bundle.js",
     "gen:lastmod": "node scripts/gen-lastmod.mjs",
     "gen:assets": "node scripts/gen-assets.mjs",
-    "smoke": "node scripts/smoke.mjs"
+    "smoke": "node scripts/smoke.mjs",
+    "check": "npm run build && node scripts/smoke.mjs --warm .wrangler/smoke"
   },
   "dependencies": {
     "@astrojs/cloudflare": "^12.6.10",

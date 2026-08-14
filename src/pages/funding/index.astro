@@ -12,6 +12,7 @@ const rows = snap.perps
   .sort((a, b) => (b.spread ?? -Infinity) - (a.spread ?? -Infinity));
 const widest = rows[0];
 
+
 const title = "Crypto funding rates, normalised to APR";
 const description =
   "Live funding rates for BTC, ETH, SOL and every other perpetual covered here, annualised across Hyperliquid, Binance and Bybit — with the gap between venues, open interest and 24-hour volume on every row.";
@@ -31,6 +32,10 @@ const description =
 
   <p class="legend">{LEGEND} — colour encodes the direction of payment only. Every other figure is neutral.</p>
 
+  <p class="clock" style="margin:0 0 12px">
+    Funding updates every minute. Open interest and 24-hour volume come from the snapshot taken
+    <b><time data-fresh={snap.fetchedAt} data-clock="snapAt">{Math.max(0, Math.round((Date.now() - snap.fetchedAt) / 60000))} min ago</time></b>.
+  </p>
   <div class="panel">
     <table class="tbl">
       <thead>
@@ -53,7 +58,7 @@ const description =
                 <td class="num">
                   {f ? (
                     <>
-                      <span class={paysClass(f.apr)}>{pct(f.apr)}</span>
+                      <span class={paysClass(f.apr)} data-spot="apr" data-sym={p.symbol} data-venue={v}>{pct(f.apr)}</span>
                       <span class="raw">{rawRate(f.rate)} / {f.intervalHours}h</span>
                     </>
                   ) : (

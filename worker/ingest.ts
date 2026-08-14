@@ -1,4 +1,4 @@
-import { fetchSnapshot } from "../src/lib/hyperliquid.ts";
+import { fetchSnapshot, fetchLive } from "../src/lib/hyperliquid.ts";
 import { fetchCandles, fetchHourly, fetchFundingHistory, mergeFunding, type FundingPoint } from "../src/lib/candles.ts";
 import { stepReport } from "./report.ts";
 import { COINS, fetchSpot, fetchSpotCandles } from "../src/lib/coins.ts";
@@ -78,20 +78,14 @@ const FILL_BACKOFF_MS = 10 * 60_000;
  *
  * BUMP BOTH when you change this file: here and EXPECTED_WORKER_BUILD in src/lib/version.ts.
  */
-const WORKER_BUILD = "2026-08-14h";
+const WORKER_BUILD = "2026-08-14i";
 
 export default {
   async scheduled(event: ScheduledController, env: Env, ctx: ExecutionContext) {
     /* The one-minute cron does spot and nothing else. Everything the contract pages depend on
        stays on the five-minute tick, so a Coinbase hiccup or a busier schedule cannot reach it. */
     if (event.cron === "* * * * *") {
-      ctx.waitUntil(
-        (async () => {
-          try {
-            await env.SNAPSHOT.put("spot", JSON.stringify(await fetchSpot()));
-          } catch { /* the coin pages keep their last quote; the next minute tries again */ }
-        })(),
-      );
+      ctx.waitUntil(minute(env));
       return;
     }
     ctx.waitUntil(run(env));
@@ -147,6 +141,25 @@ interface RunResult {
 
 /** Sentinel: not an error, just "this tick was spent on the report". */
 const SKIP_SWEEPS = Symbol("skip-sweeps");
+
+/**
+ * The minute tick. Three subrequests, two writes, and nothing the five-minute pipeline
+ * depends on — so a Coinbase or Hyperliquid hiccup here cannot reach the snapshot, the
+ * funding history or the sweeps.
+ *
+ * The two halves are written separately and wrapped separately on purpose: spot comes from
+ * Coinbase and marks come from Hyperliquid, and one venue being down must not blank the
+ * other's numbers on a page that shows both side by side.
+ */
+async function minute(env: Env): Promise<void> {
+  try {
+    await env.SNAPSHOT.put("spot", JSON.stringify(await fetchSpot()));
+  } catch { /* the coin pages keep their last quote; the next minute tries again */ }
+  try {
+    const published = ((await env.SNAPSHOT.get("published:set", "json")) as string[] | null) ?? [];
+    if (published.length) await env.SNAPSHOT.put("live", JSON.stringify(await fetchLive(published)));
+  } catch { /* pages keep the five-minute snapshot's mark, which they label as such */ }
+}
 
 async function run(env: Env): Promise<RunResult> {
   const started = Date.now();

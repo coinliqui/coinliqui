@@ -101,7 +101,7 @@ const description = `What a ${p.symbol} perpetual costs to hold: funding across 
   </div>
 
   <div class="hero">
-    <span class="hero__price">{px(p.markPx)}</span>
+    <span class="hero__price" data-spot="mark" data-sym={p.symbol} data-dp={dp}>{px(p.markPx)}</span>
     <span class="hero__chg" data-tfstat data-group="px" {...stat((c) => `${arrow(c.chart!.change)} ${(Math.abs(c.chart!.change) * 100).toFixed(2)}%`)}>
       {active ? `${arrow(active.chart.change)} ${(Math.abs(active.chart.change) * 100).toFixed(2)}%` : `${arrow(p.change24h)} ${(Math.abs(p.change24h) * 100).toFixed(2)}%`}
     </span>
@@ -117,6 +117,11 @@ const description = `What a ${p.symbol} perpetual costs to hold: funding across 
     <div>Open interest<b>{usd(p.oiNotional)}</b></div>
     <div>Max leverage<b>{p.maxLeverage}×</b></div>
   </div>
+  <p class="clock">
+    Mark price and funding update every minute. Open interest, volume and the period figures come
+    from the snapshot taken <b><time data-fresh={snap.fetchedAt} data-clock="snapAt">{Math.max(0, Math.round((Date.now() - snap.fetchedAt) / 60000))} min ago</time></b>;
+    margin tiers are published by the venue and change only when it changes them.
+  </p>
 
   {hasChart ? (
     <>
@@ -139,7 +144,7 @@ const description = `What a ${p.symbol} perpetual costs to hold: funding across 
         <div data-tfpanel={tf.key} data-group="px" data-on={tf.key === active!.tf.key ? "" : undefined} class="chart chart--price"
              style={`--chartRatio: ${CH.w} / ${CHART_H}`}>
           <Fragment set:html={chart.svg.replace("<svg ",
-            `<svg data-xhair="pts-${tf.key}" data-plot="${chart.plot.join(",")}" data-prange="${chart.range[0]},${chart.range[1]}" ` +
+            `<svg data-xhair="pts-${tf.key}" data-feed="mark" data-plot="${chart.plot.join(",")}" data-prange="${chart.range[0]},${chart.range[1]}" ` +
             `data-axx="${chart.axisX}" data-slot="${chart.slot.toFixed(2)}" data-taxisy="${CHART_H - 27}" data-unit="${p.symbol}" data-dp="${chart.dp}" data-intraday="${tf.hours < 24 ? 1 : 0}" `)} />
           <script type="application/json" id={`pts-${tf.key}`} set:html={JSON.stringify(chart.points)} />
         </div>
@@ -243,7 +248,8 @@ const description = `What a ${p.symbol} perpetual costs to hold: funding across 
               <td class="num">{f ? rawRate(f.rate) : dash}</td>
               <td class="num">{iv ? `${iv}h` : dash}</td>
               <td class="num">{iv ? Math.round(settlementsPerYear(iv)).toLocaleString("en-US") : dash}</td>
-              <td class:list={["num", f && Number.isFinite(f.apr) && paysClass(f.apr)]} style="font-weight:600">{f ? pct(f.apr) : "—"}</td>
+              <td class:list={["num", f && Number.isFinite(f.apr) && paysClass(f.apr)]} style="font-weight:600"
+                  data-spot={f ? "apr" : undefined} data-sym={p.symbol} data-venue={v}>{f ? pct(f.apr) : "—"}</td>
             </tr>
           );
         })}

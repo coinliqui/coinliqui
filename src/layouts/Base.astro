@@ -212,6 +212,25 @@ const schema = {
         border-radius: var(--r-pill);
       }
       .freshness svg { color: var(--text-faint); flex: 0 0 15px; }
+      /* THE FAILURE SIGNAL. An ageing timestamp is true but quiet — a reader who does not
+         read it sees a number that looks current. After two consecutive failed polls the
+         pill says so in words. It keeps its box: same height, same padding, so nothing on
+         the page moves when the connection drops. The accent, not red: red here means the
+         direction of a funding payment, and a dropped connection is not that. */
+      .freshness[data-lost] { border-color: var(--accent); color: var(--text); }
+      .freshness[data-lost] svg { color: var(--accent); }
+      .freshness[data-lost] .freshness__on { display: none; }
+      .freshness__off { display: none; }
+      .freshness[data-lost] .freshness__off { display: inline; }
+
+      /* A figure that just changed gets one quiet pulse. Never a colour that means something
+         else on this site, and never a size or weight change, which would reflow the row. */
+      [data-spot][data-moved] { color: var(--accent); }
+      [data-spot] { transition: color .4s var(--ease); }
+
+      /* Per-figure age, printed next to anything not on the page's fastest clock. */
+      .clock { font-size: var(--fs-xs); color: var(--text-faint); font-variant-numeric: tabular-nums; }
+      .clock b { color: var(--text-dim); font-weight: 500; }
       .freshness time { color: var(--text); font-variant-numeric: tabular-nums; }
       /* A person icon pointing at a page that says there are no accounts would be its own
          small lie. Shield, because the page is about what is not collected. */
@@ -574,7 +593,7 @@ const schema = {
                     site's own legend reserves for "shorts pay longs" — so it was making a
                     semantic claim it did not mean. */}
                 <svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="10" cy="10" r="7.25" /><path d="M10 6v4.2l2.6 1.8" /></svg>
-                <span>Updated <time datetime={new Date(fetchedAt!).toISOString()} data-fresh={fetchedAt}>{age(ageMin)}</time></span>
+                <span class="freshness__on">Updated <time datetime={new Date(fetchedAt!).toISOString()} data-fresh={fetchedAt} data-clock="at">{age(ageMin)}</time></span><span class="freshness__off">Not updating</span>
               </div>
             )}
             <a class="btn btn--primary cta" href="/watchlist" aria-current={path === "/watchlist" ? "page" : undefined}>

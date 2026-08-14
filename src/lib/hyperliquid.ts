@@ -162,6 +162,64 @@ export async function fetchSnapshot(published: string[] = []): Promise<Snapshot>
   };
 }
 
+/* =========================================================================================
+   THE LIVE OVERLAY — the two figures that move fast enough to be worth a minute's work.
+
+   Measured rather than assumed, over two minutes on five contracts:
+
+     mark price       0.002% – 0.057%     moves on every tick, and it is the headline
+                                          number on all fifty contract pages
+     funding APR      0.00 – 1.27 pp      SOL moved 1.27pp on Hyperliquid and Binance moved
+                                          0.15pp; both are visible at the 2dp these are
+                                          printed to, and funding is what this site is about
+     open interest    0.005% – 0.063%     invisible at the three significant figures it is
+                                          displayed to. Polling it would be motion for its
+                                          own sake
+     24h volume       same                same
+
+   So the minute cron carries mark and funding, open interest and volume stay on the
+   five-minute snapshot, and the pages SAY which is which rather than implying one clock.
+   ========================================================================================= */
+export interface LiveSet {
+  at: number;
+  /** symbol -> mark price */
+  mark: Record<string, number>;
+  /** symbol -> venue -> annualised rate */
+  apr: Record<string, Partial<Record<Venue, number>>>;
+}
+
+export async function fetchLive(symbols: string[]): Promise<LiveSet> {
+  const want = new Set(symbols);
+  const [meta, predicted] = await Promise.all([
+    info<MetaAndCtxs>({ type: "metaAndAssetCtxs" }),
+    info<PredictedFundings>({ type: "predictedFundings" }),
+  ]);
+  const [{ universe }, ctxs] = meta;
+  const bySymbol = new Map(predicted);
+  const out: LiveSet = { at: Date.now(), mark: {}, apr: {} };
+  universe.forEach((u, i) => {
+    if (!want.has(u.name)) return;
+    const mk = n(ctxs[i]?.markPx);
+    if (Number.isFinite(mk)) out.mark[u.name] = mk;
+    const venues: Partial<Record<Venue, number>> = {};
+    for (const [venue, v] of bySymbol.get(u.name) ?? []) {
+      if (!v) continue;
+      const a = toApr(Number(v.fundingRate), Number(v.fundingIntervalHours));
+      if (Number.isFinite(a)) venues[venue as Venue] = a;
+    }
+    if (Object.keys(venues).length) out.apr[u.name] = venues;
+  });
+  return out;
+}
+
+export async function getLive(kv: KVNamespace | undefined): Promise<LiveSet | null> {
+  try {
+    const v = (await kv?.get("live", "json")) as LiveSet | null;
+    if (v?.mark && Object.keys(v.mark).length) return v;
+  } catch { /* fall through */ }
+  return null;
+}
+
 /** Margin tables change rarely; fetched at build time and committed. */
 export async function fetchMarginTable(id: number): Promise<MarginTable> {
   const raw = await info<{ description: string; marginTiers: { lowerBound: string; maxLeverage: number }[] }>({

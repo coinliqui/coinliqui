@@ -100,6 +100,12 @@ const description = `Live ${coin.name} (${coin.symbol}) spot price from ${SPOT_S
     <div>Perpetual mark<b data-spot="mark" data-sym={coin.symbol} data-dp={dp}>{perp ? px(perp.markPx) : "—"}</b></div>
     <div>Open interest<b>{perp ? usd(perp.oiNotional) : "—"}</b></div>
   </div>
+  <p class="clock">
+    Spot, the perpetual mark, the basis and funding update every minute. The 24-hour figures and
+    open interest come from the snapshot taken
+    <b><time data-fresh={snap.fetchedAt} data-clock="snapAt">{Math.max(0, Math.round((Date.now() - snap.fetchedAt) / 60000))} min ago</time></b>;
+    the candles are {SPOT_SOURCE}'s closed bars, refreshed every two hours.
+  </p>
 
   {hasChart ? (
     <>
@@ -124,7 +130,7 @@ const description = `Live ${coin.name} (${coin.symbol}) spot price from ${SPOT_S
              data-on={tf.key === active!.tf.key && mode.key === active!.mode.key ? "" : undefined}
              class="chart chart--price" style={`--chartRatio: ${CH.w} / ${CHART_H}`}>
           <Fragment set:html={chart!.svg.replace("<svg ",
-            `<svg data-xhair="cpts-${tf.key}" data-plot="${chart!.plot.join(",")}" data-prange="${chart!.range[0]},${chart!.range[1]}" ` +
+            `<svg data-xhair="cpts-${tf.key}" data-feed="spot" data-plot="${chart!.plot.join(",")}" data-prange="${chart!.range[0]},${chart!.range[1]}" ` +
             `data-axx="${chart!.axisX}" data-slot="${chart!.slot.toFixed(2)}" data-taxisy="${CHART_H - 27}" data-unit="${coin.symbol}" data-dp="${chart!.dp}" data-intraday="${tf.hours < 24 ? 1 : 0}" `)} />
         </div>
       ))}
@@ -195,7 +201,8 @@ const description = `Live ${coin.name} (${coin.symbol}) spot price from ${SPOT_S
             <tr>
               <td>{VENUE_LABEL[v]}</td>
               <td class="num">{f && Number.isFinite(f.intervalHours) ? `${f.intervalHours}h` : <span class="faint">—</span>}</td>
-              <td class:list={["num", ok && paysClass(f!.apr)]} style="font-weight:600">{ok ? pct(f!.apr) : "—"}</td>
+              <td class:list={["num", ok && paysClass(f!.apr)]} style="font-weight:600"
+                  data-spot={ok ? "apr" : undefined} data-sym={coin.symbol} data-venue={v}>{ok ? pct(f!.apr) : "—"}</td>
               <td class="num">{ok ? usd(Math.abs(week(f!.apr)), 2) : "—"}</td>
               <td>{ok ? (f!.apr >= 0 ? "longs pay" : "longs receive") : <span class="faint">—</span>}</td>
             </tr>

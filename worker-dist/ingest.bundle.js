@@ -77,6 +77,29 @@ async function fetchSnapshot(published = []) {
     universeCount: all.length
   };
 }
+async function fetchLive(symbols) {
+  const want = new Set(symbols);
+  const [meta, predicted] = await Promise.all([
+    info({ type: "metaAndAssetCtxs" }),
+    info({ type: "predictedFundings" })
+  ]);
+  const [{ universe }, ctxs] = meta;
+  const bySymbol = new Map(predicted);
+  const out = { at: Date.now(), mark: {}, apr: {} };
+  universe.forEach((u, i) => {
+    if (!want.has(u.name)) return;
+    const mk = n(ctxs[i]?.markPx);
+    if (Number.isFinite(mk)) out.mark[u.name] = mk;
+    const venues = {};
+    for (const [venue, v] of bySymbol.get(u.name) ?? []) {
+      if (!v) continue;
+      const a = toApr(Number(v.fundingRate), Number(v.fundingIntervalHours));
+      if (Number.isFinite(a)) venues[venue] = a;
+    }
+    if (Object.keys(venues).length) out.apr[u.name] = venues;
+  });
+  return out;
+}
 
 // src/lib/candles.ts
 var INFO2 = "https://api.hyperliquid.xyz/info";
@@ -513,18 +536,11 @@ var FUNDING_REFRESH_HOURS = 6;
 var CANARY_RETAIN_HOURS = 168;
 var CHUNK = 24;
 var FILL_BACKOFF_MS = 10 * 6e4;
-var WORKER_BUILD = "2026-08-14h";
+var WORKER_BUILD = "2026-08-14i";
 var ingest_default = {
   async scheduled(event, env, ctx) {
     if (event.cron === "* * * * *") {
-      ctx.waitUntil(
-        (async () => {
-          try {
-            await env.SNAPSHOT.put("spot", JSON.stringify(await fetchSpot()));
-          } catch {
-          }
-        })()
-      );
+      ctx.waitUntil(minute(env));
       return;
     }
     ctx.waitUntil(run(env));
@@ -553,6 +569,17 @@ var ingest_default = {
   }
 };
 var SKIP_SWEEPS = /* @__PURE__ */ Symbol("skip-sweeps");
+async function minute(env) {
+  try {
+    await env.SNAPSHOT.put("spot", JSON.stringify(await fetchSpot()));
+  } catch {
+  }
+  try {
+    const published = await env.SNAPSHOT.get("published:set", "json") ?? [];
+    if (published.length) await env.SNAPSHOT.put("live", JSON.stringify(await fetchLive(published)));
+  } catch {
+  }
+}
 async function run(env) {
   const started = Date.now();
   const result = { ok: false, ms: 0, status: 0, rows: 0, symbols: 0, venues: {} };
