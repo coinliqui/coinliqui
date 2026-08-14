@@ -75,6 +75,7 @@ async function fetchSnapshot() {
 // src/lib/candles.ts
 var INFO2 = "https://api.hyperliquid.xyz/info";
 var CANDLE_DAYS = 200;
+var CANDLE_HOURS = 336;
 async function fetchCandles(symbol, days = CANDLE_DAYS) {
   const end = Date.now();
   const start = end - days * 864e5;
@@ -88,10 +89,24 @@ async function fetchCandles(symbol, days = CANDLE_DAYS) {
   const d = raw.filter((c) => Number(c.v) > 0).map((c) => [c.t, Number(c.h), Number(c.l), Number(c.c)]);
   return { u: Date.now(), d };
 }
+async function fetchHourly(symbol, hours = CANDLE_HOURS) {
+  const end = Date.now();
+  const start = end - hours * 36e5;
+  const r = await fetch(INFO2, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ type: "candleSnapshot", req: { coin: symbol, interval: "1h", startTime: start, endTime: end } })
+  });
+  if (!r.ok) throw new Error(`hourly ${symbol} ${r.status}`);
+  const raw = await r.json();
+  const d = raw.filter((c) => Number(c.v) > 0).map((c) => [c.t, Number(c.h), Number(c.l), Number(c.c), Number(c.v)]);
+  return { u: Date.now(), d };
+}
 
 // worker/ingest.ts
 var RETAIN_HOURS = 72;
-var CANDLE_REFRESH_HOURS = 6;
+var CANDLE_REFRESH_HOURS = 12;
+var HOURLY_REFRESH_HOURS = 6;
 var CANARY_RETAIN_HOURS = 168;
 var ingest_default = {
   async scheduled(_event, env, ctx) {
@@ -151,6 +166,21 @@ async function run(env) {
         }
         await env.SNAPSHOT.put("candles:meta", JSON.stringify({ u: Date.now(), symbols: syms, written }));
         result.candles = written;
+      }
+      const hmeta = await env.SNAPSHOT.get("hourly:meta", "json");
+      if (!hmeta || Date.now() - hmeta.u > HOURLY_REFRESH_HOURS * 36e5) {
+        const syms = snap.perps.map((p) => p.symbol);
+        const sets = await Promise.all(
+          syms.map((sym) => fetchHourly(sym).then((c) => [sym, c]).catch(() => null))
+        );
+        let written = 0;
+        for (const entry of sets) {
+          if (!entry) continue;
+          await env.SNAPSHOT.put(`hourly:${entry[0]}`, JSON.stringify(entry[1]));
+          written++;
+        }
+        await env.SNAPSHOT.put("hourly:meta", JSON.stringify({ u: Date.now(), written }));
+        result.hourly = written;
       }
     } catch (e) {
       result.candleError = (e instanceof Error ? e.message : String(e)).slice(0, 120);

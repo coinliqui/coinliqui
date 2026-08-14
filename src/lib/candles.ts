@@ -25,6 +25,8 @@ const INFO = "https://api.hyperliquid.xyz/info";
 
 /** Days retained in KV. The page shows fewer; the surplus lets the hold window slide. */
 export const CANDLE_DAYS = 200;
+/** Hours retained for the liquidation map. 14 days at 1h resolution. */
+export const CANDLE_HOURS = 336;
 
 export async function fetchCandles(symbol: string, days = CANDLE_DAYS): Promise<CandleSet> {
   const end = Date.now();
@@ -41,6 +43,27 @@ export async function fetchCandles(symbol: string, days = CANDLE_DAYS): Promise<
   const d: Candle[] = raw
     .filter((c) => Number(c.v) > 0)
     .map((c) => [c.t, Number(c.h), Number(c.l), Number(c.c)]);
+  return { u: Date.now(), d };
+}
+
+/** Hourly candles carry VOLUME too: the liquidation model weights each bar by how much
+ *  actually traded in it, which is the one part of "when were positions opened" that is
+ *  observable rather than assumed. */
+export type HourCandle = [t: number, high: number, low: number, close: number, volume: number];
+
+export async function fetchHourly(symbol: string, hours = CANDLE_HOURS): Promise<{ u: number; d: HourCandle[] }> {
+  const end = Date.now();
+  const start = end - hours * 3_600_000;
+  const r = await fetch(INFO, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ type: "candleSnapshot", req: { coin: symbol, interval: "1h", startTime: start, endTime: end } }),
+  });
+  if (!r.ok) throw new Error(`hourly ${symbol} ${r.status}`);
+  const raw = (await r.json()) as { t: number; h: string; l: string; c: string; v: string }[];
+  const d: HourCandle[] = raw
+    .filter((c) => Number(c.v) > 0)
+    .map((c) => [c.t, Number(c.h), Number(c.l), Number(c.c), Number(c.v)]);
   return { u: Date.now(), d };
 }
 
@@ -155,6 +178,23 @@ export function survivalGrid(opts: {
     from: entries.length ? entries[0][0] : 0,
     to: entries.length ? entries[entries.length - 1][0] : 0,
   };
+}
+
+export async function getHourly(kv: KVLike | undefined, symbol: string, devReadThrough = false): Promise<{ u: number; d: HourCandle[] } | null> {
+  if (kv) {
+    try {
+      const v = (await kv.get(`hourly:${symbol}`, "json")) as { u: number; d: HourCandle[] } | null;
+      if (v && Array.isArray(v.d) && v.d.length > 24) return v;
+    } catch {
+      /* fall through */
+    }
+    if (!devReadThrough) return null;
+  }
+  try {
+    return await fetchHourly(symbol);
+  } catch {
+    return null;
+  }
 }
 
 /** Leverage ladder for the grid: dense at the top where the differences bite. */

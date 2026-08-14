@@ -1,5 +1,5 @@
 {
-  "_note": "Register of vesting schedules VERIFIED BY READING THE CONTRACT. Every numeric field here was returned by an eth_call against the address in `contract`, using the selector listed in `getters`, at the block in `verifiedBlock`. Nothing in this file is taken from a project's published table, a tracker, or an announcement. Adding a token is adding an entry — the page needs no change.",
+  "_note": "Register of token supply events with PER-ROW provenance. `provenance` is a quality badge, not a gate: contract-verified rows were read from the contract, project-published rows come from the project's own primary source, aggregator rows from a third-party dataset. Every row says which it is.",
   "_method": "Address established from the project's own primary source (repository, docs or governance record), then confirmed on-chain: the contract must return a coherent schedule AND its token() / uni() getter must point at the token it claims to vest. An address that fails either test is recorded under `unverified` instead.",
   "verifiedAt": "2026-08-14T07:47Z",
   "verifiedBlock": 25751871,
@@ -13,12 +13,51 @@
       "decimals": 18,
       "pattern": "Uniswap TreasuryVester",
       "source": "https://github.com/Uniswap/governance/blob/master/contracts/TreasuryVester.sol",
-      "getters": ["vestingAmount()", "vestingBegin()", "vestingCliff()", "vestingEnd()", "lastUpdate()", "uni()"],
+      "getters": [
+        "vestingAmount()",
+        "vestingBegin()",
+        "vestingCliff()",
+        "vestingEnd()",
+        "lastUpdate()",
+        "uni()"
+      ],
       "schedules": [
-        { "label": "Treasury Vester 1", "contract": "0x4750c43867ef5f89869132eccf19b9b6c4286e1a", "amount": 172000000, "begin": "2020-09-18", "cliff": "2020-10-18", "end": "2021-09-18", "lastUpdate": "2021-08-23" },
-        { "label": "Treasury Vester 2", "contract": "0xe3953d9d317b834592ab58ab2c7a6ad22b54075d", "amount": 129000000, "begin": "2021-09-18", "cliff": "2021-09-18", "end": "2022-09-18", "lastUpdate": "2022-09-17" },
-        { "label": "Treasury Vester 3", "contract": "0x4b4e140d1f131fdad6fb59c13af796fd194e4135", "amount": 86000000, "begin": "2022-09-18", "cliff": "2022-09-18", "end": "2023-09-18", "lastUpdate": "2023-07-13" },
-        { "label": "Treasury Vester 4", "contract": "0x3d30b1ab88d487b0f3061f40de76845bec3f1e94", "amount": 43000000, "begin": "2023-09-18", "cliff": "2023-09-18", "end": "2024-09-17", "lastUpdate": "2024-04-27" }
+        {
+          "label": "Treasury Vester 1",
+          "contract": "0x4750c43867ef5f89869132eccf19b9b6c4286e1a",
+          "amount": 172000000,
+          "begin": "2020-09-18",
+          "cliff": "2020-10-18",
+          "end": "2021-09-18",
+          "lastUpdate": "2021-08-23"
+        },
+        {
+          "label": "Treasury Vester 2",
+          "contract": "0xe3953d9d317b834592ab58ab2c7a6ad22b54075d",
+          "amount": 129000000,
+          "begin": "2021-09-18",
+          "cliff": "2021-09-18",
+          "end": "2022-09-18",
+          "lastUpdate": "2022-09-17"
+        },
+        {
+          "label": "Treasury Vester 3",
+          "contract": "0x4b4e140d1f131fdad6fb59c13af796fd194e4135",
+          "amount": 86000000,
+          "begin": "2022-09-18",
+          "cliff": "2022-09-18",
+          "end": "2023-09-18",
+          "lastUpdate": "2023-07-13"
+        },
+        {
+          "label": "Treasury Vester 4",
+          "contract": "0x3d30b1ab88d487b0f3061f40de76845bec3f1e94",
+          "amount": 43000000,
+          "begin": "2023-09-18",
+          "cliff": "2023-09-18",
+          "end": "2024-09-17",
+          "lastUpdate": "2024-04-27"
+        }
       ]
     },
     {
@@ -29,27 +68,83 @@
       "decimals": 18,
       "pattern": "Curve VestingEscrow (Vyper)",
       "source": "https://github.com/curvefi/curve-dao-contracts",
-      "getters": ["start_time()", "end_time()", "initial_locked_supply()", "unallocated_supply()", "token()"],
+      "getters": [
+        "start_time()",
+        "end_time()",
+        "initial_locked_supply()",
+        "unallocated_supply()",
+        "token()"
+      ],
       "schedules": [
-        { "label": "pre-CRV liquidity providers", "contract": "0x575ccd8e2d300e2377b43478339e364000318e2c", "amount": 151515152, "begin": "2020-08-13", "cliff": "2020-08-13", "end": "2021-08-13", "lastUpdate": null }
+        {
+          "label": "pre-CRV liquidity providers",
+          "contract": "0x575ccd8e2d300e2377b43478339e364000318e2c",
+          "amount": 151515152,
+          "begin": "2020-08-13",
+          "cliff": "2020-08-13",
+          "end": "2021-08-13",
+          "lastUpdate": null
+        }
       ]
     }
   ],
   "unverified": [
     {
-      "label": "Curve — Community Funds",
+      "label": "Curve \u2014 Community Funds",
       "address": "0xe3997288987e6297ad550a69b31439504f513267",
       "reason": "Holds CRV but implements none of the VestingEscrow getters. It is an address with a balance, not a schedule: nothing about a release date is readable from it."
     },
     {
-      "label": "Curve — Investors 1",
+      "label": "Curve \u2014 Investors 1",
       "address": "0xf22995a3ea2c83f6764c711115b23a88411cafdd",
-      "reason": "Same as above — labelled as an investor allocation, but exposes no schedule to read."
+      "reason": "Same as above \u2014 labelled as an investor allocation, but exposes no schedule to read."
     },
     {
-      "label": "Lido TRP — per-recipient escrows",
+      "label": "Lido TRP \u2014 per-recipient escrows",
       "address": "0xDA1DF6442aFD2EC36aBEa91029794B9b2156ADD0",
-      "reason": "The factory and the prototype are both readable, and the prototype returns a coherent (empty) schedule, so the interface is right. But each recipient's schedule lives in a separate clone whose address only appears in a factory event. Enumerating them needs eth_getLogs over a wide block range, and free RPC endpoints cap that at 50 blocks — about ten minutes of chain. The data exists on-chain and is out of reach at this cost level."
+      "reason": "The factory and the prototype are both readable, and the prototype returns a coherent (empty) schedule, so the interface is right. But each recipient's schedule lives in a separate clone whose address only appears in a factory event. Enumerating them needs eth_getLogs over a wide block range, and free RPC endpoints cap that at 50 blocks \u2014 about ten minutes of chain. The data exists on-chain and is out of reach at this cost level."
+    }
+  ],
+  "provenanceScale": [
+    {
+      "key": "contract",
+      "label": "Contract-verified",
+      "rank": 1,
+      "meaning": "Read from the contract by eth_call at the stated block. Reproducible by anyone with an RPC endpoint."
+    },
+    {
+      "key": "project",
+      "label": "Project-published",
+      "rank": 2,
+      "meaning": "From the project's own repository, docs or governance record. Authoritative but not independently checkable on-chain."
+    },
+    {
+      "key": "aggregator",
+      "label": "Aggregator-sourced",
+      "rank": 3,
+      "meaning": "From a third-party dataset. Fastest to assemble and the weakest evidence: if a date slips, nothing in the data says so."
+    }
+  ],
+  "emissions": [
+    {
+      "symbol": "CRV",
+      "name": "Curve DAO",
+      "provenance": "contract",
+      "contract": "0xd533a949740bb3306d119cc777fa900ba034cd52",
+      "getters": [
+        "rate()",
+        "start_epoch_time()",
+        "mining_epoch()",
+        "available_supply()",
+        "totalSupply()"
+      ],
+      "ratePerSecond": 3.080982847903985,
+      "perDay": 266196.72,
+      "epochStart": "2026-08-12",
+      "miningEpoch": 6,
+      "availableSupply": 2419994078,
+      "totalSupply": 2409636911,
+      "note": "Emission is algorithmic: the contract mints at a fixed rate that steps down once per 365-day epoch. Unlike discretionary vesting, the forward number is readable today."
     }
   ]
 }

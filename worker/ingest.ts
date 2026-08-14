@@ -1,5 +1,5 @@
 import { fetchSnapshot } from "../src/lib/hyperliquid.ts";
-import { fetchCandles } from "../src/lib/candles.ts";
+import { fetchCandles, fetchHourly } from "../src/lib/candles.ts";
 
 /**
  * Ingest worker. Runs on a 5-minute cron, writes the current snapshot to KV (which the
@@ -33,7 +33,11 @@ const RETAIN_HOURS = 72;
  * limit already carrying 288 snapshot writes. The 25 fetches sit inside one invocation's
  * 50-subrequest budget alongside the 2 snapshot calls.
  */
-const CANDLE_REFRESH_HOURS = 6;
+const CANDLE_REFRESH_HOURS = 12;
+/** Hourly candles drive the liquidation map and move faster, so they refresh more often.
+ *  Daily and hourly are on SEPARATE cadences so a single tick never exceeds the
+ *  50-subrequest ceiling: 25 fetches + the 2 snapshot calls, never 50 + 2. */
+const HOURLY_REFRESH_HOURS = 6;
 /** Canary rows are small but unbounded, so they are pruned on the same schedule. */
 const CANARY_RETAIN_HOURS = 168;
 
@@ -64,6 +68,7 @@ interface RunResult {
   venues: Record<string, number>;
   error?: string;
   candles?: number;
+  hourly?: number;
   candleError?: string;
 }
 
@@ -123,6 +128,22 @@ async function run(env: Env): Promise<RunResult> {
         }
         await env.SNAPSHOT.put("candles:meta", JSON.stringify({ u: Date.now(), symbols: syms, written }));
         result.candles = written;
+      }
+
+      const hmeta = (await env.SNAPSHOT.get("hourly:meta", "json")) as { u: number } | null;
+      if (!hmeta || Date.now() - hmeta.u > HOURLY_REFRESH_HOURS * 3_600_000) {
+        const syms = snap.perps.map((p) => p.symbol);
+        const sets = await Promise.all(
+          syms.map((sym) => fetchHourly(sym).then((c) => [sym, c] as const).catch(() => null)),
+        );
+        let written = 0;
+        for (const entry of sets) {
+          if (!entry) continue;
+          await env.SNAPSHOT.put(`hourly:${entry[0]}`, JSON.stringify(entry[1]));
+          written++;
+        }
+        await env.SNAPSHOT.put("hourly:meta", JSON.stringify({ u: Date.now(), written }));
+        result.hourly = written;
       }
     } catch (e) {
       result.candleError = (e instanceof Error ? e.message : String(e)).slice(0, 120);

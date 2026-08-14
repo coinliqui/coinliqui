@@ -1,0 +1,203 @@
+---
+import Base from "../../layouts/Base.astro";
+import { getSnapshot, coldStart } from "../../lib/hyperliquid.ts";
+import { usd, pct } from "../../lib/funding.ts";
+import { maintenanceMarginFraction, type MarginTable } from "../../lib/margin.ts";
+import { getCandles, survivalGrid, gridLevels } from "../../lib/candles.ts";
+import tables from "../../data/margin-tables.json";
+
+const env = (Astro.locals as any)?.runtime?.env;
+const snap = await getSnapshot(env?.SNAPSHOT, import.meta.env.DEV);
+if (!snap.available) return coldStart();
+
+const q = Astro.url.searchParams;
+const symbol = (q.get("symbol") ?? "BTC").toUpperCase();
+const perp = snap.perps.find((p) => p.symbol === symbol) ?? snap.perps[0];
+const table = (tables as Record<string, MarginTable>)[String(perp.marginTableId)];
+const tier1 = [...table.marginTiers].sort((a, b) => a.lowerBound - b.lowerBound)[0];
+const mark = perp.markPx;
+const mmf = maintenanceMarginFraction(tier1.maxLeverage);
+const dp = mark >= 100 ? 2 : mark >= 1 ? 3 : mark >= 0.01 ? 5 : 7;
+const px = (v: number) => usd(v, dp);
+
+const HOLDS = [7, 30, 90];
+const hold = HOLDS.includes(Number(q.get("hold"))) ? Number(q.get("hold")) : 30;
+const mapSide: "long" | "short" = q.get("side") === "short" ? "short" : "long";
+const candleSet = await getCandles(env?.SNAPSHOT, perp.symbol, import.meta.env.DEV);
+const grid =
+  candleSet && candleSet.d.length > hold + 12
+    ? survivalGrid({ candles: candleSet.d, mmf, levels: gridLevels(tier1.maxLeverage, 12), holdDays: hold, side: mapSide, maxEntries: 90 })
+    : null;
+
+const dayLabel = (ms: number) => new Date(ms).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
+
+/* Built as a string: 1,000 JSX vnodes is needless Worker CPU. Presentation attributes are
+   INLINE — Astro scopes `.cls{}` to `.cls[data-astro-cid-x]`, and markup injected with
+   set:html never carries that attribute, so class-based styling here silently does nothing
+   and SVG falls back to fill:black. That shipped once; it will not again. */
+let heatSvg = "";
+const HW = 980, HH = 506, hpL = 76, hpR = 20, hpT = 128, hpB = 44;
+const stripT = 46, stripH = 62;
+if (grid && grid.entries.length > 4) {
+  const pw = HW - hpL - hpR, ph = HH - hpT - hpB;
+  const rows = grid.levels.length, cols = grid.entries.length;
+  const rowH = ph / rows, colW = pw / cols;
+  const out: string[] = [];
+  const opFor = (day: number) => 0.22 + 0.78 * (1 - Math.log(day) / Math.log(Math.max(2, hold)));
+  const FAINT = "#6c737d", DIM = "#9aa1ab";
+
+  const steps = 24;
+  for (let i = 0; i < steps; i++) {
+    const day = Math.exp((i / (steps - 1)) * Math.log(Math.max(2, hold)));
+    out.push(`<rect x="${(hpL + i * 7).toFixed(1)}" y="12" width="7.4" height="10" fill="#8ab4f8" fill-opacity="${opFor(day).toFixed(3)}"/>`);
+  }
+  out.push(`<text x="${hpL - 10}" y="21" text-anchor="end" font-size="11.5" fill="${FAINT}">closed</text>`);
+  out.push(`<text x="${(hpL + steps * 7 + 8).toFixed(1)}" y="21" font-size="11.5" fill="${FAINT}">next day ← → day ${hold}</text>`);
+  const sx = hpL + steps * 7 + 132;
+  out.push(`<rect x="${sx}" y="12" width="14" height="10" fill="#2a2f35"/>`);
+  out.push(`<text x="${sx + 20}" y="21" font-size="11.5" fill="${FAINT}">never closed</text>`);
+
+  const cl = grid.entries.map((c) => c[3]);
+  const pmin = Math.min(...cl), pmax = Math.max(...cl);
+  const sy = (v: number) => stripT + stripH - ((v - pmin) / Math.max(1e-12, pmax - pmin)) * stripH;
+  const pts = cl.map((v, i) => `${(hpL + i * colW + colW / 2).toFixed(1)},${sy(v).toFixed(1)}`);
+  out.push(`<path d="M${hpL},${(stripT + stripH).toFixed(1)} L${pts.join(" L")} L${(hpL + cols * colW).toFixed(1)},${(stripT + stripH).toFixed(1)} Z" fill="${FAINT}" fill-opacity="0.13"/>`);
+  out.push(`<polyline points="${pts.join(" ")}" fill="none" stroke="${DIM}" stroke-width="1.6" stroke-linejoin="round"/>`);
+  out.push(`<text x="${hpL - 10}" y="${(stripT + 10).toFixed(1)}" text-anchor="end" font-size="11.5" fill="${FAINT}">${px(pmax)}</text>`);
+  out.push(`<text x="${hpL - 10}" y="${(stripT + stripH).toFixed(1)}" text-anchor="end" font-size="11.5" fill="${FAINT}">${px(pmin)}</text>`);
+  out.push(`<text x="${hpL}" y="${(stripT - 8).toFixed(1)}" font-size="11.5" fill="${FAINT}">${perp.symbol} close on the entry day</text>`);
+
+  grid.levels.forEach((lv, r) => {
+    const yy = hpT + r * rowH;
+    out.push(`<text x="${hpL - 10}" y="${(yy + rowH / 2 + 4).toFixed(1)}" text-anchor="end" font-size="12.5" font-weight="600" fill="${DIM}">${lv.L}×</text>`);
+    lv.cells.forEach((c, ci) => {
+      const x = hpL + ci * colW;
+      const surv = c.liqDay === null;
+      out.push(
+        `<rect x="${x.toFixed(1)}" y="${yy.toFixed(1)}" width="${(colW + 0.5).toFixed(1)}" height="${(rowH + 0.5).toFixed(1)}" fill="${surv ? "#2a2f35" : "#8ab4f8"}" fill-opacity="${(surv ? 0.85 : opFor(c.liqDay!)).toFixed(3)}"><title>${lv.L}× ${dayLabel(grid.entries[ci][0])}: ${surv ? `survived ${hold}d` : `closed day ${c.liqDay}`}</title></rect>`,
+      );
+    });
+  });
+
+  const every = Math.max(1, Math.round(cols / 6));
+  for (let ci = 0; ci < cols; ci += every) {
+    out.push(`<text x="${(hpL + ci * colW + colW / 2).toFixed(1)}" y="${HH - hpB + 20}" text-anchor="middle" font-size="11.5" fill="${FAINT}">${dayLabel(grid.entries[ci][0])}</text>`);
+  }
+  out.push(`<text x="${hpL}" y="${HH - hpB + 38}" font-size="11.5" fill="${FAINT}">entry date →</text>`);
+  heatSvg = out.join("");
+}
+
+const title = `${perp.symbol} leverage survival — what the rules did to a position opened here | Basis`;
+const description = `For every entry day and every leverage, whether a ${perp.symbol} position held ${hold} days was closed by the exchange. Derived from real traded candles and published margin tiers — nothing modelled.`;
+---
+
+<Base title={title} description={description} fetchedAt={snap.fetchedAt}>
+  <div class="page-head">
+    <p class="crumb"><a href="/liquidations">Liquidations</a> › Survival</p>
+    <h1>Leverage survival</h1>
+    <p>
+      Nothing here is modelled. Every cell is one checkable question about the real price path:
+      a <strong>{mapSide}</strong> opened at that day's close, at that leverage, held {hold} days
+      — did the rules close it, and on which day? That is what separates this from
+      {" "}<a class="link" href="/liquidations">the modelled density map</a>, which answers a
+      different question and needs assumptions to do it.
+    </p>
+  </div>
+
+  <form method="GET" class="calc" style="margin-bottom:16px">
+    <label>Contract
+      <select name="symbol">{snap.perps.map((p) => <option value={p.symbol} selected={p.symbol === perp.symbol}>{p.symbol}</option>)}</select>
+    </label>
+    <label>Side
+      <select name="side">
+        <option value="long" selected={mapSide === "long"}>Long</option>
+        <option value="short" selected={mapSide === "short"}>Short</option>
+      </select>
+    </label>
+    <label>Held for
+      <select name="hold">{HOLDS.map((h) => <option value={h} selected={h === hold}>{h} days</option>)}</select>
+    </label>
+    <button class="btn btn--primary" type="submit">Show</button>
+  </form>
+
+  {grid ? (
+    <>
+      <figure class="chart">
+        <div class="chart__scroll">
+          <svg viewBox={`0 0 ${HW} ${HH}`} class="chart__svg heat" role="img"
+               aria-label={`Survival map for ${perp.symbol}: ${grid.levels.length} leverage levels by ${grid.entries.length} entry days, ${mapSide} positions held ${hold} days.`}>
+            <Fragment set:html={heatSvg} />
+          </svg>
+        </div>
+        <figcaption>
+          {perp.symbol} daily candles from Hyperliquid — real traded days only; the venue's
+          pre-launch backfill carries zero volume and is excluded. Entry days
+          {" "}{dayLabel(grid.from)} to {dayLabel(grid.to)}, each with a complete {hold}-day
+          window, so no column is flattered by having had less time to fail.
+        </figcaption>
+      </figure>
+
+      <h2 class="section">The same map, counted</h2>
+      <div class="panel">
+        <table class="tbl">
+          <thead><tr><th class="num">Leverage</th><th class="num">Entry days</th><th class="num">Closed within {hold}d</th><th class="num">Survived</th><th class="num">Survival rate</th><th class="num">Median days to closure</th></tr></thead>
+          <tbody>
+            {grid.levels.map((lv) => (
+              <tr class={lv.L === tier1.maxLeverage ? "is-active" : undefined}>
+                <td class="num">{lv.L}×{lv.L === tier1.maxLeverage ? " · max" : ""}</td>
+                <td class="num">{lv.tested}</td>
+                <td class="num">{lv.liquidated}</td>
+                <td class="num">{lv.tested - lv.liquidated}</td>
+                <td class="num">{((1 - lv.liquidated / Math.max(1, lv.tested)) * 100).toFixed(1)}%</td>
+                <td class="num">{lv.medianDays ?? "—"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <details class="src">
+        <summary>The daily price series this is computed from ({grid.entries.length} rows)</summary>
+        <div class="panel" style="margin-top:10px">
+          <table class="tbl">
+            <thead><tr><th>Entry day (UTC)</th><th class="num">Close</th><th class="num">Low</th><th class="num">High</th></tr></thead>
+            <tbody>
+              {grid.entries.map((c) => (
+                <tr>
+                  <td>{new Date(c[0]).toISOString().slice(0, 10)}</td>
+                  <td class="num">{px(c[3])}</td>
+                  <td class="num">{px(c[2])}</td>
+                  <td class="num">{px(c[1])}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </details>
+    </>
+  ) : (
+    <div class="empty">
+      <div class="empty__body">
+        <p class="empty__title">Candle history not collected yet</p>
+        <p class="empty__text">This needs {hold + 12} days of daily candles for {perp.symbol}. The ingest worker refreshes them every twelve hours.</p>
+      </div>
+    </div>
+  )}
+
+  <p style="margin-top:24px">
+    <a class="link" href="/liquidations">Modelled liquidation density →</a>
+    · <a class="link" href="/tools/liquidation-price">Work out a specific position →</a>
+  </p>
+
+  <style>
+    .chart { margin: 0; }
+    .chart__scroll { overflow-x: auto; background: var(--surface-2); border: 1px solid var(--border-soft); border-radius: var(--r-md); }
+    .chart__svg { display: block; width: 100%; min-width: 660px; height: auto; }
+    .heat { aspect-ratio: 980 / 506; }
+    .heat rect { shape-rendering: crispEdges; }
+    figcaption { font-size: 13px; color: var(--text-faint); margin-top: 10px; max-width: 82ch; }
+    .src { margin-top: 14px; }
+    .src summary { font-size: 13px; color: var(--text-dim); cursor: pointer; padding: 8px 0; }
+    .src summary:hover { color: var(--text); }
+  </style>
+</Base>
