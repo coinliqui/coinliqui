@@ -1,6 +1,7 @@
 ---
 import Base from "../layouts/Base.astro";
 import { usd, pct } from "../lib/funding.ts";
+import { getSnapshot, findPerp } from "../lib/hyperliquid.ts";
 import reg from "../data/vesting-contracts.json";
 
 /**
@@ -17,23 +18,43 @@ const badge = (k: string) => reg.provenanceScale.find((p: any) => p.key === k)!;
 const HORIZONS = [7, 30, 90, 365];
 const horizon = HORIZONS.includes(Number(new URL(Astro.request.url).searchParams.get("days"))) ? Number(new URL(Astro.request.url).searchParams.get("days")) : 30;
 
+/* DAYS OF VOLUME TO ABSORB — the column this page says matters most, and which was blank
+   because the covered contract set and the readable-schedule set did not overlap. Raising the
+   coverage floor to fifty put CRV and AAVE on both sides of that gap, so it fills for them.
+   It is computed from the same snapshot every other page reads, at first byte, and stays
+   blank — not guessed — for any token with no perpetual here. */
+const snap = await getSnapshot((Astro.locals as any)?.runtime?.env?.SNAPSHOT, import.meta.env.DEV);
+const absorb = (symbol: string, tokens: number) => {
+  const p = findPerp(snap.perps, symbol);
+  if (!p || !(p.dayNtlVlm > 0) || !(p.markPx > 0)) return null;
+  return { days: (tokens * p.markPx) / p.dayNtlVlm, usd: tokens * p.markPx, vol: p.dayNtlVlm };
+};
+
 // Forward rows: algorithmic emissions are readable today, so they populate the calendar.
 const forward = (reg.emissions as any[]).map((e) => ({
   symbol: e.symbol,
   name: e.name,
-  what: `Protocol emission, epoch ${e.miningEpoch}`,
+  what: e.event ?? `Protocol emission, epoch ${e.miningEpoch}`,
   provenance: e.provenance,
   tokens: e.perDay * horizon,
   perDay: e.perDay,
   shareOfSupply: (e.perDay * horizon) / e.totalSupply,
   contract: e.contract,
   note: e.note,
+  /* A rate with no end date is not the same as a rate that is funded. Where the contract
+     also publishes what it is allowed to spend, the runway is the real horizon. */
+  runwayDays: e.fundedTokens ? e.fundedTokens / e.perDay : null,
+  absorb: absorb(e.symbol, e.perDay * horizon),
 }));
 
 const vesting = (reg.tokens as any[]).flatMap((t) =>
-  t.schedules.map((s: any) => ({ ...s, symbol: t.symbol, supply: t.totalSupply, ended: d(s.end) < now })),
+  t.schedules.map((s: any) => ({
+    ...s, symbol: t.symbol, supply: t.totalSupply, ended: d(s.end) < now,
+    // Finished, and the tokens are still sitting in the contract: unlocked but never moved.
+    unclaimed: d(s.end) < now && s.heldNow > 0 ? s.heldNow : 0,
+  })),
 );
-const totalVested = vesting.reduce((s: number, r: any) => s + r.amount, 0);
+const unclaimed = vesting.filter((r: any) => r.unclaimed > 0);
 
 const title = "Token unlock calendar, with provenance on every row";
 const description =
@@ -71,10 +92,19 @@ const description =
           {forward.map((r) => (
             <tr>
               <td class="sym">{r.symbol}</td>
-              <td>{r.what}<br /><span class="sub">{num(r.perDay)} {r.symbol}/day</span></td>
+              <td>
+                {r.what}<br /><span class="sub">{num(r.perDay)} {r.symbol}/day</span>
+                {r.runwayDays !== null && <><br /><span class="sub">approved to spend {Math.round(r.runwayDays)} more days at this rate</span></>}
+              </td>
               <td class="num">{num(r.tokens)}</td>
               <td class="num">{pct(r.shareOfSupply)}</td>
-              <td class="num dim" title="Needs a clean traded-volume source for this token">—</td>
+              {r.absorb ? (
+                <td class="num" title={`${usd(r.absorb.usd)} against ${usd(r.absorb.vol)} of 24-hour volume`}>
+                  {r.absorb.days < 0.1 ? "<0.1" : r.absorb.days.toFixed(r.absorb.days < 10 ? 1 : 0)}
+                </td>
+              ) : (
+                <td class="num dim" title="No perpetual here for this token, so there is no clean volume series to divide by">—</td>
+              )}
               <td><span class:list={["prov", `prov--${r.provenance}`]}>{badge(r.provenance).label}</span></td>
             </tr>
           ))}
@@ -85,10 +115,24 @@ const description =
     <div class="empty"><div class="empty__body"><p class="empty__title">No forward events on file</p></div></div>
   )}
 
+  {unclaimed.map((r: any) => (
+    <div class="verdict verdict--ok">
+      <div>
+        <b>{r.symbol}: fully unlocked, and none of it has moved.</b> The four-year linear unlock in
+        {" "}<code class="addr">{r.contract}</code> finished on {fmt(r.end)}, and the contract still
+        holds <b>{num(r.heldNow)} {r.symbol}</b> — {pct(r.heldNow / r.supply)} of total supply. There is
+        no future date to put in a calendar and no cliff to warn about; the entire amount is
+        withdrawable today and has been for {Math.round((now - d(r.end)) / 86400000)} days. A tracker
+        that only lists scheduled events shows nothing here, which is the opposite of the truth.
+      </div>
+    </div>
+  ))}
+
   <div class="verdict verdict--warn">
     <div>
-      <b>This calendar is one row long, and the reason is a licence rather than a limitation of
-      the idea.</b> The dataset that would fill it is DefiLlama's emissions feed, and
+      <b>This calendar is {forward.length === 1 ? "one row" : `${forward.length} rows`} long, and the
+      reason is a licence rather than a limitation of the idea.</b> Every row here was read from a
+      contract by hand. The dataset that would fill it in bulk is DefiLlama's emissions feed, and
       {" "}<code>api.llama.fi/emissions</code> answers <b>402 Payment Required — "Upgrade to the
       paid API plan"</b>. Their adapters repository is not public, and the one that is carries no
       licence at all, which under default copyright grants nothing. A public storage bucket does
@@ -102,11 +146,16 @@ const description =
   <p class="prose">
     An unlock is only meaningful against the liquidity that has to absorb it. Ten million tokens
     into a market trading a hundred million a day is noise; the same ten million into a market
-    trading two million a day is a week of selling pressure. That ratio is the column above, and
-    it is deliberately blank rather than guessed: it needs a traded-volume series for the
-    unlocking token, and this site's clean volume source covers
-    {" "}<a class="link" href="/funding">the perpetual contracts it lists</a> — which do not yet
-    overlap the tokens whose schedules are readable. When they overlap, the column fills.
+    trading two million a day is a week of selling pressure. That ratio is the column above:
+    tokens × mark price, divided by 24-hour traded volume, both from the same snapshot every
+    other page here reads.
+  </p>
+  <p class="prose">
+    It fills only where this site already carries a perpetual for the token, because that is the
+    only volume series it trusts. Raising the coverage floor to
+    {" "}<a class="link" href="/funding">{snap.perps.length || 50} contracts</a> is what put CRV and AAVE
+    on both sides of that gap. For anything else the cell stays blank rather than borrowing a
+    number from a source the rest of the page would not accept.
   </p>
 
   <h2 class="section">How to read the provenance marks</h2>
@@ -133,11 +182,10 @@ const description =
   {(reg.emissions as any[]).map((e) => (
     <>
       <p class="prose">
-        <strong>{e.name}</strong> mints on a schedule the contract itself publishes:
-        {" "}<code>rate()</code> returns {e.ratePerSecond.toFixed(6)} {e.symbol} per second, which is
-        {" "}<strong>{num(e.perDay)} {e.symbol} a day</strong>, held constant until the current
-        365-day epoch (number {e.miningEpoch}, began {fmt(e.epochStart)}) ends and the rate steps
-        down on-chain. {e.note}
+        <strong>{e.name}</strong> runs on a schedule the contract itself publishes:
+        {" "}{e.ratePerSecond.toFixed(6)} {e.symbol} per second, which is
+        {" "}<strong>{num(e.perDay)} {e.symbol} a day</strong> — {e.mechanism}
+        {e.miningEpoch ? ` (epoch ${e.miningEpoch}, began ${fmt(e.epochStart)})` : ""}. {e.detail} {e.note}
       </p>
       <div class="panel" style="max-width:640px">
         <table class="tbl">
@@ -157,6 +205,11 @@ const description =
         Read from <code class="addr">{e.contract}</code> at block {reg.verifiedBlock.toLocaleString("en-US")} using
         {" "}{e.getters.map((g: string, i: number) => (<><code>{g}</code>{i < e.getters.length - 1 ? ", " : ""}</>))}.
         Available supply {num(e.availableSupply)}, total supply {num(e.totalSupply)}, both read on-chain.
+        {e.fundedTokens && (
+          <> The vault is approved to spend <b>{num(e.fundedTokens)} {e.symbol}</b> — about
+          {" "}{Math.round(e.fundedTokens / e.perDay)} days at this rate. <code>DISTRIBUTION_END</code>
+          {" "}reads {fmt(e.distributionEnd)}, which is a sentinel, not a plan.</>
+        )}
       </p>
     </>
   ))}
@@ -175,8 +228,8 @@ const description =
           <tr>
             <td class="sym">{r.symbol}</td>
             <td>{r.label}<br /><code class="addr">{r.contract}</code></td>
-            <td class="num">{num(r.amount)}</td>
-            <td class="num">{pct(r.amount / r.supply)}</td>
+            <td class="num">{r.amount === null ? <span class="dim" title="No getter publishes the original amount">{num(r.heldNow)} held</span> : num(r.amount)}</td>
+            <td class="num">{pct((r.amount ?? r.heldNow) / r.supply)}</td>
             <td class="num">{fmt(r.end)}</td>
             <td><span class="prov prov--contract">Contract-verified</span></td>
           </tr>
@@ -184,7 +237,10 @@ const description =
       </tbody>
     </table>
   </div>
-  <p class="section-note">{num(totalVested)} tokens across {vesting.length} contracts, every figure read on-chain.</p>
+  <p class="section-note">
+    {vesting.length} contracts across {reg.tokens.length} tokens, every figure read on-chain at block
+    {" "}{reg.verifiedBlock.toLocaleString("en-US")}.
+  </p>
 
   <h2 class="section">Addresses that carry no readable schedule</h2>
   <p class="section-note">Named in project material as allocations, but exposing nothing to read. Listed because the absence is the finding.</p>

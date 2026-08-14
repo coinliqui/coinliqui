@@ -1,10 +1,40 @@
 {
   "_note": "Register of token supply events with PER-ROW provenance. `provenance` is a quality badge, not a gate: contract-verified rows were read from the contract, project-published rows come from the project's own primary source, aggregator rows from a third-party dataset. Every row says which it is.",
-  "_method": "Address established from the project's own primary source (repository, docs or governance record), then confirmed on-chain: the contract must return a coherent schedule AND its token() / uni() getter must point at the token it claims to vest. An address that fails either test is recorded under `unverified` instead.",
-  "verifiedAt": "2026-08-14T07:47Z",
-  "verifiedBlock": 25751871,
+  "_method": "Address established from the project's own primary source (repository, docs or governance record) where one exists, then confirmed on-chain: the contract must return a coherent schedule AND its token() / uni() getter must point at the token it claims to vest. An address that fails either on-chain test is recorded under `unverified` instead. Where no primary source names the address and it was identified by reading the chain, the row carries an `addressNote` saying so — that is a weaker provenance claim than the others and it is stated rather than hidden.",
+  "verifiedAt": "2026-08-14T14:47Z",
+  "verifiedBlock": 25753967,
   "chain": "ethereum",
   "tokens": [
+    {
+      "symbol": "ENS",
+      "name": "Ethereum Name Service",
+      "token": "0xc18360217d8f7ab5e7c516566761ea12ce7f9d72",
+      "totalSupply": 100000000,
+      "decimals": 18,
+      "pattern": "ENS TokenLock",
+      "source": "identified on-chain — see addressNote",
+      "addressNote": "The address is NOT taken from a document. ENS's own docs name the token but not this contract, so it was identified by reading the chain: it exposes token(), unlockBegin(), unlockCliff() and unlockEnd(), its token() returns the ENS token, and it holds 45.59% of ENS supply. That combination cannot be coincidental, and every step of it is reproducible with an RPC endpoint — but the provenance of the ADDRESS is on-chain inference, not a primary source, and that is a weaker claim than the other rows here make.",
+      "getters": [
+        "token()",
+        "unlockBegin()",
+        "unlockCliff()",
+        "unlockEnd()",
+        "balanceOf(lock)"
+      ],
+      "schedules": [
+        {
+          "label": "DAO treasury lock",
+          "contract": "0xd7a029db2585553978190db5e85ec724aa4df23f",
+          "amount": null,
+          "heldNow": 45593656.719,
+          "begin": "2021-11-04",
+          "cliff": "2022-05-04",
+          "end": "2025-11-04",
+          "lastUpdate": null,
+          "note": "The contract publishes the schedule but not the amount originally locked — there is no getter for it — so the figure here is the balance it holds RIGHT NOW, read at the stated block. The four-year linear unlock finished on 4 November 2025, which means all of it is unlocked and none of it has moved."
+        }
+      ]
+    },
     {
       "symbol": "UNI",
       "name": "Uniswap",
@@ -90,19 +120,19 @@
   ],
   "unverified": [
     {
-      "label": "Curve \u2014 Community Funds",
+      "label": "Curve — Community Funds",
       "address": "0xe3997288987e6297ad550a69b31439504f513267",
       "reason": "Holds CRV but implements none of the VestingEscrow getters. It is an address with a balance, not a schedule: nothing about a release date is readable from it."
     },
     {
-      "label": "Curve \u2014 Investors 1",
+      "label": "Curve — Investors 1",
       "address": "0xf22995a3ea2c83f6764c711115b23a88411cafdd",
-      "reason": "Same as above \u2014 labelled as an investor allocation, but exposes no schedule to read."
+      "reason": "Same as above — labelled as an investor allocation, but exposes no schedule to read."
     },
     {
-      "label": "Lido TRP \u2014 per-recipient escrows",
+      "label": "Lido TRP — per-recipient escrows",
       "address": "0xDA1DF6442aFD2EC36aBEa91029794B9b2156ADD0",
-      "reason": "The factory and the prototype are both readable, and the prototype returns a coherent (empty) schedule, so the interface is right. But each recipient's schedule lives in a separate clone whose address only appears in a factory event. Enumerating them needs eth_getLogs over a wide block range, and free RPC endpoints cap that at 50 blocks \u2014 about ten minutes of chain. The data exists on-chain and is out of reach at this cost level."
+      "reason": "The factory and the prototype are both readable, and the prototype returns a coherent (empty) schedule, so the interface is right. But each recipient's schedule lives in a separate clone whose address only appears in a factory event. Enumerating them needs eth_getLogs over a wide block range, and free RPC endpoints cap that at 50 blocks — about ten minutes of chain. The data exists on-chain and is out of reach at this cost level."
     }
   ],
   "provenanceScale": [
@@ -127,6 +157,31 @@
   ],
   "emissions": [
     {
+      "symbol": "AAVE",
+      "name": "Aave Safety Module",
+      "provenance": "contract",
+      "contract": "0x4da27a545c0c5b758a6ba100e3a049001de870f5",
+      "getters": [
+        "REWARD_TOKEN()",
+        "STAKED_TOKEN()",
+        "REWARDS_VAULT()",
+        "assets(address)",
+        "DISTRIBUTION_END()",
+        "allowance(vault,stkAAVE)"
+      ],
+      "event": "Safety Module staking rewards",
+      "ratePerSecond": 0.001736111111111111,
+      "perDay": 150,
+      "totalSupply": 16000000,
+      "availableSupply": 16000000,
+      "distributionEnd": "2123-11-30",
+      "fundedTokens": 5870.568,
+      "vault": "0x25f2226b597e8f9514b3f68f00f494cf4f286491",
+      "mechanism": "emissionPerSecond, fixed until governance changes it",
+      "note": "This is NOT new issuance. AAVE's supply is capped at 16,000,000 and fully minted; these tokens move out of the Ecosystem Reserve to stakers, so they are supply arriving on the market rather than supply being created. DISTRIBUTION_END is set to 2123, which is a sentinel meaning 'no end', so the real limit is not the date — it is the allowance the Reserve has granted the staking contract, which is read here too and covers roughly 39 days at the current rate. That number is the honest forward horizon and no calendar publishes it.",
+      "detail": "The contract publishes an emissionPerSecond that is constant until governance votes to change it, so the daily figure is exact rather than projected."
+    },
+    {
       "symbol": "CRV",
       "name": "Curve DAO",
       "provenance": "contract",
@@ -138,13 +193,16 @@
         "available_supply()",
         "totalSupply()"
       ],
-      "ratePerSecond": 3.080982847903985,
-      "perDay": 266196.72,
+      "ratePerSecond": 3.080982847903986,
+      "perDay": 266196.92,
       "epochStart": "2026-08-12",
       "miningEpoch": 6,
-      "availableSupply": 2419994078,
-      "totalSupply": 2409636911,
-      "note": "Emission is algorithmic: the contract mints at a fixed rate that steps down once per 365-day epoch. Unlike discretionary vesting, the forward number is readable today."
+      "availableSupply": 2420069094,
+      "totalSupply": 2409673919,
+      "note": "Emission is algorithmic: the contract mints at a fixed rate that steps down once per 365-day epoch. Unlike discretionary vesting, the forward number is readable today.",
+      "event": "Protocol emission, epoch 6",
+      "mechanism": "rate(), stepping down once per 365-day epoch",
+      "detail": "rate() returns tokens per second and is held constant until the current 365-day epoch ends and steps down on-chain."
     }
   ]
 }
