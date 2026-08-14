@@ -15,6 +15,21 @@ import { defineMiddleware } from "astro:middleware";
  *    older timestamp rather than a failed request.
  */
 export const onRequest = defineMiddleware(async (ctx, next) => {
+  /* ONE URL PER PAGE.
+     Every path was answering 200 both bare and with a trailing slash, and because the
+     canonical is built from the REQUESTED pathname, /funding/btc/ declared itself canonical
+     rather than pointing at /funding/btc. That is a duplicate-content split across all 42
+     URLs, and it is the same failure the www redirect exists to prevent, one level down.
+     Caught while diagnosing something else; a canonical tag cannot fix it because both
+     copies were self-referencing. */
+  const p = ctx.url.pathname;
+  if (p.length > 1 && p.endsWith("/")) {
+    return new Response(null, {
+      status: 301,
+      headers: { location: p.replace(/\/+$/, "") + ctx.url.search, "cache-control": "public, max-age=86400" },
+    });
+  }
+
   const res = await next();
   const canonical = ctx.site?.origin;
   const onCanonicalHost = !canonical || ctx.url.origin === canonical;
