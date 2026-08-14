@@ -1,0 +1,172 @@
+---
+import Base from "../layouts/Base.astro";
+import { getSnapshot, coldStart } from "../lib/hyperliquid.ts";
+import { usd, pct } from "../lib/funding.ts";
+import { tierFor, maintenanceMarginFraction, type MarginTable } from "../lib/margin.ts";
+import tables from "../data/margin-tables.json";
+
+const snap = await getSnapshot((Astro.locals as any)?.runtime?.env?.SNAPSHOT, import.meta.env.DEV);
+if (!snap.available) return coldStart();
+
+// Everything here is COMPUTED from published contract parameters — margin tiers and the
+// current mark. Nothing on this page is an event feed, and nothing claims to know where
+// anyone's position actually sits. See the honesty section below.
+interface Row {
+  symbol: string; markPx: number; oiNotional: number; maxLeverage: number;
+  mmf: number; longDist: number; shortDist: number; tierCount: number;
+  nextBoundary: number | null; oiTier: number;
+}
+const rows: Row[] = snap.perps
+  .map((p) => {
+    const table = (tables as Record<string, MarginTable>)[String(p.marginTableId)];
+    if (!table) return null;
+    const sorted = [...table.marginTiers].sort((a, b) => a.lowerBound - b.lowerBound);
+    const top = sorted[0];
+    const mmf = maintenanceMarginFraction(top.maxLeverage);
+    // Adverse move that reaches maintenance margin, at the contract's own maximum leverage.
+    // long:  liq = entry(1 - 1/L) / (1 - mmf)   =>  distance = 1 - (1 - 1/L)/(1 - mmf)
+    const longDist = 1 - (1 - 1 / top.maxLeverage) / (1 - mmf);
+    const shortDist = (1 + 1 / top.maxLeverage) / (1 + mmf) - 1;
+    const { index } = tierFor(table, p.oiNotional);
+    return {
+      symbol: p.symbol,
+      markPx: p.markPx,
+      oiNotional: p.oiNotional,
+      maxLeverage: top.maxLeverage,
+      mmf,
+      longDist,
+      shortDist,
+      tierCount: sorted.length,
+      nextBoundary: sorted[1]?.lowerBound ?? null,
+      oiTier: index + 1,
+    };
+  })
+  .filter((r): r is Row => r !== null);
+
+// Most fragile first: the smallest adverse move that closes a maximum-leverage position.
+rows.sort((a, b) => a.longDist - b.longDist);
+const tightest = rows[0];
+const loosest = rows[rows.length - 1];
+const maxDist = Math.max(...rows.map((r) => r.longDist), 0.0001);
+
+const title = "Liquidation risk by contract — how far each perpetual can move | Basis";
+const description =
+  "The adverse price move that liquidates a maximum-leverage position on each perpetual, computed from published maintenance-margin tiers. Not a liquidation feed — no exchange publishes a complete one.";
+---
+
+<Base title={title} description={description} fetchedAt={snap.fetchedAt}>
+  <div class="page-head">
+    <h1>Liquidation risk by contract</h1>
+    <p>
+      How far the price has to move against a position opened at each contract's <strong>own
+      maximum leverage</strong> before the exchange closes it. Computed from the published
+      maintenance-margin tiers, not from a feed of what has been liquidated —
+      <a class="link" href="/methodology/liquidations">no exchange publishes a complete one of those</a>.
+    </p>
+  </div>
+
+  <div class="cards">
+    <div class="card card--lead">
+      <div class="card__label">Thinnest margin for error</div>
+      <div class="card__value pays-l">{pct(tightest.longDist)}</div>
+      <div class="card__meta">{tightest.symbol} at {tightest.maxLeverage}× · {usd(tightest.markPx, 2)}</div>
+    </div>
+    <div class="card">
+      <div class="card__label">Widest margin for error</div>
+      <div class="card__value">{pct(loosest.longDist)}</div>
+      <div class="card__meta">{loosest.symbol} at {loosest.maxLeverage}×</div>
+    </div>
+    <div class="card">
+      <div class="card__label">Contracts covered</div>
+      <div class="card__value">{rows.length}</div>
+      <div class="card__meta">each with its own published tier table</div>
+    </div>
+    <div class="card">
+      <div class="card__label">Leverage range offered</div>
+      <div class="card__value">{Math.min(...rows.map((r) => r.maxLeverage))}–{Math.max(...rows.map((r) => r.maxLeverage))}×</div>
+      <div class="card__meta">tier 1 maximum, across the set</div>
+    </div>
+  </div>
+
+  <div class="verdict verdict--warn">
+    <div>
+      <b>This is what the contract permits, not where positions are.</b> No venue publishes the
+      distribution of open positions by leverage or entry price, so nobody — including this site —
+      can honestly say how much notional is at risk at a given price. Any figure you have seen
+      framed that way is a guess wearing a number. What is knowable is printed here: the rules
+      each contract sets, and the arithmetic that follows from them.
+    </div>
+  </div>
+
+  <h2 class="section">Every covered contract</h2>
+  <p class="section-note">
+    Sorted by the tightest margin for error first. The move column is the distance from the
+    current mark to the maintenance-margin threshold at tier 1's maximum leverage — the most
+    aggressive position the contract allows. Lower leverage moves it proportionally further away.
+  </p>
+  <div class="panel">
+    <table class="tbl">
+      <thead>
+        <tr>
+          <th>Contract</th>
+          <th class="num">Max leverage</th>
+          <th class="num">Maintenance</th>
+          <th class="num">Move to liquidate (long)</th>
+          <th class="num">Short</th>
+          <th class="num">Tiers</th>
+          <th class="num">Open interest</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((r) => (
+          <tr>
+            <td class="sym"><a href={`/funding/${r.symbol.toLowerCase()}`}>{r.symbol}</a></td>
+            <td class="num">{r.maxLeverage}×</td>
+            <td class="num">{pct(r.mmf, 3)}</td>
+            <td class="num">
+              <span class="magnitude">
+                <span class="magnitude__track"><span class="magnitude__fill" style={`width:${Math.max(3, Math.round((r.longDist / maxDist) * 100))}%`}></span></span>
+                <span>{pct(r.longDist)}</span>
+              </span>
+            </td>
+            <td class="num">{pct(r.shortDist)}</td>
+            <td class="num">{r.tierCount}</td>
+            <td class="num">{usd(r.oiNotional)}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="section">Why the maximum leverage is the interesting number</h2>
+  <p class="prose">
+    A contract offering {Math.max(...rows.map((r) => r.maxLeverage))}× and one offering
+    {" "}{Math.min(...rows.map((r) => r.maxLeverage))}× are not the same instrument with a
+    different dial. The maximum sets how thin the thinnest position on that contract can be, and
+    therefore how small a move can start forced selling. {tightest.symbol} permits a position that
+    dies on a <strong>{pct(tightest.longDist)}</strong> move; {loosest.symbol} does not allow
+    anything tighter than <strong>{pct(loosest.longDist)}</strong>.
+  </p>
+  <p class="prose">
+    The distance is not simply <code>1/leverage</code>. Liquidation happens at the
+    <strong>maintenance margin</strong>, a positive fraction of notional, so the real threshold is
+    always reached <em>sooner</em> than the naive figure suggests — and the gap widens as leverage
+    falls, because maintenance margin rises as the tier steps down.
+    <a class="link" href="/tools/liquidation-price">Work out a specific position →</a>
+  </p>
+
+  <h2 class="section">What is deliberately absent</h2>
+  <p class="prose">
+    No liquidation totals, no cascade tracker, no "$X liquidated in the last hour". Those require
+    an event feed, and every available one is throttled: Binance publishes at most one liquidation
+    per symbol per second, so a sum over it understates by an unknown and variable factor, worst
+    exactly when the number is most quoted.
+    <a class="link" href="/methodology/liquidations">The full reasoning, with the measured scale of the error →</a>
+  </p>
+
+  <p style="margin-top:24px">
+    <a class="link" href="/tools/leverage">What leverage a given size actually allows →</a>
+    · <a class="link" href="/tools/position-size">Size a position against a stop →</a>
+    · <a class="link" href="/funding">Funding rates →</a>
+  </p>
+</Base>

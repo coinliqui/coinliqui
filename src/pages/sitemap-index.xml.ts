@@ -1,6 +1,6 @@
 import type { APIRoute } from "astro";
 import { origin } from "../lib/site.ts";
-const FILES = ["pages", "funding-hub", "funding-symbols", "open-interest", "tools"];
+const FILES = ["pages", "funding-hub", "funding-symbols", "open-interest", "tools", "liquidations"];
 export const GET: APIRoute = ({ site }) => {
   const base = origin(site);
   return new Response(

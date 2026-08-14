@@ -47,7 +47,7 @@ export const NAV: NavGroup[] = [
     items: [
       { label: "Overview", href: "/", mobile: true, icon: "M3 9.5 10 4l7 5.5V16a1 1 0 0 1-1 1h-4v-5H8v5H4a1 1 0 0 1-1-1V9.5Z" },
       { label: "Funding", href: "/funding", mobile: true, icon: "M3 14.5 7 9l3.5 3.5L17 5M17 5h-4.5M17 5v4.5" },
-      { label: "Liquidations", icon: "M10 3v6m0 0 3-2m-3 2L7 7m3 10a5 5 0 0 0 5-5c0-2-1.5-3.5-2.5-5" },
+      { label: "Liquidations", href: "/liquidations", icon: "M10 3v6m0 0 3-2m-3 2L7 7m3 10a5 5 0 0 0 5-5c0-2-1.5-3.5-2.5-5" },
       { label: "Unlocks", icon: "M6 9V6.5a4 4 0 0 1 8 0M5 9h10v8H5z" },
     ],
   },
