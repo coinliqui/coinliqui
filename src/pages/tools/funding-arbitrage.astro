@@ -1,6 +1,6 @@
 ---
 import Base from "../../layouts/Base.astro";
-import { getSnapshot, coldStart } from "../../lib/hyperliquid.ts";
+import { getSnapshot, coldStart, findPerp } from "../../lib/hyperliquid.ts";
 import { usd, pct, rawRate, VENUE_LABEL, paysClass, type Venue } from "../../lib/funding.ts";
 
 const snap = await getSnapshot((Astro.locals as any)?.runtime?.env?.SNAPSHOT, import.meta.env.DEV);
@@ -13,8 +13,7 @@ const tradable = snap.perps.filter((p) => p.venues.length >= 2);
 const widest = [...tradable].sort((a, b) => (b.aprSpread ?? 0) - (a.aprSpread ?? 0))[0];
 
 const q = Astro.url.searchParams;
-const symbol = (q.get("symbol") ?? widest?.symbol ?? "BTC").toUpperCase();
-const perp = tradable.find((p) => p.symbol === symbol) ?? widest ?? snap.perps[0];
+const perp = findPerp(tradable, q.get("symbol")) ?? widest ?? snap.perps[0];
 const capital = Number(q.get("capital") ?? 10_000);
 const days = Number(q.get("days") ?? 30);
 

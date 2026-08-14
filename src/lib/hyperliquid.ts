@@ -174,6 +174,25 @@ export async function fetchMarginTable(id: number): Promise<MarginTable> {
   };
 }
 
+/**
+ * Look a contract up by name, CASE-INSENSITIVELY.
+ *
+ * Hyperliquid denominates some contracts in thousands and names them with a lower-case
+ * prefix: kPEPE, kBONK, kSHIB. Every page here was calling .toUpperCase() on the requested
+ * symbol and comparing it to the exact upstream name, so KPEPE never matched kPEPE. The
+ * contract pages 404'd — on URLs their own sitemap had just published — and the pages that
+ * take a ?symbol= query did something quieter and worse: they fell back to BTC and rendered
+ * a complete, plausible, wrong page under the heading the reader asked for.
+ *
+ * It only surfaced when the coverage floor let the first k-prefixed contract in, which is
+ * exactly the kind of bug that waits for a config change to appear.
+ */
+export const findPerp = (perps: Perp[], want: string | null | undefined): Perp | undefined => {
+  if (!want) return undefined;
+  const k = want.toLowerCase();
+  return perps.find((p) => p.symbol.toLowerCase() === k);
+};
+
 const EMPTY: Snapshot = { fetchedAt: 0, perps: [], eligibleCount: 0, universeCount: 0, available: false };
 
 /**

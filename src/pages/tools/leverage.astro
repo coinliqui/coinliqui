@@ -1,6 +1,6 @@
 ---
 import Base from "../../layouts/Base.astro";
-import { getSnapshot, coldStart } from "../../lib/hyperliquid.ts";
+import { getSnapshot, coldStart, findPerp } from "../../lib/hyperliquid.ts";
 import { usd, pct } from "../../lib/funding.ts";
 import { liquidationPrice, tierFor, maintenanceMarginFraction, nextTierBoundary, type MarginTable, type Side } from "../../lib/margin.ts";
 import tables from "../../data/margin-tables.json";
@@ -10,8 +10,7 @@ const snap = await getSnapshot((Astro.locals as any)?.runtime?.env?.SNAPSHOT, im
 if (!snap.available) return coldStart();
 
 const q = Astro.url.searchParams;
-const symbol = (q.get("symbol") ?? "BTC").toUpperCase();
-const perp = snap.perps.find((p) => p.symbol === symbol) ?? snap.perps[0];
+const perp = findPerp(snap.perps, q.get("symbol")) ?? snap.perps[0];
 const table = (tables as Record<string, MarginTable>)[String(perp.marginTableId)];
 const side = (q.get("side") === "short" ? "short" : "long") as Side;
 

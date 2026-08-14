@@ -1,7 +1,6 @@
 ---
 import Base from "../layouts/Base.astro";
-import { getSnapshot } from "../lib/hyperliquid.ts";
-import { OI_NOTIONAL_FLOOR } from "../lib/hyperliquid.ts";
+import { getSnapshot, findPerp, OI_NOTIONAL_FLOOR } from "../lib/hyperliquid.ts";
 import { usd } from "../lib/funding.ts";
 
 /**
@@ -21,8 +20,8 @@ const snap = await getSnapshot(env?.SNAPSHOT, import.meta.env.DEV);
    and the request at /404, so the path cannot be read back. The query is never a real URL —
    nothing links to it and the page is noindex either way. */
 const raw = Astro.url.searchParams.get("symbol");
-const wanted = raw && /^[A-Za-z0-9._-]{1,20}$/.test(raw) ? raw.toUpperCase() : null;
-const covered = snap.perps.some((p) => p.symbol === wanted);
+const wanted = raw && /^[A-Za-z0-9._-]{1,20}$/.test(raw) ? raw : null;
+const covered = Boolean(findPerp(snap.perps, wanted));
 const nearest = snap.perps.slice(0, 12);
 ---
 

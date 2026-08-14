@@ -1,6 +1,6 @@
 ---
 import Base from "../../layouts/Base.astro";
-import { getSnapshot, coldStart } from "../../lib/hyperliquid.ts";
+import { getSnapshot, coldStart, findPerp } from "../../lib/hyperliquid.ts";
 import { VENUE_LABEL, pct, usd, rawRate, carryCost, settlementsPerYear, paysClass, paysLabel, type Venue } from "../../lib/funding.ts";
 import { liquidationPrice, type MarginTable } from "../../lib/margin.ts";
 import { getCandles, getHourly, getFunding } from "../../lib/candles.ts";
@@ -12,8 +12,21 @@ const env = (Astro.locals as any)?.runtime?.env;
 const snap = await getSnapshot(env?.SNAPSHOT, import.meta.env.DEV);
 if (!snap.available) return coldStart();
 
-const wanted = (Astro.params.symbol ?? "").toUpperCase();
-const p = snap.perps.find((x) => x.symbol === wanted);
+const wanted = Astro.params.symbol ?? "";
+const p = findPerp(snap.perps, wanted);
+
+/* ONE URL PER CONTRACT, whatever case it is asked for.
+   Hyperliquid names some contracts kPEPE and kBONK. Matching case-insensitively means
+   /funding/KPEPE and /funding/kPEPE both resolve — and, because the canonical tag is built
+   from the REQUESTED path, each would declare itself canonical. That is the same
+   duplicate-content split the trailing-slash redirect exists to prevent, so it gets the same
+   answer: everything that is not the lower-case form is a 301 to it. */
+if (p && wanted !== p.symbol.toLowerCase()) {
+  return new Response(null, {
+    status: 301,
+    headers: { location: `/funding/${p.symbol.toLowerCase()}`, "cache-control": "public, max-age=86400" },
+  });
+}
 /* Conditional emission: no entity page below the coverage floor. A thin page is worse than
    none — but an EMPTY 404 body is worse still. A bare `new Response(null, {status: 404})` was
    handed to Astro's stock not-found page: unbranded, no navigation, no explanation, on a URL
