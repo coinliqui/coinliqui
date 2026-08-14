@@ -513,9 +513,20 @@ var FUNDING_REFRESH_HOURS = 6;
 var CANARY_RETAIN_HOURS = 168;
 var CHUNK = 24;
 var FILL_BACKOFF_MS = 10 * 6e4;
-var WORKER_BUILD = "2026-08-14g";
+var WORKER_BUILD = "2026-08-14h";
 var ingest_default = {
-  async scheduled(_event, env, ctx) {
+  async scheduled(event, env, ctx) {
+    if (event.cron === "* * * * *") {
+      ctx.waitUntil(
+        (async () => {
+          try {
+            await env.SNAPSHOT.put("spot", JSON.stringify(await fetchSpot()));
+          } catch {
+          }
+        })()
+      );
+      return;
+    }
     ctx.waitUntil(run(env));
   },
   // Manual trigger, used once after deploy to warm KV before DNS is pointed at the site,

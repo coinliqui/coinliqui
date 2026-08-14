@@ -78,10 +78,22 @@ const FILL_BACKOFF_MS = 10 * 60_000;
  *
  * BUMP BOTH when you change this file: here and EXPECTED_WORKER_BUILD in src/lib/version.ts.
  */
-const WORKER_BUILD = "2026-08-14g";
+const WORKER_BUILD = "2026-08-14h";
 
 export default {
-  async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext) {
+  async scheduled(event: ScheduledController, env: Env, ctx: ExecutionContext) {
+    /* The one-minute cron does spot and nothing else. Everything the contract pages depend on
+       stays on the five-minute tick, so a Coinbase hiccup or a busier schedule cannot reach it. */
+    if (event.cron === "* * * * *") {
+      ctx.waitUntil(
+        (async () => {
+          try {
+            await env.SNAPSHOT.put("spot", JSON.stringify(await fetchSpot()));
+          } catch { /* the coin pages keep their last quote; the next minute tries again */ }
+        })(),
+      );
+      return;
+    }
     ctx.waitUntil(run(env));
   },
 
@@ -435,6 +447,7 @@ interface D1PreparedStatement {
 }
 interface ScheduledController {
   scheduledTime: number;
+  cron: string;
 }
 interface ExecutionContext {
   waitUntil(p: Promise<unknown>): void;

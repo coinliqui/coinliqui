@@ -8,7 +8,13 @@ compatibility_date = "2026-08-01"
 # Every 5 minutes. Network wait does not count toward the 10ms CPU limit; the only CPU
 # spent is JSON.parse plus the writes, which is why this fits the free tier.
 [triggers]
-crons = ["*/5 * * * *"]
+# TWO CADENCES, ONE WORKER.
+#   */5  the full ingest: snapshot, funding history, the chunked candle sweeps, the weekly report.
+#   *    spot only, one Coinbase call and one KV write, so a price billed as live is a minute old
+#        rather than five. It costs 1,440 light invocations and 1,440 writes a day and touches
+#        nothing else — raising the main cron to a minute would have multiplied the D1 funding
+#        rows by five to fix a number that has nothing to do with them.
+crons = ["*/5 * * * *", "* * * * *"]
 
 # IDs are filled in from the dashboard after the namespace and database are created.
 # They are identifiers, not secrets: KV and D1 are reachable only through a binding on a
