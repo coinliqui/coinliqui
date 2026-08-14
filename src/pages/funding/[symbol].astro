@@ -3,8 +3,8 @@ import Base from "../../layouts/Base.astro";
 import { getSnapshot, coldStart } from "../../lib/hyperliquid.ts";
 import { VENUE_LABEL, pct, usd, rawRate, carryCost, settlementsPerYear, paysClass, paysLabel, type Venue } from "../../lib/funding.ts";
 import { liquidationPrice, type MarginTable } from "../../lib/margin.ts";
-import { getCandles, getHourly, T, C } from "../../lib/candles.ts";
-import { TIMEFRAMES, DEFAULT_TF, aggregate, buildAreaChart } from "../../lib/series.ts";
+import { getCandles, getHourly, getFunding } from "../../lib/candles.ts";
+import { TIMEFRAMES, DEFAULT_TF, aggregate, buildPriceChart, LAYOUT } from "../../lib/series.ts";
 import tables from "../../data/margin-tables.json";
 
 const env = (Astro.locals as any)?.runtime?.env;
@@ -37,28 +37,94 @@ const px = (v: number) => usd(v, dp);
    intercepted, the pre-rendered panel is swapped in instantly and the URL is cleaned.
    --------------------------------------------------------------------------------------- */
 const tfKey = TIMEFRAMES.some((t) => t.key === Astro.url.searchParams.get("tf")) ? Astro.url.searchParams.get("tf")! : DEFAULT_TF;
-const [dayset, hourset] = await Promise.all([
+const [dayset, hourset, funding] = await Promise.all([
   getCandles(env?.SNAPSHOT, p.symbol, import.meta.env.DEV),
   getHourly(env?.SNAPSHOT, p.symbol, import.meta.env.DEV),
+  getFunding(env?.SNAPSHOT, p.symbol, import.meta.env.DEV),
 ]);
 
-const CW = 1000, CH = 392;
-const CPAD = { l: 78, r: 24, t: 20, b: 36 };
+const LY = LAYOUT;
 const charts = TIMEFRAMES.map((tf) => {
   const base = tf.base === "hour" ? hourset?.d : dayset?.d;
-  if (!base || base.length < 6) return { tf, chart: null, series: [] as number[][] };
-  const rolled = aggregate(base, tf.factor).slice(-tf.bars);
-  const chart = buildAreaChart(rolled, tf, CW, CH, CPAD);
-  const series = chart ? chart.points.map((q) => [q.x, q.y, q.t, q.o, q.h, q.l, q.c, q.v]) : [];
-  return { tf, chart, series };
+  if (!base || base.length < 6) return { tf, chart: null as ReturnType<typeof buildPriceChart> };
+  return { tf, chart: buildPriceChart(aggregate(base, tf.factor).slice(-tf.bars), funding, tf, LY) };
 });
 const active = charts.find((c) => c.tf.key === tfKey) ?? charts[0];
 const hasChart = charts.some((c) => c.chart);
-const plotAttr = `${CPAD.l},${CPAD.t},${CW - CPAD.l - CPAD.r},${CH - CPAD.t - CPAD.b}`;
 const arrow = (n: number) => (n >= 0 ? "▲" : "▼");
 const compact = (n: number) => (Math.abs(n) >= 1e9 ? (n / 1e9).toFixed(2) + "B" : Math.abs(n) >= 1e6 ? (n / 1e6).toFixed(2) + "M" : Math.abs(n) >= 1e3 ? (n / 1e3).toFixed(2) + "K" : n.toFixed(2));
 const stat = (fn: (c: (typeof charts)[number]) => string) =>
   Object.fromEntries(charts.filter((c) => c.chart).map((c) => [`data-v${c.tf.key}`, fn(c)]));
+
+/* Rendered as a string with INLINE presentation attributes: ~800 elements is needless JSX
+   overhead, and Astro's scoped classes never reach markup injected with set:html. */
+const UP = "#e6e8ec", DOWN = "#5b6673", GRID = "#22272e", FAINT = "#6c737d", DIM = "#9aa1ab";
+const PAYS_L = "#ef6b5e", PAYS_S = "#58c48c", ACC = "#8ab4f8";
+const svgFor = (ch: NonNullable<ReturnType<typeof buildPriceChart>>) => {
+  const o: string[] = [];
+  const axX = LY.w - LY.padR;
+  // price gridlines + right-hand axis
+  for (const t of ch.yTicks) {
+    o.push(`<line x1="${ch.plotX}" x2="${axX}" y1="${t.y}" y2="${t.y}" stroke="${GRID}" stroke-width="1"/>`);
+    o.push(`<text x="${axX + 9}" y="${t.y + 4}" font-size="11.5" fill="${FAINT}">${usd(t.v, dp >= 5 ? dp : 0)}</text>`);
+  }
+  // volume + funding panel separators
+  o.push(`<line x1="${ch.plotX}" x2="${axX}" y1="${ch.vol.y + ch.vol.h}" y2="${ch.vol.y + ch.vol.h}" stroke="${GRID}" stroke-width="1"/>`);
+  o.push(`<text x="${ch.plotX + 2}" y="${ch.vol.y + 11}" font-size="10.5" fill="${FAINT}">VOLUME</text>`);
+
+  // volume
+  for (const b of ch.bars) o.push(`<rect x="${(b.x - b.w / 2).toFixed(2)}" y="${b.volY}" width="${b.w}" height="${b.volH}" fill="${b.up ? "#454f5d" : "#333a45"}"/>`);
+
+  // funding band — the ONE place hue is licensed
+  if (ch.fund) {
+    o.push(`<line x1="${ch.plotX}" x2="${axX}" y1="${ch.fund.zero}" y2="${ch.fund.zero}" stroke="#39414d" stroke-width="1"/>`);
+    for (const b of ch.bars) if (b.apr !== null && b.fundH > 0)
+      o.push(`<rect x="${(b.x - b.w / 2).toFixed(2)}" y="${b.fundY}" width="${b.w}" height="${b.fundH}" fill="${b.apr >= 0 ? PAYS_L : PAYS_S}" fill-opacity="0.92"/>`);
+    // where coverage begins, stated on the chart instead of leaving an unexplained gap
+    if (ch.fund.fromX !== null && ch.fund.fromX > ch.plotX + 40) {
+      o.push(`<rect x="${ch.plotX}" y="${ch.fund.y}" width="${(ch.fund.fromX - ch.plotX).toFixed(1)}" height="${ch.fund.h}" fill="#1b1f25"/>`);
+      o.push(`<line x1="${ch.fund.fromX}" x2="${ch.fund.fromX}" y1="${ch.fund.y}" y2="${ch.fund.y + ch.fund.h}" stroke="${DIM}" stroke-width="1" stroke-dasharray="3 3"/>`);
+      o.push(`<text x="${(ch.fund.fromX - 8).toFixed(1)}" y="${ch.fund.zero + 4}" text-anchor="end" font-size="10.5" fill="${FAINT}">no funding history before ${new Date(ch.fund.fromT!).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" })}</text>`);
+    }
+    o.push(`<text x="${ch.plotX + 2}" y="${ch.fund.y + 11}" font-size="10.5" fill="${FAINT}">FUNDING APR · Hyperliquid hourly</text>`);
+    o.push(`<text x="${axX + 9}" y="${ch.fund.zero - 5}" font-size="10.5" fill="${PAYS_L}">+${(ch.fund.max * 100).toFixed(0)}%</text>`);
+    o.push(`<text x="${axX + 9}" y="${ch.fund.zero + 13}" font-size="10.5" fill="${PAYS_S}">−${(ch.fund.max * 100).toFixed(0)}%</text>`);
+    o.push(`<text x="${ch.plotX + 2}" y="${ch.fund.zero - 5}" font-size="10" fill="${PAYS_L}" fill-opacity="0.85">longs pay</text>`);
+    o.push(`<text x="${ch.plotX + 2}" y="${ch.fund.zero + 13}" font-size="10" fill="${PAYS_S}" fill-opacity="0.85">shorts pay</text>`);
+  }
+
+  // candles — monochrome, because red and green mean funding here
+  for (const b of ch.bars) {
+    const col = b.up ? UP : DOWN;
+    o.push(`<line x1="${b.x}" x2="${b.x}" y1="${b.wickTop}" y2="${b.wickBot}" stroke="${col}" stroke-width="1"/>`);
+    o.push(`<rect x="${(b.x - b.w / 2).toFixed(2)}" y="${b.bodyY}" width="${b.w}" height="${b.bodyH}" fill="${col}"/>`);
+  }
+
+  // sign flips on the price timeline
+  for (const f of ch.flips)
+    o.push(`<path d="M${f.x} ${ch.price.y + 3} l4 -6 l-8 0 z" fill="${f.toPositive ? PAYS_L : PAYS_S}" fill-opacity="0.9"><title>Funding flipped to ${f.toPositive ? "longs paying" : "shorts paying"}</title></path>`);
+
+  // last price: line across the plot, filled pill on the axis
+  o.push(`<line x1="${ch.plotX}" x2="${axX}" y1="${ch.lastY}" y2="${ch.lastY}" stroke="${ACC}" stroke-width="1" stroke-dasharray="4 3" stroke-opacity="0.9"/>`);
+  o.push(`<rect x="${axX + 3}" y="${ch.lastY - 10}" width="${LY.padR - 8}" height="20" rx="4" fill="${ACC}"/>`);
+  o.push(`<text x="${axX + 9}" y="${ch.lastY + 4}" font-size="11.5" font-weight="700" fill="#17191c">${usd(ch.last, dp >= 5 ? dp : 2)}</text>`);
+
+  // time axis
+  for (const t of ch.xTicks) o.push(`<text x="${t.x}" y="${LY.h - 10}" text-anchor="middle" font-size="11.5" fill="${FAINT}">${t.label}</text>`);
+
+  // crosshair furniture, updated by interact.js
+  const bot = ch.fund ? ch.fund.y + ch.fund.h : ch.vol.y + ch.vol.h;
+  o.push(
+    `<g class="xh" hidden>` +
+      `<line class="xh-v" stroke="#9aa1ab" stroke-width="1" stroke-dasharray="3 3" x1="0" x2="0" y1="${ch.price.y}" y2="${bot}"/>` +
+      `<line class="xh-h" stroke="#9aa1ab" stroke-width="1" stroke-dasharray="3 3" x1="${ch.plotX}" x2="${axX}" y1="0" y2="0"/>` +
+      `<circle class="xh-dot" fill="#8ab4f8" stroke="#16181b" stroke-width="2.2" r="3.6" cx="-99" cy="-99"/>` +
+      `<g class="xh-py"><rect x="${axX + 3}" y="0" width="${LY.padR - 8}" height="20" rx="4" fill="#e6e8ec"/><text x="${axX + 9}" y="0" font-size="11.5" font-weight="600" fill="#16181b"></text></g>` +
+      `<g class="xh-tx"><rect x="0" y="${LY.h - 24}" width="98" height="19" rx="4" fill="#e6e8ec"/><text x="0" y="${LY.h - 10}" text-anchor="middle" font-size="11.5" font-weight="600" fill="#16181b"></text></g>` +
+    `</g>`,
+  );
+  return o.join("");
+};
 
 const title = `${p.symbol} price, funding rate and margin tiers | Basis`;
 const description = `${p.symbol} perpetual price chart with 1H to 1W candles, funding across Hyperliquid, Binance and Bybit annualised, open interest ${usd(p.oiNotional)} and the published margin tiers.`;
@@ -99,44 +165,36 @@ const description = `${p.symbol} perpetual price chart with 1H to 1W candles, fu
         <span class="tfbar__note">Real traded candles only — Hyperliquid's pre-launch backfill carries zero volume and is excluded.</span>
       </form>
 
-      {charts.map(({ tf, chart, series }) => chart && (
+      {charts.map(({ tf, chart }) => chart && (
         <div data-tfpanel={tf.key} data-group="px" class:list={["chart", { "is-on": tf.key === tfKey }]}>
-          <svg viewBox={`0 0 ${CW} ${CH}`} class="pchart" data-xhair={`pts-${tf.key}`} data-plot={plotAttr} data-dp={dp}
-               role="img" aria-label={`${p.symbol} price, ${tf.label} candles. Values are tabulated below the chart.`}>
-            <defs>
-              <linearGradient id={`grad-${tf.key}`} x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stop-color="var(--accent)" stop-opacity="0.30" />
-                <stop offset="55%" stop-color="var(--accent)" stop-opacity="0.10" />
-                <stop offset="100%" stop-color="var(--accent)" stop-opacity="0" />
-              </linearGradient>
-            </defs>
-            {chart.yTicks.map((t) => (
-              <g>
-                <line x1={CPAD.l} x2={CW - CPAD.r} y1={t.y} y2={t.y} class="pgrid" />
-                <text x={CPAD.l - 12} y={t.y + 4} class="pax" text-anchor="end">{usd(t.v, dp >= 5 ? dp : 0)}</text>
-              </g>
-            ))}
-            {chart.xTicks.map((t) => (
-              <text x={t.x} y={CH - CPAD.b + 22} class="pax" text-anchor="middle">{t.label}</text>
-            ))}
-            <path d={chart.area} fill={`url(#grad-${tf.key})`} />
-            <path d={chart.line} class="pline" />
-            <g class="xh" hidden>
-              <line class="xh-v" />
-              <circle class="xh-dot" r="4.5" />
-            </g>
+          <svg viewBox={`0 0 ${LY.w} ${LY.h}`} class="pchart" data-xhair={`pts-${tf.key}`}
+               data-plot={`${chart.plotX},${chart.price.y},${chart.plotW},${chart.price.h}`}
+               data-prange={`${chart.lo},${chart.hi}`} data-axx={LY.w - LY.padR} data-dp={dp}
+               role="img" aria-label={`${p.symbol} ${tf.label} candles with volume and funding. Values are tabulated below.`}>
+            <Fragment set:html={svgFor(chart)} />
           </svg>
-          <script type="application/json" id={`pts-${tf.key}`} set:html={JSON.stringify(series)} />
+          <script type="application/json" id={`pts-${tf.key}`} set:html={JSON.stringify(chart.points)} />
         </div>
       ))}
 
+      <p class="chart__legend">
+        <span><i class="sw" style="background:#e6e8ec"></i>up bar</span>
+        <span><i class="sw" style="background:#5b6673"></i>down bar</span>
+        <span><i class="sw" style="background:#ef6b5e"></i>longs pay shorts</span>
+        <span><i class="sw" style="background:#58c48c"></i>shorts pay longs</span>
+        <span><i class="sw sw--tri"></i>funding sign flip</span>
+        {active.chart?.fund
+          ? <em>Funding is Hyperliquid's own hourly rate, from the venue's history — {(active.chart.fundingCoverage * 100).toFixed(0)}% of bars covered. Cross-venue comparison begins when this site's recording started.</em>
+          : <em>Funding history not collected yet for this contract.</em>}
+      </p>
+
       <details class="src">
-        <summary>{active.tf.label} candles as a table ({active.chart?.points.length ?? 0} rows, open · high · low · close · volume)</summary>
+        <summary>{active.tf.label} candles as a table ({active.chart?.bars.length ?? 0} rows, open · high · low · close · volume · funding)</summary>
         <div class="panel" style="margin-top:10px">
           <table class="tbl">
-            <thead><tr><th>Time (UTC)</th><th class="num">Open</th><th class="num">High</th><th class="num">Low</th><th class="num">Close</th><th class="num">Volume</th></tr></thead>
+            <thead><tr><th>Time (UTC)</th><th class="num">Open</th><th class="num">High</th><th class="num">Low</th><th class="num">Close</th><th class="num">Volume</th><th class="num">Funding APR</th></tr></thead>
             <tbody>
-              {(active.chart?.points ?? []).map((q) => (
+              {(active.chart?.bars ?? []).map((q) => (
                 <tr>
                   <td>{new Date(q.t).toISOString().slice(0, 16).replace("T", " ")}</td>
                   <td class="num">{px(q.o)}</td>
@@ -144,6 +202,7 @@ const description = `${p.symbol} perpetual price chart with 1H to 1W candles, fu
                   <td class="num">{px(q.l)}</td>
                   <td class="num">{px(q.c)}</td>
                   <td class="num">{compact(q.v)}</td>
+                  <td class:list={["num", q.apr !== null && (q.apr >= 0 ? "pays-l" : "pays-s")]}>{q.apr === null ? "—" : pct(q.apr)}</td>
                 </tr>
               ))}
             </tbody>
@@ -252,10 +311,13 @@ const description = `${p.symbol} perpetual price chart with 1H to 1W candles, fu
       padding: 8px 6px 2px; margin: 0;
     }
     /* the box is reserved before paint, so switching timeframe cannot move the page */
-    .pchart { display: block; width: 100%; height: auto; aspect-ratio: 1000 / 392; }
-    .pgrid { stroke: var(--border-soft); stroke-width: 1; }
-    .pax { font-size: 11.5px; fill: var(--text-faint); font-variant-numeric: tabular-nums; }
-    .pline { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+    .pchart { display: block; width: 100%; height: auto; aspect-ratio: 1180 / 620; }
+    .pchart text { font-family: var(--sans); font-variant-numeric: tabular-nums; }
+    .chart__legend { display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; margin: 10px 2px 0; font-size: var(--fs-xs); color: var(--text-faint); }
+    .chart__legend span { display: inline-flex; align-items: center; gap: 6px; }
+    .chart__legend em { font-style: normal; flex-basis: 100%; }
+    .sw { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+    .sw--tri { width: 0; height: 0; border-radius: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-bottom: 8px solid var(--text-dim); }
     .src { margin-top: 12px; }
     .src summary { font-size: var(--fs-sm); color: var(--text-dim); cursor: pointer; padding: 8px 0; }
     .src summary:hover { color: var(--text); }
@@ -269,7 +331,7 @@ const description = `${p.symbol} perpetual price chart with 1H to 1W candles, fu
     .chip-link:hover { background: var(--surface-3); color: var(--accent); }
     @media (max-width: 700px) {
       /* a 2.55:1 chart is 147px tall on a 375px screen — too squat to read a trend from */
-      .pchart { aspect-ratio: 5 / 4; }
+      .pchart { aspect-ratio: 3 / 4; }
       .hero__meta { gap: 14px 20px; }
     }
   </style>

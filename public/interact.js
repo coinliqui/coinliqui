@@ -46,7 +46,12 @@
     return n.toFixed(2);
   };
 
-  /* ------------------------------------------------- crosshair on line charts */
+  /* ------------------------------------------------------------- crosshair */
+  const fmtWhen = (t, tf) =>
+    new Date(t).toLocaleString("en-GB",
+      tf === "long" ? { day: "numeric", month: "short", year: "2-digit", timeZone: "UTC" }
+                    : { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "UTC" });
+
   document.querySelectorAll("svg[data-xhair]").forEach((svg) => {
     const src = document.getElementById(svg.dataset.xhair);
     if (!src) return;
@@ -56,61 +61,128 @@
 
     const vb = svg.viewBox.baseVal;
     const dp = +(svg.dataset.dp || 2);
+    const axX = +(svg.dataset.axx || 0);
+    const [plotX, plotY, plotW, plotH] = (svg.dataset.plot || "0,0,0,0").split(",").map(Number);
+    const [pLo, pHi] = (svg.dataset.prange || "0,1").split(",").map(Number);
     const g = svg.querySelector(".xh");
-    const vline = g && g.querySelector(".xh-v");
-    const dot = g && g.querySelector(".xh-dot");
-    const plot = (svg.dataset.plot || "0,0,0,0").split(",").map(Number);
     if (!g) return;
+    const vline = g.querySelector(".xh-v"), hline = g.querySelector(".xh-h"), dot = g.querySelector(".xh-dot");
+    const pyG = g.querySelector(".xh-py"), txG = g.querySelector(".xh-tx");
+    const pyRect = pyG && pyG.querySelector("rect"), pyText = pyG && pyG.querySelector("text");
+    const txRect = txG && txG.querySelector("rect"), txText = txG && txG.querySelector("text");
 
     let raf = 0, pending = null;
     const draw = () => {
       raf = 0;
       if (!pending) return;
-      const { vx, cx, cy, touch } = pending;
-      // nearest point by x — binary search keeps this cheap on 168 bars
+      const { vx, vy, cx, cy, touch } = pending;
       let lo = 0, hi = pts.length - 1;
-      while (lo < hi) {
-        const mid = (lo + hi) >> 1;
-        if (pts[mid][0] < vx) lo = mid + 1; else hi = mid;
-      }
+      while (lo < hi) { const m = (lo + hi) >> 1; if (pts[m][0] < vx) lo = m + 1; else hi = m; }
       if (lo > 0 && Math.abs(pts[lo - 1][0] - vx) < Math.abs(pts[lo][0] - vx)) lo--;
-      // compact tuple: [x, y, t, o, h, l, c, v] — named keys would double the payload
+      // [x, t, o, h, l, c, v, apr, closeY]
       const a = pts[lo];
-      const p = { x: a[0], y: a[1], t: a[2], o: a[3], h: a[4], l: a[5], c: a[6], v: a[7] };
       g.removeAttribute("hidden");
-      vline.setAttribute("x1", p.x); vline.setAttribute("x2", p.x);
-      vline.setAttribute("y1", plot[1]); vline.setAttribute("y2", plot[1] + plot[3]);
-      dot.setAttribute("cx", p.x); dot.setAttribute("cy", p.y);
-      const d = new Date(p.t);
-      const when = d.toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "UTC" });
-      const up = p.c >= p.o;
+      vline.setAttribute("x1", a[0]); vline.setAttribute("x2", a[0]);
+      dot.setAttribute("cx", a[0]); dot.setAttribute("cy", a[8]);
+
+      // horizontal line follows the CURSOR, and the right axis reads the price there —
+      // that is what makes it an instrument rather than a hover effect
+      const clampY = Math.max(plotY, Math.min(plotY + plotH, vy));
+      hline.setAttribute("y1", clampY); hline.setAttribute("y2", clampY);
+      const priceAt = pHi - ((clampY - plotY) / plotH) * (pHi - pLo);
+      if (pyRect) {
+        pyRect.setAttribute("y", clampY - 10);
+        pyText.setAttribute("y", clampY + 4);
+        pyText.textContent = "$" + nf(priceAt, dp);
+      }
+      if (txRect) {
+        const label = fmtWhen(a[1]);
+        txText.textContent = label;
+        const w = Math.max(84, label.length * 6.6);
+        txRect.setAttribute("width", w);
+        txRect.setAttribute("x", Math.max(plotX, Math.min(axX - w, a[0] - w / 2)));
+        txText.setAttribute("x", Math.max(plotX + w / 2, Math.min(axX - w / 2, a[0])));
+      }
+
+      const up = a[5] >= a[2];
+      const apr = a[7];
       showTip(
-        `<div class="tip__h">${when} UTC</div>` +
+        `<div class="tip__h">${fmtWhen(a[1])} UTC</div>` +
         `<div class="tip__g">` +
-        `<span>Open</span><b>$${nf(p.o, dp)}</b>` +
-        `<span>High</span><b>$${nf(p.h, dp)}</b>` +
-        `<span>Low</span><b>$${nf(p.l, dp)}</b>` +
-        `<span>Close</span><b>$${nf(p.c, dp)}</b>` +
-        `<span>Volume</span><b>${compact(p.v)}</b>` +
+        `<span>Open</span><b>$${nf(a[2], dp)}</b>` +
+        `<span>High</span><b>$${nf(a[3], dp)}</b>` +
+        `<span>Low</span><b>$${nf(a[4], dp)}</b>` +
+        `<span>Close</span><b>$${nf(a[5], dp)}</b>` +
+        `<span>Volume</span><b>${compact(a[6])}</b>` +
+        (Number.isFinite(apr)
+          ? `<span>Funding</span><b class="${apr >= 0 ? "pays-l" : "pays-s"}">${(apr * 100).toFixed(2)}%</b>`
+          : "") +
         `</div>` +
-        `<div class="tip__f">${up ? "▲" : "▼"} ${nf(Math.abs((p.c - p.o) / (p.o || 1)) * 100, 2)}% on the bar</div>`,
+        `<div class="tip__f">${up ? "▲" : "▼"} ${nf(Math.abs((a[5] - a[2]) / (a[2] || 1)) * 100, 2)}% on the bar` +
+        (Number.isFinite(apr) ? ` · ${apr >= 0 ? "longs paying" : "shorts paying"}` : "") + `</div>`,
         cx, cy, touch,
       );
     };
 
     const move = (e) => {
       const r = svg.getBoundingClientRect();
-      const vx = ((e.clientX - r.left) / r.width) * vb.width;
-      pending = { vx, cx: e.clientX, cy: e.clientY, touch: e.pointerType === "touch" };
+      pending = {
+        vx: ((e.clientX - r.left) / r.width) * vb.width,
+        vy: ((e.clientY - r.top) / r.height) * vb.height,
+        cx: e.clientX, cy: e.clientY, touch: e.pointerType === "touch",
+      };
       if (!raf) raf = requestAnimationFrame(draw);
       if (e.pointerType === "touch") e.preventDefault();
     };
     const leave = () => { g.setAttribute("hidden", ""); hideTip(); };
-
     svg.addEventListener("pointermove", move, { passive: false });
     svg.addEventListener("pointerdown", move, { passive: false });
     svg.addEventListener("pointerleave", leave);
     svg.addEventListener("pointercancel", leave);
+  });
+
+  /* ------------------------------- crosshair with axis labels, no point list (grids) */
+  document.querySelectorAll("svg[data-xhair-axes]").forEach((svg) => {
+    const vb = svg.viewBox.baseVal;
+    const dp = +(svg.dataset.dp || 2);
+    const axX = +(svg.dataset.axx || 0);
+    const [plotX, plotY, plotW, plotH] = (svg.dataset.plot || "0,0,0,0").split(",").map(Number);
+    const [pLo, pHi] = (svg.dataset.prange || "0,1").split(",").map(Number);
+    const ax = (svg.dataset.timeAxis || "").split(",").map(Number);
+    const g = svg.querySelector(".xh");
+    if (!g) return;
+    const vline = g.querySelector(".xh-v"), hline = g.querySelector(".xh-h");
+    const pyR = g.querySelector(".xh-py rect"), pyT = g.querySelector(".xh-py text");
+    const txR = g.querySelector(".xh-tx rect"), txT = g.querySelector(".xh-tx text");
+    let raf = 0, pend = null;
+    const draw = () => {
+      raf = 0;
+      if (!pend) return;
+      const { vx, vy } = pend;
+      const cxv = Math.max(plotX, Math.min(plotX + plotW, vx));
+      const cyv = Math.max(plotY, Math.min(plotY + plotH, vy));
+      g.removeAttribute("hidden");
+      vline.setAttribute("x1", cxv); vline.setAttribute("x2", cxv);
+      hline.setAttribute("y1", cyv); hline.setAttribute("y2", cyv);
+      const price = pHi - ((cyv - plotY) / plotH) * (pHi - pLo);
+      pyR.setAttribute("y", cyv - 10); pyT.setAttribute("y", cyv + 4);
+      pyT.textContent = "$" + nf(price, dp);
+      if (ax.length === 4 && !Number.isNaN(ax[0])) {
+        const idx = Math.max(0, Math.round((cxv - ax[2]) / ax[3]));
+        const label = new Date(ax[0] + idx * ax[1]).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "UTC" });
+        txT.textContent = label;
+        const w = Math.max(84, label.length * 6.6);
+        txR.setAttribute("width", w);
+        txR.setAttribute("x", Math.max(plotX, Math.min(axX - w, cxv - w / 2)));
+        txT.setAttribute("x", Math.max(plotX + w / 2, Math.min(axX - w / 2, cxv)));
+      }
+    };
+    svg.addEventListener("pointermove", (e) => {
+      const r = svg.getBoundingClientRect();
+      pend = { vx: ((e.clientX - r.left) / r.width) * vb.width, vy: ((e.clientY - r.top) / r.height) * vb.height };
+      if (!raf) raf = requestAnimationFrame(draw);
+    }, { passive: true });
+    svg.addEventListener("pointerleave", () => g.setAttribute("hidden", ""));
   });
 
   /* ---------------------------------------------- tooltips on grid/bar cells */

@@ -374,8 +374,13 @@ const schema = {
       .tip__f { margin-top: 7px; padding-top: 7px; border-top: 1px solid var(--border-soft); font-size: var(--fs-xs); color: var(--text-faint); }
 
       /* --- crosshair --- */
-      .xh-v { stroke: var(--text-dim); stroke-width: 1; stroke-dasharray: 3 3; opacity: .75; }
+      .xh-v, .xh-h { stroke: var(--text-dim); stroke-width: 1; stroke-dasharray: 3 3; opacity: .8; }
       .xh-dot { fill: var(--accent); stroke: var(--bg); stroke-width: 2.5; }
+      /* axis read-outs: the detail that makes a chart read as an instrument */
+      .xh-py rect, .xh-tx rect { fill: var(--text); }
+      .xh-py text, .xh-tx text { fill: var(--bg); font-family: var(--sans); font-variant-numeric: tabular-nums; }
+      .tip__g b.pays-l { color: var(--pays-l); }
+      .tip__g b.pays-s { color: var(--pays-s); }
       svg[data-xhair] { cursor: crosshair; touch-action: none; }
 
       /* --- hovered cell in a grid or bar chart --- */
