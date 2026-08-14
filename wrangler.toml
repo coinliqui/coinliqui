@@ -16,10 +16,10 @@ crons = ["*/5 * * * *"]
 # secrets belong in `wrangler secret` or the dashboard, never in this file.
 [[kv_namespaces]]
 binding = "SNAPSHOT"
-id = "REPLACE_WITH_KV_ID"
+id = "09d5ddc598f34f36b11d367aac0aad87"
 
 [[d1_databases]]
 binding = "DB"
 database_name = "coinliqui"
-database_id = "REPLACE_WITH_D1_ID"
+database_id = "04f04034-aa7e-40f4-b993-30ebf191c44a"
 migrations_dir = "migrations"
