@@ -122,10 +122,10 @@ function mergeFunding(prev, next, cap = 5200) {
 // worker/ingest.ts
 var RETAIN_HOURS = 72;
 var CANDLE_REFRESH_HOURS = 12;
-var HOURLY_REFRESH_HOURS = 6;
+var HOURLY_REFRESH_HOURS = 2;
 var FUNDING_REFRESH_HOURS = 6;
 var CANARY_RETAIN_HOURS = 168;
-var WORKER_BUILD = "2026-08-14b";
+var WORKER_BUILD = "2026-08-14c";
 var ingest_default = {
   async scheduled(_event, env, ctx) {
     ctx.waitUntil(run(env));
@@ -146,7 +146,12 @@ async function run(env) {
   const started = Date.now();
   const result = { ok: false, ms: 0, status: 0, rows: 0, symbols: 0, venues: {} };
   try {
-    await env.SNAPSHOT.put("worker:build", JSON.stringify({ build: WORKER_BUILD, at: Date.now() }));
+    {
+      const prev = await env.SNAPSHOT.get("worker:build", "json");
+      if (prev?.build !== WORKER_BUILD) {
+        await env.SNAPSHOT.put("worker:build", JSON.stringify({ build: WORKER_BUILD, at: Date.now() }));
+      }
+    }
     const snap = await fetchSnapshot();
     result.status = 200;
     result.symbols = snap.perps.length;

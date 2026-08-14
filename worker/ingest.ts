@@ -37,7 +37,11 @@ const CANDLE_REFRESH_HOURS = 12;
 /** Hourly candles drive the liquidation map and move faster, so they refresh more often.
  *  Daily and hourly are on SEPARATE cadences so a single tick never exceeds the
  *  50-subrequest ceiling: 25 fetches + the 2 snapshot calls, never 50 + 2. */
-const HOURLY_REFRESH_HOURS = 6;
+/* Every 2 hours, not 6. The liquidation map's right edge is only as current as this, and a
+   6-hour gate meant the newest drawn bar could be seven hours behind a mark price that was
+   five minutes old. Not 1 hour: 26 writes x 24 is 624/day, which with the snapshot's 288
+   puts KV at 1069 against a free-tier ceiling of 1000. Measured, not guessed. */
+const HOURLY_REFRESH_HOURS = 2;
 /** HL's own funding history, 500 rows a call, merged into what is stored so depth grows. */
 const FUNDING_REFRESH_HOURS = 6;
 /** Canary rows are small but unbounded, so they are pruned on the same schedule. */
@@ -52,7 +56,7 @@ const CANARY_RETAIN_HOURS = 168;
  *
  * BUMP BOTH when you change this file: here and EXPECTED_WORKER_BUILD in src/lib/version.ts.
  */
-const WORKER_BUILD = "2026-08-14b";
+const WORKER_BUILD = "2026-08-14c";
 
 export default {
   async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext) {
@@ -91,7 +95,14 @@ async function run(env: Env): Promise<RunResult> {
   const result: RunResult = { ok: false, ms: 0, status: 0, rows: 0, symbols: 0, venues: {} };
 
   try {
-    await env.SNAPSHOT.put("worker:build", JSON.stringify({ build: WORKER_BUILD, at: Date.now() }));
+    /* Only when it CHANGES. Writing this every five minutes cost 288 KV writes a day —
+       nearly a third of the free-tier budget — to restate a constant. Reads are 100k/day. */
+    {
+      const prev = (await env.SNAPSHOT.get("worker:build", "json")) as { build?: string } | null;
+      if (prev?.build !== WORKER_BUILD) {
+        await env.SNAPSHOT.put("worker:build", JSON.stringify({ build: WORKER_BUILD, at: Date.now() }));
+      }
+    }
     const snap = await fetchSnapshot();
     result.status = 200;
     result.symbols = snap.perps.length;

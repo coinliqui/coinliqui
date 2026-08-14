@@ -86,6 +86,12 @@ export interface LiqMap {
   peak: number;
   /** modelled notional removed by price trading through it, per drawn column */
   swept: number[];
+  /** cleared[row][col] — notional removed AT that cell because price traded through it.
+      The standing grid shows what is there; this shows what the market took, which is the
+      more informative half and was previously only inferable from a gap. */
+  cleared: number[][];
+  /** largest single cleared cell, for scaling the scar layer */
+  clearedPeak: number;
   clusters: Cluster[];
   /** share of modelled notional whose level sits outside the drawn price range */
   clipped: number;
@@ -172,6 +178,9 @@ export function buildLiqMap(opts: {
   const lev = opts.profile.weights.filter(([L]) => L <= opts.maxLeverage);
   const wsum = lev.reduce((a, [, w]) => a + w, 0) || 1;
   const diff: Float64Array[] = Array.from({ length: rows }, () => new Float64Array(NC + 1));
+  /* Cleared is an EVENT, not a range: it happens in one bar, at one price row, so it is
+     accumulated directly rather than prefix-summed like the standing field. */
+  const clearedAll: Float64Array[] = Array.from({ length: rows }, () => new Float64Array(NC));
   const swept = new Float64Array(NC);
   const clusterAcc = new Map<string, Cluster>();
   let clipped = 0, placed = 0;
@@ -199,7 +208,7 @@ export function buildLiqMap(opts: {
             const end = Math.min(expire, swAt);
             diff[r][i] += share;
             diff[r][end] -= share;
-            if (swAt < expire && swAt < NC) swept[swAt] += share;
+            if (swAt < expire && swAt < NC) { swept[swAt] += share; clearedAll[r][swAt] += share; }
             if (end === NC) {
               const key = `${r}:${isLong ? "l" : "s"}`;
               const prev = clusterAcc.get(key);
@@ -231,6 +240,18 @@ export function buildLiqMap(opts: {
   }
   sorted.sort((a, b) => a - b);
 
+  const cleared: number[][] = [];
+  let clearedPeak = 0;
+  for (let r = 0; r < rows; r++) {
+    const line = new Array<number>(cols);
+    for (let c = 0; c < cols; c++) {
+      const v = clearedAll[r][warm + c];
+      line[c] = v;
+      if (v > clearedPeak) clearedPeak = v;
+    }
+    cleared.push(line);
+  }
+
   const clusters = [...clusterAcc.values()]
     .map((c) => ({ ...c, distance: (c.price - last) / last }))
     .sort((a, b) => b.notional - a.notional)
@@ -239,6 +260,7 @@ export function buildLiqMap(opts: {
   return {
     grid, rows, cols, loPrice, hiPrice, band,
     candles: disp, sorted, peak,
+    cleared, clearedPeak,
     swept: Array.from(swept.slice(warm)),
     clusters,
     clipped: clipped / Math.max(1e-9, clipped + placed),

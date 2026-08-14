@@ -123,7 +123,7 @@ const description =
     <Fragment set:html={paint.svg.replace("<svg ",
       `<svg data-heat="1" data-ramp="${RAMP.join(",")}" data-scale="${paint.scale}" data-gamma="${paint.gamma}" ` +
       `data-plot="${paint.plot.join(",")}" data-prange="${map.loPrice},${map.hiPrice}" data-axx="${paint.axisX}" ` +
-      `data-taxis="${map.candles[0][0]},${stepMs}" data-rows="${map.rows}" data-cols="${map.cols}" `)} />
+      `data-taxis="${map.candles[0][0]},${stepMs}" data-taxisy="${paint.timeAxisY}" data-rows="${map.rows}" data-cols="${map.cols}" `)} />
   </div>
 
   <div class="scalebar">

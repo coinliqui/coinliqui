@@ -198,6 +198,7 @@
     const [plotX, plotY, plotW, plotH] = svg.dataset.plot.split(",").map(Number);
     const [pLo, pHi] = svg.dataset.prange.split(",").map(Number);
     const [t0, stepMs] = svg.dataset.taxis.split(",").map(Number);
+    const axisY = +(svg.dataset.taxisy || 0);
     const rows = +svg.dataset.rows, cols = +svg.dataset.cols;
     const g = svg.querySelector('[data-xh="g"]');
     if (!g) return;
@@ -221,7 +222,7 @@
       const bandLo = pHi - ((ri + 1) / rows) * (pHi - pLo);
       const bandHi = pHi - (ri / rows) * (pHi - pLo);
       setPill(py, axisX + 5, y - 10, "$" + nf(price, 0));
-      setPill(tx, x, plotY + plotH + 5, stamp(t0 + ci * stepMs, true), plotX, axisX);
+      setPill(tx, x, axisY || plotY + plotH + 5, stamp(t0 + ci * stepMs, true), plotX, axisX);
 
       const fill = target && target.getAttribute ? target.getAttribute("fill") : null;
       const i = fill ? ramp.indexOf(fill) : -1;

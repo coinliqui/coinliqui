@@ -1,5 +1,5 @@
 import type { LiqMap } from "./liqmap.ts";
-import { CH, INK, RAMP, transfer, rampIndex, rampValue, niceTicks, timeTicks, text, rect, fint, compact, crosshair, n2, MONO, FS_AXIS, FS_MICRO } from "./chart.ts";
+import { CH, INK, RAMP, transfer, rampIndex, rampValue, niceTicks, timeTicks, text, rect, line, fint, compact, crosshair, n2, MONO, FS_AXIS, FS_MICRO } from "./chart.ts";
 
 /* =========================================================================================
    Painting the density field.
@@ -15,6 +15,10 @@ import { CH, INK, RAMP, transfer, rampIndex, rampValue, niceTicks, timeTicks, te
    ========================================================================================= */
 
 const MAP_H = 576;
+/* A strip under the field, on the same time axis, for the notional price cleared in each
+   bar. The field shows where levels STAND; a sweep was only ever visible in it as an
+   absence, and an absence is not a signal a reader can point at. */
+const SWEPT_H = 12 * 4;
 
 export interface Painted {
   svg: string;
@@ -23,13 +27,15 @@ export interface Painted {
   plot: [number, number, number, number];
   axisX: number;
   cellW: number; rowH: number;
-  cells: number;
+  cells: number; scars: number; timeAxisY: number;
 }
 
-export function paintHeatMap(m: LiqMap, opts: { height?: number; mid?: number; mark?: { t: number; label: string } } = {}): Painted {
+export function paintHeatMap(m: LiqMap, opts: { height?: number; mid?: number; mark?: { t: number; label: string }; live?: { px: number; at: number } } = {}): Painted {
   const h = opts.height ?? MAP_H;
   const plotX = CH.padL, plotW = CH.w - CH.padL - CH.padR;
-  const plotY = 3 * 4, plotH = h - plotY - CH.padB;
+  const plotY = 3 * 4;
+  const sweptY = h - CH.padB - SWEPT_H;
+  const plotH = sweptY - plotY - 3 * 4;
   const axisX = plotX + plotW;
   const { scale, gamma } = transfer(m.sorted, opts.mid ?? 0.06);
   const cw = plotW / m.cols, rh = plotH / m.rows;
@@ -49,6 +55,28 @@ export function paintHeatMap(m: LiqMap, opts: { height?: number; mid?: number; m
       while (c1 < m.cols && rampIndex(g[c1], scale, gamma) === i0) c1++;
       if (i0 > 0) { s.push(rect(plotX + c0 * cw, y, (c1 - c0) * cw + 0.35, rh + 0.4, RAMP[i0])); cells++; }
       c0 = c1;
+    }
+  }
+
+  /* THE SCARS — where price traded through a standing level.
+     Drawn as VERTICAL ticks, not filled cells. The field's whole grammar is horizontal: a
+     band is a price level persisting through time. Cleared is the opposite event — one
+     moment, many prices at once — so it is drawn across the grain, and a sweep becomes a
+     continuous bright vertical streak instead of another bright horizontal thing to tell
+     apart from the ramp. Neutral white, because red and green are the funding payment's.
+     Under the candles: the observed price path stays the top layer. */
+  const cpk = m.clearedPeak || 1;
+  const tickW = Math.max(1.2, Math.min(2.4, cw * 0.5));
+  let scars = 0;
+  for (let r = 0; r < m.rows; r++) {
+    const row = m.cleared[r];
+    const y = plotY + r * rh;
+    for (let c = 0; c < m.cols; c++) {
+      const v = row[c];
+      if (v <= 0) continue;
+      const a = Math.min(0.95, 0.3 + 0.65 * (v / cpk) ** 0.45);
+      s.push(rect(plotX + c * cw + (cw - tickW) / 2, y, tickW, rh + 0.4, "#ffffff", ` opacity="${a.toFixed(3)}"`));
+      scars++;
     }
   }
 
@@ -97,6 +125,30 @@ export function paintHeatMap(m: LiqMap, opts: { height?: number; mid?: number; m
   s.push(text(plotX + 46, plotY + 21, "MODELLED", "#c7cfda", FS_MICRO, "middle", 600, MONO));
 
   s.push(`</g>`);
+
+  /* The same quantity as a strip, so the moment is legible at a glance without hunting for
+     a streak. Same x scale as the field; nothing here is a second time axis. */
+  const smax = Math.max(...m.swept, 1);
+  s.push(rect(plotX, sweptY, plotW, SWEPT_H, "#181c21", ' rx="3"'));
+  for (let c = 0; c < m.cols; c++) {
+    const v = m.swept[c];
+    if (v <= 0) continue;
+    const bh = Math.max(1, (v / smax) * (SWEPT_H - 12));
+    s.push(rect(plotX + c * cw, sweptY + SWEPT_H - bh, Math.max(1, cw - 0.4), bh, "#ffffff", ' opacity=".82"'));
+  }
+  s.push(text(plotX + 6, sweptY + 12, "CLEARED BY PRICE", "#8d97a3", FS_MICRO, "start", 600, MONO));
+  s.push(text(axisX - 4, sweptY + 12, compact(smax) + " peak bar", "#8d97a3", FS_MICRO, "end", 400, MONO));
+
+  /* THE LIVE MARK. Candles come from hourly KV and are up to two hours behind at the right
+     edge; the mark comes from the five-minute snapshot. Drawing it makes the map current at
+     a glance, and the page states both ages rather than letting one stand for the other. */
+  if (opts.live && opts.live.px >= m.loPrice && opts.live.px <= m.hiPrice) {
+    const ly = yOf(opts.live.px);
+    s.push(line(plotX, ly, axisX, ly, INK.acc, 1, ' stroke-dasharray="2 5" opacity=".8"'));
+    s.push(rect(axisX + 5, ly - 10, 74, 20, INK.acc, ' rx="5"'));
+    s.push(text(axisX + 42, ly + 4, fint(opts.live.px), INK.accInk, 11.5, "middle", 600));
+  }
+
   s.push(crosshair(plotX, plotY, plotW, plotH, axisX));
 
   return {
@@ -104,7 +156,7 @@ export function paintHeatMap(m: LiqMap, opts: { height?: number; mid?: number; m
     scale, gamma,
     legend: legendSvg(scale, gamma, m.peak),
     plot: [plotX, plotY, plotW, plotH],
-    axisX, cellW: cw, rowH: rh, cells,
+    axisX, cellW: cw, rowH: rh, cells, scars, timeAxisY: h - 27,
   };
 }
 

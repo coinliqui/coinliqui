@@ -53,7 +53,7 @@ const map =
         openInterest: perp.oiNotional, profile, rows: 150, ageBars, minSpan: 0.16,
       })
     : null;
-const paint = map ? paintHeatMap(map) : null;
+const paint = map ? paintHeatMap(map, { live: { px: mark, at: snap.fetchedAt } }) : null;
 const warmBars = map ? map.warmBars : 0;
 const stepMs = win.factor * 3_600_000;
 const totalClustered = map ? map.clusters.reduce((s, c) => s + c.notional, 0) : 0;
@@ -120,7 +120,7 @@ const description = `A modelled liquidation density map for ${perp.symbol}: wher
         <Fragment set:html={paint.svg.replace("<svg ",
           `<svg data-heat="1" data-ramp="${RAMP.join(",")}" data-scale="${paint.scale}" data-gamma="${paint.gamma}" ` +
           `data-plot="${paint.plot.join(",")}" data-prange="${map.loPrice},${map.hiPrice}" data-axx="${paint.axisX}" ` +
-          `data-taxis="${map.candles[0][0]},${stepMs}" data-rows="${map.rows}" data-cols="${map.cols}" `)} />
+          `data-taxis="${map.candles[0][0]},${stepMs}" data-taxisy="${paint.timeAxisY}" data-rows="${map.rows}" data-cols="${map.cols}" `)} />
       </div>
 
       <div class="scalebar">
@@ -128,11 +128,20 @@ const description = `A modelled liquidation density map for ${perp.symbol}: wher
         <p class="scalebar__note">
           Modelled notional standing at a price, at a moment. Scaled against the 99.5th percentile
           so one dominant cluster cannot drag everything else to the floor; the peak cell is
-          {" "}{compact(map.peak)}. A band ends where price trades through it, or fades out in four
-          steps as the positions behind it age past the {TURNOVER_DAYS}-day turnover window. Hover
-          any point for the value band it sits in.
+          {" "}{compact(map.peak)}. A band ends where price trades through it — drawn in white,
+          both as scars on the field and as the strip beneath — or fades out in four steps as the
+          positions behind it age past the {TURNOVER_DAYS}-day turnover window. Hover any point for
+          the value band it sits in.
         </p>
       </div>
+
+      <p class="freshness">
+        Hourly candles to <b>{hourly ? new Date(hourly.d[hourly.d.length - 1][0]).toISOString().slice(11, 16) : "—"} UTC</b>,
+        refreshed every 2 hours and drawn here in {win.factor}-hour steps. The dashed line is the
+        <b>live mark, {axisPx(mark)}</b>, from a snapshot
+        {" "}{Math.max(0, Math.round((Date.now() - snap.fetchedAt) / 60000))} minutes old. Two
+        different ages, so neither is allowed to stand for the other.
+      </p>
 
       <div class="reads">
         <div><b>{compact(sweptTotal)}</b><span>modelled notional price traded through inside this window</span></div>
@@ -331,5 +340,7 @@ const description = `A modelled liquidation density map for ${perp.symbol}: wher
     .reads { display: flex; flex-wrap: wrap; gap: 10px 40px; margin: 18px 0 4px; }
     .reads b { display: block; font-size: 21px; font-weight: 650; letter-spacing: -.012em; font-variant-numeric: tabular-nums; }
     .reads span { font-size: 12.5px; color: var(--text-faint); }
+    .freshness { margin: 12px 0 0; font-size: 12.5px; color: var(--text-faint); max-width: 80ch; }
+    .freshness b { color: var(--text-dim); font-weight: 600; }
   </style>
 </Base>
