@@ -28,9 +28,9 @@ export interface CandleSet {
 const INFO = "https://api.hyperliquid.xyz/info";
 
 /** Days retained in KV. The page shows fewer; the surplus lets the hold window slide. */
-export const CANDLE_DAYS = 800;
+export const CANDLE_DAYS = 200;
 /** Hours retained for the liquidation map. 14 days at 1h resolution. */
-export const CANDLE_HOURS = 720;
+export const CANDLE_HOURS = 336;
 
 export async function fetchCandles(symbol: string, days = CANDLE_DAYS): Promise<CandleSet> {
   const end = Date.now();
@@ -198,54 +198,6 @@ export async function getHourly(kv: KVLike | undefined, symbol: string, devReadT
   }
   try {
     return await fetchHourly(symbol);
-  } catch {
-    return null;
-  }
-}
-
-/* =========================================================================================
-   FUNDING HISTORY
-
-   Hyperliquid publishes its OWN funding rate hourly back to 2023-05-12, 500 rows per call.
-   That is a different thing from the cross-venue history this site records itself, and the
-   chart must say which is which rather than blurring them: HL's own rate has years of
-   depth; the three-venue comparison only begins when our cron started.
-
-   Sign flips for HL are derivable from this series directly — no recorded history needed.
-   ========================================================================================= */
-export type FundingPoint = [t: number, rate: number];
-
-export async function fetchFundingHistory(symbol: string, sinceMs: number): Promise<FundingPoint[]> {
-  const r = await fetch(INFO, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ type: "fundingHistory", coin: symbol, startTime: sinceMs }),
-  });
-  if (!r.ok) throw new Error(`fundingHistory ${symbol} ${r.status}`);
-  const raw = (await r.json()) as { time: number; fundingRate: string }[];
-  return raw.map((x) => [x.time, Number(x.fundingRate)] as FundingPoint).filter((x) => Number.isFinite(x[1]));
-}
-
-/** Newest 500 rows merged into whatever is stored, so depth ACCUMULATES across refreshes. */
-export function mergeFunding(prev: FundingPoint[], next: FundingPoint[], cap = 4000): FundingPoint[] {
-  const m = new Map<number, number>();
-  for (const [t, v] of prev) m.set(t, v);
-  for (const [t, v] of next) m.set(t, v);
-  return [...m.entries()].sort((a, b) => a[0] - b[0]).slice(-cap).map(([t, v]) => [t, v] as FundingPoint);
-}
-
-export async function getFunding(kv: KVLike | undefined, symbol: string, devReadThrough = false): Promise<FundingPoint[] | null> {
-  if (kv) {
-    try {
-      const v = (await kv.get(`funding:${symbol}`, "json")) as FundingPoint[] | null;
-      if (Array.isArray(v) && v.length > 24) return v;
-    } catch {
-      /* fall through */
-    }
-    if (!devReadThrough) return null;
-  }
-  try {
-    return await fetchFundingHistory(symbol, Date.now() - 30 * 86_400_000);
   } catch {
     return null;
   }

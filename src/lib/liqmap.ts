@@ -74,8 +74,6 @@ export interface LiqMap {
   times: number[];
   closes: number[];
   maxDensity: number;
-  /** value the ramp saturates at — the 97th percentile of non-empty cells */
-  rampScale: number;
   totalNotional: number;
   clusters: Cluster[];
   loPrice: number;
@@ -200,11 +198,6 @@ export function buildLiqMap(opts: {
     grid.push(line);
   }
 
-  const nonEmpty: number[] = [];
-  for (const row of grid) for (const v of row) if (v > 0) nonEmpty.push(v);
-  nonEmpty.sort((a, b) => a - b);
-  const rampScale = nonEmpty.length ? nonEmpty[Math.floor(nonEmpty.length * 0.97)] : maxDensity;
-
   const clusters = [...clusterAcc.values()]
     .map((c) => ({ ...c, distance: (c.price - mark) / mark }))
     .sort((a, b) => b.notional - a.notional)
@@ -217,33 +210,19 @@ export function buildLiqMap(opts: {
     bucketHi: Array.from({ length: rows }, (_, r) => hiPrice - r * band),
     times: candles.map((c) => c[0]),
     closes: candles.map((c) => c[4]),
-    maxDensity, rampScale,
+    maxDensity,
     totalNotional: openInterest,
     clusters,
     loPrice, hiPrice, clippedMass,
   };
 }
 
-/**
- * Intensity ramp.
- *
- * A single blue at varying opacity reads FLAT: alpha over a dark ground compresses the
- * range into a narrow band of near-identical blues, and structure disappears at video
- * compression. This ramp is solid colour and moves through hue AND lightness AND
- * saturation — deep indigo, through violet, into blue, then cyan-white at the top. It
- * never touches red or green, which encode the direction of a funding payment.
- */
-export const RAMP = [
-  "#161a26", "#1e2140", "#2a2557", "#3b2a72", "#4b3391", "#5540a8",
-  "#5556bd", "#4f74cf", "#4a92dd", "#4fb0e6", "#71cbef", "#a6e2f7", "#dcf3fc",
-];
+/** Single-hue ramp, deep navy -> near white. No red or green: those encode funding direction. */
+export const RAMP = ["#1d2531", "#22314b", "#2a4470", "#345c99", "#4278c4", "#5f9ae0", "#8fbdf2", "#c8dffb"];
 
-/**
- * Scaled against a high PERCENTILE rather than the maximum. One dominant cluster otherwise
- * drags the whole scale with it and everything else collapses to the bottom two stops.
- */
-export function rampColor(v: number, scale: number): string | null {
-  if (v <= 0 || scale <= 0) return null;
-  const t = Math.min(1, Math.pow(v / scale, 0.62));
+export function rampColor(v: number, max: number): string | null {
+  if (v <= 0 || max <= 0) return null;
+  // sqrt keeps the low end visible; a linear ramp buries everything but the top cluster
+  const t = Math.sqrt(v / max);
   return RAMP[Math.min(RAMP.length - 1, Math.max(0, Math.round(t * (RAMP.length - 1))))];
 }
