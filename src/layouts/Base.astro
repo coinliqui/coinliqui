@@ -295,10 +295,20 @@ const schema = {
       }
       .calc label { display: grid; gap: 6px; font-size: 13px; color: var(--text-dim); }
       .calc input, .calc select {
+        /* appearance:none so a select matches the number inputs beside it instead of keeping
+           Safari's native menulist chrome — but that also removes the disclosure arrow, and a
+           select with no arrow is a text field that will not accept typing. So the arrow is
+           drawn back, once, as a background mark. */
         appearance: none; -webkit-appearance: none;
         height: 40px; min-width: 148px; padding: 0 12px; font: 14px var(--sans); color: var(--text);
         background: var(--surface-3); border: 1px solid var(--border); border-radius: var(--r-sm);
         font-variant-numeric: tabular-nums;
+      }
+      .calc select {
+        padding-right: 34px;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none'%3E%3Cpath d='M1 1.5 6 6.5l5-5' stroke='%239aa1ab' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+        background-repeat: no-repeat;
+        background-position: right 12px center;
       }
       .calc input:focus, .calc select:focus { outline: 0; border-color: var(--accent); }
       .card--lead { border-color: var(--accent); }
