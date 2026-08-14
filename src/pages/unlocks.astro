@@ -1,0 +1,220 @@
+---
+import Base from "../layouts/Base.astro";
+import { usd, pct } from "../lib/funding.ts";
+import reg from "../data/vesting-contracts.json";
+
+/**
+ * Unlocks, built the only way this site is allowed to build it: from schedules read out of
+ * the contract, never from a project's published table.
+ *
+ * Coverage is small on purpose and the page says so in the first paragraph. The register is
+ * a data file — adding a token is adding an entry, and nothing here changes.
+ */
+const now = Date.now();
+const d = (s: string) => Date.parse(s + "T00:00:00Z");
+const fmt = (s: string) => new Date(d(s)).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+const tokenAmount = (n: number) => n.toLocaleString("en-US");
+
+type Sched = { label: string; contract: string; amount: number; begin: string; cliff: string; end: string; lastUpdate: string | null };
+interface Row extends Sched { symbol: string; name: string; supply: number; active: boolean; elapsed: number }
+
+const rows: Row[] = reg.tokens.flatMap((t: any) =>
+  (t.schedules as Sched[]).map((s) => {
+    const b = d(s.begin), e = d(s.end);
+    return {
+      ...s,
+      symbol: t.symbol,
+      name: t.name,
+      supply: t.totalSupply,
+      active: now < e,
+      elapsed: Math.min(1, Math.max(0, (now - b) / Math.max(1, e - b))),
+    };
+  }),
+);
+const active = rows.filter((r) => r.active);
+const complete = rows.filter((r) => !r.active);
+const totalVested = rows.reduce((s, r) => s + r.amount, 0);
+const contractsRead = rows.length;
+const tokensCovered = reg.tokens.length;
+
+const title = "Token unlocks, read from the contract | Basis";
+const description =
+  "Vesting schedules verified by reading the contract, not copied from a project's published table. Coverage is deliberately small: most tokens have no on-chain schedule to read.";
+---
+
+<Base title={title} description={description}>
+  <div class="page-head">
+    <h1>Unlocks</h1>
+    <p>
+      Vesting schedules read directly out of the contract that holds the tokens. Every figure
+      below was returned by an <code>eth_call</code> at block
+      {" "}<strong>{reg.verifiedBlock.toLocaleString("en-US")}</strong>, not copied from a
+      project's published table. Coverage is <strong>{tokensCovered} tokens</strong> — and the
+      reason it is that small is the most useful thing on this page.
+    </p>
+  </div>
+
+  <div class="cards">
+    <div class="card card--lead">
+      <div class="card__label">Contracts verified</div>
+      <div class="card__value">{contractsRead}</div>
+      <div class="card__meta">across {tokensCovered} tokens, on {reg.chain}</div>
+    </div>
+    <div class="card">
+      <div class="card__label">Schedules still running</div>
+      <div class:list={["card__value", active.length === 0 && "dim"]}>{active.length}</div>
+      <div class="card__meta">of {contractsRead} read</div>
+    </div>
+    <div class="card">
+      <div class="card__label">Tokens under these contracts</div>
+      <div class="card__value">{(totalVested / 1e6).toFixed(0)}M</div>
+      <div class="card__meta">across every schedule listed</div>
+    </div>
+    <div class="card">
+      <div class="card__label">Addresses rejected</div>
+      <div class="card__value">{reg.unverified.length}</div>
+      <div class="card__meta">no readable schedule — listed below</div>
+    </div>
+  </div>
+
+  {active.length === 0 && (
+    <div class="verdict verdict--warn">
+      <div>
+        <b>Not one verified schedule is still running.</b> Every contract we could establish and
+        read has finished vesting — the most recent ended {fmt(complete[0] ? complete.reduce((a, b) => (d(a.end) > d(b.end) ? a : b)).end : "2024-09-17")}.
+        So this page currently publishes <b>no future unlock dates at all</b>, and that is the
+        honest output rather than a gap: an unlock calendar assembled from project announcements
+        would have plenty of rows, none of them checkable. When a running schedule is verified,
+        it appears here with its next release, its share of supply, and how many days of average
+        volume it represents.
+      </div>
+    </div>
+  )}
+
+  {active.length > 0 && (
+    <>
+      <h2 class="section">Running schedules</h2>
+      <div class="panel">
+        <table class="tbl">
+          <thead><tr><th>Token</th><th>Schedule</th><th class="num">Amount</th><th class="num">Share of supply</th><th class="num">Ends</th><th class="num">Elapsed</th></tr></thead>
+          <tbody>
+            {active.map((r) => (
+              <tr>
+                <td class="sym">{r.symbol}</td>
+                <td>{r.label}</td>
+                <td class="num">{tokenAmount(r.amount)}</td>
+                <td class="num">{pct(r.amount / r.supply)}</td>
+                <td class="num">{fmt(r.end)}</td>
+                <td class="num">{pct(r.elapsed)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
+  )}
+
+  <h2 class="section">The verified register</h2>
+  <p class="section-note">
+    Every row is one contract. The address is the thing to check: read it yourself and you must
+    get these numbers back.
+  </p>
+  <div class="panel">
+    <table class="tbl">
+      <thead>
+        <tr>
+          <th>Token</th><th>Schedule</th><th class="num">Amount</th><th class="num">Share of supply</th>
+          <th class="num">Begins</th><th class="num">Ends</th><th class="num">State</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((r) => (
+          <tr>
+            <td class="sym">{r.symbol}</td>
+            <td>{r.label}<br /><code class="addr">{r.contract}</code></td>
+            <td class="num">{tokenAmount(r.amount)}</td>
+            <td class="num">{pct(r.amount / r.supply)}</td>
+            <td class="num">{fmt(r.begin)}</td>
+            <td class="num">{fmt(r.end)}</td>
+            <td class="num">{r.active ? "running" : "complete"}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+
+  {reg.tokens.map((t: any) => (
+    <>
+      <h2 class="section">{t.name} — how it was verified</h2>
+      <p class="prose">
+        Contract pattern <strong>{t.pattern}</strong>, source published by the project at
+        {" "}<a class="link" href={t.source} rel="nofollow noopener">{t.source.replace("https://", "")}</a>.
+        Each address was read with these getters: {t.getters.map((g: string, i: number) => (<><code>{g}</code>{i < t.getters.length - 1 ? ", " : ""}</>))}.
+        The token getter had to return
+        {" "}<code class="addr">{t.token}</code> — an address that claims to vest a token but points
+        somewhere else is not evidence of anything.
+      </p>
+      <p class="section-note">
+        {tokenAmount(t.schedules.reduce((s: number, x: Sched) => s + x.amount, 0))} {t.symbol} passed
+        through {t.schedules.length} contract{t.schedules.length === 1 ? "" : "s"} —
+        {" "}{pct(t.schedules.reduce((s: number, x: Sched) => s + x.amount, 0) / t.totalSupply)} of a
+        {" "}{tokenAmount(t.totalSupply)} total supply, itself read from the token's own
+        {" "}<code>totalSupply()</code>.
+      </p>
+    </>
+  ))}
+
+  <h2 class="section">Addresses that did not qualify</h2>
+  <p class="section-note">
+    Named in project material as allocations, but exposing nothing a schedule can be read from.
+    They are listed because the absence is the finding.
+  </p>
+  <div class="panel">
+    <table class="tbl">
+      <thead><tr><th>Address</th><th>Why it gets no row above</th></tr></thead>
+      <tbody>
+        {reg.unverified.map((u: any) => (
+          <tr>
+            <td style="white-space:nowrap">{u.label}<br /><code class="addr">{u.address}</code></td>
+            <td class="reason">{u.reason}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="section">Why coverage is this small</h2>
+  <p class="prose">
+    Three walls, in order of how often they stop us. <strong>First</strong>, most tokens have no
+    on-chain schedule at all: the allocation sits in a multisig and the release dates live in a
+    blog post. There is nothing to read, so there is nothing to verify. <strong>Second</strong>,
+    there is no registry mapping a token to its vesting contract, and no ERC standard for vesting
+    — every project rolls its own interface, so each one is bespoke work rather than a pipeline.
+    <strong> Third</strong>, where a project deploys one escrow per recipient from a factory, the
+    individual addresses only appear in factory events, and free RPC endpoints cap
+    {" "}<code>eth_getLogs</code> at 50 blocks — roughly ten minutes of chain. The Lido entry above
+    is exactly that case: the interface is readable, the addresses are not reachable at this cost.
+  </p>
+  <p class="prose">
+    The alternative is what every unlock tracker does: publish the project's own numbers. That
+    produces a full calendar quickly and it is unverifiable by construction — when a date slips or
+    an allocation is quietly restructured, nothing in the data says so. A short list you can check
+    is worth more than a long one you cannot.
+    <a class="link" href="/data-sources">Where the rest of the site's data comes from →</a>
+  </p>
+
+  <h2 class="section">What would grow this</h2>
+  <p class="prose">
+    An archival RPC endpoint with unrestricted <code>eth_getLogs</code> would unlock every
+    factory-deployed escrow in one pass — that is the single highest-yield addition. Beyond that,
+    coverage grows one contract at a time, and each addition is an entry in a data file rather
+    than a change to this page.
+  </p>
+
+  <style>
+    .addr { font-size: 11.5px; color: var(--text-faint); background: none; padding: 0; }
+    .reason { color: var(--text-dim); white-space: normal; }
+    .tbl td { vertical-align: top; }
+    h2.section { margin-top: 32px; }
+  </style>
+</Base>
