@@ -1,5 +1,6 @@
 import { fetchSnapshot } from "../src/lib/hyperliquid.ts";
 import { fetchCandles, fetchHourly, fetchFundingHistory, mergeFunding, type FundingPoint } from "../src/lib/candles.ts";
+import { stepReport } from "./report.ts";
 
 /**
  * Ingest worker. Runs on a 5-minute cron, writes the current snapshot to KV (which the
@@ -21,6 +22,12 @@ import { fetchCandles, fetchHourly, fetchFundingHistory, mergeFunding, type Fund
 interface Env {
   SNAPSHOT: KVNamespace;
   DB: D1Database;
+  /* Optional, for the weekly indexation report. Absent means the report still runs and says
+     which section it could not produce and how to enable it — never a silent gap. */
+  SITE_ORIGIN?: string;
+  GSC_SA_KEY?: string;
+  CF_ANALYTICS_TOKEN?: string;
+  CF_ZONE_ID?: string;
 }
 
 /** Snapshots older than this are pruned; the flip feed only looks back 24h. */
@@ -70,7 +77,7 @@ const FILL_BACKOFF_MS = 10 * 60_000;
  *
  * BUMP BOTH when you change this file: here and EXPECTED_WORKER_BUILD in src/lib/version.ts.
  */
-const WORKER_BUILD = "2026-08-14e";
+const WORKER_BUILD = "2026-08-14f";
 
 export default {
   async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext) {
@@ -80,7 +87,20 @@ export default {
   // Manual trigger, used once after deploy to warm KV before DNS is pointed at the site,
   // and useful for smoke-testing afterwards.
   async fetch(req: Request, env: Env) {
-    const path = new URL(req.url).pathname;
+    const url = new URL(req.url);
+    const path = url.pathname;
+    /* Manual trigger for the weekly report, so it can be exercised without waiting for a
+       Monday. Same slice machine, just forced to start. */
+    if (path === "/report") {
+      const steps: string[] = [];
+      for (let n = 0; n < 12; n++) {
+        const s = await stepReport(env, n === 0 && url.searchParams.has("force"));
+        if (!s) break;
+        steps.push(s);
+        if (s.startsWith("report: complete")) break;
+      }
+      return new Response(JSON.stringify({ steps }, null, 2) + "\n", { headers: { "content-type": "application/json" } });
+    }
     if (path !== "/ingest") return new Response("not found", { status: 404 });
     const r = await run(env);
     return new Response(JSON.stringify(r, null, 2) + "\n", {
@@ -104,7 +124,12 @@ interface RunResult {
   candleError?: string;
   /** The set of published contracts changed this run — a URL was added or retired. */
   coverageChanged?: boolean;
+  /** A slice of the weekly indexation report ran instead of the bulk sweeps. */
+  report?: string;
 }
+
+/** Sentinel: not an error, just "this tick was spent on the report". */
+const SKIP_SWEEPS = Symbol("skip-sweeps");
 
 async function run(env: Env): Promise<RunResult> {
   const started = Date.now();
@@ -174,6 +199,12 @@ async function run(env: Env): Promise<RunResult> {
        already in progress continues regardless of the gate, so a sweep can never stall
        half-finished. */
     try {
+      /* THE WEEKLY REPORT COMES FIRST, and takes the tick. It is roughly 140 subrequests
+         against a 50-per-invocation ceiling, so it walks itself across consecutive ticks and
+         the sweeps stand aside while it does — about twenty minutes, once a week. */
+      const step = await stepReport(env);
+      if (step) { result.report = step; throw SKIP_SWEEPS; }
+
       const syms = nowPublished;
 
       /**
@@ -320,7 +351,7 @@ async function run(env: Env): Promise<RunResult> {
         }
       }
     } catch (e) {
-      result.candleError = (e instanceof Error ? e.message : String(e)).slice(0, 120);
+      if (e !== SKIP_SWEEPS) result.candleError = (e instanceof Error ? e.message : String(e)).slice(0, 120);
     }
   } catch (e) {
     // A thrown upstream error carries its status in the message ("hyperliquid 503").

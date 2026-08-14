@@ -87,7 +87,11 @@ const utc = (ms: number) => new Date(ms).toISOString().slice(0, 16).replace("T",
 <Base title="Status" description="Ingest health: snapshot age, upstream status codes and per-venue coverage.">
   <div class="page-head">
     <h1>Status</h1>
-    <p>Ingest health. This page reads the canary table directly and renders even when the snapshot store is empty.</p>
+    <p>
+      Ingest health. This page reads the canary table directly and renders even when the snapshot
+      store is empty. The weekly <a class="link" href="/status/indexation">indexation report</a> is
+      built by the same worker.
+    </p>
   </div>
 
   <div class="cards">

@@ -125,6 +125,278 @@ function mergeFunding(prev, next, cap = 5200) {
   return [...m.entries()].sort((a, b) => a[0] - b[0]).slice(-cap).map(([t, v]) => [t, v]);
 }
 
+// worker/report.ts
+var UA = "GPTBot/1.1";
+var SLICE = 20;
+var isoWeek = (d) => {
+  const t = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  t.setUTCDate(t.getUTCDate() + 4 - (t.getUTCDay() || 7));
+  const y0 = new Date(Date.UTC(t.getUTCFullYear(), 0, 1));
+  return `${t.getUTCFullYear()}-W${String(Math.ceil(((+t - +y0) / 864e5 + 1) / 7)).padStart(2, "0")}`;
+};
+var b64url = (bytes) => {
+  const b = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  let s = "";
+  for (const x of b) s += String.fromCharCode(x);
+  return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+};
+var b64urlStr = (s) => b64url(new TextEncoder().encode(s));
+var pct = (a, b) => b ? `${(a / b * 100).toFixed(0)}%` : "\u2014";
+async function gscToken(rawKey) {
+  const key = JSON.parse(rawKey);
+  const pem = key.private_key.replace(/-----[^-]+-----/g, "").replace(/\s+/g, "");
+  const der = Uint8Array.from(atob(pem), (c) => c.charCodeAt(0));
+  const cryptoKey = await crypto.subtle.importKey(
+    "pkcs8",
+    der.buffer,
+    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+  const iat = Math.floor(Date.now() / 1e3);
+  const body = `${b64urlStr(JSON.stringify({ alg: "RS256", typ: "JWT" }))}.` + b64urlStr(JSON.stringify({
+    iss: key.client_email,
+    scope: "https://www.googleapis.com/auth/webmasters.readonly",
+    aud: "https://oauth2.googleapis.com/token",
+    exp: iat + 3600,
+    iat
+  }));
+  const sig = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", cryptoKey, new TextEncoder().encode(body));
+  const r = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+      assertion: `${body}.${b64url(sig)}`
+    })
+  });
+  const j = await r.json();
+  if (!j.access_token) throw new Error(`token exchange failed: ${j.error_description || j.error || r.status}`);
+  return j.access_token;
+}
+async function stepReport(env, force = false) {
+  const origin = env.SITE_ORIGIN || "https://coinliqui.com";
+  const site = `sc-domain:${new URL(origin).hostname}`;
+  const now = /* @__PURE__ */ new Date();
+  const week = isoWeek(now);
+  let st = await env.SNAPSHOT.get("report:state", "json");
+  if (!st || st.week !== week) {
+    const due = force || now.getUTCDay() === 1 && now.getUTCHours() >= 7;
+    if (!due) return void 0;
+    const done = await env.SNAPSHOT.get(`report:${week}`, "json");
+    if (done && !force) return void 0;
+    st = { week, phase: "coverage", i: 0, lines: [], templates: [], startedAt: Date.now() };
+    st.lines.push(`# Indexation \u2014 ${week}`);
+    st.lines.push(`
+${origin} \xB7 started ${now.toISOString().slice(0, 16).replace("T", " ")} UTC
+`);
+  }
+  if (st.phase === "done") return void 0;
+  const say = (s = "") => st.lines.push(s);
+  const get = async (path) => {
+    const r = await fetch(origin + path, { headers: { "user-agent": UA } });
+    return { status: r.status, body: await r.text() };
+  };
+  const locs = (xml) => [...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => new URL(m[1]).pathname);
+  if (st.phase === "coverage") {
+    if (!st.templates.length) {
+      const idx = await get("/sitemap-index.xml");
+      for (const m of locs(idx.body)) {
+        const b = await get(m);
+        st.templates.push({ name: m.replace("/sitemaps/", "").replace(".xml", ""), urls: locs(b.body) });
+      }
+      st.i = 0;
+      await env.SNAPSHOT.put("report:state", JSON.stringify(st));
+      return "report: sitemaps";
+    }
+    const flat = st.templates.flatMap((t) => t.urls.map((u) => ({ t, u })));
+    const end = Math.min(flat.length, st.i + SLICE * 2);
+    for (let n2 = st.i; n2 < end; n2++) {
+      const { t, u } = flat[n2];
+      t.ok = (t.ok ?? 0) + ((await get(u || "/")).status === 200 ? 1 : 0);
+    }
+    st.i = end;
+    if (st.i >= flat.length) {
+      say("## A. Coverage\n");
+      say("What exists, and whether a crawler can still fetch it. No credentials \u2014 this section always runs.\n");
+      say("| Template | URLs | Fetchable as GPTBot |");
+      say("|---|---:|---:|");
+      for (const t of st.templates) say(`| \`${t.name}\` | ${t.urls.length} | ${t.ok ?? 0}/${t.urls.length} |`);
+      const total = st.templates.reduce((a, x) => a + x.urls.length, 0);
+      const okAll = st.templates.reduce((a, x) => a + (x.ok ?? 0), 0);
+      say(`| **total** | **${total}** | **${okAll}/${total}** |`);
+      if (okAll < total) say(`
+**${total - okAll} URLs are not fetchable by a crawler.** Nothing below matters until that is zero.`);
+      say("\n## B. Search Console\n");
+      st.phase = env.GSC_SA_KEY ? "inspect" : "search";
+      st.i = 0;
+      if (!env.GSC_SA_KEY) {
+        say("Not available: GSC_SA_KEY is not set.\n");
+        say("To enable: create a Google Cloud service account, enable the Search Console API, add its");
+        say("email as a **full user** on the `coinliqui.com` Domain property, then");
+        say("`npx wrangler secret put GSC_SA_KEY` and paste the JSON key. Nothing about the site changes.");
+        st.phase = "crawlers";
+      } else {
+        say("### Indexed share, per template\n");
+        say("| Template | Indexed | Crawled, not indexed | Discovered, not crawled | Other |");
+        say("|---|---:|---:|---:|---:|");
+      }
+      st.i = 0;
+    }
+    await env.SNAPSHOT.put("report:state", JSON.stringify(st));
+    return `report: coverage ${st.i || flat.length}/${flat.length} urls`;
+  }
+  if (st.phase === "inspect") {
+    try {
+      if (!st.token || Date.now() - (st.tokenAt ?? 0) > 45 * 6e4) {
+        st.token = await gscToken(env.GSC_SA_KEY);
+        st.tokenAt = Date.now();
+      }
+      const flat = st.templates.flatMap((t) => t.urls.map((u) => ({ t, u })));
+      const end = Math.min(flat.length, st.i + SLICE);
+      for (let n2 = st.i; n2 < end; n2++) {
+        const { t, u } = flat[n2];
+        const r = await fetch("https://searchconsole.googleapis.com/v1/urlInspection/index:inspect", {
+          method: "POST",
+          headers: { authorization: `Bearer ${st.token}`, "content-type": "application/json" },
+          body: JSON.stringify({ inspectionUrl: origin + (u || "/"), siteUrl: site })
+        });
+        const j = await r.json();
+        const v = j?.inspectionResult?.indexStatusResult?.verdict;
+        const k = v === "PASS" || v === "NEUTRAL" || v === "FAIL" ? v : "other";
+        (t.tally ??= { PASS: 0, NEUTRAL: 0, FAIL: 0, other: 0 })[k]++;
+      }
+      st.i = end;
+      if (st.i >= flat.length) {
+        for (const t of st.templates) {
+          const q = t.tally ?? { PASS: 0, NEUTRAL: 0, FAIL: 0, other: 0 };
+          t.indexed = q.PASS;
+          say(`| \`${t.name}\` | ${q.PASS}/${t.urls.length} (${pct(q.PASS, t.urls.length)}) | ${q.NEUTRAL} | ${q.FAIL} | ${q.other} |`);
+        }
+        st.phase = "search";
+        st.i = 0;
+      }
+      await env.SNAPSHOT.put("report:state", JSON.stringify(st));
+      return `report: inspect ${st.i || flat.length}/${flat.length} urls`;
+    } catch (e) {
+      say(`
+Inspection stopped: ${e instanceof Error ? e.message : String(e)}`);
+      st.phase = "search";
+    }
+    await env.SNAPSHOT.put("report:state", JSON.stringify(st));
+    return "report: inspect halted";
+  }
+  if (st.phase === "search") {
+    if (env.GSC_SA_KEY) {
+      try {
+        if (!st.token || Date.now() - (st.tokenAt ?? 0) > 45 * 6e4) {
+          st.token = await gscToken(env.GSC_SA_KEY);
+          st.tokenAt = Date.now();
+        }
+        const api = async (url, payload) => await (await fetch(url, {
+          method: "POST",
+          headers: { authorization: `Bearer ${st.token}`, "content-type": "application/json" },
+          body: JSON.stringify(payload)
+        })).json();
+        const end = new Date(Date.now() - 2 * 864e5).toISOString().slice(0, 10);
+        const start = new Date(Date.now() - 9 * 864e5).toISOString().slice(0, 10);
+        const base = `https://www.googleapis.com/webmasters/v3/sites/${encodeURIComponent(site)}/searchAnalytics/query`;
+        const sa = await api(base, { startDate: start, endDate: end, dimensions: ["page"], rowLimit: 500 });
+        const rows = sa.rows || [];
+        say(`
+### Search performance, ${start} to ${end}
+`);
+        if (!rows.length) {
+          say("No impressions yet. Expected before roughly week 4 \u2014 a new domain has no history to weigh.");
+        } else {
+          say("| Template | Impressions | Clicks | Avg position | Pages with impressions |");
+          say("|---|---:|---:|---:|---:|");
+          for (const t of st.templates) {
+            const set = new Set(t.urls.map((u) => origin + (u || "/")));
+            const r = rows.filter((x) => set.has(x.keys[0]));
+            const imp = r.reduce((a, x) => a + x.impressions, 0);
+            const pos = imp ? r.reduce((a, x) => a + x.position * x.impressions, 0) / imp : 0;
+            say(`| \`${t.name}\` | ${imp} | ${r.reduce((a, x) => a + x.clicks, 0)} | ${pos ? pos.toFixed(1) : "\u2014"} | ${r.length}/${t.urls.length} |`);
+          }
+          const q = await api(base, { startDate: start, endDate: end, dimensions: ["query"], rowLimit: 25 });
+          if (q.rows?.length) {
+            say("\n### Top queries\n");
+            say("| Query | Impressions | Clicks | Position |");
+            say("|---|---:|---:|---:|");
+            for (const r of q.rows.slice(0, 15)) say(`| ${r.keys[0]} | ${r.impressions} | ${r.clicks} | ${r.position.toFixed(1)} |`);
+          }
+        }
+      } catch (e) {
+        say(`
+Search performance not available: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
+    st.phase = "crawlers";
+    await env.SNAPSHOT.put("report:state", JSON.stringify(st));
+    return "report: search";
+  }
+  say("\n## C. Crawler fetches\n");
+  try {
+    if (!env.CF_ANALYTICS_TOKEN || !env.CF_ZONE_ID) throw new Error("CF_ANALYTICS_TOKEN or CF_ZONE_ID is not set");
+    const since = new Date(Date.now() - 7 * 864e5).toISOString();
+    const r = await fetch("https://api.cloudflare.com/client/v4/graphql", {
+      method: "POST",
+      headers: { authorization: `Bearer ${env.CF_ANALYTICS_TOKEN}`, "content-type": "application/json" },
+      body: JSON.stringify({
+        query: `query($zone:String!,$since:Time!){viewer{zones(filter:{zoneTag:$zone}){
+          httpRequestsAdaptiveGroups(limit:200, filter:{datetime_geq:$since}, orderBy:[count_DESC]){
+            count dimensions{userAgent} }}}}`,
+        variables: { zone: env.CF_ZONE_ID, since }
+      })
+    });
+    const j = await r.json();
+    if (j.errors?.length) throw new Error(j.errors.map((e) => e.message).join("; "));
+    const groups = j.data?.viewer?.zones?.[0]?.httpRequestsAdaptiveGroups ?? [];
+    say("Last 7 days, from Cloudflare's edge. Aggregate request metrics the host already keeps \u2014");
+    say("no script, no cookie, nothing added to the page.\n");
+    say("| Crawler | Requests |");
+    say("|---|---:|");
+    let any = false;
+    for (const w of [
+      "GPTBot",
+      "OAI-SearchBot",
+      "ChatGPT-User",
+      "ClaudeBot",
+      "Claude-User",
+      "Claude-SearchBot",
+      "PerplexityBot",
+      "Perplexity-User",
+      "Googlebot",
+      "bingbot",
+      "Applebot",
+      "Amazonbot"
+    ]) {
+      const n2 = groups.filter((g) => (g.dimensions?.userAgent || "").includes(w)).reduce((a, g) => a + g.count, 0);
+      if (n2) any = true;
+      say(`| ${w} | ${n2 || "\u2014"} |`);
+    }
+    if (!any) say("\nNo named crawler seen yet. Normal in the first fortnight; past week 3, re-run verify-live before assuming it is a ranking problem.");
+  } catch (e) {
+    say(`Not available: ${e instanceof Error ? e.message : String(e)}.
+`);
+    say("To enable: a Cloudflare token scoped to this zone with **Analytics \u2192 Read**, then");
+    say("`npx wrangler secret put CF_ANALYTICS_TOKEN` and `npx wrangler secret put CF_ZONE_ID`.");
+  }
+  say("\n## What to read first\n");
+  say("1. **Section A must be all green.** A URL a crawler cannot fetch is not an indexing problem.");
+  say("2. **Indexed share by template, not by page.** One template stuck in *Discovered \u2014 currently");
+  say("   not indexed* past week 6 is a thin-template problem; scattered pages are just latency.");
+  say("3. **Position before impressions.** Impressions on a new domain arrive late and jump around;");
+  say("   average position per template moves earlier and more honestly.");
+  say("4. **Crawler fetches are the leading indicator.** If they are zero, nothing downstream can");
+  say("   move, and the cause is access rather than quality.");
+  const doc = { week: st.week, at: Date.now(), tookMs: Date.now() - st.startedAt, md: st.lines.join("\n") + "\n" };
+  await env.SNAPSHOT.put(`report:${st.week}`, JSON.stringify(doc));
+  await env.SNAPSHOT.put("report:latest", JSON.stringify(doc));
+  await env.SNAPSHOT.delete("report:state");
+  return `report: complete (${st.week})`;
+}
+
 // worker/ingest.ts
 var RETAIN_HOURS = 72;
 var CANDLE_REFRESH_HOURS = 12;
@@ -133,7 +405,7 @@ var FUNDING_REFRESH_HOURS = 6;
 var CANARY_RETAIN_HOURS = 168;
 var CHUNK = 24;
 var FILL_BACKOFF_MS = 10 * 6e4;
-var WORKER_BUILD = "2026-08-14e";
+var WORKER_BUILD = "2026-08-14f";
 var ingest_default = {
   async scheduled(_event, env, ctx) {
     ctx.waitUntil(run(env));
@@ -141,7 +413,18 @@ var ingest_default = {
   // Manual trigger, used once after deploy to warm KV before DNS is pointed at the site,
   // and useful for smoke-testing afterwards.
   async fetch(req, env) {
-    const path = new URL(req.url).pathname;
+    const url = new URL(req.url);
+    const path = url.pathname;
+    if (path === "/report") {
+      const steps = [];
+      for (let n2 = 0; n2 < 12; n2++) {
+        const s = await stepReport(env, n2 === 0 && url.searchParams.has("force"));
+        if (!s) break;
+        steps.push(s);
+        if (s.startsWith("report: complete")) break;
+      }
+      return new Response(JSON.stringify({ steps }, null, 2) + "\n", { headers: { "content-type": "application/json" } });
+    }
     if (path !== "/ingest") return new Response("not found", { status: 404 });
     const r = await run(env);
     return new Response(JSON.stringify(r, null, 2) + "\n", {
@@ -150,6 +433,7 @@ var ingest_default = {
     });
   }
 };
+var SKIP_SWEEPS = /* @__PURE__ */ Symbol("skip-sweeps");
 async function run(env) {
   const started = Date.now();
   const result = { ok: false, ms: 0, status: 0, rows: 0, symbols: 0, venues: {} };
@@ -190,6 +474,11 @@ async function run(env) {
     result.ok = rows.length > 0;
     if (!result.ok) result.error = "upstream returned no usable funding rows";
     try {
+      const step = await stepReport(env);
+      if (step) {
+        result.report = step;
+        throw SKIP_SWEEPS;
+      }
       const syms = nowPublished;
       const sweep = async (key, hours, write, extra = 0) => {
         const m = await env.SNAPSHOT.get(key, "json");
@@ -288,7 +577,7 @@ async function run(env) {
         }
       }
     } catch (e) {
-      result.candleError = (e instanceof Error ? e.message : String(e)).slice(0, 120);
+      if (e !== SKIP_SWEEPS) result.candleError = (e instanceof Error ? e.message : String(e)).slice(0, 120);
     }
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);

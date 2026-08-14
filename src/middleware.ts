@@ -78,5 +78,40 @@ export const onRequest = defineMiddleware(async (ctx, next) => {
 
   res.headers.set("x-content-type-options", "nosniff");
   res.headers.set("referrer-policy", "strict-origin-when-cross-origin");
+
+  /* THE PRIVACY CLAIM, ENFORCED BY THE BROWSER RATHER THAN BY A DASHBOARD TOGGLE.
+   *
+   * /privacy states that reading a page makes zero requests to any domain other than this
+   * one. That was false for a while: Cloudflare Web Analytics was injecting a beacon from
+   * static.cloudflareinsights.com into every response whose Accept header looked like a
+   * browser's. `no-transform` stops the injection, and the RUM API cannot be reached with
+   * the credentials available here — so the toggle is still on at the zone, and the claim
+   * currently rests on one response header nobody would think to protect.
+   *
+   * A CSP makes it structural instead. `script-src 'self'` means an injected third-party
+   * script is never fetched and never runs, whoever turns what on. The claim then holds
+   * because the browser enforces it, not because a setting happens to be in the right state.
+   *
+   * 'unsafe-inline' is required and is NOT a hole here: the calculators ship their inputs as
+   * inline `define:vars` scripts, and Astro emits scoped CSS inline. What matters for the
+   * claim is the ORIGIN allowlist, and no external origin is permitted at all.
+   */
+  if (isDocument) {
+    res.headers.set(
+      "content-security-policy",
+      [
+        "default-src 'self'",
+        "script-src 'self' 'unsafe-inline'",
+        "style-src 'self' 'unsafe-inline'",
+        "img-src 'self' data:",
+        "font-src 'self'",
+        "connect-src 'self'",
+        "form-action 'self'",
+        "base-uri 'self'",
+        "frame-ancestors 'none'",
+        "object-src 'none'",
+      ].join("; "),
+    );
+  }
   return res;
 });
