@@ -82,6 +82,13 @@
     g.setAttribute("opacity", "1");
   };
 
+  /* The live pill replaces the axis reading at that position, so the static ticks step back
+     while it is on screen. Opacity only — nothing moves, nothing reflows. */
+  const axisFade = (svg) => {
+    const gs = [...svg.querySelectorAll('[data-ax]')];
+    return (on) => gs.forEach((g) => g.setAttribute("opacity", on ? "0.22" : "1"));
+  };
+
   const wire = (svg, onMove) => {
     const vb = svg.viewBox.baseVal;
     let raf = 0, pend = null;
@@ -120,13 +127,14 @@
     const axisY = +(svg.dataset.taxisy || (0));
     const g = svg.querySelector('[data-xh="g"]');
     if (!g) return;
+    const fade = axisFade(svg);
     const vl = g.querySelector('[data-xh="v"]'), hl = g.querySelector('[data-xh="h"]');
     const dot = g.querySelector('[data-xh="dot"]');
     const py = g.querySelector('[data-xh="py"]'), tx = g.querySelector('[data-xh="tx"]');
     // Column wash, behind the crosshair lines so candles stay legible through it.
     const col = document.createElementNS("http://www.w3.org/2000/svg", "rect");
     col.setAttribute("fill", "#8ab4f8");
-    col.setAttribute("opacity", ".10");
+    col.setAttribute("opacity", ".13");
     col.setAttribute("y", plotY);
     col.setAttribute("height", plotH);
     g.insertBefore(col, g.firstChild);
@@ -137,8 +145,9 @@
       if (lo > 0 && Math.abs(pts[lo - 1][0] - vx) < Math.abs(pts[lo][0] - vx)) lo--;
       const a = pts[lo];
       g.setAttribute("opacity", "1");
+      fade(true);
       vl.setAttribute("x1", a[0]); vl.setAttribute("x2", a[0]);
-      const cwv = Math.max(3.2, slot);   // a 1px wash is not a selection anyone can see
+      const cwv = Math.max(5, slot);   // a 1px wash is not a selection anyone can see
       col.setAttribute("x", (a[0] - cwv / 2).toFixed(2));
       col.setAttribute("width", cwv.toFixed(2));
       dot.setAttribute("cx", a[0]); dot.setAttribute("cy", a[8]);
@@ -163,7 +172,7 @@
         cx, cy, touch,
       );
     });
-    const off = () => { g.setAttribute("opacity", "0"); hideTip(); };
+    const off = () => { g.setAttribute("opacity", "0"); fade(false); hideTip(); };
     svg.addEventListener("pointerleave", off);
     svg.addEventListener("pointercancel", off);
   });
@@ -179,6 +188,7 @@
     const rows = +svg.dataset.rows, cols = +svg.dataset.cols;
     const g = svg.querySelector('[data-xh="g"]');
     if (!g) return;
+    const fade = axisFade(svg);
     const vl = g.querySelector('[data-xh="v"]'), hl = g.querySelector('[data-xh="h"]');
     const py = g.querySelector('[data-xh="py"]'), tx = g.querySelector('[data-xh="tx"]');
     /* Inverting the transfer gives the value BOUNDS of the ramp step under the cursor. The
@@ -189,6 +199,7 @@
       const x = Math.max(plotX, Math.min(plotX + plotW, vx));
       const y = Math.max(plotY, Math.min(plotY + plotH, vy));
       g.setAttribute("opacity", "1");
+      fade(true);
       vl.setAttribute("x1", x); vl.setAttribute("x2", x);
       hl.setAttribute("y1", y); hl.setAttribute("y2", y);
       const price = pHi - ((y - plotY) / plotH) * (pHi - pLo);
@@ -212,7 +223,7 @@
         cx, cy, touch,
       );
     });
-    const off = () => { g.setAttribute("opacity", "0"); hideTip(); };
+    const off = () => { g.setAttribute("opacity", "0"); fade(false); hideTip(); };
     svg.addEventListener("pointerleave", off);
     svg.addEventListener("pointercancel", off);
   });

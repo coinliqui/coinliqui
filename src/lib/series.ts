@@ -119,11 +119,16 @@ export function buildPriceChart(candles: Candle[], funding: FundingPoint[] | nul
   s.push(rect(0, 0, CH.w, LY.h, INK.well, ` rx="${CH.radius}"`));
 
   const lastY = yOf(px);
+  /* Axis labels live in one group so the interaction layer can fade them while the crosshair
+     is on. Without that the live pill lands on top of a static tick and both stay half
+     readable, which is the single ugliest thing a crosshair can do. */
+  const yLabels: string[] = [];
   for (const v of niceTicks(lo, hi, 5)) {
     const y = yOf(v);
     s.push(line(plotX, y, axisX, y, INK.hair));
-    if (Math.abs(y - lastY) > 16) s.push(text(axisX + 10, y + 3.5, dp ? v.toFixed(dp) : fint(v), INK.dim, 11));
+    if (Math.abs(y - lastY) > 16) yLabels.push(text(axisX + 10, y + 3.5, dp ? v.toFixed(dp) : fint(v), INK.dim, 11));
   }
+  s.push(`<g data-ax="y">${yLabels.join("")}</g>`);
 
   for (let i = 0; i < n; i++) {
     const c = candles[i], x = xOf(i), k = c[C] >= c[O] ? INK.up : INK.down;
@@ -173,9 +178,8 @@ export function buildPriceChart(candles: Candle[], funding: FundingPoint[] | nul
   s.push(rect(axisX + 5, lastY - 10, 70, 20, INK.acc, ' rx="5"'));
   s.push(text(axisX + 40, lastY + 4, dp ? px.toFixed(dp) : fint(px), INK.accInk, 11.5, "middle", 600));
 
-  for (const { i, label } of timeTicks(candles.map((c) => c[T]), 8)) {
-    s.push(text(xOf(i), LY.h - 9, label, INK.faint, 11, "middle"));
-  }
+  s.push(`<g data-ax="x">${timeTicks(candles.map((c) => c[T]), 8)
+    .map(({ i, label }) => text(xOf(i), LY.h - 9, label, INK.faint, 11, "middle")).join("")}</g>`);
   s.push(crosshair(plotX, priceY, plotW, LY.h - CH.padB - priceY, axisX, { dot: true }));
 
   const first = candles[0][C];

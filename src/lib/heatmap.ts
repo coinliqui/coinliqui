@@ -55,6 +55,10 @@ export function paintHeatMap(m: LiqMap, opts: { height?: number; mid?: number; m
   const slot = plotW / m.cols;
   const bw = Math.max(1.2, slot - Math.min(3, Math.max(0.6, slot * 0.28)));
   const ww = bw < 6 ? 1 : 1.5;
+  /* Everything from here on is drawn OVER the field, and the readout identifies a cell by the
+     fill of the element under the cursor. Without this, hovering the price path returns a
+     candle and the tooltip claims there is nothing standing there. */
+  s.push(`<g pointer-events="none">`);
   for (let i = 0; i < m.candles.length; i++) {
     const c = m.candles[i], x = plotX + slot * (i + 0.5);
     const wy = yOf(c[2]), wh = Math.max(0.7, yOf(c[3]) - yOf(c[2]));
@@ -80,17 +84,16 @@ export function paintHeatMap(m: LiqMap, opts: { height?: number; mid?: number; m
     s.push(text(lx + lw / 2 + 1, plotY + 20, opts.mark.label, "#e9edf2", 10.5, "middle", 600, MONO));
   }
 
-  for (const v of niceTicks(m.loPrice, m.hiPrice, 5)) {
-    s.push(text(axisX + 10, yOf(v) + 3.5, fint(v), INK.dim, 11));
-  }
-  for (const { i, label } of timeTicks(m.candles.map((c) => c[0]), 10)) {
-    s.push(text(plotX + slot * (i + 0.5), h - 9, label, INK.faint, 11, "middle"));
-  }
+  s.push(`<g data-ax="y">${niceTicks(m.loPrice, m.hiPrice, 5)
+    .map((v) => text(axisX + 10, yOf(v) + 3.5, fint(v), INK.dim, 11)).join("")}</g>`);
+  s.push(`<g data-ax="x">${timeTicks(m.candles.map((c) => c[0]), 10)
+    .map(({ i, label }) => text(plotX + slot * (i + 0.5), h - 9, label, INK.faint, 11, "middle")).join("")}</g>`);
 
   // MODELLED, said inside the picture — not only in the caption underneath it
   s.push(rect(plotX + 8, plotY + 8, 76, 19, "rgba(10,13,18,.72)", ' rx="4"'));
   s.push(text(plotX + 46, plotY + 21, "MODELLED", "#c7cfda", 10, "middle", 600, MONO));
 
+  s.push(`</g>`);
   s.push(crosshair(plotX, plotY, plotW, plotH, axisX));
 
   return {

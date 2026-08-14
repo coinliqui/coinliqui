@@ -380,6 +380,7 @@ const schema = {
          cursor, the touch behaviour, and the fade, which apply to the host element. */
       svg[data-xhair], svg[data-heat] { cursor: crosshair; touch-action: none; }
       svg[data-xhair] [data-xh="g"], svg[data-heat] [data-xh="g"] { transition: opacity .13s var(--ease); }
+      svg[data-xhair] [data-ax], svg[data-heat] [data-ax] { transition: opacity .16s var(--ease); }
       /* On a touch screen the chart has to be pannable, so the browser keeps the gesture and
          a tap — not a drag — is what places the readout. */
       @media (pointer: coarse) { svg[data-xhair], svg[data-heat] { touch-action: pan-x pan-y; } }
