@@ -341,10 +341,14 @@
   /* --------------------------------------------------------- live freshness ticker */
   const fresh = document.querySelector("[data-fresh]");
   if (fresh) {
-    const at = +fresh.dataset.fresh;
+    /* Re-read the attribute every tick rather than closing over it once. The live layer
+       below rewrites data-fresh when it pulls a newer quote, and the first version captured
+       the value at load — so the page could show a thirty-second-old price under a label
+       reading "5 min ago". The label and the number it labels have to come from one source. */
+    const at = () => +fresh.dataset.fresh;
     // Same unit ladder as the server renders, or the number would change form on hydration.
     const tick = () => {
-      const m = Math.max(0, Math.round((Date.now() - at) / 60000));
+      const m = Math.max(0, Math.round((Date.now() - at()) / 60000));
       const next =
         m === 0 ? "just now"
         : m === 1 ? "1 min ago"
@@ -378,6 +382,41 @@
     const dpOf = (el) => +(el.dataset.dp || 2);
     const money = (v, dp) => "$" + nf(v, dp);
     let last = {};
+
+    /* THE CHART'S PRICE MARKER MOVES TOO.
+       It used to show the last CANDLE close — up to two hours old, because the candle feed is
+       on a two-hour gate while the quote is on a one-minute cron. On BTC that put $62,725 on
+       the chart under a hero reading $62,977.52: two prices for one asset on one screen, both
+       looking current. The bars are closed and stay put; the marker is what "now" means on a
+       price chart, so it is what has to follow the quote. */
+    const marks = [...document.querySelectorAll("svg[data-xhair][data-plot]")]
+      .map((svg) => {
+        const g = {
+          sym: svg.dataset.unit,
+          dp: +(svg.dataset.dp || 0),
+          axisX: +svg.dataset.axx,
+          line: svg.querySelector('[data-live="line"]'),
+          pill: svg.querySelector('[data-live="pill"]'),
+          txt: svg.querySelector('[data-live="txt"]'),
+        };
+        const [, priceY, , priceH] = svg.dataset.plot.split(",").map(Number);
+        const [lo, hi] = svg.dataset.prange.split(",").map(Number);
+        g.yOf = (v) => Math.max(priceY, Math.min(priceY + priceH, priceY + ((hi - v) / (hi - lo)) * priceH));
+        return g.line && g.pill && g.txt ? g : null;
+      })
+      .filter(Boolean);
+    const moveMark = (sym, v) => {
+      for (const m of marks) {
+        if (m.sym !== sym || !Number.isFinite(v)) continue;
+        const y = m.yOf(v);
+        m.line.setAttribute("y1", y.toFixed(1));
+        m.line.setAttribute("y2", y.toFixed(1));
+        m.pill.setAttribute("y", (y - 10).toFixed(1));
+        m.txt.setAttribute("y", (y + 4).toFixed(1));
+        m.txt.textContent = "$" + (m.dp ? v.toFixed(m.dp) : Math.round(v).toLocaleString("en-US"));
+      }
+    };
+
     const paint = (d) => {
       for (const el of spotEls) {
         const s = d.spot[el.dataset.sym];
@@ -387,7 +426,7 @@
         else if (el.dataset.spot === "mark" && Number.isFinite(mk)) next = money(mk, dpOf(el));
         else if (el.dataset.spot === "chg" && s && s.open24h > 0) {
           const c = s.last / s.open24h - 1;
-          next = `${c >= 0 ? "▲" : "▼"} ${(Math.abs(c) * 100).toFixed(2)}%`;
+          next = `${c >= 0 ? "\u25b2" : "\u25bc"} ${(Math.abs(c) * 100).toFixed(2)}%`;
         } else if (el.dataset.spot === "basis" && s && Number.isFinite(mk) && s.last > 0) {
           const b = (mk / s.last - 1) * 1e4;
           next = el.classList.contains("card__value")
@@ -399,15 +438,28 @@
         const prev = last[key];
         el.textContent = next;
         last[key] = next;
-        // A one-shot tint on change, and only if the reader did not ask for stillness.
         if (prev !== undefined && !reduced) {
           el.setAttribute("data-moved", "1");
           setTimeout(() => el.removeAttribute("data-moved"), 700);
         }
       }
+      for (const sym in d.spot) moveMark(sym, d.spot[sym].last);
+      // The freshness label now describes the value actually on screen.
+      if (fresh && d.at > +fresh.dataset.fresh) {
+        fresh.dataset.fresh = String(d.at);
+        fresh.setAttribute("datetime", new Date(d.at).toISOString());
+      }
     };
-    let timer = 0;
+
+    /* ALWAYS TICK, SKIP WHILE HIDDEN.
+       The first version started the interval only if the tab was visible at load and otherwise
+       waited for a visibilitychange. A context that is hidden when the script runs and never
+       fires that event — a restored session, a prerendered tab, a headless pane — then polls
+       NEVER, and the page sits on its load-time price for as long as it is open while the
+       label counts up beside it. Reproduced in three minutes flat. The timer is unconditional
+       now and the fetch is what is skipped, so there is no state the page cannot leave. */
     const pull = async () => {
+      if (document.hidden) return;
       try {
         const r = await fetch("/api/spot.json", { headers: { accept: "application/json" }, cache: "no-store" });
         if (!r.ok) return;
@@ -415,10 +467,8 @@
         if (d && d.spot) paint(d);
       } catch { /* keep what the server rendered */ }
     };
-    const start = () => { if (!timer) { timer = setInterval(pull, 30000); pull(); } };
-    const stop = () => { clearInterval(timer); timer = 0; };
-    // A hidden tab polls nothing: no work, no requests, no battery.
-    document.addEventListener("visibilitychange", () => (document.hidden ? stop() : start()));
-    if (!document.hidden) start();
+    pull();
+    setInterval(pull, 30000);
+    document.addEventListener("visibilitychange", () => { if (!document.hidden) pull(); });
   }
 })();

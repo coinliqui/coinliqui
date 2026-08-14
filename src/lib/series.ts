@@ -199,9 +199,15 @@ export function buildPriceChart(
     s.push(text(axisX + 10, fundY + fundH - 2, `−${(fmax * 100).toFixed(0)}%`, INK.faint, FS_MICRO));
   }
 
-  s.push(line(plotX, lastY, axisX, lastY, INK.acc, 1, ' stroke-dasharray="2 5" opacity=".6"'));
-  s.push(rect(axisX + PILL_GAP, lastY - PILL_H / 2, 74, PILL_H, INK.acc, ` rx="${PILL_R}"`));
-  s.push(text(axisX + PILL_GAP + 37, lastY + 4, "$" + (dp ? px.toFixed(dp) : fint(px)), INK.accInk, 11.5, "middle", 600));
+  /* THE LAST-PRICE MARKER IS TAGGED so the live layer can move it.
+     Untagged, it showed the last CANDLE close — up to two hours old on a page whose headline
+     price is a minute old — and on BTC that put "$62,725" on the chart while the hero above it
+     read "$62,977.52". Two prices for one asset on one screen, 0.4% apart, both presented as
+     current. The candles are closed bars and stay put; this marker is what "now" means on a
+     price chart, so it is the thing that has to move. */
+  s.push(line(plotX, lastY, axisX, lastY, INK.acc, 1, ' stroke-dasharray="2 5" opacity=".6" data-live="line"'));
+  s.push(rect(axisX + PILL_GAP, lastY - PILL_H / 2, 74, PILL_H, INK.acc, ` rx="${PILL_R}" data-live="pill"`));
+  s.push(text(axisX + PILL_GAP + 37, lastY + 4, "$" + (dp ? px.toFixed(dp) : fint(px)), INK.accInk, 11.5, "middle", 600, MONO, ` data-live="txt"`));
 
   s.push(`<g data-ax="x">${timeTicks(candles.map((c) => c[T]), 8)
     .map(({ i, label }) => text(xOf(i), LY.h - 9, label, INK.faint, FS_AXIS, "middle")).join("")}</g>`);

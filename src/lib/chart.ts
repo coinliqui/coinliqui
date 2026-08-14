@@ -163,8 +163,8 @@ export const MONO = "ui-monospace,SFMono-Regular,Menlo,monospace";
 export const SANS = "ui-sans-serif,system-ui,-apple-system,sans-serif";
 export const n2 = (v: number) => (Math.round(v * 100) / 100).toString();
 
-export function text(x: number, y: number, s: string, fill: string, size = 11, anchor: "start" | "middle" | "end" = "start", weight = 400, fam = MONO) {
-  return `<text x="${n2(x)}" y="${n2(y)}" fill="${fill}" font-size="${size}" font-family="${fam}" font-weight="${weight}" text-anchor="${anchor}">${esc(s)}</text>`;
+export function text(x: number, y: number, s: string, fill: string, size = 11, anchor: "start" | "middle" | "end" = "start", weight = 400, fam = MONO, extra = "") {
+  return `<text x="${n2(x)}" y="${n2(y)}" fill="${fill}" font-size="${size}" font-family="${fam}" font-weight="${weight}" text-anchor="${anchor}"${extra}>${esc(s)}</text>`;
 }
 export function rect(x: number, y: number, w: number, h: number, fill: string, extra = "") {
   return `<rect x="${n2(x)}" y="${n2(y)}" width="${n2(Math.max(0, w))}" height="${n2(Math.max(0, h))}" fill="${fill}"${extra}/>`;
