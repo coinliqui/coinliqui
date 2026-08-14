@@ -1,11 +1,13 @@
 ---
 import Base from "../layouts/Base.astro";
-import { getSnapshot } from "../lib/hyperliquid.ts";
+import { getSnapshot, coldStart } from "../lib/hyperliquid.ts";
 import { pct, usd, paysClass, paysArrow, paysLabel, LEGEND } from "../lib/funding.ts";
 import { readFlips, describeCoverage } from "../lib/flips.ts";
 
 const env = (Astro.locals as any)?.runtime?.env;
-const snap = await getSnapshot(env?.SNAPSHOT);
+const snap = await getSnapshot(env?.SNAPSHOT, import.meta.env.DEV);
+// Cold store: 503 + Retry-After rather than a page rendered from nothing.
+if (!snap.available) return coldStart();
 const flips = await readFlips(env?.DB, 24);
 
 // Empty-state figures are computed on the server so the panel paints complete at first

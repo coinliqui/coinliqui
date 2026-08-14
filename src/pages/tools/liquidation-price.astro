@@ -1,11 +1,13 @@
 ---
 import Base from "../../layouts/Base.astro";
-import { getSnapshot } from "../../lib/hyperliquid.ts";
+import { getSnapshot, coldStart } from "../../lib/hyperliquid.ts";
 import { liquidationPrice, nextTierBoundary, type MarginTable, type Side } from "../../lib/margin.ts";
 import { usd, pct } from "../../lib/funding.ts";
 import tables from "../../data/margin-tables.json";
 
-const snap = await getSnapshot((Astro.locals as any)?.runtime?.env?.SNAPSHOT);
+const snap = await getSnapshot((Astro.locals as any)?.runtime?.env?.SNAPSHOT, import.meta.env.DEV);
+// Cold store: 503 + Retry-After rather than a page rendered from nothing.
+if (!snap.available) return coldStart();
 
 // Defaults are a REAL contract at its REAL current mark, rendered on the server.
 // The calculator is never an empty form.

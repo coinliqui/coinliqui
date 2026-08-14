@@ -7,9 +7,19 @@
 export const SITE = {
   name: "Basis",
   tagline: "Perpetual funding, normalised.",
-  url: "https://basis.example",
   locale: "en",
 } as const;
+
+/**
+ * The canonical origin, from Astro's configured `site` (set by SITE_URL at build time).
+ * There is deliberately no hardcoded fallback URL here: every caller has a context, and
+ * a literal origin in this file is how a placeholder or a *.pages.dev host reaches
+ * production canonicals.
+ */
+export function origin(site: URL | undefined): string {
+  if (!site) throw new Error("Astro.site is not configured — SITE_URL was missing at build time.");
+  return site.origin;
+}
 
 export interface NavItem {
   label: string;

@@ -1,9 +1,11 @@
 ---
 import Base from "../../layouts/Base.astro";
-import { getSnapshot } from "../../lib/hyperliquid.ts";
+import { getSnapshot, coldStart } from "../../lib/hyperliquid.ts";
 import { usd, pct, rawRate, VENUE_LABEL, paysClass, type Venue } from "../../lib/funding.ts";
 
-const snap = await getSnapshot((Astro.locals as any)?.runtime?.env?.SNAPSHOT);
+const snap = await getSnapshot((Astro.locals as any)?.runtime?.env?.SNAPSHOT, import.meta.env.DEV);
+// Cold store: 503 + Retry-After rather than a page rendered from nothing.
+if (!snap.available) return coldStart();
 
 // Default to the contract with the widest live spread, so the page opens on the trade that
 // actually exists right now rather than on an arbitrary symbol.

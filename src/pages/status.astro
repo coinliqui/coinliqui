@@ -1,0 +1,133 @@
+---
+import Base from "../layouts/Base.astro";
+import { getSnapshot } from "../lib/hyperliquid.ts";
+
+// Deliberately NOT guarded with coldStart(): this is the page you open to find out why
+// everything else is returning 503, so it has to render when the snapshot store is empty.
+// robots.txt disallows it — it is operational, not editorial, and changes every 5 minutes.
+const env = (Astro.locals as any)?.runtime?.env;
+const snap = await getSnapshot(env?.SNAPSHOT, import.meta.env.DEV);
+
+interface Check { at: number; source: string; status: number; ms: number; ok: number; note: string | null }
+let checks: Check[] = [];
+let storeError: string | null = null;
+try {
+  const db = env?.DB;
+  if (db) {
+    const { results } = await db.prepare("SELECT at, source, status, ms, ok, note FROM upstream_check ORDER BY at DESC LIMIT 24").all();
+    checks = (results ?? []) as Check[];
+  } else {
+    storeError = "No D1 binding in this environment.";
+  }
+} catch (e) {
+  storeError = e instanceof Error ? e.message : String(e);
+}
+
+const now = Date.now();
+const ageMin = snap.fetchedAt ? Math.round((now - snap.fetchedAt) / 60000) : null;
+// Cron runs every 5 minutes. Three consecutive misses is the point at which this is a
+// fault rather than a slow tick.
+const STALE_MIN = 15;
+const stale = ageMin === null || ageMin > STALE_MIN;
+
+const latest = checks[0];
+const latestVenues: Record<string, number> = (() => {
+  try { return latest?.note ? (JSON.parse(latest.note).venues ?? {}) : {}; } catch { return {}; }
+})();
+const fails = checks.filter((c) => !c.ok).length;
+const utc = (ms: number) => new Date(ms).toISOString().slice(0, 16).replace("T", " ") + " UTC";
+---
+
+<Base title="Status | Basis" description="Ingest health: snapshot age, upstream status codes and per-venue coverage.">
+  <div class="page-head">
+    <h1>Status</h1>
+    <p>Ingest health. This page reads the canary table directly and renders even when the snapshot store is empty.</p>
+  </div>
+
+  <div class="cards">
+    <div class="card">
+      <div class="card__label">Snapshot age</div>
+      <div class:list={["card__value", stale && "pays-l"]}>{ageMin === null ? "—" : ageMin === 0 ? "under 1 min" : `${ageMin} min`}</div>
+      <div class="card__meta">{snap.fetchedAt ? utc(snap.fetchedAt) : "never written"}</div>
+    </div>
+    <div class="card">
+      <div class="card__label">Snapshot store</div>
+      <div class="card__value" style="font-size:20px">{snap.available ? "readable" : "empty"}</div>
+      <div class="card__meta">{snap.perps.length} contracts cached</div>
+    </div>
+    <div class="card">
+      <div class="card__label">Last ingest</div>
+      <div class:list={["card__value", latest && !latest.ok && "pays-l"]} style="font-size:20px">{latest ? (latest.ok ? "ok" : `failed (${latest.status || "no response"})`) : "—"}</div>
+      <div class="card__meta">{latest ? `${latest.ms} ms · ${utc(latest.at)}` : "no runs recorded"}</div>
+    </div>
+    <div class="card">
+      <div class="card__label">Failures in last 24 runs</div>
+      <div class:list={["card__value", fails > 0 && "pays-l"]}>{checks.length ? fails : "—"}</div>
+      <div class="card__meta">{checks.length} runs recorded</div>
+    </div>
+  </div>
+
+  {stale && (
+    <div class="verdict verdict--warn">
+      <div>
+        <b>The snapshot is stale.</b> It was last written
+        {ageMin === null ? " never" : ` ${ageMin} minutes ago`}, against a 5-minute cron. Pages are
+        still serving — they read the last good value and never call upstream — but every figure on
+        the site is now as old as the timestamp says. Check the cron trigger and the runs below.
+      </div>
+    </div>
+  )}
+
+  <h2 class="section">Per-venue coverage, last run</h2>
+  <p class="section-note">
+    A venue silently dropping out of the upstream response looks like success: the run still writes
+    rows, just fewer. A count at zero here is that failure.
+  </p>
+  <div class="panel" style="max-width:520px">
+    <table class="tbl">
+      <thead><tr><th>Venue</th><th class="num">Rows last run</th></tr></thead>
+      <tbody>
+        {["HlPerp", "BinPerp", "BybitPerp"].map((v) => (
+          <tr>
+            <td>{v}</td>
+            <td class:list={["num", !latestVenues[v] && "pays-l"]}>{latestVenues[v] ?? 0}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="section">Recent runs</h2>
+  {storeError ? (
+    <div class="empty">
+      <div class="empty__body">
+        <p class="empty__title">Canary table unreadable</p>
+        <p class="empty__text">{storeError}</p>
+      </div>
+    </div>
+  ) : checks.length === 0 ? (
+    <div class="empty">
+      <div class="empty__body">
+        <p class="empty__title">No runs recorded yet</p>
+        <p class="empty__text">The ingest worker has not completed a run against this database. Trigger one manually at the worker's <code>/ingest</code> route.</p>
+      </div>
+    </div>
+  ) : (
+    <div class="panel">
+      <table class="tbl">
+        <thead><tr><th>When</th><th>Source</th><th class="num">Status</th><th class="num">ms</th><th class="num">Result</th></tr></thead>
+        <tbody>
+          {checks.map((c) => (
+            <tr>
+              <td class="num" style="text-align:left">{utc(c.at)}</td>
+              <td>{c.source}</td>
+              <td class="num">{c.status || "—"}</td>
+              <td class="num">{c.ms}</td>
+              <td class:list={["num", !c.ok && "pays-l"]}>{c.ok ? "ok" : "failed"}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )}
+</Base>

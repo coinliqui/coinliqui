@@ -1,0 +1,4 @@
+# Local-only variables. Copy to .dev.vars (gitignored) if you need them.
+# The site needs NO secrets to run: it reads public market data and stores nothing private.
+# SITE_URL is a BUILD variable set in the Pages dashboard, not a secret.
+SITE_URL=http://localhost:4321

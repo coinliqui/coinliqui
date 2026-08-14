@@ -32,6 +32,11 @@ export interface Snapshot {
   /** Every symbol above the floor, before the phase-0 cap. */
   eligibleCount: number;
   universeCount: number;
+  /**
+   * False only before the ingest worker has ever written to KV. Pages must check this
+   * and return a 503 rather than render with an empty perps array — see coldStart().
+   */
+  available: boolean;
 }
 
 async function info<T>(body: unknown): Promise<T> {
@@ -117,6 +122,7 @@ export async function fetchSnapshot(): Promise<Snapshot> {
     .sort((a, b) => b.oiNotional - a.oiNotional);
 
   return {
+    available: true,
     fetchedAt: Date.now(),
     perps: eligible.slice(0, PHASE0_SYMBOL_CAP),
     eligibleCount: eligible.length,
@@ -136,20 +142,84 @@ export async function fetchMarginTable(id: number): Promise<MarginTable> {
   };
 }
 
+const EMPTY: Snapshot = { fetchedAt: 0, perps: [], eligibleCount: 0, universeCount: 0, available: false };
+
 /**
  * Read the current snapshot.
- * Production: KV, written every 5 minutes by the ingest worker, so the number is in the
- * server-rendered HTML at first byte. Dev: straight to the upstream API.
+ *
+ * PRODUCTION READS KV AND NOTHING ELSE. There is deliberately no upstream fallback on
+ * the request path: a fallback would mean that an upstream outage — the moment the API
+ * is slowest — becomes a synchronous dependency of every page render, converting a
+ * stale-data problem into a site-down problem. With KV as the only source, an outage can
+ * do exactly one thing: make the timestamp on the page older. That is the whole design.
+ *
+ * A failed KV read is treated the same as an empty one. It must not throw, because a
+ * page that cannot read data should degrade, not 500.
+ *
+ * `devReadThrough` is passed as `import.meta.env.DEV` by pages — a literal Vite replaces
+ * with `false` at build time. The local Cloudflare adapter supplies an EMPTY KV namespace
+ * in dev, so without it the whole site would 503 locally. It is a parameter rather than an
+ * ambient flag so that the production behaviour is visible at every call site.
  */
-export async function getSnapshot(kv?: KVNamespace): Promise<Snapshot> {
-  if (kv) {
-    const cached = await kv.get("snapshot", "json");
-    if (cached) return cached as Snapshot;
+export async function getSnapshot(kv?: KVNamespace, devReadThrough = false): Promise<Snapshot> {
+  if (!kv) {
+    try {
+      return await fetchSnapshot();
+    } catch {
+      return EMPTY;
+    }
   }
-  return fetchSnapshot();
+  try {
+    const cached = (await kv.get("snapshot", "json")) as Snapshot | null;
+    if (cached && Array.isArray(cached.perps) && cached.perps.length) {
+      return { ...cached, available: true };
+    }
+  } catch {
+    // fall through
+  }
+
+  // PRODUCTION STOPS HERE. No upstream call is reachable from a request.
+  if (!devReadThrough) return EMPTY;
+
+  // Dev only: the local KV starts empty, so read through to the API to keep the site usable.
+  try {
+    return await fetchSnapshot();
+  } catch {
+    return EMPTY;
+  }
 }
 
 export interface KVNamespace {
   get(key: string, type: "json"): Promise<unknown>;
   put(key: string, value: string): Promise<void>;
+}
+
+/**
+ * The response every page returns when the snapshot store has never been written.
+ *
+ * 503 + Retry-After is the correct signal for a temporary, self-resolving condition:
+ * Google's guidance is explicit that 503 preserves rankings across short outages where
+ * a 200-with-empty-content or a 404 would not. This state exists only between deploying
+ * and the first successful cron tick, and is not reachable once ingest has run once.
+ */
+export function coldStart(): Response {
+  return new Response(
+    `<!doctype html><html lang="en"><head><meta charset="utf-8">` +
+      `<meta name="robots" content="noindex"><title>Collecting data</title>` +
+      `<style>body{background:#16181b;color:#e6e8ec;font:15px/1.6 ui-sans-serif,system-ui,sans-serif;` +
+      `display:grid;place-items:center;min-height:100vh;margin:0;padding:24px;text-align:center}` +
+      `p{color:#9aa1ab;max-width:44ch}</style></head><body><div>` +
+      `<h1 style="font-size:19px;font-weight:600;margin:0 0 8px">Collecting data</h1>` +
+      `<p>The first snapshot has not been written yet. This resolves within a few minutes of ` +
+      `deployment and does not require any action.</p></div></body></html>`,
+    {
+      status: 503,
+      headers: {
+        "content-type": "text/html; charset=utf-8",
+        "retry-after": "120",
+        "cache-control": "no-store",
+        "x-robots-tag": "noindex",
+      },
+    },
+  );
 }

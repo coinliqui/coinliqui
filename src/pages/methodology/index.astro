@@ -1,9 +1,11 @@
 ---
 import Base from "../../layouts/Base.astro";
-import { getSnapshot } from "../../lib/hyperliquid.ts";
+import { getSnapshot, coldStart } from "../../lib/hyperliquid.ts";
 import { pct, rawRate, settlementsPerYear, VENUE_LABEL, type Venue } from "../../lib/funding.ts";
 
-const snap = await getSnapshot((Astro.locals as any)?.runtime?.env?.SNAPSHOT);
+const snap = await getSnapshot((Astro.locals as any)?.runtime?.env?.SNAPSHOT, import.meta.env.DEV);
+// Cold store: 503 + Retry-After rather than a page rendered from nothing.
+if (!snap.available) return coldStart();
 
 // The worked example uses TODAY'S real rates, so the explanation is never abstract.
 const example = snap.perps.find((p) => p.venues.length >= 2) ?? snap.perps[0];

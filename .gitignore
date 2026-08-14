@@ -6,3 +6,11 @@ dist/
 .env.*
 .DS_Store
 *.log
+
+# secrets / local env — never committed
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+
+# worker-dist/ is COMMITTED on purpose: dashboard-only setup means the bundle is
+# copied from GitHub's web UI, so it has to be visible there.

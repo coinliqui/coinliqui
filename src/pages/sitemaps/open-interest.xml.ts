@@ -1,3 +1,4 @@
 import type { APIRoute } from "astro";
 import { xml } from "../../lib/sitemap.ts";
-export const GET: APIRoute = () => xml(["/open-interest"]);
+import { origin } from "../../lib/site.ts";
+export const GET: APIRoute = ({ site }) => xml(["/open-interest"], origin(site));

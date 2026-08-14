@@ -8,6 +8,13 @@ import { fetchSnapshot } from "../src/lib/hyperliquid.ts";
  * the only CPU spent here is JSON parsing and the writes. Margin tables are deliberately
  * NOT fetched here — they change rarely and are committed at build time, which keeps 232
  * extra requests off this path.
+ *
+ * THE FAILURE MODE THIS GUARDS AGAINST IS SILENCE. If the upstream starts refusing
+ * requests, or quietly stops returning one venue, nothing breaks loudly: pages keep
+ * serving the last good snapshot and only the timestamp drifts. So every run records
+ * what it saw — status, latency, and per-venue row counts — into upstream_check, and
+ * /status renders it. A venue falling out of coverage is visible as a count going to
+ * zero while the run still reports ok.
  */
 
 interface Env {
@@ -17,43 +24,107 @@ interface Env {
 
 /** Snapshots older than this are pruned; the flip feed only looks back 24h. */
 const RETAIN_HOURS = 72;
+/** Canary rows are small but unbounded, so they are pruned on the same schedule. */
+const CANARY_RETAIN_HOURS = 168;
 
 export default {
   async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext) {
     ctx.waitUntil(run(env));
   },
 
-  // Manual trigger, useful for the first run and for smoke-testing after deploy.
+  // Manual trigger, used once after deploy to warm KV before DNS is pointed at the site,
+  // and useful for smoke-testing afterwards.
   async fetch(req: Request, env: Env) {
-    if (new URL(req.url).pathname !== "/ingest") return new Response("not found", { status: 404 });
-    const n = await run(env);
-    return new Response(`ok, ${n} funding rows\n`, { headers: { "content-type": "text/plain" } });
+    const path = new URL(req.url).pathname;
+    if (path !== "/ingest") return new Response("not found", { status: 404 });
+    const r = await run(env);
+    return new Response(JSON.stringify(r, null, 2) + "\n", {
+      status: r.ok ? 200 : 500,
+      headers: { "content-type": "application/json" },
+    });
   },
 };
 
-async function run(env: Env): Promise<number> {
-  const snap = await fetchSnapshot();
-  await env.SNAPSHOT.put("snapshot", JSON.stringify(snap));
+interface RunResult {
+  ok: boolean;
+  ms: number;
+  status: number;
+  rows: number;
+  symbols: number;
+  venues: Record<string, number>;
+  error?: string;
+}
 
-  const at = snap.fetchedAt;
-  const rows: [string, string, number, number][] = [];
-  for (const p of snap.perps) {
-    for (const v of p.venues) {
-      if (Number.isFinite(v.apr)) rows.push([p.symbol, v.venue, v.apr, at]);
+async function run(env: Env): Promise<RunResult> {
+  const started = Date.now();
+  const result: RunResult = { ok: false, ms: 0, status: 0, rows: 0, symbols: 0, venues: {} };
+
+  try {
+    const snap = await fetchSnapshot();
+    result.status = 200;
+    result.symbols = snap.perps.length;
+
+    const at = snap.fetchedAt;
+    const rows: [string, string, number, number][] = [];
+    for (const p of snap.perps) {
+      for (const v of p.venues) {
+        if (Number.isFinite(v.apr)) {
+          rows.push([p.symbol, v.venue, v.apr, at]);
+          result.venues[v.venue] = (result.venues[v.venue] ?? 0) + 1;
+        }
+      }
     }
+    result.rows = rows.length;
+
+    // KV first: the site reads from it, and it is the write that matters most.
+    await env.SNAPSHOT.put("snapshot", JSON.stringify(snap));
+
+    if (rows.length) {
+      // One batched statement per tick. At 25 symbols x 3 venues that is ~75 rows per 5
+      // minutes = ~21,600 writes/day, inside D1's free 100,000 rows-written/day.
+      const insert = env.DB.prepare("INSERT INTO funding_snapshot (symbol, venue, apr, at) VALUES (?1, ?2, ?3, ?4)");
+      await env.DB.batch(rows.map((r) => insert.bind(...r)));
+
+      await env.DB.prepare("DELETE FROM funding_snapshot WHERE at < ?1")
+        .bind(at - RETAIN_HOURS * 3_600_000)
+        .run();
+    }
+
+    result.ok = rows.length > 0;
+    if (!result.ok) result.error = "upstream returned no usable funding rows";
+  } catch (e) {
+    // A thrown upstream error carries its status in the message ("hyperliquid 503").
+    const msg = e instanceof Error ? e.message : String(e);
+    const m = /(\d{3})/.exec(msg);
+    result.status = m ? Number(m[1]) : 0;
+    result.error = msg.slice(0, 200);
   }
-  if (!rows.length) return 0;
 
-  // One batched statement per tick. At 25 symbols x 3 venues that is ~75 rows per 5
-  // minutes = ~21,600 writes/day, inside D1's free 100,000 rows-written/day.
-  const insert = env.DB.prepare("INSERT INTO funding_snapshot (symbol, venue, apr, at) VALUES (?1, ?2, ?3, ?4)");
-  await env.DB.batch(rows.map((r) => insert.bind(...r)));
+  result.ms = Date.now() - started;
 
-  await env.DB.prepare("DELETE FROM funding_snapshot WHERE at < ?1")
-    .bind(at - RETAIN_HOURS * 3_600_000)
-    .run();
+  // The canary write is itself wrapped: a failure to record a failure must not mask it,
+  // and must never turn a data problem into an unhandled rejection in a cron.
+  try {
+    await env.DB.prepare(
+      "INSERT INTO upstream_check (at, source, status, ms, ok, note) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+    )
+      .bind(
+        started,
+        "hyperliquid",
+        result.status,
+        result.ms,
+        result.ok ? 1 : 0,
+        JSON.stringify({ symbols: result.symbols, rows: result.rows, venues: result.venues, error: result.error }),
+      )
+      .run();
+    await env.DB.prepare("DELETE FROM upstream_check WHERE at < ?1")
+      .bind(started - CANARY_RETAIN_HOURS * 3_600_000)
+      .run();
+  } catch {
+    // swallowed on purpose — see above
+  }
 
-  return rows.length;
+  return result;
 }
 
 // Minimal ambient types so this file compiles without @cloudflare/workers-types.

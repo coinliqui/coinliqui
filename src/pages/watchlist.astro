@@ -1,11 +1,13 @@
 ---
 import Base from "../layouts/Base.astro";
-import { getSnapshot } from "../lib/hyperliquid.ts";
+import { getSnapshot, coldStart } from "../lib/hyperliquid.ts";
 import { pct, usd, paysClass, LEGEND } from "../lib/funding.ts";
 // Renders every covered contract server-side, so the page is never empty for a first-time
 // visitor. Pinning is applied client-side from localStorage — no account, no signup wall.
 // robots.txt disallows it: it is a personal view of data already published on /funding.
-const snap = await getSnapshot((Astro.locals as any)?.runtime?.env?.SNAPSHOT);
+const snap = await getSnapshot((Astro.locals as any)?.runtime?.env?.SNAPSHOT, import.meta.env.DEV);
+// Cold store: 503 + Retry-After rather than a page rendered from nothing.
+if (!snap.available) return coldStart();
 ---
 <Base title="Pinned contracts | Basis" description="Pin the contracts you follow. Stored in your browser, no account required." fetchedAt={snap.fetchedAt}>
   <h1 style="margin:0 0 6px;font-size:26px;letter-spacing:-.02em">Pinned</h1>

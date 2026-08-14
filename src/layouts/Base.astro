@@ -1,5 +1,5 @@
 ---
-import { SITE, NAV, FOOTER_LINKS } from "../lib/site.ts";
+import { SITE, NAV, FOOTER_LINKS, origin } from "../lib/site.ts";
 
 interface Props {
   title: string;
@@ -8,6 +8,9 @@ interface Props {
 }
 const { title, description, fetchedAt } = Astro.props;
 const path = Astro.url.pathname;
+// Canonical origin comes from the build-time SITE_URL via Astro.site — never a literal,
+// and never the request host, which may be a *.pages.dev preview.
+const base = origin(Astro.site);
 const isActive = (href: string) => (href === "/" ? path === "/" : path === href || path.startsWith(href + "/"));
 
 // Rail state is decided on the SERVER from a cookie: no flash, no layout shift, and a
@@ -20,8 +23,8 @@ const ageMin = fetchedAt ? Math.max(0, Math.round((Date.now() - fetchedAt) / 600
 const schema = {
   "@context": "https://schema.org",
   "@graph": [
-    { "@type": "WebSite", name: SITE.name, alternateName: `${SITE.name} — ${SITE.tagline}`, url: SITE.url },
-    { "@type": "Organization", name: SITE.name, url: SITE.url },
+    { "@type": "WebSite", name: SITE.name, alternateName: `${SITE.name} — ${SITE.tagline}`, url: base },
+    { "@type": "Organization", name: SITE.name, url: base },
   ],
 };
 ---
@@ -33,7 +36,7 @@ const schema = {
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{title}</title>
     <meta name="description" content={description} />
-    <link rel="canonical" href={new URL(path, SITE.url).href} />
+    <link rel="canonical" href={new URL(path, base).href} />
     <script type="application/ld+json" set:html={JSON.stringify(schema)} />
     <style is:global>
       /* ==========================================================================

@@ -1,3 +1,6 @@
+# Ingest worker ONLY. The site itself deploys as a Cloudflare Pages project and gets its
+# KV/D1 bindings from the Pages dashboard — the two deployables share the same namespace
+# and database but are configured separately.
 name = "basis-ingest"
 main = "worker/ingest.ts"
 compatibility_date = "2026-08-01"
@@ -7,6 +10,10 @@ compatibility_date = "2026-08-01"
 [triggers]
 crons = ["*/5 * * * *"]
 
+# IDs are filled in from the dashboard after the namespace and database are created.
+# They are identifiers, not secrets: KV and D1 are reachable only through a binding on a
+# Worker in this account, so committing them exposes nothing. No token ever goes here —
+# secrets belong in `wrangler secret` or the dashboard, never in this file.
 [[kv_namespaces]]
 binding = "SNAPSHOT"
 id = "REPLACE_WITH_KV_ID"
@@ -15,3 +22,4 @@ id = "REPLACE_WITH_KV_ID"
 binding = "DB"
 database_name = "basis"
 database_id = "REPLACE_WITH_D1_ID"
+migrations_dir = "migrations"
