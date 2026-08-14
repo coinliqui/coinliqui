@@ -8,7 +8,8 @@
     "build": "astro build",
     "preview": "astro preview",
     "gen:margin": "node --experimental-strip-types scripts/gen-margin-tables.ts",
-    "build:worker": "esbuild worker/ingest.ts --bundle --format=esm --target=es2022 --outfile=worker-dist/ingest.bundle.js"
+    "build:worker": "esbuild worker/ingest.ts --bundle --format=esm --target=es2022 --outfile=worker-dist/ingest.bundle.js",
+    "gen:lastmod": "node scripts/gen-lastmod.mjs"
   },
   "dependencies": {
     "@astrojs/cloudflare": "^12.6.10",
