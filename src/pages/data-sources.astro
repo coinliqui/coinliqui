@@ -1,7 +1,7 @@
 ---
 import Base from "../layouts/Base.astro";
 import Related from "../components/Related.astro";
-import { getSnapshot, OI_NOTIONAL_FLOOR } from "../lib/hyperliquid.ts";
+import { getSnapshot, coldStart, OI_NOTIONAL_FLOOR } from "../lib/hyperliquid.ts";
 import { usd } from "../lib/funding.ts";
 const snap = await getSnapshot((Astro.locals as any)?.runtime?.env?.SNAPSHOT, import.meta.env.DEV);
 // Cold store: 503 + Retry-After rather than a page rendered from nothing.

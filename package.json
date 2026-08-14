@@ -10,7 +10,8 @@
     "gen:margin": "node --experimental-strip-types scripts/gen-margin-tables.ts",
     "build:worker": "esbuild worker/ingest.ts --bundle --format=esm --target=es2022 --outfile=worker-dist/ingest.bundle.js",
     "gen:lastmod": "node scripts/gen-lastmod.mjs",
-    "gen:assets": "node scripts/gen-assets.mjs"
+    "gen:assets": "node scripts/gen-assets.mjs",
+    "smoke": "node scripts/smoke.mjs"
   },
   "dependencies": {
     "@astrojs/cloudflare": "^12.6.10",
