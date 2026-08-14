@@ -2,9 +2,17 @@ import type { APIRoute } from "astro";
 import { origin } from "../lib/site.ts";
 
 // Named allowlist for citation and agent crawlers. Blocking the wrong bot makes the site
-// uncitable; /watchlist is disallowed because it is a personal view of data already
-// published on /funding, and robots.txt is the right tool for that rather than noindex —
-// Google's crawl-budget guidance says noindex still costs a fetch. /status is operational.
+// uncitable.
+//
+// /watchlist is NO LONGER disallowed here. It is now linked from the primary action on
+// every page, and a robots.txt-disallowed URL with many internal links is exactly the case
+// Google indexes as a bare URL with no snippet — the crawler is forbidden from fetching the
+// page, so it never sees a noindex. The page now sends `noindex, follow` in its own head
+// instead, which requires crawlability to work at all. The earlier crawl-budget argument
+// does not apply to a 38-page site.
+//
+// /status stays disallowed: it is operational, changes every five minutes, and has no
+// inbound links worth preserving.
 const CITATION_BOTS = [
   "Googlebot", "Bingbot", "OAI-SearchBot", "ChatGPT-User", "GPTBot",
   "ClaudeBot", "Claude-User", "Claude-SearchBot", "PerplexityBot", "Perplexity-User",
@@ -28,8 +36,8 @@ export const GET: APIRoute = ({ site, url }) => {
 
   return new Response(
     [
-      ...CITATION_BOTS.map((b) => `User-agent: ${b}\nAllow: /\nDisallow: /watchlist\nDisallow: /status\n`),
-      `User-agent: *\nAllow: /\nDisallow: /watchlist\nDisallow: /status\n`,
+      ...CITATION_BOTS.map((b) => `User-agent: ${b}\nAllow: /\nDisallow: /status\n`),
+      `User-agent: *\nAllow: /\nDisallow: /status\n`,
       ...BLOCKED.map((b) => `User-agent: ${b}\nDisallow: /\n`),
       `Sitemap: ${canonical}/sitemap-index.xml\n`,
     ].join("\n"),

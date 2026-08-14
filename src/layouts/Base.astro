@@ -5,8 +5,15 @@ interface Props {
   title: string;
   description: string;
   fetchedAt?: number;
+  /**
+   * Keep the page out of the index while still letting crawlers read and follow it.
+   * Deliberately NOT robots.txt Disallow: a disallowed URL can still be indexed from
+   * inbound links, with no snippet, because the crawler is never allowed to fetch the
+   * page and see the directive. noindex only works if the page is crawlable.
+   */
+  noindex?: boolean;
 }
-const { title, description, fetchedAt } = Astro.props;
+const { title, description, fetchedAt, noindex } = Astro.props;
 const path = Astro.url.pathname;
 // Canonical origin comes from the build-time SITE_URL via Astro.site — never a literal,
 // and never the request host, which may be a *.pages.dev preview.
@@ -36,6 +43,7 @@ const schema = {
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{title}</title>
     <meta name="description" content={description} />
+    {noindex && <meta name="robots" content="noindex, follow" />}
     <link rel="canonical" href={new URL(path, base).href} />
     <script type="application/ld+json" set:html={JSON.stringify(schema)} />
     <style is:global>
@@ -183,13 +191,11 @@ const schema = {
       .freshness time { color: var(--text); font-variant-numeric: tabular-nums; }
       /* A person icon pointing at a page that says there are no accounts would be its own
          small lie. Shield, because the page is about what is not collected. */
-      .corner {
-        flex: 0 0 40px; width: 40px; height: 40px; display: grid; place-items: center;
-        border-radius: var(--r-pill); color: var(--text-dim); text-decoration: none;
-        background: var(--surface-2); border: 1px solid var(--border-soft);
-      }
-      .corner:hover { background: var(--surface-3); color: var(--text); }
-      .corner[aria-current="page"] { background: var(--accent-fill); border-color: transparent; color: var(--accent); }
+      /* The primary action. Accent fill, not a ghost outline — this is the one place on
+         the page allowed to look like a button you are meant to press. It goes to a real
+         working feature, not a signup. */
+      .cta { flex: 0 0 auto; height: 40px; border-radius: var(--r-pill); padding: 0 18px; white-space: nowrap; }
+      .cta svg { flex: 0 0 17px; }
 
       /* The one surface on the page: a single large rounded card holding all content.
          The topbar keeps a fill matching the page background so scrolled content cannot
@@ -238,6 +244,9 @@ const schema = {
         background: var(--surface-3); color: var(--text); border: 1px solid var(--border);
       }
       .btn:hover { border-color: var(--text-faint); }
+      /* display:inline-flex on .btn outranks the UA rule for [hidden], so a hidden button
+         would still render. Any element carrying the attribute must stay hidden. */
+      [hidden] { display: none !important; }
       .btn--primary { background: var(--accent); color: var(--on-accent); border-color: transparent; font-weight: 600; }
       .btn--primary:hover { filter: brightness(1.08); }
 
@@ -347,6 +356,8 @@ const schema = {
            cluster stays two even 40px controls instead of one wide pill + one round. */
         .freshness { padding: 0; width: 40px; justify-content: center; gap: 0; }
         .freshness span { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+        .cta { padding: 0; width: 40px; justify-content: center; }
+        .cta__label { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
         .tabbar {
           display: grid; grid-auto-flow: column; grid-auto-columns: 1fr;
           position: fixed; inset-inline: 0; bottom: 0; height: var(--tabbar-h); z-index: 20;
@@ -410,9 +421,9 @@ const schema = {
                 <span>Updated <time datetime={new Date(fetchedAt!).toISOString()}>{ageMin === 0 ? "just now" : `${ageMin} min ago`}</time></span>
               </div>
             )}
-            <a class="corner" href="/privacy" title="Privacy" aria-current={path === "/privacy" ? "page" : undefined}>
-              <svg width="19" height="19" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M10 2.6 4.4 5v4.3c0 3.4 2.3 6.5 5.6 7.6 3.3-1.1 5.6-4.2 5.6-7.6V5Z" /><path d="m7.6 9.9 1.8 1.8 3.2-3.6" /></svg>
-              <span class="vh">Privacy</span>
+            <a class="btn btn--primary cta" href="/watchlist" aria-current={path === "/watchlist" ? "page" : undefined}>
+              <svg width="17" height="17" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M10 3.2l2.1 4.3 4.7.7-3.4 3.3.8 4.7-4.2-2.2-4.2 2.2.8-4.7L3.2 8.2l4.7-.7z" /></svg>
+              <span class="cta__label">Pin contracts</span>
             </a>
           </div>
         </header>

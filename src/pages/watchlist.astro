@@ -1,57 +1,158 @@
 ---
 import Base from "../layouts/Base.astro";
 import { getSnapshot, coldStart } from "../lib/hyperliquid.ts";
-import { pct, usd, paysClass, LEGEND } from "../lib/funding.ts";
-// Renders every covered contract server-side, so the page is never empty for a first-time
-// visitor. Pinning is applied client-side from localStorage — no account, no signup wall.
-// robots.txt disallows it: it is a personal view of data already published on /funding.
+import { pct, usd, paysClass, paysArrow, LEGEND } from "../lib/funding.ts";
+
+// Every covered contract renders server-side, so the page is a complete, useful table for a
+// first-time visitor who has pinned nothing. Pinning only REORDERS what is already here —
+// it never fetches, and there is no empty state to fall into.
+//
+// noindex, follow: by construction this is the same 25 rows as /funding. Indexing both would
+// split equity between two pages answering the same query and neither would win. It stays
+// crawlable so the directive is actually seen and so link equity flows on to the symbol pages.
 const snap = await getSnapshot((Astro.locals as any)?.runtime?.env?.SNAPSHOT, import.meta.env.DEV);
-// Cold store: 503 + Retry-After rather than a page rendered from nothing.
 if (!snap.available) return coldStart();
+
+const maxOi = Math.max(...snap.perps.map((p) => p.oiNotional || 0), 1);
 ---
-<Base title="Pinned contracts | Basis" description="Pin the contracts you follow. Stored in your browser, no account required." fetchedAt={snap.fetchedAt}>
-  <h1 style="margin:0 0 6px;font-size:26px;letter-spacing:-.02em">Pinned</h1>
-  <p class="dim" style="margin:0 0 20px;max-width:72ch">Pinned contracts rise to the top and are stored in this browser only. There is no account and nothing is sent anywhere.</p>
-  <p class="legend">{LEGEND} — colour encodes the direction of payment only. Every other figure is neutral.</p>
-  <div class="panel"><table class="tbl" id="wl">
-    <thead><tr><th style="width:34px"></th><th>Symbol</th><th class="num">Funding APR</th><th class="num">Spread</th><th class="num">Open interest</th></tr></thead>
-    <tbody>
-      {snap.perps.map((p) => (
-        <tr data-sym={p.symbol}>
-          <td><button class="pin" type="button" aria-label={`Pin ${p.symbol}`} data-sym={p.symbol}>☆</button></td>
-          <td><a href={`/funding/${p.symbol.toLowerCase()}`}>{p.symbol}</a></td>
-          <td class:list={["num", paysClass(p.hlApr)]}>{pct(p.hlApr)}</td>
-          <td class="num">{p.aprSpread != null ? pct(p.aprSpread) : "—"}</td>
-          <td class="num">{usd(p.oiNotional)}</td>
+
+<Base
+  title="Pinned contracts | Basis"
+  description="Pin the perpetual contracts you follow. Stored in your own browser, no account, nothing transmitted."
+  fetchedAt={snap.fetchedAt}
+  noindex
+>
+  <div class="page-head">
+    <h1>Pinned</h1>
+    <p>
+      All {snap.perps.length} covered contracts, with the ones you pin held at the top.
+      Pinning is saved in <strong>this browser only</strong> — nothing is sent anywhere, there is
+      no account, and clearing your browser data clears the list.
+      <a class="link" href="/privacy">What the site stores →</a>
+    </p>
+  </div>
+
+  <div class="wl-bar">
+    <p class="legend" style="margin:0">{LEGEND} — colour encodes the direction of payment only.</p>
+    <button class="btn wl-clear" type="button" id="wl-clear" hidden>Clear pinned</button>
+  </div>
+
+  <div class="panel">
+    <table class="tbl" id="wl">
+      <thead>
+        <tr>
+          <th style="width:38px"><span class="vh">Pinned</span></th>
+          <th>Contract</th>
+          <th class="num">Annualised</th>
+          <th class="num">Venue gap</th>
+          <th class="num">Open interest</th>
+          <th class="num">24h volume</th>
         </tr>
-      ))}
-    </tbody>
-  </table></div>
+      </thead>
+      <tbody>
+        {snap.perps.map((p) => (
+          <tr data-sym={p.symbol}>
+            <td>
+              <button class="pin" type="button" aria-pressed="false" aria-label={`Pin ${p.symbol}`} data-sym={p.symbol}>
+                <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 3.2l2.1 4.3 4.7.7-3.4 3.3.8 4.7-4.2-2.2-4.2 2.2.8-4.7L3.2 8.2l4.7-.7z" /></svg>
+              </button>
+            </td>
+            <td class="sym"><a href={`/funding/${p.symbol.toLowerCase()}`}>{p.symbol}</a></td>
+            <td class:list={["num", paysClass(p.hlApr)]}>{paysArrow(p.hlApr)} {pct(p.hlApr)}</td>
+            <td class="num">{p.aprSpread != null ? pct(p.aprSpread) : <span class="faint">—</span>}</td>
+            <td class="num">
+              <span class="magnitude">
+                <span class="magnitude__track"><span class="magnitude__fill" style={`width:${Math.max(3, Math.round((p.oiNotional / maxOi) * 100))}%`}></span></span>
+                <span>{usd(p.oiNotional)}</span>
+              </span>
+            </td>
+            <td class="num">{usd(p.dayNtlVlm)}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="section">Why there is no login</h2>
+  <p class="prose">
+    A pinned list is four ticker symbols. Storing that on a server would mean an account, a
+    credential store, a reset flow and a row with your name on it — all so a table could sort
+    itself differently. Your browser already does that for free, instantly, and without anyone
+    else holding the list.
+  </p>
+  <p class="prose">
+    The trade-off is real and worth stating: the list does not follow you to another device or
+    survive clearing your browser data. That is the entire cost, and it buys a site with
+    <a href="/privacy">nothing to leak</a>.
+  </p>
+
+  <p class="section-note" style="margin-top:20px">
+    <a class="link" href="/funding">All contracts with per-venue detail →</a>
+    · {snap.eligibleCount} of {snap.universeCount} contracts clear the $5M open-interest floor
+  </p>
+
   <script is:inline>
     (function () {
       var KEY = "basis.pinned";
+      var tbody = document.querySelector("#wl tbody");
+      var clear = document.getElementById("wl-clear");
+      if (!tbody) return;
       var read = function () { try { return JSON.parse(localStorage.getItem(KEY) || "[]"); } catch (e) { return []; } };
-      var tb = document.querySelector("#wl tbody");
-      var paint = function () {
+      var write = function (v) { try { localStorage.setItem(KEY, JSON.stringify(v)); } catch (e) {} };
+
+      function paint() {
         var pinned = read();
-        Array.prototype.forEach.call(tb.querySelectorAll("tr"), function (tr) {
-          var on = pinned.indexOf(tr.dataset.sym) > -1;
-          tr.querySelector(".pin").textContent = on ? "★" : "☆";
-          tr.dataset.pinned = on ? "1" : "0";
+        var rows = Array.prototype.slice.call(tbody.querySelectorAll("tr"));
+        rows.forEach(function (tr) {
+          var sym = tr.getAttribute("data-sym");
+          var on = pinned.indexOf(sym) !== -1;
+          tr.classList.toggle("is-pinned", on);
+          var b = tr.querySelector(".pin");
+          if (b) {
+            b.setAttribute("aria-pressed", on ? "true" : "false");
+            b.setAttribute("aria-label", (on ? "Unpin " : "Pin ") + sym);
+          }
         });
-        Array.prototype.slice.call(tb.querySelectorAll('tr[data-pinned="1"]')).reverse().forEach(function (tr) { tb.prepend(tr); });
-      };
-      tb.addEventListener("click", function (e) {
-        var b = e.target.closest(".pin"); if (!b) return;
-        var p = read(), i = p.indexOf(b.dataset.sym);
-        if (i > -1) p.splice(i, 1); else p.push(b.dataset.sym);
-        localStorage.setItem(KEY, JSON.stringify(p)); paint();
+        // Pinned rows rise, in the order they were pinned; everything else keeps server order.
+        rows
+          .slice()
+          .sort(function (a, b) {
+            var ia = pinned.indexOf(a.getAttribute("data-sym"));
+            var ib = pinned.indexOf(b.getAttribute("data-sym"));
+            if (ia === -1 && ib === -1) return 0;
+            if (ia === -1) return 1;
+            if (ib === -1) return -1;
+            return ia - ib;
+          })
+          .forEach(function (tr) { tbody.appendChild(tr); });
+        if (clear) clear.hidden = pinned.length === 0;
+      }
+
+      tbody.addEventListener("click", function (e) {
+        var b = e.target.closest ? e.target.closest(".pin") : null;
+        if (!b) return;
+        var sym = b.getAttribute("data-sym");
+        var pinned = read();
+        var i = pinned.indexOf(sym);
+        if (i === -1) pinned.push(sym); else pinned.splice(i, 1);
+        write(pinned);
+        paint();
       });
+      if (clear) clear.addEventListener("click", function () { write([]); paint(); });
       paint();
     })();
   </script>
+
   <style>
-    .pin { background: none; border: 0; color: var(--text-dim); cursor: pointer; font-size: 16px; padding: 0; line-height: 1; }
-    tr[data-pinned="1"] .pin { color: #d29922; }
+    .wl-bar { display: flex; align-items: center; gap: 16px; margin-bottom: 10px; }
+    .wl-clear { margin-left: auto; height: 32px; padding: 0 12px; font-size: 13px; }
+    .pin {
+      display: grid; place-items: center; width: 28px; height: 28px; padding: 0;
+      background: none; border: 0; border-radius: var(--r-sm); color: var(--text-faint); cursor: pointer;
+    }
+    .pin:hover { background: var(--surface-3); color: var(--text); }
+    .pin[aria-pressed="true"] { color: var(--accent); }
+    .pin[aria-pressed="true"] svg { fill: var(--accent); }
+    .tbl tr.is-pinned td { background: var(--surface-3); }
   </style>
 </Base>
