@@ -134,7 +134,7 @@ export function buildPriceChart(
   for (const v of niceTicks(lo, hi, 5)) {
     const y = yOf(v);
     s.push(line(plotX, y, axisX, y, INK.hair));
-    if (Math.abs(y - lastY) > 16) yLabels.push(text(axisX + 10, y + 3.5, dp ? v.toFixed(dp) : fint(v), INK.dim, FS_AXIS));
+    if (Math.abs(y - lastY) > 16) yLabels.push(text(axisX + PILL_GAP, y + 3.5, dp ? v.toFixed(dp) : fint(v), INK.dim, FS_AXIS));
   }
   s.push(`<g data-ax="y">${yLabels.join("")}</g>`);
 
@@ -195,8 +195,8 @@ export function buildPriceChart(
       s.push(`<polyline points="${pts}" fill="none" stroke="${side > 0 ? INK.paysL : INK.paysS}" stroke-width="1.1" stroke-linejoin="round" opacity=".9"/>`);
     }
     s.push(line(plotX, fz, axisX, fz, INK.zero));
-    s.push(text(axisX + 10, fundY + 11, `+${(fmax * 100).toFixed(0)}% APR`, INK.faint, FS_MICRO));
-    s.push(text(axisX + 10, fundY + fundH - 2, `−${(fmax * 100).toFixed(0)}%`, INK.faint, FS_MICRO));
+    s.push(text(axisX + PILL_GAP, fundY + 11, `+${(fmax * 100).toFixed(0)}% APR`, INK.faint, FS_MICRO));
+    s.push(text(axisX + PILL_GAP, fundY + fundH - 2, `−${(fmax * 100).toFixed(0)}%`, INK.faint, FS_MICRO));
   }
 
   /* THE LAST-PRICE MARKER IS TAGGED so the live layer can move it.

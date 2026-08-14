@@ -94,8 +94,52 @@ const schema = {
         --pays-l: #ef6b5e;   /* longs pay shorts */
         --pays-s: #58c48c;   /* shorts pay longs */
 
+        /* ── SPACE ─────────────────────────────────────────────────────────
+           NAMED FOR THE JOB, NOT THE SIZE. Every value is a multiple of 4 — the
+           same unit src/lib/chart.ts exports as U — so page space and chart
+           space are finally one grid rather than two that happened to agree.
+
+           There were no spacing tokens here at all before this. 132 literals in
+           this file, of which about 40 were off any grid: five 18s, six 6s, five
+           10s, four 7s, four 14s, two 22s, a 15 and a 13. They were not wrong
+           individually; they were unrelated, which is what made the page look
+           almost-aligned everywhere.
+
+           If you need a new value, name the job first. If the job already exists,
+           the value is already decided.
+
+           NOT governed by this scale, deliberately: type sizes, the 1px hairline
+           border, stroke widths, shadow offsets, and chart mark radii. Those are
+           optical, not rhythmic, and snapping them to 4 would destroy the thing
+           this pass exists to protect.
+           ---------------------------------------------------------------- */
+        /* insets — what a surface keeps between its border and its content */
+        --inset-stage:     24px;     /* a whole region: .page, the empty state  */
+        --inset-panel:     16px;     /* card, banner, verdict, calculator       */
+        --inset-tight:     12px;     /* tooltip, rail gutters, field padding    */
+        --inset-control-x: 16px;     /* inline padding of a pill or a button    */
+        --inset-cell-y:     8px;     /* data-grid body cell — denser, on purpose */
+        --inset-cell-x:    12px;
+        --inset-cell-head: 12px;     /* header row: taller, same side inset     */
+
+        /* gaps — distance as a function of how related two things are */
+        --gap-tight:     4px;   /* a heading and its own note                   */
+        --gap-pair:      8px;   /* a label and what it labels; icon and word    */
+        --gap-block:    12px;   /* siblings: cards in a grid                    */
+        --gap-cluster:  16px;   /* separate groups, side by side or stacked     */
+        --gap-major:    24px;   /* a header and the content it introduces       */
+        --gap-section:  32px;   /* above a section heading — the one big step   */
+        --gap-region:   40px;   /* the page and its footer                      */
+
+        /* DELIBERATELY SUB-GRID. A segmented control's internals are stroke-
+           scale, not layout: 3px of track around a 2px seam is what makes the
+           active pill read as inset rather than floated. Named so it stays a
+           decision rather than becoming a precedent. */
+        --seg-inset: 3px;
+        --seg-gap:   2px;
+
         /* radius */
-        --r-sm: 8px; --r-md: 12px; --r-pill: 999px;
+        --r-xs: 6px; --r-sm: 8px; --r-md: 12px; --r-pill: 999px;
 
         /* shell metrics — comfortable, reference-set sized */
         --rail-w: 260px; --rail-w-collapsed: 72px; --topbar-h: 60px; --tabbar-h: 56px;
@@ -145,8 +189,8 @@ const schema = {
       /* Wordmark only — no mark, no tile. The name is the identity. */
       .brand { display: flex; align-items: center; padding: 0 8px; text-decoration: none; font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
 
-      .nav-group { padding: 6px 12px 0; }
-      .nav-group__title { font-size: 12px; font-weight: 500; color: var(--text-faint); padding: 10px 16px 4px; }
+      .nav-group { padding: var(--gap-pair) var(--inset-tight) 0; }
+      .nav-group__title { font-size: 12px; font-weight: 500; color: var(--text-faint); padding: var(--gap-block) var(--inset-control-x) var(--gap-tight); }
       .nav-item {
         display: flex; align-items: center; gap: 16px; height: 44px; padding: 0 16px;
         border-radius: var(--r-pill); color: var(--text-dim); text-decoration: none;
@@ -161,7 +205,7 @@ const schema = {
       a.nav-item:hover .nav-item__icon { color: var(--text-dim); }
       .nav-item__soon {
         margin-left: auto; font-size: 11px; font-weight: 500; color: var(--text-faint);
-        background: var(--surface-3); border-radius: 6px; padding: 2px 7px;
+        background: var(--surface-3); border-radius: var(--r-xs); padding: 2px 8px;
       }
 
       /* Collapsed hides labels only; anchors, hrefs and text nodes are untouched.
@@ -251,24 +295,24 @@ const schema = {
 
       /* --- page header: spacious chrome --- */
       .page-head { margin: 8px 0 24px; }
-      .page-head h1 { font-size: 22px; font-weight: 600; letter-spacing: -.015em; margin: 0 0 6px; }
+      .page-head h1 { font-size: 22px; font-weight: 600; letter-spacing: -.015em; margin: 0 0 var(--gap-pair); }
       .page-head p { margin: 0; color: var(--text-dim); max-width: 76ch; }
-      .crumb { font-size: 13px; color: var(--text-faint); margin: 0 0 8px; }
+      .crumb { font-size: var(--fs-sm); color: var(--text-faint); margin: 0 0 var(--gap-pair); }
       .crumb a { text-decoration: none; }
       .crumb a:hover { color: var(--text); }
 
-      h2.section { font-size: 16px; font-weight: 600; letter-spacing: -.01em; margin: 32px 0 4px; }
-      .section-note { font-size: 13px; color: var(--text-faint); margin: 0 0 12px; max-width: 80ch; }
+      h2.section { font-size: 16px; font-weight: 600; letter-spacing: -.01em; margin: var(--gap-section) 0 var(--gap-tight); }
+      .section-note { font-size: var(--fs-sm); color: var(--text-faint); margin: 0 0 var(--gap-block); max-width: 80ch; }
       .prose { max-width: 72ch; color: var(--text-dim); }
       .prose strong { color: var(--text); font-weight: 600; }
       .prose a, .link { color: var(--accent); }
-      code { background: var(--surface-2); border-radius: 5px; padding: 1px 6px; font: 12.5px var(--mono); }
+      code { background: var(--surface-2); border-radius: var(--r-xs); padding: 1px 6px; font: var(--fs-sm)/1 var(--mono); }
 
       /* --- cards --- */
       .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px,1fr)); gap: 12px; }
       .card {
         background: var(--surface-2); border: 1px solid var(--border-soft); border-radius: var(--r-md);
-        padding: 16px 18px; text-decoration: none; display: block;
+        padding: var(--inset-panel); text-decoration: none; display: block;
       }
       a.card:hover { background: var(--surface-3); }
       .card { display: flex; flex-direction: column; }
@@ -277,12 +321,12 @@ const schema = {
          shift. Label and meta are static copy and may wrap freely; clipping them to a
          fixed height (as an earlier pass did) truncates real text for no benefit. */
       .card__value { font-size: 26px; font-weight: 600; letter-spacing: -.02em; line-height: 32px; height: 32px; font-variant-numeric: tabular-nums; }
-      .card__meta { font-size: var(--fs-sm); color: var(--text-faint); font-variant-numeric: tabular-nums; margin-top: 6px; margin-bottom: 0; min-height: 20px; }
+      .card__meta { font-size: var(--fs-sm); color: var(--text-faint); font-variant-numeric: tabular-nums; margin-top: var(--gap-pair); margin-bottom: 0; min-height: 20px; }
       .card__label + .card__value { margin-top: auto; }
 
       /* --- buttons --- */
       .btn {
-        display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 18px;
+        display: inline-flex; align-items: center; gap: var(--gap-pair); height: 40px; padding: 0 var(--inset-control-x);
         border-radius: var(--r-sm); font: 500 14px var(--sans); text-decoration: none;
         background: var(--surface-3); color: var(--text); border: 1px solid var(--border);
       }
@@ -296,7 +340,7 @@ const schema = {
       .banner {
         display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
         background: var(--surface-2); border: 1px solid var(--border-soft); border-radius: var(--r-md);
-        padding: 16px 18px; margin: 12px 0 8px;
+        padding: var(--inset-panel); margin: var(--gap-block) 0 var(--gap-pair);
       }
       .banner__title { font-weight: 600; }
       .banner__sub { font-size: 13px; color: var(--text-dim); }
@@ -308,11 +352,11 @@ const schema = {
          answer and carries the accent, the naive one sits beside it dimmed.
          --------------------------------------------------------------------------- */
       .calc {
-        display: flex; flex-wrap: wrap; gap: 14px; align-items: end;
+        display: flex; flex-wrap: wrap; gap: var(--gap-cluster); align-items: end;
         background: var(--surface-2); border: 1px solid var(--border-soft);
-        border-radius: var(--r-md); padding: 18px;
+        border-radius: var(--r-md); padding: var(--inset-panel);
       }
-      .calc label { display: grid; gap: 6px; font-size: 13px; color: var(--text-dim); }
+      .calc label { display: grid; gap: var(--gap-tight); font-size: var(--fs-sm); color: var(--text-dim); }
       .calc input, .calc select {
         /* appearance:none so a select matches the number inputs beside it instead of keeping
            Safari's native menulist chrome — but that also removes the disclosure arrow, and a
@@ -335,8 +379,8 @@ const schema = {
       .tbl .is-active { background: var(--surface-3); }
       /* A verdict line: the sentence that says which of the two answers you should act on. */
       .verdict {
-        display: flex; gap: 12px; align-items: flex-start; max-width: 760px; margin: 16px 0 0;
-        padding: 14px 16px; border-radius: var(--r-md);
+        display: flex; gap: var(--gap-block); align-items: flex-start; max-width: 760px; margin: var(--gap-cluster) 0 0;
+        padding: var(--inset-panel); border-radius: var(--r-md);
         background: var(--surface-2); border: 1px solid var(--border-soft);
       }
       /* THE ACCENT MARKS THE THING TO LOOK AT, AND A WARNING IS THAT THING.
@@ -352,7 +396,7 @@ const schema = {
       .verdict--ok { border-left: 3px solid var(--border); }
       .verdict b { font-weight: 600; }
 
-      .chip { display: inline-block; font-size: 12px; color: var(--text-dim); background: var(--surface-3); border-radius: 6px; padding: 2px 8px; }
+      .chip { display: inline-block; font-size: 12px; color: var(--text-dim); background: var(--surface-3); border-radius: var(--r-xs); padding: 2px 8px; }
 
       /* ==========================================================================
          DATA GRID — deliberately denser than the chrome around it
@@ -366,7 +410,7 @@ const schema = {
          itself is a trust statement; three dim paragraphs are an unfinished page.
          --------------------------------------------------------------------------- */
       .empty {
-        display: flex; gap: 16px; align-items: flex-start; max-width: 760px; padding: 22px;
+        display: flex; gap: var(--gap-cluster); align-items: flex-start; max-width: 760px; padding: var(--inset-stage);
         background: var(--surface-2); border: 1px solid var(--border-soft); border-radius: var(--r-md);
       }
       .empty__icon {
@@ -374,20 +418,20 @@ const schema = {
         border-radius: var(--r-pill); background: var(--surface-3); color: var(--text-dim);
       }
       .empty__body { min-width: 0; }
-      .empty__title { font-size: 15px; font-weight: 600; margin: 2px 0 6px; }
+      .empty__title { font-size: var(--fs-md); font-weight: 600; margin: 0 0 var(--gap-pair); }
       .empty__text { color: var(--text-dim); margin: 0; max-width: 64ch; }
-      .empty__meta { margin: 14px 0 0; font-size: 13px; color: var(--text-faint); }
+      .empty__meta { margin: var(--gap-cluster) 0 0; font-size: var(--fs-sm); color: var(--text-faint); }
       .empty__meta b { color: var(--text); font-weight: 500; font-variant-numeric: tabular-nums; }
       /* Progress is server-computed and written inline, so it paints at first byte
          and never animates into place. */
-      .empty__track { height: 4px; border-radius: 2px; background: var(--surface-3); margin: 14px 0 0; overflow: hidden; }
+      .empty__track { height: 4px; border-radius: 2px; background: var(--surface-3); margin: var(--gap-cluster) 0 0; overflow: hidden; }
       .empty__fill { height: 100%; background: var(--accent); border-radius: 2px; }
       table.tbl { border-collapse: collapse; width: 100%; font-size: 13px; }
       .tbl th {
         font-size: 12px; font-weight: 500; color: var(--text-faint); text-align: left;
-        padding: 12px 12px; background: var(--surface-3); border-bottom: 1px solid var(--border-soft); white-space: nowrap;
+        padding: var(--inset-cell-head); background: var(--surface-3); border-bottom: 1px solid var(--border-soft); white-space: nowrap;
       }
-      .tbl td { padding: 8px 12px; border-bottom: 1px solid var(--border-soft); }
+      .tbl td { padding: var(--inset-cell-y) var(--inset-cell-x); border-bottom: 1px solid var(--border-soft); }
       .tbl tbody tr:last-child td { border-bottom: 0; }
       .tbl th.num, .tbl td.num { text-align: right; }
       .tbl tbody tr:hover { background: var(--surface-3); }
@@ -397,14 +441,14 @@ const schema = {
       .tbl .sym { font-weight: 600; }
 
       /* quiet in-row magnitude — CSS only, no charting dependency */
-      .magnitude { display: flex; align-items: center; gap: 10px; justify-content: flex-end; }
+      .magnitude { display: flex; align-items: center; gap: var(--gap-block); justify-content: flex-end; }
       .magnitude__track { flex: 0 0 56px; height: 4px; border-radius: 2px; background: var(--surface-3); overflow: hidden; }
       .magnitude__fill { display: block; height: 100%; border-radius: 2px; background: var(--text-faint); }
 
-      .legend { font-size: var(--fs-sm); color: var(--text-faint); margin: 0 0 10px; }
+      .legend { font-size: var(--fs-sm); color: var(--text-faint); margin: 0 0 var(--gap-block); }
       .legend b { font-weight: 500; }
 
-      footer { margin-top: 40px; padding: 20px 0 0; color: var(--text-faint); font-size: 13px; }
+      footer { margin-top: var(--gap-region); padding: 20px 0 0; color: var(--text-faint); font-size: 13px; }
       footer nav { display: flex; flex-wrap: wrap; gap: 8px 20px; margin-bottom: 12px; }
       footer a { text-decoration: none; }
       footer a:hover { color: var(--text); }
@@ -417,7 +461,7 @@ const schema = {
       /* --- tooltip: one element, reused by every chart --- */
       .tip {
         position: fixed; top: 0; left: 0; z-index: 60; pointer-events: none;
-        min-width: 168px; padding: 11px 13px;
+        min-width: 168px; padding: var(--inset-tight);
         background: color-mix(in srgb, var(--surface-2) 92%, black);
         border: 1px solid var(--border); border-radius: var(--r-md);
         box-shadow: 0 10px 30px rgba(0,0,0,.5), 0 2px 6px rgba(0,0,0,.4);
@@ -426,11 +470,11 @@ const schema = {
         font-variant-numeric: tabular-nums;
       }
       .tip[data-on] { opacity: 1; }
-      .tip__h { font-size: var(--fs-xs); color: var(--text-faint); margin-bottom: 7px; }
-      .tip__g { display: grid; grid-template-columns: auto auto; gap: 3px 18px; }
+      .tip__h { font-size: var(--fs-xs); color: var(--text-faint); margin-bottom: var(--gap-pair); }
+      .tip__g { display: grid; grid-template-columns: auto auto; gap: var(--gap-tight) var(--gap-cluster); }
       .tip__g span { color: var(--text-dim); }
       .tip__g b { font-weight: 600; text-align: right; }
-      .tip__f { margin-top: 7px; padding-top: 7px; border-top: 1px solid var(--border-soft); font-size: var(--fs-xs); color: var(--text-faint); }
+      .tip__f { margin-top: var(--gap-pair); padding-top: var(--gap-pair); border-top: 1px solid var(--border-soft); font-size: var(--fs-xs); color: var(--text-faint); }
 
       /* --- crosshair ---
          The furniture itself is styled INLINE inside the generated SVG (see chart.ts) —
@@ -464,7 +508,7 @@ const schema = {
         .chart > svg, .chart > figure > svg, figure.chart > svg { min-width: 1140px; }
       }
       .chart > svg, .chart > figure > svg, .chart__scroll > svg { display: block; width: 100%; height: auto; }
-      figure.chart > figcaption { font-size: 13px; color: var(--text-faint); margin-top: 10px; max-width: 84ch; line-height: 1.55; }
+      figure.chart > figcaption { font-size: var(--fs-sm); color: var(--text-faint); margin-top: var(--gap-block); max-width: 84ch; line-height: 1.55; }
 
       /* --- table rows respond, and the magnitude bar responds with them --- */
       .tbl tbody tr { transition: background .12s var(--ease); }
@@ -473,11 +517,11 @@ const schema = {
       .magnitude__fill { transition: background .14s var(--ease), width .3s var(--ease); }
 
       /* --- timeframe group: the active control has depth, the rest are quiet --- */
-      .tf { display: inline-flex; gap: 2px; padding: 3px; background: var(--surface-2); border: 1px solid var(--border-soft); border-radius: var(--r-pill); }
+      .tf { display: inline-flex; gap: var(--seg-gap); padding: var(--seg-inset); background: var(--surface-2); border: 1px solid var(--border-soft); border-radius: var(--r-pill); }
       .tf button {
         appearance: none; border: 0; background: none; cursor: pointer;
         font: 600 var(--fs-sm)/1 var(--sans); color: var(--text-dim);
-        padding: 8px 15px; border-radius: var(--r-pill);
+        padding: var(--gap-pair) var(--inset-control-x); border-radius: var(--r-pill);
         transition: background .16s var(--ease), color .16s var(--ease), box-shadow .16s var(--ease);
       }
       .tf button:hover { color: var(--text); background: var(--surface-3); }
@@ -497,7 +541,7 @@ const schema = {
       .hero { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; margin: 2px 0 4px; }
       .hero__price { font-size: var(--fs-hero); font-weight: 650; letter-spacing: -.032em; line-height: 1.05; font-variant-numeric: tabular-nums; }
       .hero__chg { font-size: var(--fs-lg); font-weight: 600; color: var(--text-dim); font-variant-numeric: tabular-nums; }
-      .hero__meta { display: flex; gap: 22px; flex-wrap: wrap; margin-top: 10px; font-size: var(--fs-sm); color: var(--text-faint); }
+      .hero__meta { display: flex; gap: var(--gap-major); flex-wrap: wrap; margin-top: var(--gap-block); font-size: var(--fs-sm); color: var(--text-faint); }
       .hero__meta b { display: block; color: var(--text); font-weight: 600; font-size: var(--fs-md); font-variant-numeric: tabular-nums; margin-top: 2px; }
 
       @media (prefers-reduced-motion: reduce) {

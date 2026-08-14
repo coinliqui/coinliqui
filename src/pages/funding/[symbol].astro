@@ -325,7 +325,7 @@ const description = `What a ${p.symbol} perpetual costs to hold: funding across 
       once, on the chart panel that actually reads it. */}
   <style>
     .hero__span { font-size: var(--fs-sm); color: var(--text-faint); }
-    .tfbar { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin: 18px 0 10px; }
+    .tfbar { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin: var(--inset-panel) 0 var(--gap-block); }
     .tfbar__note { font-size: var(--fs-xs); color: var(--text-faint); }
     /* The box is reserved from the viewBox ratio before paint, so switching timeframe or
        loading the script cannot move a single pixel of the page. */
@@ -336,12 +336,12 @@ const description = `What a ${p.symbol} perpetual costs to hold: funding across 
     .src summary:hover { color: var(--text); }
     .related { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; }
     .chip-link {
-      display: inline-block; padding: 6px 14px; border-radius: var(--r-pill);
+      display: inline-block; padding: var(--gap-pair) var(--gap-cluster); border-radius: var(--r-pill);
       background: var(--surface-2); border: 1px solid var(--border-soft);
       text-decoration: none; font-size: 13px; font-weight: 500;
       transition: background .14s var(--ease), color .14s var(--ease);
     }
     .chip-link:hover { background: var(--surface-3); color: var(--accent); }
-    @media (max-width: 700px) { .hero__meta { gap: 14px 20px; } }
+    @media (max-width: 700px) { .hero__meta { gap: var(--gap-cluster) 20px; } }
   </style>
 </Base>

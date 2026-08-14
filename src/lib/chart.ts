@@ -27,7 +27,7 @@ export const CH = {
   padT: 4 * U,   // 16
   padB: 7 * U,   // 28 — one line of axis text plus breathing room
   gap: 3 * U,    // 12 — between stacked panels
-  radius: 10,
+  radius: 3 * U,   // 12 — the chart well and the card it sits in now share one corner
 } as const;
 
 /* ---------------------------------------------------------------------------- palette
@@ -156,7 +156,7 @@ export function timeTicks(times: number[], want = 8): { i: number; label: string
 /* ------------------------------------------------------------------- svg primitives */
 /** Axis furniture: two sizes, two weights, nothing between them. */
 export const FS_AXIS = 11, FS_MICRO = 10;
-export const PILL_H = 20, PILL_R = 5, PILL_GAP = 5;
+export const PILL_H = 5 * U, PILL_R = U, PILL_GAP = 2 * U;
 
 export const esc = (s: unknown) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
 export const MONO = "ui-monospace,SFMono-Regular,Menlo,monospace";
@@ -202,7 +202,7 @@ export function crosshair(plotX: number, plotY: number, plotW: number, plotH: nu
     `<line data-xh="v" x1="0" y1="${n2(plotY)}" x2="0" y2="${n2(plotY + plotH)}" stroke="#c3ccd6" stroke-width="1" stroke-dasharray="1 3" opacity=".8"/>` +
     `<line data-xh="h" x1="${n2(plotX)}" y1="0" x2="${n2(plotX + plotW)}" y2="0" stroke="#c3ccd6" stroke-width="1" stroke-dasharray="1 3" opacity=".62"/>` +
     (opts.dot ? `<circle data-xh="dot" cx="0" cy="0" r="3.2" fill="#eef1f5" stroke="#14171b" stroke-width="1.4"/>` : "") +
-    pill("py", 74).replace("translate(0,0)", `translate(${n2(axisX + 5)},0)`) +
+    pill("py", 19 * U).replace("translate(0,0)", `translate(${n2(axisX + PILL_GAP)},0)`) +
     pill("tx", 92) +
     `</g>`
   );
