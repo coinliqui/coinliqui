@@ -1,0 +1,36 @@
+#!/bin/sh
+#
+# THE GATE. `npm run check` — build, then render every route template against the built
+# worker with a cold store and again with a warm one — must pass before anything leaves this
+# machine.
+#
+# WHY IT IS A HOOK AND NOT A HABIT. On 14 August this repository shipped three production
+# 500s in one day. Every one of them was catchable locally, by a check that existed, that I
+# simply did not run before pushing:
+#
+#   - a missing import in the chart builder took all fifty contract pages and all four coin
+#     pages to an empty 500 body for fourteen minutes
+#   - /data-sources called coldStart() without importing it, a ReferenceError that fires only
+#     when the snapshot store is empty — which is exactly when someone opens that page
+#   - a class referenced once and defined nowhere silently dropped a status colour
+#
+# A checklist I have to remember is not a gate. This is.
+#
+# Enabled with:  git config core.hooksPath .githooks
+# Check it is on: git config core.hooksPath   ->  .githooks
+#
+# If you genuinely must push past a red gate — a docs-only change while the fixture is
+# stale, say — `git push --no-verify` still works. It is deliberately the thing you have to
+# type on purpose.
+
+set -e
+
+printf '\n── pre-push gate: npm run check ──\n'
+
+if ! npm run check; then
+  printf '\n  PUSH BLOCKED. The gate is red.\n'
+  printf '  Fix it, or push with --no-verify and say so out loud.\n\n'
+  exit 1
+fi
+
+printf '\n  gate green — pushing\n\n'

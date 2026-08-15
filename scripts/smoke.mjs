@@ -33,6 +33,7 @@
  *   npm run smoke -- --warm DIR   also run warm against a wrangler --persist-to directory
  */
 import { spawn } from "node:child_process";
+import { cssFor, undefinedClasses, undefinedVars, rawEnums } from "./checks.mjs";
 
 const PORT = 8791;
 const ROUTES = [
@@ -103,12 +104,28 @@ for (const path of ROUTES) {
   const okStatus = status === want || (name === "cold" && status === 503);
   const empty = body.length === 0;
   const crashed = /ReferenceError|is not defined|Cannot read propert|Internal Server Error/i.test(body);
-  const ok = okStatus && !empty && !crashed && !err;
+
+  /* CONTENT CHECKS. A 200 with a body is not the same as a correct page: today's three
+     silent defects all rendered 200 and lost a colour or leaked an identifier. These run
+     only on HTML, and only warm — a cold page is the 503 notice and has nothing to check. */
+  let content = [];
+  if (name === "warm" && body.startsWith("<!DOCTYPE") ) {
+    const css = await cssFor(body, `http://127.0.0.1:${PORT}`);
+    const c = undefinedClasses(body, css);
+    const v = undefinedVars(body, css);
+    const e = rawEnums(body);
+    if (c.length) content.push(`class defined nowhere: ${c.join(", ")}`);
+    if (v.length) content.push(`custom property never declared: ${v.join(", ")}`);
+    if (e.length) content.push(`internal enum rendered as text: ${e.join(", ")}`);
+  }
+
+  const ok = okStatus && !empty && !crashed && !err && !content.length;
   if (!ok) bad++;
   console.log(
     `  ${ok ? "ok  " : "FAIL"}  ${String(status || err).padEnd(4)} ${String(body.length).padStart(7)}b  ${path}` +
       (crashed ? "   <- runtime error in the body" : empty ? "   <- EMPTY BODY" : ""),
   );
+  for (const c of content) console.log(`          ${c}`);
 }
 
   kill();
