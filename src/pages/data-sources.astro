@@ -6,12 +6,34 @@ import { usd } from "../lib/funding.ts";
 const snap = await getSnapshot((Astro.locals as any)?.runtime?.env?.SNAPSHOT, import.meta.env.DEV);
 // Cold store: 503 + Retry-After rather than a page rendered from nothing.
 if (!snap.available) return coldStart();
+/**
+ * EVERY upstream operation that puts a number on a page. The heading above this table promises
+ * a complete list, so it has to be one.
+ *
+ * It was not. The table listed three Hyperliquid endpoints and the code calls five: the two
+ * that draw every candle and every funding series were missing, as were the Ethereum endpoints
+ * behind /unlocks — which meant the page promising "every endpoint behind every number" covered
+ * five of nine operations and two of five hosts. Nothing broke; the table was simply tidy and
+ * incomplete, which is the harder kind of wrong to notice.
+ *
+ * The cadences were wrong too, and in a way worth naming: funding and mark were listed at
+ * 5 min because that is the full-ingest cron, but worker/ingest.ts:154 minute() runs on
+ * `* * * * *` and calls fetchLive(), which fetches BOTH metaAndAssetCtxs and predictedFundings.
+ * They refresh every minute. Understating your own freshness is still a page telling a reader
+ * something untrue about its numbers.
+ *
+ * Cadences below are the constants, not prose: RETAIN/CANDLE/HOURLY/FUNDING_REFRESH_HOURS in
+ * worker/ingest.ts and the two crons in wrangler.toml.
+ */
 const sources = [
-  { what: "Funding rate, per venue", ep: "POST /info {\"type\":\"predictedFundings\"}", who: "Hyperliquid", freq: "5 min" },
-  { what: "Open interest, volume, mark and oracle price, premium", ep: "POST /info {\"type\":\"metaAndAssetCtxs\"}", who: "Hyperliquid", freq: "5 min" },
+  { what: "Funding rate, per venue", ep: "POST /info {\"type\":\"predictedFundings\"}", who: "Hyperliquid", freq: "1 min" },
+  { what: "Open interest, volume, mark and oracle price, premium", ep: "POST /info {\"type\":\"metaAndAssetCtxs\"}", who: "Hyperliquid", freq: "1 min" },
+  { what: "Price candles behind every chart, hourly and daily", ep: "POST /info {\"type\":\"candleSnapshot\"}", who: "Hyperliquid", freq: "2 h / 12 h" },
+  { what: "Realised funding history, behind the funding series", ep: "POST /info {\"type\":\"fundingHistory\"}", who: "Hyperliquid", freq: "6 h" },
   { what: "Maintenance-margin tiers", ep: "POST /info {\"type\":\"marginTable\",\"id\":N}", who: "Hyperliquid", freq: "build time" },
   { what: "Spot price, 24h open/high/low/volume", ep: "GET /products/stats", who: "Coinbase Exchange", freq: "1 min" },
   { what: "Spot candles, hourly and daily", ep: "GET /products/{id}/candles", who: "Coinbase Exchange", freq: "2 h" },
+  { what: "Vesting and lock contract state behind the register", ep: "eth_call, eth_blockNumber", who: "Ethereum JSON-RPC", freq: "on demand" },
 ];
 ---
 <Base title="Data sources" description="Every endpoint behind every number on this site, its refresh cadence, and an explicit list of what is deliberately absent." fetchedAt={snap.fetchedAt}>
@@ -45,8 +67,13 @@ const sources = [
     <li><strong>Binance and Bybit spot.</strong> Both are unreachable from this site's servers. Their
       <em>funding rates</em> appear because Hyperliquid publishes them in its own predicted-funding feed;
       their order books do not.</li>
-    <li><strong>OKX.</strong> Reachable, and deliberately never displayed or credited: its API agreement
-      forbids it. Where it is used at all it is an internal cross-check that never reaches a page.</li>
+    {/* This used to say OKX "is used as an internal cross-check". It is not used at all — there
+        is no OKX request anywhere in this codebase. The sentence described a fallback that was
+        considered and never built, which is a page making a claim about its own behaviour that
+        is not true, and on this site that is the one thing that cannot be allowed to stand. */}
+    <li><strong>OKX.</strong> Not called at all, and deliberately never displayed or credited:
+      its API agreement forbids display, so it was ruled out as a source rather than used
+      quietly. Nothing on this site is derived from it, directly or as a cross-check.</li>
     <li><strong>Predicted or forecast rates.</strong> Only the venues' own published next-interval rates appear; nothing here is a model output.</li>
   </ul>
   <Related items={[

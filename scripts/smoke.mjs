@@ -33,7 +33,9 @@
  *   npm run smoke -- --warm DIR   also run warm against a wrangler --persist-to directory
  */
 import { spawn } from "node:child_process";
-import { cssFor, undefinedClasses, undefinedVars, rawEnums, searchIndexGaps } from "./checks.mjs";
+import { readFile } from "node:fs/promises";
+import { readdirSync } from "node:fs";
+import { cssFor, undefinedClasses, undefinedVars, rawEnums, searchIndexGaps, unnamedUpstreams } from "./checks.mjs";
 
 const PORT = 8791;
 const ROUTES = [
@@ -129,8 +131,38 @@ for (const path of ROUTES) {
 }
 
   /* SITE-WIDE, not per-route: is every URL we tell a crawler about reachable from the search
-     box? Warm only — the cold sitemaps are empty by design, so there is nothing to compare. */
+     box, and does /data-sources name every upstream the code actually calls? Warm only — the
+     cold sitemaps are empty by design, so there is nothing to compare. */
   if (name === "warm") {
+    try {
+      /* CODE WHOSE OUTPUT REACHES A READER, which is the only code /data-sources owes an
+         attribution for. src/lib and worker render and ingest. From scripts/ only the three
+         that GENERATE COMMITTED DATA count — probe-vesting writes the vesting register,
+         fetch-sweep writes the February crash series, gen-margin-tables writes the tiers.
+         The verifiers and build helpers are excluded on purpose: verify-live.mjs mentions
+         schema.org in an exclusion list and "https://www." in a string replace, and neither
+         is a vendor this site depends on. Listing the three by name rather than globbing
+         means adding a fourth data generator is a decision someone makes on purpose. */
+      const files = [
+        ...["src/lib", "worker"].flatMap((dir) => {
+          try { return readdirSync(dir).filter((f) => /\.(ts|mjs)$/.test(f)).map((f) => `${dir}/${f}`); }
+          catch { return []; }
+        }),
+        "scripts/probe-vesting.mjs", "scripts/fetch-sweep.mjs", "scripts/gen-margin-tables.mjs",
+      ];
+      const ds = await (await fetch(`http://127.0.0.1:${PORT}/data-sources`)).text();
+      const un = await unnamedUpstreams(ds, (f) => readFile(f, "utf8"), files);
+      if (un.length) {
+        bad++;
+        console.log(`  FAIL  ${String(un.length).padStart(4)}         upstream fetched but not named on /data-sources`);
+        for (const h of un) console.log(`          ${h}`);
+      } else {
+        console.log(`  ok            every upstream host is named on /data-sources`);
+      }
+    } catch (e) {
+      bad++;
+      console.log(`  FAIL          upstream comparison failed: ${e.message}`);
+    }
     try {
       const gaps = await searchIndexGaps(`http://127.0.0.1:${PORT}`);
       if (gaps.length) {

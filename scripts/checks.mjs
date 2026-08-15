@@ -98,6 +98,68 @@ export async function searchIndexGaps(origin) {
 }
 
 /**
+ * An upstream this site talks to that /data-sources does not name.
+ *
+ * That page's own heading is "Every endpoint behind every number on this site", which is a
+ * promise it cannot keep by memory. It had already drifted: three Hyperliquid endpoints listed
+ * where the code calls five — the two missing ones draw every chart — and no mention at all of
+ * the Ethereum endpoints behind the vesting register. Five of nine operations, two of five
+ * hosts, and a tidy table that looked complete.
+ *
+ * This compares the hosts that appear in fetch() calls in the code that renders pages against
+ * the hosts named on the rendered page. It is deliberately host-level rather than endpoint-level:
+ * an endpoint list needs prose to be useful, but a HOST is a fact, and an unnamed host is either
+ * an attribution the page owes someone or a vendor nobody decided to depend on.
+ *
+ * CONTROL_PLANE are hosts that never put a number on a page — deploy, indexing and analytics
+ * plumbing. They are excluded by name rather than by pattern so that adding one is a decision.
+ */
+const CONTROL_PLANE = new Set([
+  "api.cloudflare.com", "oauth2.googleapis.com", "searchconsole.googleapis.com",
+  "www.googleapis.com", "coinliqui.com",
+]);
+
+export async function unnamedUpstreams(dataSourcesHtml, readFile, files) {
+  const hosts = new Set();
+  for (const f of files) {
+    let src = "";
+    try { src = await readFile(f); } catch { continue; }
+    for (const m of src.matchAll(/https:\/\/([a-z0-9.\-]+)/gi)) {
+      const h = m[1].toLowerCase().replace(/\.$/, "");
+      if (!CONTROL_PLANE.has(h)) hosts.add(h);
+    }
+  }
+  const text = strip(dataSourcesHtml).replace(/<[^>]+>/g, " ").toLowerCase();
+
+  /* Vendors the page names at a deliberately coarser granularity than the hostname, because
+     that is the granularity a reader needs. "Ethereum JSON-RPC" is the honest description of
+     three interchangeable public endpoints queried for the same eth_call; naming all three
+     would tell a reader nothing and would make swapping one a content change. Each alias is a
+     decision, written here, rather than something a regex arrives at by accident. */
+  const ALIAS = {
+    "ethereum-rpc.publicnode.com": "ethereum json-rpc",
+    "eth.drpc.org": "ethereum json-rpc",
+    "1rpc.io": "ethereum json-rpc",
+  };
+
+  /* WHOLE WORDS, AT LEAST FOUR CHARACTERS. The first version of this took any label longer
+     than two characters as a substring, which meant `eth.drpc.org` counted as named by any
+     page containing the word "whether" — a check that passes because it is blind, which is
+     precisely the defect class it was written to catch. It caught two of three hosts in its
+     own negative test and that is how this was found. */
+  const word = (s) => new RegExp(`\\b${s.replace(/[.*+?^${}()|[\]\\-]/g, "\\$&")}\\b`).test(text);
+  const named = (h) => {
+    if (text.includes(h)) return true;
+    if (ALIAS[h] && text.includes(ALIAS[h])) return true;
+    return h
+      .split(".")
+      .filter((p) => !["com", "org", "io", "xyz", "net", "api", "www"].includes(p))
+      .some((p) => p.length >= 4 && word(p));
+  };
+  return [...hosts].filter((h) => !named(h));
+}
+
+/**
  * An internal enum value rendered as text.
  *
  * Three separate instances today: the homepage flip feed printed `f.venue` straight out of
