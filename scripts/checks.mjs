@@ -72,6 +72,32 @@ export function undefinedVars(html, css) {
 }
 
 /**
+ * A page that a crawler can find and the site's own search cannot.
+ *
+ * On 15 August the typeahead index had fallen eighteen URLs behind the sitemaps: the whole
+ * coins section, three of the four calculators, both liquidation studies and the unlock
+ * calendar. All live, all in the nav, all indexed for Google — and typing "solana" returned
+ * nothing. Nothing broke; search simply could not see whole sections.
+ *
+ * A hand-maintained list beside a generated sitemap always drifts, because one is enforced by
+ * a crawler and the other by memory. So the sitemaps are the authority: anything a crawler is
+ * told exists must be reachable from the search box.
+ *
+ * The reverse is deliberately NOT checked. An entry pointing at a page that is not in a
+ * sitemap is legitimate — /watchlist and /status are real, useful, and correctly noindex.
+ */
+export async function searchIndexGaps(origin) {
+  const locs = async (u) =>
+    [...(await (await fetch(u)).text()).matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]);
+  const maps = await locs(`${origin}/sitemap-index.xml`);
+  const urls = new Set();
+  for (const m of maps) for (const u of await locs(m)) urls.add(new URL(u).pathname);
+  const index = await (await fetch(`${origin}/search-index.json`)).json();
+  const known = new Set(index.map((r) => r.href));
+  return [...urls].filter((p) => !known.has(p));
+}
+
+/**
  * An internal enum value rendered as text.
  *
  * Three separate instances today: the homepage flip feed printed `f.venue` straight out of

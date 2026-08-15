@@ -33,7 +33,7 @@
  *   npm run smoke -- --warm DIR   also run warm against a wrangler --persist-to directory
  */
 import { spawn } from "node:child_process";
-import { cssFor, undefinedClasses, undefinedVars, rawEnums } from "./checks.mjs";
+import { cssFor, undefinedClasses, undefinedVars, rawEnums, searchIndexGaps } from "./checks.mjs";
 
 const PORT = 8791;
 const ROUTES = [
@@ -127,6 +127,24 @@ for (const path of ROUTES) {
   );
   for (const c of content) console.log(`          ${c}`);
 }
+
+  /* SITE-WIDE, not per-route: is every URL we tell a crawler about reachable from the search
+     box? Warm only — the cold sitemaps are empty by design, so there is nothing to compare. */
+  if (name === "warm") {
+    try {
+      const gaps = await searchIndexGaps(`http://127.0.0.1:${PORT}`);
+      if (gaps.length) {
+        bad++;
+        console.log(`  FAIL  ${String(gaps.length).padStart(4)}         in the sitemaps, absent from search`);
+        for (const g of gaps) console.log(`          ${g}`);
+      } else {
+        console.log(`  ok            every sitemap URL is reachable from search`);
+      }
+    } catch (e) {
+      bad++;
+      console.log(`  FAIL          search-index comparison failed: ${e.message}`);
+    }
+  }
 
   kill();
   // Give the port back before the next mode binds it.
