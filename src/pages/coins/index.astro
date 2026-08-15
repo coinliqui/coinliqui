@@ -1,6 +1,6 @@
 ---
 import Base from "../../layouts/Base.astro";
-import { getSnapshot, coldStart, findPerp } from "../../lib/hyperliquid.ts";
+import { getSnapshot, coldStart, findPerp, getLive } from "../../lib/hyperliquid.ts";
 import { usd, pct, paysClass } from "../../lib/funding.ts";
 import { COINS, isLive, getSpot, basisBps, SPOT_SOURCE } from "../../lib/coins.ts";
 
@@ -8,6 +8,25 @@ const env = (Astro.locals as any)?.runtime?.env;
 const snap = await getSnapshot(env?.SNAPSHOT, import.meta.env.DEV);
 if (!snap.available) return coldStart();
 const spotSet = await getSpot(env?.SNAPSHOT, import.meta.env.DEV);
+/* THE BASIS NEEDS BOTH PRICES ON ONE CLOCK, AND IT DID NOT HAVE THEM.
+   The mark came from the 5-minute snapshot; spot comes from the KV `spot` key that the
+   1-minute cron rewrites. Basis is a DIFFERENCE of two large, nearly-equal prices expressed
+   in single-digit basis points, so any skew between the two clocks lands in the answer at
+   full size. Measured across a cycle: worst error 11.1 bps against a signal of 3-20, and the
+   SIGN inverted repeatedly — ADA -0.6 where the matched-clock value was +2.2, LINK +9.2 where
+   it was -1.9. A reader was told the perpetual was cheaper than spot when it was richer.
+
+   The site already had the matched-clock mark and was already using it in the wrong place:
+   /api/live.json merges KV `live` over the snapshot, and interact.js recomputed the basis
+   from that and silently overwrote the cell ~300ms after paint. So there were two values and
+   only the wrong one was server-rendered — which is the only one an AI crawler ever sees, and
+   the reason this could not be dismissed as a display nicety.
+
+   `live` and `spot` are written by the same minute() pass (worker/ingest.ts:156,160), so
+   preferring live.mark puts both halves of the subtraction on one clock. Falling back to the
+   snapshot keeps a just-deployed page working, one clock slower, exactly as live.json does. */
+const live = await getLive(env?.SNAPSHOT);
+const markOf = (sym: string, fallback: number) => live?.mark?.[sym] ?? fallback;
 
 const rows = COINS.map((c) => {
   const q = spotSet?.q[c.symbol] ?? null;
@@ -19,7 +38,7 @@ const rows = COINS.map((c) => {
     q,
     perp,
     chg: q && q.open24h > 0 ? q.last / q.open24h - 1 : NaN,
-    basis: perp && q ? basisBps(perp.markPx, q.last) : NaN,
+    basis: perp && q ? basisBps(markOf(c.symbol, perp.markPx), q.last) : NaN,
     ntl,
     apr: perp?.venues.find((v) => v.venue === "HlPerp")?.apr ?? NaN,
   };

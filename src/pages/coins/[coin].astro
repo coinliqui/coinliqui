@@ -1,6 +1,6 @@
 ---
 import Base from "../../layouts/Base.astro";
-import { getSnapshot, coldStart, findPerp } from "../../lib/hyperliquid.ts";
+import { getSnapshot, coldStart, findPerp, getLive } from "../../lib/hyperliquid.ts";
 import { usd, pct, VENUE_LABEL, paysClass, paysLabel, carryCost, type Venue } from "../../lib/funding.ts";
 import { findCoin, isLive, liveCoins, getSpot, getSpotCandles, basisBps, SPOT_SOURCE } from "../../lib/coins.ts";
 import { TIMEFRAMES, DEFAULT_TF, aggregate, buildPriceChart, CHART_H, type ChartMode } from "../../lib/series.ts";
@@ -38,7 +38,26 @@ const price = q?.last ?? NaN;
 const dp = price >= 100 ? 2 : price >= 1 ? 3 : price >= 0.01 ? 5 : 7;
 const px = (v: number) => usd(v, dp);
 const chg24 = q && q.open24h > 0 ? q.last / q.open24h - 1 : NaN;
-const basis = perp && q ? basisBps(perp.markPx, q.last) : NaN;
+/* THE BASIS NEEDS BOTH PRICES ON ONE CLOCK, AND IT DID NOT HAVE THEM.
+   The mark came from the 5-minute snapshot; spot comes from the KV `spot` key that the
+   1-minute cron rewrites. Basis is a DIFFERENCE of two large, nearly-equal prices expressed
+   in single-digit basis points, so any skew between the two clocks lands in the answer at
+   full size. Measured across a cycle: worst error 11.1 bps against a signal of 3-20, and the
+   SIGN inverted repeatedly — ADA -0.6 where the matched-clock value was +2.2, LINK +9.2 where
+   it was -1.9. A reader was told the perpetual was cheaper than spot when it was richer.
+
+   The site already had the matched-clock mark and was already using it in the wrong place:
+   /api/live.json merges KV `live` over the snapshot, and interact.js recomputed the basis
+   from that and silently overwrote the cell ~300ms after paint. So there were two values and
+   only the wrong one was server-rendered — which is the only one an AI crawler ever sees, and
+   the reason this could not be dismissed as a display nicety.
+
+   `live` and `spot` are written by the same minute() pass (worker/ingest.ts:156,160), so
+   preferring live.mark puts both halves of the subtraction on one clock. Falling back to the
+   snapshot keeps a just-deployed page working, one clock slower, exactly as live.json does. */
+const live = await getLive(env?.SNAPSHOT);
+const markNow = live?.mark?.[coin.symbol] ?? perp?.markPx ?? NaN;
+const basis = perp && q ? basisBps(markNow, q.last) : NaN;
 const spotNtl = q ? q.last * q.volume24h : NaN;
 const oiToSpot = perp && Number.isFinite(spotNtl) && spotNtl > 0 ? perp.oiNotional / spotNtl : NaN;
 
@@ -97,7 +116,7 @@ const description = `Live ${coin.name} (${coin.symbol}) spot price from ${SPOT_S
     <div>24h high<b>{q ? px(q.high24h) : "—"}</b></div>
     <div>24h low<b>{q ? px(q.low24h) : "—"}</b></div>
     <div>24h spot volume<b>{Number.isFinite(spotNtl) ? usd(spotNtl) : "—"}</b></div>
-    <div>Perpetual mark<b data-spot="mark" data-sym={coin.symbol} data-dp={dp}>{perp ? px(perp.markPx) : "—"}</b></div>
+    <div>Perpetual mark<b data-spot="mark" data-sym={coin.symbol} data-dp={dp}>{Number.isFinite(markNow) ? px(markNow) : "—"}</b></div>
     <div>Open interest<b>{perp ? usd(perp.oiNotional) : "—"}</b></div>
   </div>
   <p class="clock">

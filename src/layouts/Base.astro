@@ -472,7 +472,32 @@ const schema = {
       /* ==========================================================================
          DATA GRID — deliberately denser than the chrome around it
          ========================================================================== */
-      .panel { background: var(--surface-2); border: 1px solid var(--border-soft); border-radius: var(--r-md); overflow: hidden; }
+      /* THE PANEL SCROLLS. It used to be `overflow: hidden`, which was there to make the
+         table respect the 12px rounded corner — a cosmetic need that silently destroyed data.
+         At 375px on /funding the panel is 315px wide and the table inside is 836px: two
+         thirds of every row was clipped, with no scrollbar, no fade, and no page overflow to
+         hint at it. The clip lands mid-glyph on right-aligned numbers, so "−202.87%" rendered
+         as "−202.8" and READ AS A FINISHED NUMBER. An entire venue column was unreachable.
+
+         Six rules below, the same stylesheet already answers exactly this question correctly
+         for charts: `.chart { overflow-x: auto }` with a mask, because a chart is wider than a
+         phone. A table is the other half of the same problem and had been given the opposite
+         answer. This makes them agree.
+
+         The fade is RIGHT-ONLY, unlike the chart's: a chart is opened at its newest bars by
+         openRight(), so it can be scrolled in both directions from the start, whereas a table
+         always begins at scrollLeft 0 and everything hidden is to the right. */
+      .panel {
+        background: var(--surface-2); border: 1px solid var(--border-soft);
+        border-radius: var(--r-md);
+        overflow-x: auto; overscroll-behavior-x: contain;
+      }
+      .panel:has(> .tbl) { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 20px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 20px), transparent); }
+      /* No hidden columns, no fade — otherwise every panel that fits would dim its own edge. */
+      @media (min-width: 1400px) { .panel:has(> .tbl) { -webkit-mask-image: none; mask-image: none; } }
+      /* The coin column stays put, or scrolling right leaves numbers with nothing to name them. */
+      .tbl td.sym, .tbl thead th:first-child { position: sticky; left: 0; background: var(--surface-2); }
+      .tbl tbody tr:hover td.sym { background: var(--surface-3); }
 
       /* --- empty state -----------------------------------------------------------
          Sits on the spacious side of the split, like Drive's empty-folder state:
