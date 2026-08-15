@@ -60,13 +60,24 @@ export const onRequest = defineMiddleware(async (ctx, next) => {
        response nothing may share. A request without it — every crawler, and every first-time
        visitor — gets the cacheable one.
 
-       `no-transform` is on both: this site publishes that it loads no third-party scripts,
-       and no-transform is the standard way to tell an intermediary not to rewrite the body,
-       which is how injected analytics beacons arrive. */
+       `no-transform` USED TO BE ON BOTH, and it was costing more than it bought.
+       It was added to stop Cloudflare injecting a Web Analytics beacon into the body, because
+       /privacy promises zero off-origin requests. It worked. It also told Cloudflare not to
+       compress, which is what no-transform literally means, and that applied to every HTML
+       response on the site: /funding/btc went over the wire at 385,840 bytes when brotli takes
+       it to roughly a tenth of that. Fifty contract pages, the highest-traffic template, on
+       the metric mobile search cares most about. Measured with `curl --raw`: identical byte
+       counts under `Accept-Encoding: br`, `gzip` and none — the definition of uncompressed.
+
+       The beacon is already handled structurally by the Content-Security-Policy below, which
+       is why that CSP was written: `script-src 'self'` means an injected third-party script is
+       never fetched and never runs, whoever flips whatever toggle. Keeping no-transform as
+       well was belt-and-braces where the braces cost 340KB a page, and scripts/verify-live.mjs
+       fails if a beacon ever appears — so a regression is caught rather than pre-empted. */
     const personal = ctx.cookies.has("rail");
     res.headers.set(
       "cache-control",
-      personal ? "private, no-store, no-transform" : "public, s-maxage=120, stale-while-revalidate=600, no-transform",
+      personal ? "private, no-store" : "public, s-maxage=120, stale-while-revalidate=600",
     );
     res.headers.append("vary", "cookie");
   }
@@ -84,9 +95,11 @@ export const onRequest = defineMiddleware(async (ctx, next) => {
    * /privacy states that reading a page makes zero requests to any domain other than this
    * one. That was false for a while: Cloudflare Web Analytics was injecting a beacon from
    * static.cloudflareinsights.com into every response whose Accept header looked like a
-   * browser's. `no-transform` stops the injection, and the RUM API cannot be reached with
-   * the credentials available here — so the toggle is still on at the zone, and the claim
-   * currently rests on one response header nobody would think to protect.
+   * browser's. `no-transform` stopped the injection and was removed above, because it also
+   * stops COMPRESSION — the same header, doing both jobs, and the second one cost every page
+   * on the site roughly a tenfold increase in bytes over the wire.
+   *
+   * This is now the only thing holding the claim up, which is what it was written to be.
    *
    * A CSP makes it structural instead. `script-src 'self'` means an injected third-party
    * script is never fetched and never runs, whoever turns what on. The claim then holds
