@@ -60,24 +60,15 @@ export const onRequest = defineMiddleware(async (ctx, next) => {
        response nothing may share. A request without it — every crawler, and every first-time
        visitor — gets the cacheable one.
 
-       `no-transform` USED TO BE ON BOTH, and it was costing more than it bought.
-       It was added to stop Cloudflare injecting a Web Analytics beacon into the body, because
-       /privacy promises zero off-origin requests. It worked. It also told Cloudflare not to
-       compress, which is what no-transform literally means, and that applied to every HTML
-       response on the site: /funding/btc went over the wire at 385,840 bytes when brotli takes
-       it to roughly a tenth of that. Fifty contract pages, the highest-traffic template, on
-       the metric mobile search cares most about. Measured with `curl --raw`: identical byte
-       counts under `Accept-Encoding: br`, `gzip` and none — the definition of uncompressed.
-
-       The beacon is already handled structurally by the Content-Security-Policy below, which
-       is why that CSP was written: `script-src 'self'` means an injected third-party script is
-       never fetched and never runs, whoever flips whatever toggle. Keeping no-transform as
-       well was belt-and-braces where the braces cost 340KB a page, and scripts/verify-live.mjs
-       fails if a beacon ever appears — so a regression is caught rather than pre-empted. */
+       `no-transform` IS ON BOTH AND IS LOAD-BEARING. It stops Cloudflare rewriting the body,
+       which is how an injected Web Analytics beacon arrives, and /privacy promises zero
+       off-origin requests. Removing it was tried and reverted within one deploy: the beacon
+       came straight back on every page. It also blocks edge compression, at real cost — the
+       long note at the end of this file records what that costs and why it stands. */
     const personal = ctx.cookies.has("rail");
     res.headers.set(
       "cache-control",
-      personal ? "private, no-store" : "public, s-maxage=120, stale-while-revalidate=600",
+      personal ? "private, no-store, no-transform" : "public, s-maxage=120, stale-while-revalidate=600, no-transform",
     );
     res.headers.append("vary", "cookie");
   }
@@ -95,11 +86,8 @@ export const onRequest = defineMiddleware(async (ctx, next) => {
    * /privacy states that reading a page makes zero requests to any domain other than this
    * one. That was false for a while: Cloudflare Web Analytics was injecting a beacon from
    * static.cloudflareinsights.com into every response whose Accept header looked like a
-   * browser's. `no-transform` stopped the injection and was removed above, because it also
-   * stops COMPRESSION — the same header, doing both jobs, and the second one cost every page
-   * on the site roughly a tenfold increase in bytes over the wire.
-   *
-   * This is now the only thing holding the claim up, which is what it was written to be.
+   * browser's. `no-transform` stops the injection, and it is still set above — but it is a
+   * response header, and a header is a request away from being wrong.
    *
    * A CSP makes it structural instead. `script-src 'self'` means an injected third-party
    * script is never fetched and never runs, whoever turns what on. The claim then holds
@@ -126,5 +114,39 @@ export const onRequest = defineMiddleware(async (ctx, next) => {
       ].join("; "),
     );
   }
+  /* WHY EVERY HTML PAGE IS UNCOMPRESSED, AND WHY THAT IS NOT FIXABLE FROM HERE.
+   *
+   * Two requirements collide:
+   *   - /privacy promises zero off-origin requests. Cloudflare injects a Web Analytics beacon
+   *     from static.cloudflareinsights.com into any HTML body it may rewrite. `no-transform`
+   *     forbids the rewrite, which is the only lever this codebase has over it.
+   *   - `no-transform` also forbids compression, so pages ship uncompressed. Measured with
+   *     `curl --raw`, identical under br, gzip and none: / is 34,721 bytes, /funding/btc is
+   *     385,840, /liquidations/survival is 523,289.
+   *
+   * BOTH ALTERNATIVES WERE TRIED AND BOTH FAILED, so this is a documented trade rather than an
+   * oversight:
+   *
+   *   1. Drop no-transform. Compression came back at 81–96% — /funding/btc 385,840 -> 71,771,
+   *      /liquidations/survival 523,289 -> 21,286 — and so did the beacon, on every page,
+   *      within one deploy. scripts/verify-live.mjs went to 4 failures. The CSP does block the
+   *      script from loading, so no request completes, but the tag is in the markup and
+   *      /privacy says "no third-party scripts". Rewriting that page is the owner's call.
+   *
+   *   2. Compress in this Worker, so no-transform protects an already-compressed body. The
+   *      idea is sound — no-transform forbids MODIFYING a body, not sending an encoded one —
+   *      but CompressionStream("gzip") through the Pages runtime produced a body that `gunzip`
+   *      refuses and that neither undici nor `curl --compressed` can decode. Shipping it would
+   *      have made every page on the site unreadable. The pre-push gate caught it: the
+   *      /data-sources upstream check suddenly reported all five hosts missing, because it was
+   *      reading binary. That is the check earning its place on a change it was not written for.
+   *
+   * THE ACTUAL FIX is one toggle: turn Web Analytics off for this project in the Cloudflare
+   * dashboard. Then no-transform can go, the edge compresses, and the privacy claim holds
+   * because nothing is injected in the first place. The API token available here gets
+   * "Authentication error" on the Pages project settings endpoint, so it cannot be done from
+   * this repository.
+   */
+
   return res;
 });
