@@ -124,6 +124,14 @@ export async function unnamedUpstreams(dataSourcesHtml, readFile, files) {
   for (const f of files) {
     let src = "";
     try { src = await readFile(f); } catch { continue; }
+    /* A FILE WITH NO fetch( CANNOT BE FETCHING ANYTHING. Without this the scan reported
+       github.com as an unattributed upstream, because src/lib/site.ts names the public
+       repository in the Organization `sameAs` — a declarative identity claim rendered into
+       JSON-LD, not a request. The gate caught it on the push that added it, which is the
+       system working; the check was over-broad, and "appears as an https:// string" is not
+       the same predicate as "is fetched". This one is, and it is checkable by reading the
+       file rather than by judging intent. */
+    if (!/\bfetch\s*\(/.test(src)) continue;
     for (const m of src.matchAll(/https:\/\/([a-z0-9.\-]+)/gi)) {
       const h = m[1].toLowerCase().replace(/\.$/, "");
       if (!CONTROL_PLANE.has(h)) hosts.add(h);
