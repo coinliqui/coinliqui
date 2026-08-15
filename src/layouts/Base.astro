@@ -496,8 +496,13 @@ const schema = {
       /* No hidden columns, no fade — otherwise every panel that fits would dim its own edge. */
       @media (min-width: 1400px) { .panel:has(> .tbl) { -webkit-mask-image: none; mask-image: none; } }
       /* The coin column stays put, or scrolling right leaves numbers with nothing to name them. */
-      .tbl td.sym, .tbl thead th:first-child { position: sticky; left: 0; background: var(--surface-2); }
+      .tbl td.sym { position: sticky; left: 0; background: var(--surface-2); }
       .tbl tbody tr:hover td.sym { background: var(--surface-3); }
+      /* The pinned header cell takes the HEADER's fill, not the panel's. Sticky cells need an
+         opaque background or the scrolled content shows through, and the first version used
+         --surface-2 for both — which left a visibly darker patch where "Coin" sits against the
+         --surface-3 header band. Seen on the phone, not in the diff. */
+      .tbl thead th:first-child { position: sticky; left: 0; background: var(--surface-3); }
 
       /* --- empty state -----------------------------------------------------------
          Sits on the spacious side of the split, like Drive's empty-folder state:
