@@ -300,7 +300,8 @@ const description = `What a ${p.symbol} perpetual costs to hold: funding across 
       figure leads, because a percentage survives every price magnitude. */}
   <p class="section-note">
     Maintenance margin is half the initial margin at the tier's max leverage. At {liq.effectiveLeverage}× long
-    {liq.leverageClamped && <> — this contract's tier maximum, so 10× cannot be opened on it</>} with 1 {p.symbol},
+    with 1 {p.symbol}{liq.leverageClamped && <> — {liq.effectiveLeverage}× being this contract's tier maximum,
+    so 10× cannot be opened on it at all</>},
     the tier-correct liquidation price is <strong style="color:var(--text)">{px(liq.liquidationPrice)}</strong> —
     {pct(liq.differencePct)} ({px(liq.differenceAbs)}) away from what the common <code>entry × (1 − 1/leverage)</code> formula returns.
   </p>
