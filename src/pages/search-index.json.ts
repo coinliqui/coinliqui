@@ -51,6 +51,7 @@ export const GET: APIRoute = async ({ locals }) => {
     { label: "Methodology", href: "/methodology", kind: "reference" },
     { label: "Why we don't publish liquidation totals", href: "/methodology/liquidations", kind: "reference" },
     { label: "Data sources", href: "/data-sources", kind: "reference" },
+    { label: "About", alt: "who runs this", href: "/about", kind: "reference" },
     { label: "Privacy", href: "/privacy", kind: "reference" },
   ];
   return new Response(JSON.stringify(rows), {

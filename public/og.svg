@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630" role="img" aria-label="Coinliqui — perpetual funding, normalised">
+  <!-- Social card. Presentation attributes only; this is served verbatim from public/ and is
+       read by crawlers that apply no stylesheet. Fonts are a generic stack rather than a
+       webfont, because /privacy promises zero off-origin requests and a card is not worth
+       breaking that for. -->
+  <rect width="1200" height="630" fill="#16181b"/>
+  <rect x="64" y="64" width="1072" height="502" rx="24" fill="#1c1f23" stroke="#2a2f35" stroke-width="2"/>
+
+  <path d="M140 400 L260 300 L340 344 L460 232 L560 268 L700 150"
+        fill="none" stroke="#8ab4f8" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="700" cy="150" r="10" fill="#8ab4f8"/>
+
+  <text x="140" y="480" fill="#e6e8ec" font-family="Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif"
+        font-size="64" font-weight="600" letter-spacing="-1.5">Coinliqui</text>
+  <text x="140" y="524" fill="#9aa4b2" font-family="Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif"
+        font-size="26" font-weight="400">Perpetual funding rates, open interest and liquidation levels</text>
+  <text x="140" y="558" fill="#6f7a88" font-family="Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif"
+        font-size="22" font-weight="400">Free · no account · nothing to sign · coinliqui.com</text>
+</svg>

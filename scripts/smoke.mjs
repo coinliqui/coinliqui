@@ -60,7 +60,8 @@ const ROUTES = [
   "/open-interest", "/liquidations", "/liquidations/survival", "/liquidations/sweep",
   "/unlocks", "/tools", "/tools/position-size", "/tools/leverage", "/tools/funding-cost",
   "/tools/funding-arbitrage", "/tools/liquidation-price", "/methodology",
-  "/methodology/liquidations", "/data-sources", "/privacy", "/watchlist", "/status",
+  "/methodology/liquidations", "/data-sources", "/privacy", "/about", "/llms.txt",
+  "/.well-known/security.txt", "/watchlist", "/status",
   "/status/indexation", "/404", "/api/live.json", "/robots.txt", "/sitemap-index.xml",
   "/search-index.json", "/rail",
   /* EVERY sitemap, not a sample. Six of these were never requested by anything until the

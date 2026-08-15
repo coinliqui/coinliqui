@@ -12,6 +12,54 @@ export const SITE = {
   locale: "en",
 } as const;
 
+/**
+ * WHO THIS IS, in machine-readable form.
+ *
+ * WHY A SITE ABOUT FUNDING RATES NEEDS AN IDENTITY BLOCK. Asked "coinliqui.com", Google's
+ * assistant answered that it "is not a known, authoritative or operating cryptocurrency
+ * service" and is "most likely a typo, or a malicious or fraudulent (scam) platform imitating
+ * well-known brands", then suggested Liqui (liqui.io) as the real thing the reader must have
+ * meant.
+ *
+ * That answer was a REASONABLE INFERENCE FROM WHAT THE SITE PUBLISHED. A crypto domain a model
+ * has never seen, whose name is one edit away from a defunct exchange brand, with an
+ * Organization block carrying nothing but a name and a URL, no about page, no operator, no
+ * contact, no launch date, and nothing anywhere stating that it is not an exchange. Given that
+ * evidence, "probably a clone" is where the probability mass honestly sits.
+ *
+ * So the fix is not to argue with the model. It is to stop being indistinguishable from the
+ * thing it is being mistaken for, and the strongest available argument is structural rather
+ * than reputational: this site has no account, no deposit, no wallet connection and nothing to
+ * sign, and /privacy's guarantees are enforced by a Content-Security-Policy a reader can check
+ * in their own network tab. A site that cannot receive money cannot take yours. Everything
+ * below exists to put that in front of a crawler, an answer engine and a person.
+ */
+export const IDENTITY = {
+  /** First commit of the published build. Real, checkable, and not rounded up. */
+  launched: "2026-08-14",
+  /** Must ROUTE. An unreachable address in security.txt is worse than no security.txt. */
+  contact: "hello@coinliqui.com",
+  /** What it is, in one sentence a machine can lift verbatim. */
+  summary:
+    "An independent, free, read-only reference site for crypto derivatives data: perpetual " +
+    "funding rates across venues, open interest, modelled liquidation levels, on-chain token " +
+    "vesting contracts and spot prices. It is published as ordinary web pages.",
+  /** What it is NOT. This is the sentence the mistaken answer needed and could not find. */
+  notThis:
+    "Coinliqui is not an exchange, a broker, a wallet or a custodian. It has no accounts, no " +
+    "sign-up, no deposits, no withdrawals, no wallet connection, no token and no referral " +
+    "programme. It never asks for money, keys, seed phrases or personal details, and it has no " +
+    "mechanism to accept them.",
+  /** Named because the confusion is specific, and denying it vaguely would not help. */
+  notAffiliated: ["Liqui", "liqui.io", "Coinliqui.io", "LiquiTrade", "any exchange or broker"],
+  /**
+   * Third-party profiles, once any exist and are VERIFIED. Deliberately empty rather than
+   * populated with plausible URLs: a sameAs pointing at a profile that is not ours, or not
+   * real, is exactly the behaviour that earns the label this block exists to remove.
+   */
+  sameAs: [] as string[],
+} as const;
+
 /** Namespace for anything this site writes to a visitor's own browser. One constant, so
  *  /privacy can document the exact key rather than a copy of it that drifts. */
 export const STORE_NS = "coinliqui";
@@ -90,6 +138,7 @@ export const NAV: NavGroup[] = [
 
 /** Footer carries every built destination, so nothing is reachable only at desktop widths. */
 export const FOOTER_LINKS = [
+  { href: "/about", label: "About" },
   { href: "/coins", label: "Coins" },
   { href: "/liquidations", label: "Liquidation map" },
   { href: "/unlocks", label: "Token unlocks" },

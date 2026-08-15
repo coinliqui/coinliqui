@@ -10,7 +10,7 @@ export const GET: APIRoute = async ({ locals, site }) => {
   return xml(
     [
       { path: "/", lastmod: dataStamp(snap.fetchedAt) },
-      ...["/methodology", "/methodology/liquidations", "/data-sources", "/privacy"].map((p) => ({ path: p, lastmod: codeStamp(p) })),
+      ...["/about", "/methodology", "/methodology/liquidations", "/data-sources", "/privacy"].map((p) => ({ path: p, lastmod: codeStamp(p) })),
     ],
     origin(site),
   );

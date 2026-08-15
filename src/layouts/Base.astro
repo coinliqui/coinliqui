@@ -1,5 +1,5 @@
 ---
-import { SITE, NAV, FOOTER_LINKS, origin } from "../lib/site.ts";
+import { SITE, NAV, FOOTER_LINKS, IDENTITY, origin } from "../lib/site.ts";
 import ASSETS from "../data/assets.json";
 
 interface Props {
@@ -44,13 +44,52 @@ const ageMin = fetchedAt && !frozen ? Math.max(0, Math.round((Date.now() - fetch
 const age = (m: number) =>
   m === 0 ? "just now" : m < 60 ? `${m} min ago` : m < 48 * 60 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} d ago`;
 
-// WebSite carries name/url/alternateName only. SearchAction is deliberately absent —
-// Google removed the sitelinks searchbox on 2024-11-21 and no other consumer parses it.
+/**
+ * SearchAction is deliberately absent — Google removed the sitelinks searchbox on 2024-11-21
+ * and no other consumer parses it.
+ *
+ * The Organization block used to carry a name and a URL and nothing else, which asserts
+ * nothing. Asked about this domain, Google's assistant replied that it "is not a known,
+ * authoritative or operating cryptocurrency service" and is "most likely a typo, or a
+ * malicious or fraudulent (scam) platform imitating well-known brands" — a fair reading of a
+ * crypto domain with no published identity whose name is one edit from a defunct exchange.
+ *
+ * `disambiguatingDescription` is the field schema.org provides for exactly this: two things
+ * that could be confused, and the sentence that separates them. It is machine-readable, it is
+ * on every page, and it says the specific thing the mistaken answer needed and could not find.
+ */
 const schema = {
   "@context": "https://schema.org",
   "@graph": [
-    { "@type": "WebSite", name: SITE.name, alternateName: `${SITE.name} — ${SITE.tagline}`, url: base },
-    { "@type": "Organization", name: SITE.name, url: base },
+    {
+      "@type": "WebSite",
+      "@id": `${base}#website`,
+      name: SITE.name,
+      alternateName: `${SITE.name} — ${SITE.tagline}`,
+      url: base,
+      inLanguage: SITE.locale,
+      publisher: { "@id": `${base}#org` },
+    },
+    {
+      "@type": "Organization",
+      "@id": `${base}#org`,
+      name: SITE.name,
+      url: base,
+      logo: `${base}/icon.svg`,
+      image: `${base}/og.svg`,
+      description: IDENTITY.summary,
+      disambiguatingDescription: `${IDENTITY.notThis} It is not affiliated with ${IDENTITY.notAffiliated.join(", ")}.`,
+      foundingDate: IDENTITY.launched,
+      email: IDENTITY.contact,
+      knowsAbout: [
+        "perpetual futures funding rates",
+        "open interest",
+        "crypto derivatives market data",
+        "liquidation price modelling",
+        "token vesting schedules",
+      ],
+      ...(IDENTITY.sameAs.length ? { sameAs: IDENTITY.sameAs } : {}),
+    },
   ],
 };
 ---
@@ -64,6 +103,21 @@ const schema = {
     <meta name="description" content={description} />
     {noindex && <meta name="robots" content="noindex, follow" />}
     <link rel="canonical" href={new URL(path, base).href} />
+    {/* There was no favicon and no social card at all. Both are same-origin SVG served from
+        public/, so /privacy's zero-off-origin-requests guarantee is untouched — and a site
+        with a blank tab icon and no card reads as abandoned to a person and as unestablished
+        to everything else. */}
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content={SITE.name} />
+    <meta property="og:title" content={fullTitle} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={new URL(path, base).href} />
+    <meta property="og:image" content={`${base}/og.svg`} />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={fullTitle} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={`${base}/og.svg`} />
     <script type="application/ld+json" set:html={JSON.stringify(schema)} />
     <style is:global>
       /* ==========================================================================

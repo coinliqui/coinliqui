@@ -1,0 +1,176 @@
+---
+import Base from "../layouts/Base.astro";
+import Related from "../components/Related.astro";
+import { SITE, IDENTITY, STORE_NS } from "../lib/site.ts";
+import { getSnapshot, OI_NOTIONAL_FLOOR } from "../lib/hyperliquid.ts";
+import { usd } from "../lib/funding.ts";
+
+/**
+ * THE IDENTITY PAGE, and it exists for a specific reason.
+ *
+ * Asked "coinliqui.com", Google's assistant answered that it "is not a known, authoritative or
+ * operating cryptocurrency service" and is "most likely a typo, or a malicious or fraudulent
+ * (scam) platform imitating well-known brands", and offered Liqui (liqui.io) as the real thing
+ * the reader must have meant.
+ *
+ * That was a reasonable inference from what this site published. A crypto domain a model has
+ * never seen. A name one edit from a defunct exchange. An Organization block with a name and a
+ * URL and nothing else. No about page, no operator, no contact, no launch date, and nowhere on
+ * seventy-one URLs a sentence saying "this is not an exchange".
+ *
+ * So this page does not argue. It makes the structural case, which is the only one worth
+ * making: THERE IS NO MECHANISM HERE TO TAKE ANYTHING FROM ANYONE. No account, no deposit, no
+ * wallet connection, nothing to sign — and the /privacy guarantees behind that are enforced by
+ * a Content-Security-Policy the reader can check in their own network tab rather than by this
+ * page's word. Everything asserted here is either checkable on this site or checkable against
+ * the upstream APIs named on /data-sources.
+ */
+const snap = await getSnapshot((Astro.locals as any)?.runtime?.env?.SNAPSHOT, import.meta.env.DEV);
+
+const title = "About Coinliqui — who runs it, what it is, and what it is not";
+const description =
+  "Coinliqui is a free, independent, read-only reference site for crypto derivatives data. " +
+  "It is not an exchange, broker, wallet or custodian: there are no accounts, no deposits and " +
+  "no wallet connection, and it is not affiliated with Liqui or any other trading venue.";
+---
+
+<Base title={title} description={description} fetchedAt={snap.fetchedAt}>
+  <div class="page-head">
+    <h1>About {SITE.name}</h1>
+    <p>{IDENTITY.summary}</p>
+  </div>
+
+  <div class="verdict verdict--warn">
+    <div>
+      <b>{SITE.name} is not an exchange, and cannot be.</b> {IDENTITY.notThis} That is not a
+      promise about our intentions — it is a statement about what this software does, and you
+      can check it in about thirty seconds: open your browser's network tab on any page here and
+      you will see requests to this domain and nowhere else. There is no login form to find,
+      because there is no login.
+    </div>
+  </div>
+
+  <h2 class="section">What it is</h2>
+  <p class="prose">
+    A reference site for the derivatives side of crypto markets, published as ordinary web pages.
+    It reads public exchange APIs, normalises what they return, and shows the result with the
+    working shown. Today that covers <a class="link" href="/funding">{snap.perps.length} perpetual
+    contracts</a>, their funding rates across venues and their open interest; a
+    {" "}<a class="link" href="/liquidations">modelled liquidation map</a> with every assumption
+    printed on the page; <a class="link" href="/coins">spot prices</a> and the basis between spot
+    and the perpetual; a <a class="link" href="/unlocks">register of on-chain vesting contracts</a>
+    {" "}read directly from Ethereum; and four <a class="link" href="/tools">calculators</a>.
+  </p>
+  <p class="prose">
+    It is free, it carries no advertising, and it sells nothing. There is no paid tier, no token,
+    no waitlist and no referral programme.
+  </p>
+
+  <h2 class="section">What it is not</h2>
+  <div class="panel">
+    <table class="tbl">
+      <thead><tr><th>Not this</th><th>What that means here</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>Not an exchange or broker</strong></td>
+          <td class="reason">You cannot trade here. There is no order form, no matching engine and no counterparty. Every price on this site is a reading of somebody else's market, attributed on <a class="link" href="/data-sources">data sources</a>.</td>
+        </tr>
+        <tr>
+          <td><strong>Not a wallet or custodian</strong></td>
+          <td class="reason">There is no wallet connect, no <code>eth_requestAccounts</code>, no signature request and no address field. The site never holds, moves or asks for funds.</td>
+        </tr>
+        <tr>
+          <td><strong>No accounts</strong></td>
+          <td class="reason">No sign-up, no login, no password, no email capture. The one thing stored on your device is a cookie named <code>rail</code> recording whether you collapsed the sidebar, plus a <code>{STORE_NS}.pinned</code> list of coins you pinned, held in your own browser and never sent anywhere.</td>
+        </tr>
+        <tr>
+          <td><strong>No financial advice</strong></td>
+          <td class="reason">Nothing here is a recommendation, a signal or a forecast. The liquidation map is explicitly a model, labelled as such on the page and explained in <a class="link" href="/methodology">methodology</a>; no figure on this site is a prediction of a price.</td>
+        </tr>
+        <tr>
+          <td><strong>No token, no fundraising</strong></td>
+          <td class="reason">There is no Coinliqui token, no presale, no airdrop and no investment of any kind. Anyone offering you one is not us.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="section">The name, and who we are not affiliated with</h2>
+  <p class="prose">
+    <strong>Coinliqui</strong> is <em>coin</em> + <em>liqui</em>dation — the site was built around
+    the liquidation map and the funding rates that drive it. The resemblance to
+    {" "}<strong>Liqui</strong>, a cryptocurrency exchange that ceased operating in 2018, is
+    coincidental and unwanted.
+  </p>
+  <div class="verdict verdict--ok">
+    <div>
+      <b>No affiliation.</b> {SITE.name} has no connection, past or present, to
+      {" "}{IDENTITY.notAffiliated.join(", ")}. We do not operate under any other name, we have no
+      other domain, and we will never contact you asking for funds, keys, a seed phrase or a
+      wallet signature. <strong>coinliqui.com is the only domain we publish.</strong> If you have
+      been sent somewhere else using this name, it is not us — and there is nothing on this site
+      that could have sent you.
+    </div>
+  </div>
+
+  <h2 class="section">How to check any of this yourself</h2>
+  <p class="prose">
+    The point of this site is that its numbers are checkable, so its claims about itself should
+    be too. Each of these is something you can verify in a browser without taking our word for it.
+  </p>
+  <div class="panel">
+    <table class="tbl">
+      <thead><tr><th>Claim</th><th>How you check it</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>It makes no off-origin requests</td>
+          <td class="reason">Open your network tab on any page. Every request goes to coinliqui.com. This is also enforced by a <code>Content-Security-Policy</code> header you can read in the response — the browser blocks anything else, whatever we might intend.</td>
+        </tr>
+        <tr>
+          <td>It runs no analytics and no third-party scripts</td>
+          <td class="reason">The same network tab, plus the CSP's <code>script-src 'self'</code>. Spelled out on <a class="link" href="/privacy">privacy</a>.</td>
+        </tr>
+        <tr>
+          <td>The numbers come from where we say</td>
+          <td class="reason">Every endpoint is named on <a class="link" href="/data-sources">data sources</a>, and they are public APIs — you can call the same ones and compare.</td>
+        </tr>
+        <tr>
+          <td>The data is actually fresh</td>
+          <td class="reason"><a class="link" href="/status">Status</a> reports the ingest log directly, including failures, and renders even when the data store is empty.</td>
+        </tr>
+        <tr>
+          <td>The on-chain figures are real</td>
+          <td class="reason">Every contract on <a class="link" href="/unlocks">the vesting register</a> is listed with its address and the getters used. Point any Ethereum RPC endpoint at them and you will get the same values.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="section">Who runs it, and how to reach us</h2>
+  <p class="prose">
+    {SITE.name} is independently built and operated — one person, not a company, funded by
+    nobody. It has been publishing since {new Date(IDENTITY.launched).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" })}.
+    Coverage grows deliberately slowly: a contract gets a page once it holds
+    {" "}{usd(OI_NOTIONAL_FLOOR)} of open interest, and pages are added at a few a week rather
+    than generated in bulk.
+  </p>
+  <p class="prose">
+    Corrections are welcome and acted on — if a number here disagrees with the venue it came
+    from, that is a bug and we want to know. Write to
+    {" "}<a class="link" href={`mailto:${IDENTITY.contact}`}>{IDENTITY.contact}</a>. Security
+    reports have their own route at <a class="link" href="/.well-known/security.txt">/.well-known/security.txt</a>.
+  </p>
+
+  <Related items={[
+    { href: "/data-sources", label: "Data sources", note: "Every upstream endpoint behind every number, and what is deliberately absent." },
+    { href: "/privacy", label: "Privacy", note: "What is stored on your device, and what is not collected." },
+    { href: "/methodology", label: "Methodology", note: "What is done to the numbers once they arrive." },
+    { href: "/status", label: "Status", note: "Whether the ingest actually ran, and what it saw." },
+  ]} />
+
+  <style>
+    .reason { color: var(--text-dim); white-space: normal; }
+    .tbl td { vertical-align: top; }
+    h2.section { margin-top: var(--gap-region); }
+  </style>
+</Base>
