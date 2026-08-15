@@ -231,6 +231,35 @@ export function formatterDrift(interactSrc, serverImpls) {
 }
 
 /**
+ * A route the build produces that the gate never asks for.
+ *
+ * THE GATE WAS BLIND TO ITS OWN COVERAGE. scripts/smoke.mjs walks a hand-written ROUTES list
+ * and prints "31 routes rendered", which reads like a statement about the site and is only a
+ * statement about the list. The build produced 39. Six sitemap endpoints — funding-hub,
+ * liquidations, open-interest, pages, tools, unlocks — were never requested by anything, so a
+ * 500 in one of them would ship green and be served to Googlebot.
+ *
+ * That is the precise failure smoke.mjs was written to stop, one level up: a new template gets
+ * added, nobody remembers the list, and the gate confirms everything is fine.
+ *
+ * Astro's own internals are excluded — they are framework plumbing, not pages of this site.
+ * A dynamic route counts as covered when ROUTES contains a concrete instance of it.
+ */
+const ASTRO_INTERNAL = new Set(["/_image", "/_server-islands/[name]"]);
+
+export function uncoveredRoutes(manifestSrc, routes) {
+  const built = [...manifestSrc.matchAll(/"route":"([^"]*)"/g)].map((m) => m[1]);
+  const covered = (r) => {
+    if (routes.includes(r)) return true;
+    if (!r.includes("[")) return false;
+    // /funding/[symbol] is covered by /funding/btc
+    const re = new RegExp("^" + r.replace(/\[[^\]]+\]/g, "[^/]+") + "$");
+    return routes.some((x) => re.test(x));
+  };
+  return [...new Set(built)].filter((r) => !ASTRO_INTERNAL.has(r) && !covered(r));
+}
+
+/**
  * An internal enum value rendered as text.
  *
  * Three separate instances today: the homepage flip feed printed `f.venue` straight out of

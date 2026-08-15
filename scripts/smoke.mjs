@@ -35,7 +35,7 @@
 import { spawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { readdirSync } from "node:fs";
-import { cssFor, undefinedClasses, undefinedVars, rawEnums, searchIndexGaps, unnamedUpstreams, formatterDrift } from "./checks.mjs";
+import { cssFor, undefinedClasses, undefinedVars, rawEnums, searchIndexGaps, unnamedUpstreams, formatterDrift, uncoveredRoutes } from "./checks.mjs";
 
 /* The SERVER side of each duplicated formatter, transcribed from the file that owns it and
    named here so the pairing is explicit. Transcription is the honest cost of having no bundler:
@@ -62,16 +62,46 @@ const ROUTES = [
   "/tools/funding-arbitrage", "/tools/liquidation-price", "/methodology",
   "/methodology/liquidations", "/data-sources", "/privacy", "/watchlist", "/status",
   "/status/indexation", "/404", "/api/live.json", "/robots.txt", "/sitemap-index.xml",
-  "/sitemaps/coins.xml", "/sitemaps/funding-symbols.xml", "/search-index.json",
+  "/search-index.json", "/rail",
+  /* EVERY sitemap, not a sample. Six of these were never requested by anything until the
+     coverage check below started comparing this list against the build manifest — so a 500 in
+     one of them would have shipped green and been served to Googlebot. */
+  "/sitemaps/coins.xml", "/sitemaps/funding-symbols.xml", "/sitemaps/funding-hub.xml",
+  "/sitemaps/liquidations.xml", "/sitemaps/open-interest.xml", "/sitemaps/pages.xml",
+  "/sitemaps/tools.xml", "/sitemaps/unlocks.xml",
 ];
-/** Routes whose correct answer is not 200. */
-const EXPECT = { "/tools/liquidation-price": 410, "/404": 404 };
+/** Routes whose correct answer is not 200.
+ *  /rail exports POST only — the rail's collapsed state is decided server-side so there is no
+ *  flash — so a GET is correctly 404. That proves the route exists and does not crash on an
+ *  unexpected method; it does NOT exercise the POST handler, and this comment says so rather
+ *  than letting a green line imply otherwise. */
+const EXPECT = { "/tools/liquidation-price": 410, "/404": 404, "/rail": 404 };
 
 const warmDir = process.argv.includes("--warm") ? process.argv[process.argv.indexOf("--warm") + 1] : null;
 const MODES = warmDir ? [{ name: "cold", args: [] }, { name: "warm", args: ["--kv", "SNAPSHOT", "--d1", "DB", "--persist-to", warmDir] }]
                       : [{ name: "cold", args: [] }];
 
+/* DOES THIS LIST STILL DESCRIBE THE SITE? "31 routes rendered" reads like a statement about
+   the site and is only a statement about ROUTES. Compare it to what the build actually
+   produced, before rendering anything — a gate that cannot see a new template is the failure
+   this file exists to prevent, one level up. */
 let failures = 0;
+try {
+  const dir = "dist/_worker.js";
+  const manifest = readdirSync(dir).find((f) => /^manifest_.*\.mjs$/.test(f));
+  if (!manifest) throw new Error(`no manifest_*.mjs in ${dir} — was the build run?`);
+  const un = uncoveredRoutes(await readFile(`${dir}/${manifest}`, "utf8"), ROUTES);
+  if (un.length) {
+    failures++;
+    console.log(`\n── route coverage ──`);
+    console.log(`  FAIL  ${un.length} route(s) the build produces that this gate never asks for:`);
+    for (const r of un) console.log(`          ${r}`);
+  }
+} catch (e) {
+  failures++;
+  console.log(`\n  FAIL  route coverage could not be checked: ${e.message}`);
+}
+
 for (const mode of MODES) {
   console.log(`\n── ${mode.name} store ──`);
   failures += await runMode(mode.args, mode.name);
