@@ -626,10 +626,16 @@ const schema = {
         .rail { display: none; }
         .topbar { padding: 0 16px; }
         .page { margin: 0 12px 12px; padding: 16px 16px calc(var(--tabbar-h) + 24px); min-height: 0; }
-        /* Narrow viewports drop the relative timestamp and keep the clock, so the
-           cluster stays two even 40px controls instead of one wide pill + one round. */
-        .freshness { padding: 0; width: 40px; justify-content: center; gap: 0; }
-        .freshness span { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+        /* THE AGE STAYS ON MOBILE. This used to hide every span in the pill so the cluster
+           could be two even 40px controls — a layout convenience that cost the site its
+           central claim. What a phone showed was a bare clock glyph: an icon that IMPLIES
+           currency while stating no age, on a site whose entire argument is that it tells you
+           exactly how old every number is. It also hid `.freshness__off`, so the
+           connection-lost warning — the thing that exists to be seen — was invisible on
+           mobile, and a stale held value looked exactly like a fresh one.
+           Only the word "Updated" goes; the time and the failure state stay. */
+        .freshness { padding: 0 10px; gap: 6px; }
+        .freshness__word { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
         .cta { padding: 0; width: 40px; justify-content: center; }
         .cta__label { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
         .tabbar {
@@ -702,7 +708,7 @@ const schema = {
                     site's own legend reserves for "shorts pay longs" — so it was making a
                     semantic claim it did not mean. */}
                 <svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="10" cy="10" r="7.25" /><path d="M10 6v4.2l2.6 1.8" /></svg>
-                <span class="freshness__on">Updated <time datetime={new Date(fetchedAt!).toISOString()} data-fresh={fetchedAt} data-clock="at">{age(ageMin)}</time></span><span class="freshness__off">Not updating</span>
+                <span class="freshness__on"><span class="freshness__word">Updated </span><time datetime={new Date(fetchedAt!).toISOString()} data-fresh={fetchedAt} data-clock="at">{age(ageMin)}</time></span><span class="freshness__off">Not updating</span>
               </div>
             )}
             <a class="btn btn--primary cta" href="/watchlist" aria-current={path === "/watchlist" ? "page" : undefined}>
