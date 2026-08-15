@@ -26,12 +26,9 @@ export const GET: APIRoute = async ({ locals }) => {
     // Contracts. The bulk of the index and the reason it exists.
     ...snap.perps.map((p) => ({ label: p.symbol, href: `/funding/${p.symbol.toLowerCase()}`, kind: "funding" })),
 
-    // Coins. Both the name and the ticker are searchable, because people type either:
-    // "solana" and "sol" should both reach the same page.
-    ...liveCoins().flatMap((c) => [
-      { label: c.name, href: `/coins/${c.slug}`, kind: "coin" },
-      { label: c.symbol, href: `/coins/${c.slug}`, kind: "coin" },
-    ]),
+    // Coins. `alt` is matched but never shown: people type "solana" and they type "sol", and
+    // both must reach the page — but as one row, not the same destination offered twice.
+    ...liveCoins().map((c) => ({ label: c.name, alt: c.symbol, href: `/coins/${c.slug}`, kind: "coin" })),
 
     // Calculators.
     { label: "Position size", href: "/tools/position-size", kind: "tool" },
