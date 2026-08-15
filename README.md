@@ -47,7 +47,11 @@ Keyless Hyperliquid calls, verified 2026-08-14:
   and accumulated in KV so depth grows with each cron pass
 - `POST /info {"type":"marginTable","id":N}` — margin tiers, fetched at build time
 
-Coverage floor: $5M notional open interest. 50 contracts clear it; phase 0 publishes 25.
+Coverage floor: $5M notional open interest to be published, $3.5M to keep the page
+(`OI_NOTIONAL_FLOOR` / `OI_RETIRE_FLOOR`). `SYMBOL_CAP` = 50 published. The number that
+clears the floor moves daily and is rendered live on / and /data-sources — this file
+deliberately names the constants rather than a count, because the count goes stale here
+and nothing notices.
 
 **OKX is not a source.** Its API Agreement §9.4 (2026-07-28) forbids publishing or
 displaying its market data, explicitly including public endpoints and non-commercial use.

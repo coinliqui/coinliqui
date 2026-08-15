@@ -160,6 +160,77 @@ export async function unnamedUpstreams(dataSourcesHtml, readFile, files) {
 }
 
 /**
+ * Two implementations of one number format, disagreeing.
+ *
+ * There is no bundler here — public/interact.js is served raw — so every formatter exists
+ * twice: once in TypeScript for the server render, once in vanilla JS for the interaction
+ * layer. Interaction is supposed to be a layer OVER already-rendered values, so a formatter
+ * that differs by one digit silently rewrites the reader's number on a click that changed
+ * nothing else.
+ *
+ * Both had drifted, and in opposite directions:
+ *   qty        the volume column. Server toFixed(2) at K, client toFixed(1). All 200 rows of
+ *              the bar table were rewritten from "23.37K" to "23.4K" on any timeframe click,
+ *              while the other 1,200 cells matched byte for byte.
+ *   compactUsd the heatmap. ONE client formatter was serving TWO different server ones — the
+ *              token-quantity rule with a "$" glued on — so the legend printed "≥ $29.6M" and
+ *              the tooltip over the same cell printed "$29.65M".
+ *
+ * This sweeps a magnitude ladder through the REAL functions in both files rather than through
+ * copies of them: the client bodies are read out of public/interact.js and evaluated, so the
+ * check cannot pass against a version of the code that is not shipping.
+ */
+const LADDER = [
+  0, 0.001, 0.5, 0.999, 1, 1.005, 9.999, 23.37, 999.994, 999.995, 999.999,
+  1000, 1000.5, 1234.5, 23370, 23450, 38449, 76800, 999_499, 999_500, 999_999,
+  1e6, 1_050_000, 1_234_567, 29_650_000, 30_410_000, 41_200_000, 999_999_999,
+  1e9, 1_050_000_000, 2_409_939_735,
+];
+
+/** Pull a `const NAME = (…) => {…};` or `const NAME = (…) => expr;` body out of a source file. */
+function extractFn(src, name) {
+  const start = src.indexOf(`const ${name} = (`);
+  if (start < 0) throw new Error(`${name} not found in interact.js`);
+  // Walk from the arrow to the end of the function, balancing braces or stopping at the
+  // statement's semicolon for expression bodies.
+  const arrow = src.indexOf("=>", start);
+  let i = src.indexOf("{", arrow);
+  const semi = src.indexOf(";", arrow);
+  if (i < 0 || (semi >= 0 && semi < i)) return src.slice(start, semi + 1);
+  let depth = 0;
+  for (; i < src.length; i++) {
+    if (src[i] === "{") depth++;
+    else if (src[i] === "}" && --depth === 0) return src.slice(start, i + 1) + ";";
+  }
+  throw new Error(`${name}: unbalanced braces`);
+}
+
+export function formatterDrift(interactSrc, serverImpls) {
+  const out = [];
+  for (const [name, serverFn] of Object.entries(serverImpls)) {
+    let clientFn;
+    try {
+      // eslint-disable-next-line no-new-func
+      clientFn = new Function(`${extractFn(interactSrc, name)} return ${name};`)();
+    } catch (e) {
+      out.push(`${name}: could not evaluate the client implementation — ${e.message}`);
+      continue;
+    }
+    for (const v of LADDER) {
+      for (const n of [v, -v]) {
+        const a = serverFn(n);
+        const b = clientFn(n);
+        if (a !== b) {
+          out.push(`${name}(${n}): server "${a}" vs client "${b}"`);
+          break;
+        }
+      }
+    }
+  }
+  return out;
+}
+
+/**
  * An internal enum value rendered as text.
  *
  * Three separate instances today: the homepage flip feed printed `f.venue` straight out of

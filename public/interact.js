@@ -22,14 +22,38 @@
   const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   const p2 = (n) => String(n).padStart(2, "0");
   const nf = (n, dp) => n.toLocaleString("en-US", { minimumFractionDigits: dp, maximumFractionDigits: dp });
+  /* MUST MATCH the server's `compact` in src/pages/funding/[symbol].astro exactly. The two are
+     separate implementations of one rule — there is no bundler here, interact.js is served raw
+     — so scripts/checks.mjs sweeps a magnitude ladder through both and fails the gate on any
+     disagreement.
+
+     It had already drifted: this K branch used toFixed(1) where the server uses toFixed(2), so
+     clicking any timeframe button rewrote all 200 volume cells from "23.37K" to "23.4K" —
+     rounding the number the reader was looking at, silently, on a click that changed nothing
+     else. Every other cell of 200 rows x 6 columns matched byte for byte, which is what made
+     the one that did not so easy to miss. */
   const qty = (n) => {
     const a = Math.abs(n);
     if (a >= 1e9) return (n / 1e9).toFixed(2) + "B";
     if (a >= 1e6) return (n / 1e6).toFixed(2) + "M";
-    if (a >= 1e3) return (n / 1e3).toFixed(1) + "K";
+    if (a >= 1e3) return (n / 1e3).toFixed(2) + "K";
     return n.toFixed(2);
   };
-  const compact = (n) => "$" + qty(n).replace(/\.00$/, "");
+  /* MONEY at chart scale. This is a DIFFERENT rule from qty() above and must match a different
+     server function — src/lib/chart.ts `compact`, which draws the heatmap legend — so the
+     legend and the tooltip over it agree about the same dollars.
+
+     It used to be `"$" + qty(n)`, i.e. the token-quantity rule with a dollar sign glued on,
+     which made one client formatter answer to two different server ones. It could not match
+     both, and it matched neither: the legend printed "≥ $29.6M" while the tooltip over the same
+     cell printed "$29.65M". Two renderings of one number, a pixel apart. */
+  const compactUsd = (n) => {
+    const a = Math.abs(n);
+    if (a >= 1e9) return "$" + (n / 1e9).toFixed(2) + "B";
+    if (a >= 1e6) return "$" + (n / 1e6).toFixed(1) + "M";
+    if (a >= 1e3) return "$" + Math.round(n / 1e3) + "K";
+    return "$" + Math.round(n);
+  };
   const stamp = (t, withTime) => {
     const d = new Date(t);
     return `${d.getUTCDate()} ${MON[d.getUTCMonth()]} ${d.getUTCFullYear()}` +
@@ -226,12 +250,32 @@
 
       const fill = target && target.getAttribute ? target.getAttribute("fill") : null;
       const i = fill ? ramp.indexOf(fill) : -1;
+      /* THE TOP STEP IS OPEN-ENDED and must be read that way. src/lib/chart.ts:98 clamps the
+         forward transfer with Math.min(1, …), so everything at or above `scale` lands in the
+         last ramp index. Inverting that index as if it were a closed band printed
+         "$29.65M – $30.41M" over the brightest cell while the legend beside it said "≥ $29.6M"
+         and the caption above said the most crowded level holds $41.2M — three numbers for one
+         cell, the tooltip understating it by about a third. bound(i + 0.5) also extrapolates
+         past `scale`, so its upper edge was not correct under any reading.
+
+         A colour that is not in the ramp is not a bucket at all: the white scar ticks are drawn
+         before the pointer-events:none group, so they are hoverable, and reporting "nothing
+         standing here" over a mark that means price traded THROUGH a standing level is the
+         exact opposite of what it shows. They now decline to answer instead. */
+      const top = ramp.length - 1;
+      const band =
+        i === top ? `≥ ${compactUsd(bound(top - 0.5))}`
+        : i > 0 ? `${compactUsd(bound(i - 0.5))} – ${compactUsd(bound(i + 0.5))}`
+        : null;
+      const isCell = i >= 0;
       showTip(
         `<div class="tip__h">$${nf(bandLo, 0)} – $${nf(bandHi, 0)}</div>` +
         `<div class="tip__g">` +
-        (i > 0
-          ? `<span>Modelled</span><b>${compact(bound(i - 0.5))} – ${compact(bound(i + 0.5))}</b>`
-          : `<span>Modelled</span><b class="dim">nothing standing here</b>`) +
+        (band
+          ? `<span>Modelled</span><b>${band}</b>`
+          : isCell
+            ? `<span>Modelled</span><b class="dim">nothing standing here</b>`
+            : `<span>Modelled</span><b class="dim">— hover a shaded cell</b>`) +
         `<span>At</span><b>${stamp(t0 + ci * stepMs, true)} UTC</b></div>` +
         `<div class="tip__f">Model output, not an observed liquidation</div>`,
         cx, cy, touch, true,
@@ -416,10 +460,16 @@
           const c = s.last / s.open24h - 1;
           next = `${c >= 0 ? "▲" : "▼"} ${(Math.abs(c) * 100).toFixed(2)}%`;
         } else if (kind === "basis" && s && Number.isFinite(mk) && s.last > 0) {
+          /* THE UNIT IS THE SERVER'S TO DECIDE, and it says so in data-unit.
+             This used to read `el.classList.contains("card__value")` and append " bps" only
+             then — a guess about presentation from a layout class. Three call-sites render
+             basis; two carry that class and one does not, so on every contract page the hero
+             read "+7.6 bps" at first byte and became a bare "+7.6" about 300ms later, beside a
+             label saying only "Basis". Nothing threw, and the unit was gone from the number
+             this page exists to explain. A class name is a styling decision; it must not be
+             load-bearing for what a number MEANS. */
           const b = (mk / s.last - 1) * 1e4;
-          next = el.classList.contains("card__value")
-            ? `${b >= 0 ? "+" : ""}${b.toFixed(1)} bps`
-            : `${b >= 0 ? "+" : ""}${b.toFixed(1)}`;
+          next = `${b >= 0 ? "+" : ""}${b.toFixed(1)}${el.dataset.unit ?? ""}`;
         } else if (kind === "apr") {
           const a = d.apr[sym] && d.apr[sym][el.dataset.venue];
           if (Number.isFinite(a)) {

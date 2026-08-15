@@ -165,7 +165,7 @@ const description = `Live ${coin.name} (${coin.symbol}) spot price from ${SPOT_S
   <div class="cards">
     <div class="card card--lead">
       <div class="card__label">Basis</div>
-      <div class="card__value" data-spot="basis" data-sym={coin.symbol}>{Number.isFinite(basis) ? `${basis >= 0 ? "+" : ""}${basis.toFixed(1)} bps` : "—"}</div>
+      <div class="card__value" data-spot="basis" data-unit=" bps" data-sym={coin.symbol}>{Number.isFinite(basis) ? `${basis >= 0 ? "+" : ""}${basis.toFixed(1)} bps` : "—"}</div>
       <div class="card__meta">{Number.isFinite(basis) ? (basis >= 0 ? "perpetual richer than spot" : "perpetual cheaper than spot") : "—"}</div>
     </div>
     <div class="card">

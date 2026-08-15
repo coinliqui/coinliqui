@@ -35,7 +35,24 @@
 import { spawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { readdirSync } from "node:fs";
-import { cssFor, undefinedClasses, undefinedVars, rawEnums, searchIndexGaps, unnamedUpstreams } from "./checks.mjs";
+import { cssFor, undefinedClasses, undefinedVars, rawEnums, searchIndexGaps, unnamedUpstreams, formatterDrift } from "./checks.mjs";
+
+/* The SERVER side of each duplicated formatter, transcribed from the file that owns it and
+   named here so the pairing is explicit. Transcription is the honest cost of having no bundler:
+   these are the only lines in the repo that exist to be compared rather than to run, and the
+   ladder sweep is what stops them from becoming a third divergent copy.
+     qty        <- src/pages/funding/[symbol].astro `compact` (token quantities, no currency)
+     compactUsd <- src/lib/chart.ts `compact`        (money at chart scale) */
+const SERVER_FORMATTERS = {
+  qty: (n) => (Math.abs(n) >= 1e9 ? (n / 1e9).toFixed(2) + "B" : Math.abs(n) >= 1e6 ? (n / 1e6).toFixed(2) + "M" : Math.abs(n) >= 1e3 ? (n / 1e3).toFixed(2) + "K" : n.toFixed(2)),
+  compactUsd: (v) => {
+    const a = Math.abs(v);
+    if (a >= 1e9) return `$${(v / 1e9).toFixed(2)}B`;
+    if (a >= 1e6) return `$${(v / 1e6).toFixed(1)}M`;
+    if (a >= 1e3) return `$${Math.round(v / 1e3)}K`;
+    return `$${Math.round(v)}`;
+  },
+};
 
 const PORT = 8791;
 const ROUTES = [
@@ -162,6 +179,19 @@ for (const path of ROUTES) {
     } catch (e) {
       bad++;
       console.log(`  FAIL          upstream comparison failed: ${e.message}`);
+    }
+    try {
+      const drift = formatterDrift(await readFile("public/interact.js", "utf8"), SERVER_FORMATTERS);
+      if (drift.length) {
+        bad++;
+        console.log(`  FAIL  ${String(drift.length).padStart(4)}         server and client format the same number differently`);
+        for (const line of drift) console.log(`          ${line}`);
+      } else {
+        console.log(`  ok            server and client formatters agree across the ladder`);
+      }
+    } catch (e) {
+      bad++;
+      console.log(`  FAIL          formatter comparison failed: ${e.message}`);
     }
     try {
       const gaps = await searchIndexGaps(`http://127.0.0.1:${PORT}`);

@@ -23,7 +23,9 @@ export const OI_RETIRE_FLOOR = 3_500_000;
 /**
  * Hard ceiling on the entity set. 50 rather than "everything above the floor" so that a burst
  * of new listings cannot silently multiply the page count, the sweep length and the publishing
- * rate all at once. 49 contracts clear the floor today.
+ * rate all at once. The eligible count moves with the market; the live figure is rendered
+ * from snap.eligibleCount on /, /funding and /data-sources rather than repeated here, because
+ * a number written into a comment is a number that goes stale silently.
  */
 export const SYMBOL_CAP = 50;
 

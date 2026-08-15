@@ -131,7 +131,7 @@ const description = `What a ${p.symbol} perpetual costs to hold: funding across 
       <div>Spot ({SPOT_SOURCE})<b data-spot="last" data-sym={p.symbol} data-dp={dp}>{px(spotQ.last)}</b></div>
     )}
     {Number.isFinite(basisBp) && (
-      <div>Basis<b data-spot="basis" data-sym={p.symbol}>{basisBp >= 0 ? "+" : ""}{basisBp.toFixed(1)} bps</b></div>
+      <div>Basis<b data-spot="basis" data-unit=" bps" data-sym={p.symbol}>{basisBp >= 0 ? "+" : ""}{basisBp.toFixed(1)} bps</b></div>
     )}
     <div>Open interest<b>{usd(p.oiNotional)}</b></div>
     <div>Max leverage<b>{p.maxLeverage}×</b></div>
@@ -185,7 +185,14 @@ const description = `What a ${p.symbol} perpetual costs to hold: funding across 
       </p>
 
       {/* The rows are rebuilt from the panel's own pts-* JSON when the timeframe is switched
-          client-side, so the table can never disagree with the chart above it. */}
+          client-side, so the table reads the same array the chart was drawn from.
+
+          "Can never disagree" is what this comment used to say, and it was false: the rebuild
+          formats those numbers with its own implementation, and the client's K-scale branch
+          used one decimal where `compact` below uses two. Every volume cell was rewritten from
+          23.37K to 23.4K on a click that changed nothing else. Sharing the DATA is not the same
+          as sharing the FORMATTING, and only the first was ever true here. The two formatters
+          are now swept against each other by scripts/checks.mjs on every push. */}
       {/* data-dp is the PAGE's precision, not the chart's. chart.dp is chosen for axis labels,
           where four significant digits is plenty; the table prints the same figures the server
           rendered, and on a sub-cent contract that is seven decimals. Using the chart's value
