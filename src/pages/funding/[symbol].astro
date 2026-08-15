@@ -284,10 +284,25 @@ const description = `What a ${p.symbol} perpetual costs to hold: funding across 
   </div>
 
   <h2 class="section">Margin tiers</h2>
+  {/* THE LABEL MUST BE THE LEVERAGE THAT WAS ACTUALLY USED. This asked margin.ts for 10× and
+      printed "At 10× long" — but margin.ts clamps the request to the tier maximum and says so
+      in `leverageClamped`, which nothing here read. On the twenty contracts whose tier caps at
+      3× or 5×, the sentence claimed 10× while the number beneath it was the 5× (or 3×)
+      liquidation price, directly contradicting the Max leverage column in the table below it.
+      A reader sizing a position took away that a 10× long survives an 11% adverse move on a
+      contract where 10× cannot be opened at all.
+
+      THE GAP WAS PRINTED AS DOLLARS-AND-CENTS. The liquidation price uses px(), which picks
+      2–7 decimals from the magnitude; the difference beside it used usd(…, 2). On any contract
+      under about $0.25 the gap rounded to "$0.00 away" — a sentence whose entire purpose is to
+      quantify the error in the common formula, quantifying it as nothing, on fourteen pages.
+      Worst case was 8.9% of the price displayed as zero. Both now use px(), and the relative
+      figure leads, because a percentage survives every price magnitude. */}
   <p class="section-note">
-    Maintenance margin is half the initial margin at the tier's max leverage. At 10× long with 1 {p.symbol},
+    Maintenance margin is half the initial margin at the tier's max leverage. At {liq.effectiveLeverage}× long
+    {liq.leverageClamped && <> — this contract's tier maximum, so 10× cannot be opened on it</>} with 1 {p.symbol},
     the tier-correct liquidation price is <strong style="color:var(--text)">{px(liq.liquidationPrice)}</strong> —
-    {usd(liq.differenceAbs, 2)} away from what the common <code>entry × (1 − 1/leverage)</code> formula returns.
+    {pct(liq.differencePct)} ({px(liq.differenceAbs)}) away from what the common <code>entry × (1 − 1/leverage)</code> formula returns.
   </p>
   <div class="panel" style="max-width:620px">
     <table class="tbl">

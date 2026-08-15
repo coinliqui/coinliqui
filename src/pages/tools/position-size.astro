@@ -17,8 +17,19 @@ const side = (q.get("side") === "short" ? "short" : "long") as Side;
 const account = Number(q.get("account") ?? 25_000);
 const riskPct = Number(q.get("risk") ?? 1);
 const entry = Number(q.get("entry") ?? perp.markPx);
+/* PRICE PRECISION IS A FUNCTION OF MAGNITUDE, not a constant. Same rule as the contract
+   pages: src/pages/funding/[symbol].astro:48. */
+const dp = entry >= 100 ? 2 : entry >= 1 ? 3 : entry >= 0.01 ? 5 : 7;
+const px = (v: number) => usd(v, dp);
 const defaultStop = side === "long" ? entry * 0.95 : entry * 1.05;
-const stop = Number(q.get("stop") ?? defaultStop.toFixed(2));
+/* .toFixed(2) HERE WAS A REAL POSITION-SIZING ERROR, not a display one. It rounded the default
+   stop — a PRICE — to two decimals, so on DOGE at $0.070063 the intended 5% stop became
+   "0.07", which is 0.09% from entry. `perUnit` collapsed, size = risk / perUnit exploded to
+   3.97M DOGE, and the page confidently described a $278,028 notional position that needs
+   $27,803 of margin on the $25,000 account it was told about. On kBONK every price on the page
+   rounded to "$0.00" and it explained a position priced at nothing. The stop now carries the
+   same precision as the price it is derived from. */
+const stop = Number(q.get("stop") ?? defaultStop.toFixed(dp));
 const leverage = Number(q.get("leverage") ?? 10);
 
 // The formula every sizing guide gives: risk budget divided by the distance to the stop.
@@ -57,7 +68,7 @@ const description = `Risk-based position sizing for ${perp.symbol} perpetuals th
     <h1>Position size calculator</h1>
     <p>
       Risk-based sizing, checked against the price at which the position is actually closed.
-      Opens on {perp.symbol} at {usd(perp.markPx, 2)}.
+      Opens on {perp.symbol} at {px(perp.markPx)}.
     </p>
   </div>
 
@@ -97,7 +108,7 @@ const description = `Risk-based position sizing for ${perp.symbol} perpetuals th
     </div>
     <div class="card">
       <div class="card__label">Liquidation at {leverage}×</div>
-      <div class:list={["card__value", liquidatedFirst && "pays-l"]} id="out-liq">{usd(r.liquidationPrice, 2)}</div>
+      <div class:list={["card__value", liquidatedFirst && "pays-l"]} id="out-liq">{px(r.liquidationPrice)}</div>
       <div class="card__meta" id="out-liqnote">{liquidatedFirst ? "before your stop" : "beyond your stop"}</div>
     </div>
     <div class="card">
@@ -108,7 +119,7 @@ const description = `Risk-based position sizing for ${perp.symbol} perpetuals th
     <div class="card">
       <div class="card__label">Max leverage for this stop</div>
       <div class="card__value" id="out-safe">{safeLeverage}×</div>
-      <div class="card__meta">keeps liquidation beyond {usd(stop, 2)}</div>
+      <div class="card__meta">keeps liquidation beyond {px(stop)}</div>
     </div>
   </div>
 
@@ -116,8 +127,8 @@ const description = `Risk-based position sizing for ${perp.symbol} perpetuals th
     {liquidatedFirst ? (
       <div>
         <b>The stop never executes.</b> At {leverage}× the exchange closes this position at
-        {" "}<b>{usd(r.liquidationPrice, 2)}</b> — a <b>{pct(liqMove)}</b> move — while your stop sits
-        {" "}{pct(stopMove)} away at {usd(stop, 2)}. The trade gets <b>{pct(liqMove)}</b> of room
+        {" "}<b>{px(r.liquidationPrice)}</b> — a <b>{pct(liqMove)}</b> move — while your stop sits
+        {" "}{pct(stopMove)} away at {px(stop)}. The trade gets <b>{pct(liqMove)}</b> of room
         instead of the {pct(stopMove)} it was sized to survive, and the entire
         {" "}<b>{usd(marginAtRisk, 2)}</b> of margin goes with it.
         That the margin happens to be {marginAtRisk < riskUsd ? "smaller" : "larger"} than your
@@ -126,7 +137,7 @@ const description = `Risk-based position sizing for ${perp.symbol} perpetuals th
       </div>
     ) : (
       <div>
-        <b>The stop is reachable.</b> Liquidation sits at <b>{usd(r.liquidationPrice, 2)}</b>
+        <b>The stop is reachable.</b> Liquidation sits at <b>{px(r.liquidationPrice)}</b>
         ({pct(liqMove)} away), past your stop at {pct(stopMove)}, so the stop executes first and the
         loss is bounded by the <b>{usd(riskUsd, 2)}</b> you budgeted. Leverage up to
         {" "}<b>{safeLeverage}×</b> keeps that true.
@@ -144,7 +155,7 @@ const description = `Risk-based position sizing for ${perp.symbol} perpetuals th
   <p class="prose">
     The check has to use the <strong>tier-correct</strong> liquidation price. At {usd(notional)}
     notional this contract sits in tier {r.tierIndex + 1}, where maintenance margin is
-    {" "}{pct(mmf, 3)} — so liquidation is {usd(r.differenceAbs, 2)} away from what the common
+    {" "}{pct(mmf, 3)} — so liquidation is {pct(r.differencePct)} ({px(r.differenceAbs)}) away from what the common
     <code>entry × (1 ∓ 1/leverage)</code> formula reports.
     <a class="link" href="/funding/btc">See that gap on a live contract →</a>
   </p>
