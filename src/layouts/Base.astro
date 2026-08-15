@@ -89,6 +89,9 @@ const schema = {
         "token vesting schedules",
       ],
       ...(IDENTITY.sameAs.length ? { sameAs: IDENTITY.sameAs } : {}),
+      /* A named founder is the difference between "independently operated" — which every
+         anonymous clone also claims — and a person who can be looked up. */
+      founder: { "@type": "Person", name: IDENTITY.operator },
     },
   ],
 };

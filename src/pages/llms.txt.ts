@@ -78,7 +78,9 @@ ${base} is the only domain this project publishes. Any other site using this nam
 
 ## Provenance
 
-Independently built and operated by one person. Publishing since ${IDENTITY.launched}.
+Built and operated by ${IDENTITY.operator} — one person, not a company. Publishing since
+${IDENTITY.launched}. The source is public: ${IDENTITY.sameAs[0]} — the same code that renders
+these pages, with the commit history behind them.
 Contact: ${IDENTITY.contact}
 `;
 

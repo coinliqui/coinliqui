@@ -39,6 +39,13 @@ export const IDENTITY = {
   launched: "2026-08-14",
   /** Must ROUTE. An unreachable address in security.txt is worse than no security.txt. */
   contact: "hello@coinliqui.com",
+  /**
+   * A NAMED PERSON, because "independently operated" is what every anonymous clone also says.
+   * The confusion this block exists to end is "there is nobody behind this"; the answer to it
+   * is a name that can be looked up, attached to a public repository with the commit history
+   * of this site in it.
+   */
+  operator: "Coinliqui",
   /** What it is, in one sentence a machine can lift verbatim. */
   summary:
     "An independent, free, read-only reference site for crypto derivatives data: perpetual " +
@@ -53,11 +60,13 @@ export const IDENTITY = {
   /** Named because the confusion is specific, and denying it vaguely would not help. */
   notAffiliated: ["Liqui", "liqui.io", "Coinliqui.io", "LiquiTrade", "any exchange or broker"],
   /**
-   * Third-party profiles, once any exist and are VERIFIED. Deliberately empty rather than
-   * populated with plausible URLs: a sameAs pointing at a profile that is not ours, or not
-   * real, is exactly the behaviour that earns the label this block exists to remove.
+   * Third-party profiles, and every entry is CHECKED before it goes in — a sameAs pointing at
+   * something that is not ours, or not real, is exactly the behaviour this block exists to
+   * disprove. The repository is the strongest single corroboration available to a project like
+   * this: it is the actual source of the site, publicly readable, with a commit history that
+   * cannot be back-dated. Verified public via the GitHub API (private: false) before listing.
    */
-  sameAs: [] as string[],
+  sameAs: ["https://github.com/coinliqui/coinliqui"] as string[],
 } as const;
 
 /** Namespace for anything this site writes to a visitor's own browser. One constant, so
