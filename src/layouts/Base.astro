@@ -199,29 +199,19 @@ const schema = {
       a.nav-item:hover { background: var(--surface-3); color: var(--text); }
       a.nav-item[aria-current="page"] { background: var(--accent-fill); color: var(--accent); }
       a.nav-item[aria-current="page"] .nav-item__icon { color: var(--accent); }
-      /* unbuilt: a span, never an anchor — creates no URL and cannot be clicked */
-      span.nav-item { color: var(--text-faint); opacity: .72; cursor: default; }
       .nav-item__icon { flex: 0 0 20px; color: var(--text-faint); }
       a.nav-item:hover .nav-item__icon { color: var(--text-dim); }
-      .nav-item__soon {
-        margin-left: auto; font-size: 11px; font-weight: 500; color: var(--text-faint);
-        background: var(--surface-3); border-radius: var(--r-xs); padding: 2px 8px;
-      }
 
       /* Collapsed hides labels only; anchors, hrefs and text nodes are untouched.
          1px clip, never off-screen positioning (a named spam-policy example). */
       .vh,
       .is-collapsed .nav-item__label,
-      .is-collapsed .nav-item__soon,
       .is-collapsed .nav-group__title,
       .is-collapsed .brand span {
         position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
         border: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap;
       }
       .is-collapsed .nav-item { justify-content: center; padding: 0; width: 48px; margin: 0 auto; }
-      /* With labels and the "soon" chip hidden, opacity is the only remaining signal that
-         an entry is unbuilt — so it carries more of the weight than in the expanded rail. */
-      .is-collapsed span.nav-item { opacity: .34; }
       .is-collapsed .nav-group__title { display: block; height: 8px; }
       /* With the wordmark clipped there is nothing left to show, so the anchor must not
          hold width either — the collapsed rail top is the toggle alone, as in Drive. */
@@ -628,20 +618,14 @@ const schema = {
         {NAV.map((group) => (
           <div class="nav-group">
             <div class="nav-group__title">{group.title}</div>
-            {group.items.map((item) =>
-              item.href ? (
-                <a class="nav-item" href={item.href} title={item.label} aria-current={isActive(item.href) ? "page" : undefined}>
-                  <svg class="nav-item__icon" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d={item.icon} /></svg>
-                  <span class="nav-item__label">{item.label}</span>
-                </a>
-              ) : (
-                <span class="nav-item" title={`${item.label} — not built yet`}>
-                  <svg class="nav-item__icon" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d={item.icon} /></svg>
-                  <span class="nav-item__label">{item.label}</span>
-                  <span class="nav-item__soon">soon</span>
-                </span>
-              ),
-            )}
+            {/* One branch, because NavItem.href is required. There is no such thing here as a
+                nav entry without a destination — see the note on NAV in src/lib/site.ts. */}
+            {group.items.map((item) => (
+              <a class="nav-item" href={item.href} title={item.label} aria-current={isActive(item.href) ? "page" : undefined}>
+                <svg class="nav-item__icon" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d={item.icon} /></svg>
+                <span class="nav-item__label">{item.label}</span>
+              </a>
+            ))}
           </div>
         ))}
       </nav>

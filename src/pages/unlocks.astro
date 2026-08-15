@@ -6,24 +6,42 @@ import { getSnapshot, findPerp } from "../lib/hyperliquid.ts";
 import reg from "../data/vesting-contracts.json";
 
 /**
- * Forward-looking supply calendar. Provenance is a BADGE ON EACH ROW, never a gate on the
- * page: a reader is better served by many rows with honest badges than by two rows that
- * happen to clear the strictest bar.
+ * A REGISTER of vesting, lock and emission contracts — not a calendar.
+ *
+ * WHY THE DISTINCTION IS THE PAGE. A calendar can only show supply with a future date on it.
+ * The largest single position here has no future date: an ENS lock finished vesting in
+ * November 2025 and 45.59% of ENS supply has been withdrawable ever since, on no notice.
+ * Every unlock calendar shows nothing for it, and nothing is the opposite of the truth. So the
+ * unit here is a CONTRACT and the state it is in, and "already unlocked and not withdrawn" is
+ * a first-class state rather than an absence.
+ *
+ * Four states, all read from the chain, none of them derivable from a date alone:
+ *   releasing  paying out now, at a published rate, with the balance to keep doing it
+ *   overhang   schedule finished, tokens still there — withdrawable today
+ *   unfunded   a forward rate published by a contract that holds nothing
+ *   emptied    finished and gone, confirmed by reading the balance rather than assuming
+ *
+ * The last two exist because the first read of the balances produced both: Compound's
+ * Reservoir publishes 0.5 COMP a block and holds zero; all four Uniswap vesters read zero and
+ * are genuinely done. Neither could be told from its dates.
  */
 const now = Date.now();
 const d = (s: string) => Date.parse(s + "T00:00:00Z");
 const fmt = (s: string) => new Date(d(s)).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
 const num = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 0 });
+const daysSince = (s: string) => Math.round((now - d(s)) / 86400000);
 const badge = (k: string) => reg.provenanceScale.find((p: any) => p.key === k)!;
+const state = (k: string) => reg.states.find((s: any) => s.key === k)!;
 
 const HORIZONS = [7, 30, 90, 365];
-const horizon = HORIZONS.includes(Number(new URL(Astro.request.url).searchParams.get("days"))) ? Number(new URL(Astro.request.url).searchParams.get("days")) : 30;
+const qs = new URL(Astro.request.url).searchParams.get("days");
+const horizon = HORIZONS.includes(Number(qs)) ? Number(qs) : 30;
 
-/* DAYS OF VOLUME TO ABSORB — the column this page says matters most, and which was blank
-   because the covered contract set and the readable-schedule set did not overlap. Raising the
-   published set to fifty coins put CRV and AAVE on both sides of that gap, so it fills for them.
-   It is computed from the same snapshot every other page reads, at first byte, and stays
-   blank — not guessed — for any token with no perpetual here. */
+/* DAYS OF VOLUME TO ABSORB — the column this page says matters most. It is computed from the
+   same snapshot every other page reads, at first byte, and stays blank — not guessed — for any
+   token with no perpetual here. It applies to an overhang exactly as it applies to a scheduled
+   release: an amount that can hit the market at any moment is still an amount the market has
+   to absorb, and the ratio is the only thing that says whether that matters. */
 const snap = await getSnapshot((Astro.locals as any)?.runtime?.env?.SNAPSHOT, import.meta.env.DEV);
 const absorb = (symbol: string, tokens: number) => {
   const p = findPerp(snap.perps, symbol);
@@ -31,117 +49,224 @@ const absorb = (symbol: string, tokens: number) => {
   return { days: (tokens * p.markPx) / p.dayNtlVlm, usd: tokens * p.markPx, vol: p.dayNtlVlm };
 };
 
-// Forward rows: algorithmic emissions are readable today, so they populate the calendar.
-const forward = (reg.emissions as any[]).map((e) => ({
-  symbol: e.symbol,
-  name: e.name,
-  what: e.event ?? `Protocol emission, epoch ${e.miningEpoch}`,
-  provenance: e.provenance,
-  tokens: e.perDay * horizon,
-  perDay: e.perDay,
-  shareOfSupply: (e.perDay * horizon) / e.totalSupply,
-  contract: e.contract,
-  note: e.note,
-  /* A rate with no end date is not the same as a rate that is funded. Where the contract
-     also publishes what it is allowed to spend, the runway is the real horizon. */
-  runwayDays: e.fundedTokens ? e.fundedTokens / e.perDay : null,
-  absorb: absorb(e.symbol, e.perDay * horizon),
-}));
-
-const vesting = (reg.tokens as any[]).flatMap((t) =>
-  t.schedules.map((s: any) => ({
-    ...s, symbol: t.symbol, supply: t.totalSupply, ended: d(s.end) < now,
-    // Finished, and the tokens are still sitting in the contract: unlocked but never moved.
-    unclaimed: d(s.end) < now && s.heldNow > 0 ? s.heldNow : 0,
-  })),
+/* Every schedule, flattened, carrying its token's supply so a share can be computed. */
+const schedules = (reg.tokens as any[]).flatMap((t) =>
+  t.schedules.map((s: any) => ({ ...s, symbol: t.symbol, name: t.name, supply: t.totalSupply })),
 );
-const unclaimed = vesting.filter((r: any) => r.unclaimed > 0);
+const overhang = schedules
+  .filter((s) => s.state === "overhang")
+  .map((s) => ({ ...s, sinceEnd: daysSince(s.end), absorb: absorb(s.symbol, s.heldNow) }))
+  .sort((a, b) => b.heldNow / b.supply - a.heldNow / a.supply);
+const emptied = schedules.filter((s) => s.state === "emptied");
 
-const title = "Token unlock calendar, with provenance on every row";
+const releasing = (reg.emissions as any[])
+  .filter((e) => e.state === "releasing")
+  .map((e) => ({
+    ...e,
+    tokens: e.perDay * horizon,
+    shareOfSupply: (e.perDay * horizon) / e.totalSupply,
+    /* A rate with no end date is not the same as a rate that is funded. Where the contract
+       also publishes what it is allowed to spend, the runway is the real horizon. */
+    runwayDays: e.fundedTokens ? e.fundedTokens / e.perDay : null,
+    absorb: absorb(e.symbol, e.perDay * horizon),
+  }));
+const unfunded = (reg.emissions as any[]).filter((e) => e.state === "unfunded");
+
+const contractCount = schedules.length + reg.emissions.length;
+const overhangTotal = overhang.reduce((a, r) => a + (absorb(r.symbol, r.heldNow)?.usd ?? 0), 0);
+
+const title = "Token vesting contracts, read on-chain — and what each one still holds";
 const description =
-  "What unlocks next, how much, and what share of supply — with each row marked contract-verified, project-published or aggregator-sourced, so you know how solid the line is.";
+  "A register of token vesting, lock and emission contracts read directly from Ethereum: what each holds right now, what it is still releasing, and which finished years ago with the tokens never withdrawn. One ENS lock holds 45.59% of supply, fully unlocked since November 2025.";
 ---
 
 <Base title={title} description={description} fetchedAt={snap.fetchedAt}>
   <div class="page-head">
-    <h1>Token unlocks</h1>
+    <h1>Vesting contracts, and what they still hold</h1>
     <p>
-      Supply arriving on the market, and — the part nobody else shows — <strong>how solid each
-      line is</strong>. Every row carries a provenance badge: read from the contract, published by
-      the project, or taken from an aggregator. A date is not a fact just because it is in a table.
+      A register of token vesting, lock and emission contracts, read directly from Ethereum.
+      Every figure below is an <code>eth_call</code> at one stated block — not a date copied from
+      an announcement, and not a projection. The unit here is a <strong>contract and the state it
+      is in</strong>, which is a different thing from a calendar of events.
     </p>
   </div>
 
+  <div class="verdict verdict--warn">
+    <div>
+      <b>Why that difference matters, in one row.</b> An ENS lock holds
+      {" "}<b>{num(overhang[0]?.heldNow ?? 0)} ENS</b> — {pct((overhang[0]?.heldNow ?? 0) / (overhang[0]?.supply ?? 1))} of
+      total supply. Its four-year unlock <b>finished on {fmt(overhang[0]?.end ?? "2025-11-04")}</b>, so every
+      one of those tokens has been withdrawable for {overhang[0]?.sinceEnd ?? 0} days, on no notice
+      and with nothing to announce. Because there is no future date attached to it, an unlock
+      calendar has nothing to show — and showing nothing is the opposite of the truth. That row is
+      why this page is a register of contracts rather than a list of dates.
+    </div>
+  </div>
+
+  <h2 class="section">The four states a contract can be in</h2>
+  <p class="prose">
+    Only the first of these is something a calendar can represent. The other three are what you
+    find when you read the balance as well as the schedule, and two of them were discovered by
+    doing exactly that — the register did not have them until it stopped trusting dates.
+  </p>
+  <div class="panel">
+    <table class="tbl">
+      <thead><tr><th>State</th><th>What it means</th><th class="num">Contracts</th></tr></thead>
+      <tbody>
+        {reg.states.map((s: any) => {
+          const n = s.key === "releasing" ? releasing.length
+                  : s.key === "overhang" ? overhang.length
+                  : s.key === "unfunded" ? unfunded.length
+                  : emptied.length;
+          return (
+            <tr>
+              <td><span class:list={["st", `st--${s.key}`]}>{s.label}</span></td>
+              <td class="reason">{s.meaning}</td>
+              <td class="num">{n}</td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="section" id="overhang">{state("overhang").label}</h2>
+  <p class="prose">
+    Schedules that have finished with the tokens still in the contract. Nothing is scheduled,
+    nothing will be announced, and the whole amount can move in a single transaction whenever
+    its recipient chooses. This is the section that does not exist anywhere else.
+  </p>
+  <div class="panel">
+    <table class="tbl">
+      <thead>
+        <tr>
+          <th>Token</th><th>Contract</th><th class="num">Held now</th><th class="num">Share of supply</th>
+          <th class="num">Unlocked since</th><th class="num">Days of volume to absorb</th><th>Provenance</th>
+        </tr>
+      </thead>
+      <tbody>
+        {overhang.map((r) => (
+          <tr>
+            <td class="sym">{r.symbol}</td>
+            <td>{r.label}<br /><code class="addr">{r.contract}</code></td>
+            <td class="num">{num(r.heldNow)}</td>
+            <td class="num">{pct(r.heldNow / r.supply)}</td>
+            <td class="num">{fmt(r.end)}<br /><span class="sub">{num(r.sinceEnd)} days</span></td>
+            {r.absorb ? (
+              <td class="num" title={`${usd(r.absorb.usd)} against ${usd(r.absorb.vol)} of 24-hour volume`}>
+                {r.absorb.days < 0.1 ? "<0.1" : r.absorb.days.toFixed(r.absorb.days < 10 ? 1 : 0)}
+              </td>
+            ) : (
+              <td class="num dim" title="No perpetual here for this token, so there is no clean volume series to divide by">—</td>
+            )}
+            <td><span class="prov prov--contract">Contract-verified</span></td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+  {overhang.map((r) => (<p class="section-note">{r.note}</p>))}
+
+  {unfunded.length > 0 && (
+    <>
+      <h2 class="section" id="unfunded">{state("unfunded").label}</h2>
+      <p class="prose">
+        A contract that publishes a forward rate is not the same as a contract that can pay it.
+        These publish a rate and hold nothing, so anything that reads the rate and multiplies by
+        time is forecasting supply that cannot arrive.
+      </p>
+      {unfunded.map((e: any) => (
+        <>
+          <div class="panel" style="max-width:900px">
+            <table class="tbl">
+              <thead><tr><th>Token</th><th>What the contract publishes</th><th class="num">Rate</th><th class="num">Owed on paper</th><th class="num">Balance</th></tr></thead>
+              <tbody>
+                <tr>
+                  <td class="sym">{e.symbol}</td>
+                  <td>{e.event}<br /><code class="addr">{e.contract}</code></td>
+                  <td class="num">{e.ratePerBlock} / block<br /><span class="sub">≈ {num(e.perDay)} a day</span></td>
+                  <td class="num">{num(e.notionalOwed)}<br /><span class="sub">{pct(e.notionalOwed / e.totalSupply)} of supply</span></td>
+                  <td class="num"><b>{num(e.heldNow)}</b></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="section-note">{e.note}</p>
+          <p class="section-note"><strong>What this does not say:</strong> {e.caveat} {e.detail}</p>
+        </>
+      ))}
+    </>
+  )}
+
+  <h2 class="section" id="releasing">{state("releasing").label}</h2>
+  <p class="prose">
+    Contracts paying out right now, at a rate each one publishes on-chain. This is the only part
+    of the register that answers "how much over the next N days", so it is the only part with a
+    horizon control.
+  </p>
   <form method="GET" class="calc" style="margin-bottom:16px">
     <label>Horizon
       <select name="days">{HORIZONS.map((h) => <option value={h} selected={h === horizon}>{h} days</option>)}</select>
     </label>
-    <button class="btn btn--primary" type="submit">Show the calendar</button>
+    <button class="btn btn--primary" type="submit">Recalculate</button>
   </form>
-
-  <h2 class="section">Arriving in the next {horizon} days</h2>
-  {forward.length > 0 ? (
-    <div class="panel">
-      <table class="tbl">
-        <thead>
+  <div class="panel">
+    <table class="tbl">
+      <thead>
+        <tr>
+          <th>Token</th><th>Event</th><th class="num">Over {horizon} days</th><th class="num">Share of supply</th>
+          <th class="num">Days of volume to absorb</th><th>Provenance</th>
+        </tr>
+      </thead>
+      <tbody>
+        {releasing.map((r: any) => (
           <tr>
-            <th>Token</th><th>Event</th><th class="num">Amount</th><th class="num">Share of supply</th>
-            <th class="num">Days of volume to absorb</th><th>Provenance</th>
-          </tr>
-        </thead>
-        <tbody>
-          {forward.map((r) => (
-            <tr>
-              <td class="sym">{r.symbol}</td>
-              <td>
-                {r.what}<br /><span class="sub">{num(r.perDay)} {r.symbol}/day</span>
-                {r.runwayDays !== null && <><br /><span class="sub">approved to spend {Math.round(r.runwayDays)} more days at this rate</span></>}
+            <td class="sym">{r.symbol}</td>
+            <td>
+              {r.event}<br /><span class="sub">{num(r.perDay)} {r.symbol}/day</span>
+              {r.runwayDays !== null && <><br /><span class="sub">approved to spend {Math.round(r.runwayDays)} more days at this rate</span></>}
+            </td>
+            <td class="num">{num(r.tokens)}</td>
+            <td class="num">{pct(r.shareOfSupply)}</td>
+            {r.absorb ? (
+              <td class="num" title={`${usd(r.absorb.usd)} against ${usd(r.absorb.vol)} of 24-hour volume`}>
+                {r.absorb.days < 0.1 ? "<0.1" : r.absorb.days.toFixed(r.absorb.days < 10 ? 1 : 0)}
               </td>
-              <td class="num">{num(r.tokens)}</td>
-              <td class="num">{pct(r.shareOfSupply)}</td>
-              {r.absorb ? (
-                <td class="num" title={`${usd(r.absorb.usd)} against ${usd(r.absorb.vol)} of 24-hour volume`}>
-                  {r.absorb.days < 0.1 ? "<0.1" : r.absorb.days.toFixed(r.absorb.days < 10 ? 1 : 0)}
-                </td>
-              ) : (
-                <td class="num dim" title="No perpetual here for this token, so there is no clean volume series to divide by">—</td>
-              )}
-              <td><span class:list={["prov", `prov--${r.provenance}`]}>{badge(r.provenance).label}</span></td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  ) : (
-    <div class="empty"><div class="empty__body"><p class="empty__title">No forward events on file</p></div></div>
-  )}
-
-  {unclaimed.map((r: any) => (
-    <div class="verdict verdict--ok">
-      <div>
-        <b>{r.symbol}: fully unlocked, and none of it has moved.</b> The four-year linear unlock in
-        {" "}<code class="addr">{r.contract}</code> finished on {fmt(r.end)}, and the contract still
-        holds <b>{num(r.heldNow)} {r.symbol}</b> — {pct(r.heldNow / r.supply)} of total supply. There is
-        no future date to put in a calendar and no cliff to warn about; the entire amount is
-        withdrawable today and has been for {Math.round((now - d(r.end)) / 86400000)} days. A tracker
-        that only lists scheduled events shows nothing here, which is the opposite of the truth.
-      </div>
-    </div>
-  ))}
-
-  <div class="verdict verdict--warn">
-    <div>
-      <b>This calendar is {forward.length === 1 ? "one row" : `${forward.length} rows`} long, and the
-      reason is a licence rather than a limitation of the idea.</b> Every row here was read from a
-      contract by hand. The dataset that would fill it in bulk is DefiLlama's emissions feed, and
-      {" "}<code>api.llama.fi/emissions</code> answers <b>402 Payment Required — "Upgrade to the
-      paid API plan"</b>. Their adapters repository is not public, and the one that is carries no
-      licence at all, which under default copyright grants nothing. A public storage bucket does
-      serve the same data, but reaching for it to route around a 402 is circumventing an access
-      control, not accepting an offer. So this is a purchase decision, not an engineering one —
-      see <a class="link" href="#filling">what would fill it</a> below.
-    </div>
+            ) : (
+              <td class="num dim" title="No perpetual here for this token, so there is no clean volume series to divide by">—</td>
+            )}
+            <td><span class:list={["prov", `prov--${r.provenance}`]}>{badge(r.provenance).label}</span></td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   </div>
+
+  <h2 class="section" id="emptied">{state("emptied").label}</h2>
+  <p class="prose">
+    Finished, and the tokens have gone. These rows are here because the only way to tell them
+    apart from the overhang above is to read the balance — the dates look identical, and the
+    difference between them is nothing versus {pct((overhang[0]?.heldNow ?? 0) / (overhang[0]?.supply ?? 1))} of
+    a supply.
+  </p>
+  <div class="panel">
+    <table class="tbl">
+      <thead><tr><th>Token</th><th>Contract</th><th class="num">Original amount</th><th class="num">Share of supply</th><th class="num">Ended</th><th class="num">Held now</th></tr></thead>
+      <tbody>
+        {emptied.map((r: any) => (
+          <tr>
+            <td class="sym">{r.symbol}</td>
+            <td>{r.label}<br /><code class="addr">{r.contract}</code></td>
+            <td class="num">{num(r.amount)}</td>
+            <td class="num">{pct(r.amount / r.supply)}</td>
+            <td class="num">{fmt(r.end)}</td>
+            <td class="num">{num(r.heldNow)}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+  {(reg.tokens as any[]).filter((t) => t.note).map((t) => (<p class="section-note">{t.note}</p>))}
 
   <h2 class="section">Days of volume — the column that matters most</h2>
   <p class="prose">
@@ -168,19 +293,22 @@ const description =
           <tr>
             <td><span class:list={["prov", `prov--${p.key}`]}>{p.label}</span></td>
             <td class="reason">{p.meaning}</td>
-            <td class="num">{p.key === "contract" ? forward.length + vesting.length : 0}</td>
+            <td class="num">{p.key === "contract" ? contractCount : 0}</td>
           </tr>
         ))}
       </tbody>
     </table>
   </div>
   <p class="section-note">
-    Every row on this page currently carries the strongest provenance. That is not a boast — it is what
-    happens when the weaker sources are unavailable, and it is why the calendar is short.
+    Every row on this page carries the strongest provenance. That is not a boast — it is what
+    happens when the weaker sources are unavailable, and it is why the register is {contractCount} contracts
+    deep rather than several hundred wide. One exception is stated on its own row: the ENS
+    address was identified by reading the chain rather than from a document, which is a weaker
+    claim about the ADDRESS than the other rows make, and it is said out loud rather than hidden.
   </p>
 
   <h2 class="section">Contract-verified emission detail</h2>
-  {(reg.emissions as any[]).map((e) => (
+  {(reg.emissions as any[]).filter((e) => e.state === "releasing").map((e) => (
     <>
       <p class="prose">
         <strong>{e.name}</strong> runs on a schedule the contract itself publishes:
@@ -215,43 +343,20 @@ const description =
     </>
   ))}
 
-  <h2 class="section">Vesting schedules on file</h2>
-  <p class="section-note">
-    Contract-verified, and all of them finished — the last ended {fmt(vesting.reduce((a: any, b: any) => (d(a.end) > d(b.end) ? a : b)).end)}.
-    They stay listed because "the contract says this is complete" is a checkable claim, and it is
-    the opposite of what a tracker projecting from announcements would tell you.
-  </p>
-  <div class="panel">
-    <table class="tbl">
-      <thead><tr><th>Token</th><th>Schedule</th><th class="num">Amount</th><th class="num">Share of supply</th><th class="num">Ended</th><th>Provenance</th></tr></thead>
-      <tbody>
-        {vesting.map((r: any) => (
-          <tr>
-            <td class="sym">{r.symbol}</td>
-            <td>{r.label}<br /><code class="addr">{r.contract}</code></td>
-            <td class="num">{r.amount === null ? <span class="dim" title="No getter publishes the original amount">{num(r.heldNow)} held</span> : num(r.amount)}</td>
-            <td class="num">{pct((r.amount ?? r.heldNow) / r.supply)}</td>
-            <td class="num">{fmt(r.end)}</td>
-            <td><span class="prov prov--contract">Contract-verified</span></td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  </div>
-  <p class="section-note">
-    {vesting.length} contracts across {reg.tokens.length} tokens, every figure read on-chain at block
-    {" "}{reg.verifiedBlock.toLocaleString("en-US")}.
-  </p>
-
   <h2 class="section">Addresses that carry no readable schedule</h2>
-  <p class="section-note">Named in project material as allocations, but exposing nothing to read. Listed because the absence is the finding.</p>
+  <p class="section-note">
+    Named in project material as allocations, but exposing nothing to read. Listed because the
+    absence is the finding: a balance with no schedule is not the same as no balance, and it is
+    not the same as a balance with a date either.
+  </p>
   <div class="panel">
     <table class="tbl">
-      <thead><tr><th>Address</th><th>Why it has no row above</th></tr></thead>
+      <thead><tr><th>Address</th><th class="num">Held now</th><th>Why it has no row above</th></tr></thead>
       <tbody>
         {reg.unverified.map((u: any) => (
           <tr>
             <td style="white-space:nowrap">{u.label}<br /><code class="addr">{u.address}</code></td>
+            <td class="num">{u.heldNow === null ? <span class="dim" title="Each recipient's schedule is a separate clone; enumerating them needs an archival endpoint">not enumerable</span> : `${num(u.heldNow)} ${u.symbol}`}</td>
             <td class="reason">{u.reason}</td>
           </tr>
         ))}
@@ -259,7 +364,20 @@ const description =
     </table>
   </div>
 
-  <h2 class="section" id="filling">What would fill this calendar</h2>
+  <h2 class="section" id="filling">What would extend the register</h2>
+  <div class="verdict verdict--ok">
+    <div>
+      <b>The register is deep rather than wide, and that is a deliberate trade rather than a
+      shortfall.</b> Every row was read from a contract by hand. The dataset that would make it
+      wide in one step is DefiLlama's emissions feed, and <code>api.llama.fi/emissions</code>
+      {" "}answers <b>402 Payment Required — "Upgrade to the paid API plan"</b>. Their adapters
+      repository is not public, and the one that is carries no licence at all, which under default
+      copyright grants nothing. A public storage bucket does serve the same data, but reaching for
+      it to route around a 402 is circumventing an access control, not accepting an offer. So
+      breadth is a purchase decision. Depth — reading balances rather than dates — is the part
+      that produced everything on this page that nobody else has, and it costs only time.
+    </div>
+  </div>
   <div class="panel" style="max-width:900px">
     <table class="tbl">
       <thead><tr><th>Route</th><th>Cost</th><th>What it yields</th><th class="num">Provenance it earns</th></tr></thead>
@@ -267,16 +385,16 @@ const description =
         <tr>
           <td><strong>DefiLlama Pro</strong></td>
           <td class="reason">A paid API subscription. Their emissions endpoint is explicitly gated behind it.</td>
-          <td class="reason">Several hundred protocols at once, with forward dates. The fastest route by a wide margin.</td>
+          <td class="reason">Several hundred protocols at once, with forward dates. The fastest route to breadth by a wide margin — and forward dates only, so it would not have found a single row in the overhang section above.</td>
           <td class="num">Aggregator-sourced</td>
         </tr>
-        <tr>
-          <td><strong>Manual curation</strong></td>
-          <td class="reason">Roughly 10–15 minutes per token to find the primary source and check it, at about a one-in-three hit rate.</td>
-          <td class="reason">A short list, strongest where it matters. Around 4–5 hours per six usable rows.</td>
-          <td class="num">Project-published</td>
-        </tr>
         <tr class="is-active">
+          <td><strong>Manual curation</strong></td>
+          <td class="reason">Roughly 15–25 minutes per contract to find a primary source for the address, derive the getters and read it, at about a one-in-three hit rate.</td>
+          <td class="reason">A short list, strongest where it matters, and the only route that finds a contract whose schedule ended years ago and whose balance never moved.</td>
+          <td class="num">Contract-verified</td>
+        </tr>
+        <tr>
           <td><strong>Archival RPC</strong></td>
           <td class="reason">An endpoint with unrestricted <code>eth_getLogs</code>. Free providers cap it at 50 blocks, about ten minutes of chain.</td>
           <td class="reason">Every factory-deployed escrow in one pass — the Lido case above and everything shaped like it.</td>
@@ -286,15 +404,15 @@ const description =
     </table>
   </div>
   <p class="prose">
-    The three are complementary rather than alternatives. Buying the aggregator feed fills the
-    calendar immediately at the weakest provenance; the archival endpoint upgrades whichever rows
-    are contract-backed to the strongest; curation covers the gap between them. The badge column
-    is what makes running all three at once coherent instead of muddled.
+    The three are complementary rather than alternatives. Buying the aggregator feed adds breadth
+    immediately at the weakest provenance; the archival endpoint reaches contracts that exist only
+    as factory clones; curation is what reads a balance and notices that a finished schedule never
+    emptied. The badge column is what makes running all three at once coherent instead of muddled.
   </p>
 
   <Related items={[
     { href: "/coins", label: "Coins", note: "Spot prices and volume, which is what an unlock has to be absorbed by." },
-    { href: "/funding/crv", label: "CRV funding", note: "One of the two tokens here that also has a perpetual on this site." },
+    { href: "/funding/crv", label: "CRV funding", note: "One of the tokens here that also has a perpetual on this site." },
     { href: "/open-interest", label: "Open interest", note: "Turnover against open interest across every covered coin." },
     { href: "/data-sources", label: "Data sources", note: "Where each figure comes from, and its provenance." },
   ]} />
@@ -304,10 +422,17 @@ const description =
     .prov--contract { background: var(--accent-fill); color: var(--accent); }
     .prov--project { background: var(--surface-3); color: var(--text-dim); }
     .prov--aggregator { background: none; color: var(--text-faint); border: 1px dashed var(--border); }
+    /* The four states. Weight and fill carry the distinction, never hue: red and green on this
+       site mean the direction of a funding payment and nothing else. */
+    .st { display: inline-block; font-size: var(--fs-xs); font-weight: 600; padding: 2px 8px; border-radius: var(--r-pill); white-space: nowrap; }
+    .st--overhang { background: var(--accent-fill); color: var(--accent); }
+    .st--unfunded { background: none; color: var(--text); border: 1px dashed var(--border); }
+    .st--releasing { background: var(--surface-3); color: var(--text); }
+    .st--emptied { background: none; color: var(--text-faint); border: 1px solid var(--border); }
     .addr { font-size: 11.5px; color: var(--text-faint); background: none; padding: 0; }
     .sub { font-size: var(--fs-xs); color: var(--text-faint); font-variant-numeric: tabular-nums; }
     .reason { color: var(--text-dim); white-space: normal; }
     .tbl td { vertical-align: top; }
-    h2.section { margin-top: 32px; }
+    h2.section { margin-top: var(--gap-region); }
   </style>
 </Base>
