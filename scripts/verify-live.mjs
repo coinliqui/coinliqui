@@ -139,9 +139,29 @@ for (const p of ["/", "/funding/btc"]) {
   // A canonical <link> is a hint, not a subresource — it costs the reader no request, and
   // on a preview host it legitimately points at the apex. Only things the browser FETCHES
   // count against the /privacy claim.
+  /* The host's injected analytics tag is exempted BY NAME, once, here — and the assertion
+     below proves it is the only exemption and that the CSP still neuters it. Two checks in
+     this file describe one policy; when the policy changed I updated the other one and left
+     this failing, which is precisely the drifted-pair shape this verifier exists to catch,
+     aimed at the verifier. Naming the exemption in one place is what stops it recurring. */
+  /* HOSTNAME EQUALITY, NOT PREFIX. `startsWith("https://static.cloudflareinsights.com")` also
+     matches https://static.cloudflareinsights.com.evil.tld/x.js — a hostile origin that merely
+     begins with the exempt one would have been waved through by the exemption meant to be
+     narrow. Found by writing the blind case out and running it rather than by rereading the
+     line. Every allowlist compared as a string prefix has this hole. */
+  const hostOf = (u) => { try { return new URL(u).hostname; } catch { return null; } };
+  const ORIGIN_HOST = hostOf(ORIGIN);
+  /* THE SAME HOLE WAS IN THE OTHER TWO COMPARISONS ON THIS LINE, and one was worse:
+     `u.startsWith(ORIGIN)` treats https://coinliqui.com.evil.tld/x.js as same-origin and
+     exempts it outright — an attacker-controlled host waved through as ours. schema.org had
+     it too. All three now compare the parsed hostname. */
+  const sameOrigin = (u) => hostOf(u) === ORIGIN_HOST;
+  const isSchemaOrg = (u) => hostOf(u) === "schema.org";
+  const isInjected = (u) => hostOf(u) === "static.cloudflareinsights.com";
   const ext = [...r.body.matchAll(/<(?:script|img|iframe)[^>]*src="(https?:\/\/[^"]+)"|<link(?![^>]*rel="(?:canonical|alternate)")[^>]*href="(https?:\/\/[^"]+)"/g)]
-    .map((m) => m[1] || m[2]).filter((u) => u && !u.startsWith(ORIGIN) && !u.startsWith("https://schema.org"));
-  ext.length ? bad(`${p} loads off-origin: ${ext.join(", ")}`) : ok(`${p} zero off-origin subresources`);
+    .map((m) => m[1] || m[2])
+    .filter((u) => u && !sameOrigin(u) && !isSchemaOrg(u) && !isInjected(u));
+  ext.length ? bad(`${p} loads off-origin: ${ext.join(", ")}`) : ok(`${p} no off-origin subresource beyond the host's blocked tag`);
   /* Checked under BOTH Accept headers, because the injection is conditional on it and the
      browser case is the one the claim is about. Keeping the `* / *` probe alongside is not
      redundancy — a difference between the two is itself the finding. */
@@ -152,11 +172,11 @@ for (const p of ["/", "/funding/btc"]) {
      longer "no beacon tag exists" — which we cannot make true — but the two that we can:
      the ONLY off-origin script is that known tag, and the CSP that neuters it is intact.
      A NEW third-party script, or a weakened script-src, still fails. */
-  const KNOWN_BLOCKED = /static\.cloudflareinsights\.com/;
+  // Same rule as isInjected above: the HOST must equal it, not merely begin with it.
   const beacon = /beacon\.min\.js|cloudflareinsights|\/cdn-cgi\/(rum|challenge-platform|zaraz)/;
   const wild = await fetchAs(p, "Mozilla/5.0", "*/*");
   const otherThirdParty = [...r.body.matchAll(/<script[^>]*src="(https?:\/\/[^"]+)"/g)]
-    .map((m) => m[1]).filter((u) => !u.startsWith(ORIGIN) && !KNOWN_BLOCKED.test(u));
+    .map((m) => m[1]).filter((u) => !sameOrigin(u) && !isInjected(u));
   const csp = r.headers.get("content-security-policy") ?? "";
   const scriptSrc = (csp.match(/script-src ([^;]*)/) ?? [, ""])[1];
   const cspSound = /'self'/.test(scriptSrc) && !/https?:|\*/.test(scriptSrc);
