@@ -33,6 +33,12 @@ const STALE_MIN = 15;
 const stale = ageMin === null || ageMin > STALE_MIN;
 
 const latest = checks[0];
+/* The refusal reason travels in the run's note, which is JSON. Parsed defensively: this page
+   must render even when the store is empty, which is exactly when someone opens it. */
+const latestNote = (() => {
+  try { return latest?.note ? String(JSON.parse(latest.note).error ?? "") : ""; } catch { return ""; }
+})();
+const latestRefused = latestNote.startsWith("refused:");
 const latestVenues: Record<string, number> = (() => {
   try { return latest?.note ? (JSON.parse(latest.note).venues ?? {}) : {}; } catch { return {}; }
 })();
@@ -111,8 +117,13 @@ const utc = (ms: number) => new Date(ms).toISOString().slice(0, 16).replace("T",
     </div>
     <div class="card">
       <div class="card__label">Last ingest</div>
-      <div class:list={["card__value", latest && !latest.ok && "is-bad"]} style="font-size:20px">{latest ? (latest.ok ? "ok" : `failed (${latest.status || "no response"})`) : "—"}</div>
-      <div class="card__meta">{latest ? `${latest.ms} ms · ${utc(latest.at)}` : "no runs recorded"}</div>
+      {/* A REFUSAL IS NOT "no response". The ingest now declines to overwrite a healthy
+          snapshot with a degenerate one — an upstream that answers 200 with an empty universe,
+          or with forty-nine of fifty contracts missing. That run is recorded as failed with
+          status 200, because the upstream DID answer; saying "no response" would describe the
+          wrong problem to whoever is reading this page at the time. */}
+      <div class:list={["card__value", latest && !latest.ok && "is-bad"]} style="font-size:20px">{latest ? (latest.ok ? "ok" : latestRefused ? "refused" : `failed (${latest.status || "no response"})`) : "—"}</div>
+      <div class="card__meta">{latest ? (latestRefused ? latestNote : `${latest.ms} ms · ${utc(latest.at)}`) : "no runs recorded"}</div>
     </div>
     <div class="card">
       <div class="card__label">Failures in last 24 runs</div>

@@ -58,6 +58,23 @@ async function fetchSnapshot(published = []) {
       premium: n(c.premium),
       maxLeverage: u.maxLeverage,
       marginTableId: u.marginTableId,
+      /* TWO HYPERLIQUID FUNDING NUMBERS EXIST ON THIS SITE, DELIBERATELY, AND THIS IS ONE.
+               `hlApr` is metaAndAssetCtxs.funding — the rate for the interval NOW IN PROGRESS. The
+               `venues` rows below come from predictedFundings, which is each venue's published rate
+               for the NEXT interval, and that is the right source there because it is the only one
+               that exists for Binance and Bybit, so it is the only basis on which venues can be
+               compared at all.
+      
+               They are different quantities and both are labelled "funding", which is exactly the
+               drifted-pair shape this codebase keeps finding. So it was measured rather than assumed,
+               against the upstream API across all 232 contracts: 188 identical, worst disagreement
+               0.31 percentage points (ZK, -17.24% against -16.93%), none exceeding 1pp, and NO sign
+               flips. On annualised rates that run to ±85% that is noise, and the alternative — making
+               the hero cards quote a next-interval rate, or the venue table quote a current-interval
+               one it cannot have for two of three venues — would make a correct number wrong.
+      
+               Left as it is on purpose. Recorded here so the next person to notice the two fields
+               does not unify them and call it a fix. */
       hlApr: toApr(n(c.funding), 1),
       venues,
       aprSpread: aprs.length >= 2 ? Math.max(...aprs) - Math.min(...aprs) : null
@@ -453,7 +470,7 @@ var COINS = [
     symbol: "XRP",
     product: "XRP-USD",
     publishAt: "2026-08-14",
-    blurb: "A payment-focused asset with a large retail spot base and a comparatively small derivatives book."
+    blurb: "A payment-focused asset with a large retail spot base and comparatively small open interest."
   },
   {
     slug: "bnb",
@@ -485,7 +502,7 @@ var COINS = [
     symbol: "AVAX",
     product: "AVAX-USD",
     publishAt: "2026-08-17",
-    blurb: "A layer-1 with a subnet architecture, and one of the smaller major perpetual books."
+    blurb: "A layer-1 with a subnet architecture, and one of the smaller major perpetual markets by open interest."
   },
   {
     slug: "chainlink",
@@ -536,7 +553,7 @@ var FUNDING_REFRESH_HOURS = 6;
 var CANARY_RETAIN_HOURS = 168;
 var CHUNK = 24;
 var FILL_BACKOFF_MS = 10 * 6e4;
-var WORKER_BUILD = "2026-08-14i";
+var WORKER_BUILD = "2026-08-17a";
 var ingest_default = {
   async scheduled(event, env, ctx) {
     if (event.cron === "* * * * *") {
@@ -595,8 +612,11 @@ async function run(env) {
     const snap = await fetchSnapshot(prevPublished);
     result.status = 200;
     result.symbols = snap.perps.length;
+    const prevCount = prevPublished.length;
+    const collapsed = snap.perps.length === 0 || prevCount >= 10 && snap.perps.length < prevCount / 2;
+    if (collapsed) result.error = `refused: coverage collapsed ${prevCount} -> ${snap.perps.length}`;
     const nowPublished = snap.perps.map((p) => p.symbol);
-    if (nowPublished.slice().sort().join(",") !== prevPublished.slice().sort().join(",")) {
+    if (!collapsed && nowPublished.slice().sort().join(",") !== prevPublished.slice().sort().join(",")) {
       await env.SNAPSHOT.put(publishedKey, JSON.stringify(nowPublished));
       result.coverageChanged = true;
     }
@@ -611,7 +631,7 @@ async function run(env) {
       }
     }
     result.rows = rows.length;
-    await env.SNAPSHOT.put("snapshot", JSON.stringify(snap));
+    if (!collapsed) await env.SNAPSHOT.put("snapshot", JSON.stringify(snap));
     try {
       await env.SNAPSHOT.put("spot", JSON.stringify(await fetchSpot()));
     } catch (e) {
@@ -619,11 +639,11 @@ async function run(env) {
     }
     if (rows.length) {
       const insert = env.DB.prepare("INSERT INTO funding_snapshot (symbol, venue, apr, at) VALUES (?1, ?2, ?3, ?4)");
-      await env.DB.batch(rows.map((r) => insert.bind(...r)));
+      if (!collapsed) await env.DB.batch(rows.map((r) => insert.bind(...r)));
       await env.DB.prepare("DELETE FROM funding_snapshot WHERE at < ?1").bind(at - RETAIN_HOURS * 36e5).run();
     }
-    result.ok = rows.length > 0;
-    if (!result.ok) result.error = "upstream returned no usable funding rows";
+    result.ok = !collapsed && rows.length > 0;
+    if (!result.ok && !result.error) result.error = "upstream returned no usable funding rows";
     try {
       const step = await stepReport(env);
       if (step) {

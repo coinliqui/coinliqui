@@ -78,7 +78,7 @@ const FILL_BACKOFF_MS = 10 * 60_000;
  *
  * BUMP BOTH when you change this file: here and EXPECTED_WORKER_BUILD in src/lib/version.ts.
  */
-const WORKER_BUILD = "2026-08-14i";
+const WORKER_BUILD = "2026-08-17a";
 
 export default {
   async scheduled(event: ScheduledController, env: Env, ctx: ExecutionContext) {
@@ -183,8 +183,35 @@ async function run(env: Env): Promise<RunResult> {
     result.status = 200;
     result.symbols = snap.perps.length;
 
+    /* A PLAUSIBILITY FLOOR, because "the upstream failed" and "the upstream answered nonsense"
+       need the same response and only one of them throws.
+     *
+     * info() checks the HTTP status and then trusts the body. Fed a 200 with an empty universe,
+     * with contexts full of nulls, or with markPx as the string "n/a", fetchSnapshot returns a
+     * perfectly well-formed snapshot containing ZERO contracts — exercised directly against the
+     * real function, all three produced perps=0 — and the line below would have written it over
+     * the healthy one. The site would then serve fifty empty pages from a snapshot whose
+     * timestamp says it is seconds old.
+     *
+     * The partial case is worse because it is quieter: a response carrying one contract instead
+     * of fifty leaves rows.length > 0, so result.ok stays TRUE and /status reports a healthy
+     * ingest while forty-nine contracts have silently vanished.
+     *
+     * So a collapse is refused rather than recorded after the fact. The previous snapshot stays
+     * in KV and ages visibly — which is the failure mode this site already knows how to show,
+     * on every page, in the freshness pill. A stale number that says it is stale beats a fresh
+     * number that is wrong. The threshold is half of the previously published set, and it only
+     * applies once there IS a meaningful set, so first boot and genuine growth are unaffected. */
+    const prevCount = prevPublished.length;
+    const collapsed = snap.perps.length === 0 || (prevCount >= 10 && snap.perps.length < prevCount / 2);
+    if (collapsed) result.error = `refused: coverage collapsed ${prevCount} -> ${snap.perps.length}`;
+
     const nowPublished = snap.perps.map((p) => p.symbol);
-    if (nowPublished.slice().sort().join(",") !== prevPublished.slice().sort().join(",")) {
+    /* NOT ON A COLLAPSE. This is the coverage DECISION, and it is stickier than the snapshot:
+       rewriting it to the degenerate set would retire the missing contracts, and their indexed
+       URLs would begin returning 404 on the strength of one bad upstream response. URLs are
+       promises; a transient is not a reason to break fifty of them. */
+    if (!collapsed && nowPublished.slice().sort().join(",") !== prevPublished.slice().sort().join(",")) {
       await env.SNAPSHOT.put(publishedKey, JSON.stringify(nowPublished));
       result.coverageChanged = true;
     }
@@ -201,8 +228,10 @@ async function run(env: Env): Promise<RunResult> {
     }
     result.rows = rows.length;
 
-    // KV first: the site reads from it, and it is the write that matters most.
-    await env.SNAPSHOT.put("snapshot", JSON.stringify(snap));
+    // KV first: the site reads from it, and it is the write that matters most — which is
+    // exactly why a collapsed snapshot must not reach it. The previous one stays and ages
+    // visibly instead.
+    if (!collapsed) await env.SNAPSHOT.put("snapshot", JSON.stringify(snap));
 
     /* SPOT, every tick, in one subrequest. Coinbase's /products/stats returns the whole
        exchange at once, so the ten coin pages cost one call rather than ten. Wrapped on its
@@ -217,16 +246,18 @@ async function run(env: Env): Promise<RunResult> {
     if (rows.length) {
       // One batched statement per tick. At 25 symbols x 3 venues that is ~75 rows per 5
       // minutes = ~21,600 writes/day, inside D1's free 100,000 rows-written/day.
+      // History is append-only; a collapsed read must not enter it or the flip feed and every
+      // future comparison inherit the gap as though it were market data.
       const insert = env.DB.prepare("INSERT INTO funding_snapshot (symbol, venue, apr, at) VALUES (?1, ?2, ?3, ?4)");
-      await env.DB.batch(rows.map((r) => insert.bind(...r)));
+      if (!collapsed) await env.DB.batch(rows.map((r) => insert.bind(...r)));
 
       await env.DB.prepare("DELETE FROM funding_snapshot WHERE at < ?1")
         .bind(at - RETAIN_HOURS * 3_600_000)
         .run();
     }
 
-    result.ok = rows.length > 0;
-    if (!result.ok) result.error = "upstream returned no usable funding rows";
+    result.ok = !collapsed && rows.length > 0;
+    if (!result.ok && !result.error) result.error = "upstream returned no usable funding rows";
 
     /* Bulk refreshes are STAGGERED — at most one kind per invocation — and CHUNKED, at most
        CHUNK symbols per invocation.
