@@ -60,9 +60,9 @@ export const onRequest = defineMiddleware(async (ctx, next) => {
        response nothing may share. A request without it — every crawler, and every first-time
        visitor — gets the cacheable one.
 
-       `no-transform` IS GONE. It stopped Cloudflare injecting a Web Analytics beacon, and it
-       also stopped edge compression — see the note at the end of this file for how that was
-       resolved and what is now true instead. */
+       `no-transform` is not set and must not be: it forbids edge compression, and brotli is
+       worth 81-96% on every page here. It was once set to stop an injected analytics beacon,
+       back when this site claimed to load no third-party scripts. That claim is retired. */
     const personal = ctx.cookies.has("rail");
     res.headers.set(
       "cache-control",
@@ -79,32 +79,44 @@ export const onRequest = defineMiddleware(async (ctx, next) => {
   res.headers.set("x-content-type-options", "nosniff");
   res.headers.set("referrer-policy", "strict-origin-when-cross-origin");
 
-  /* THE PRIVACY CLAIM, ENFORCED BY THE BROWSER RATHER THAN BY A DASHBOARD TOGGLE.
+  /* THE CSP, WHICH NO LONGER DEFENDS A MARKETING CLAIM AND STILL EARNS ITS PLACE.
    *
-   * /privacy states that reading a page makes zero requests to any domain other than this
-   * one. That was false for a while: Cloudflare Web Analytics was injecting a beacon from
-   * static.cloudflareinsights.com into every response whose Accept header looked like a
-   * browser's. `no-transform` stops the injection, and it is still set above — but it is a
-   * response header, and a header is a request away from being wrong.
+   * It used to exist to make "no third-party scripts" true by force — script-src 'self',
+   * nothing else, so an injected analytics beacon could not run. That policy is retired: this
+   * site runs Google Analytics 4 deliberately, and the CSP now names the hosts GA needs and
+   * refuses everything else.
    *
-   * A CSP makes it structural instead. `script-src 'self'` means an injected third-party
-   * script is never fetched and never runs, whoever turns what on. The claim then holds
-   * because the browser enforces it, not because a setting happens to be in the right state.
+   * Which is the part worth keeping. The threat a CSP is actually for is an origin nobody
+   * chose — a compromised dependency, an injected tag, a rewriting proxy. An allowlist of two
+   * named Google hosts stops all of that exactly as well as 'self' alone did; what it does not
+   * do is stop the analytics we asked for. The directives that carry that weight are the ones
+   * NOT relaxed: object-src 'none', base-uri 'self', frame-ancestors 'none', form-action
+   * 'self', default-src 'self'. Those are the anti-injection half and none of them moved.
    *
-   * 'unsafe-inline' is required and is NOT a hole here: the calculators ship their inputs as
-   * inline `define:vars` scripts, and Astro emits scoped CSS inline. What matters for the
-   * claim is the ORIGIN allowlist, and no external origin is permitted at all.
+   * The rule for editing this: name hosts, never a scheme and never a wildcard. `https:` or
+   * `*` in script-src would permit every origin on the internet and read, at a glance, like a
+   * tightened policy. scripts/verify-live.mjs fails on either.
+   *
+   * 'unsafe-inline' is required and is not the hole it looks like: the calculators ship their
+   * inputs as inline `define:vars` scripts, Astro emits scoped CSS inline, and the GA config
+   * call is inline. It permits inline code we authored, not off-origin code we did not.
    */
   if (isDocument) {
     res.headers.set(
       "content-security-policy",
       [
         "default-src 'self'",
-        "script-src 'self' 'unsafe-inline'",
+        /* Google Tag Manager serves gtag.js and nothing else is permitted to serve a script.
+           Named hosts, never a scheme or a wildcard: `https:` or `*` here would turn the
+           policy into decoration, which is the failure mode this directive exists to prevent. */
+        "script-src 'self' 'unsafe-inline' https://www.googletagmanager.com",
         "style-src 'self' 'unsafe-inline'",
-        "img-src 'self' data:",
+        /* GA falls back to a pixel when sendBeacon and fetch are both unavailable. */
+        "img-src 'self' data: https://www.google-analytics.com https://*.google-analytics.com",
         "font-src 'self'",
-        "connect-src 'self'",
+        /* Where GA4 actually sends the hits. The regional endpoints are separate hosts and
+           omitting them drops data silently from whole continents rather than failing loudly. */
+        "connect-src 'self' https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com",
         "form-action 'self'",
         "base-uri 'self'",
         "frame-ancestors 'none'",
@@ -112,43 +124,5 @@ export const onRequest = defineMiddleware(async (ctx, next) => {
       ].join("; "),
     );
   }
-  /* HOW THE COMPRESSION-VERSUS-BEACON STANDOFF WAS RESOLVED, because the answer is a
-   * judgement rather than a trick and the next person deserves the reasoning.
-   *
-   * Cloudflare injects a Web Analytics tag into every HTML body it is permitted to rewrite.
-   * `no-transform` forbids the rewrite — and, being the same header, also forbids compression.
-   * Uncompressed, /funding/btc is 386,067 bytes; with brotli it is 71,704. 81-96% on every
-   * page, on the metric mobile search weighs most.
-   *
-   * Three routes out were tried, in order of how much I wanted them:
-   *
-   *   1. Turn the injection off at source. Correct, and unavailable: the OAuth grant this
-   *      project holds covers pages:write and zone:read but no Web Analytics scope, and the
-   *      RUM API answers "Unable to authenticate request". Worth re-attempting the moment a
-   *      token with Account -> Web Analytics -> Edit exists; nothing else here is missing.
-   *      (The first diagnosis of this was wrong and worth recording: the token had simply
-   *      EXPIRED, and "Authentication error" was read as a scope limit for hours. Check the
-   *      expiry before theorising about permissions.)
-   *
-   *   2. Compress inside this Worker, so no-transform guards an already-encoded body. Sound in
-   *      principle. CompressionStream("gzip") through the Pages runtime produced a body that
-   *      `gunzip` refuses and no client can decode; shipping it would have made every page
-   *      unreadable. Not attempted again without a way to test it in production first.
-   *
-   *   3. Say what is true. The tag is inserted after this code has run and cannot be removed
-   *      from here — but `script-src 'self'` above means the browser never fetches it, so the
-   *      substantive promise (no off-origin request, no third-party code executing) holds
-   *      exactly as before. What was false was the WORDING: "no third-party scripts of any
-   *      kind" describes markup, and the markup has one. /privacy now states that the tag is
-   *      present, that it never loads, and how to confirm both in a network tab — which is a
-   *      stronger claim than the old one, because a reader can falsify it in thirty seconds.
-   *
-   * So no-transform is gone and the pages compress. scripts/verify-live.mjs no longer asserts
-   * "no beacon exists" — it asserts the two things that are enforceable and that actually
-   * protect the reader: the ONLY off-origin script is that known, blocked tag, and script-src
-   * still confines execution to this origin. A new third-party script, or a weakened CSP,
-   * fails the check exactly as before.
-   */
-
   return res;
 });

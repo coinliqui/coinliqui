@@ -1,147 +1,132 @@
 ---
 import Base from "../layouts/Base.astro";
 import Related from "../components/Related.astro";
-import { PINNED_KEY } from "../lib/site.ts";
+import { PINNED_KEY, IDENTITY, GA_ENABLED } from "../lib/site.ts";
 
-// Every claim on this page is checkable against the source. Nothing here describes a
-// planned feature: an honest-data site cannot ship a page describing a fiction.
-const title = "Privacy — there are no accounts";
+/**
+ * AN ORDINARY PRIVACY POLICY. Deliberately short, deliberately unremarkable.
+ *
+ * This page used to be an argument. It led with "there are no accounts and none are planned",
+ * claimed zero analytics, zero third-party scripts and zero off-origin requests, and spent
+ * three paragraphs on a Cloudflare beacon that the CSP was blocking. That was a position, and
+ * positions belong on pages that are selling something.
+ *
+ * The site now runs Google Analytics 4 on purpose. So this is a compliance page: what is
+ * collected, what cookies exist, what is not taken. No claims that need defending, no
+ * paragraph asking the reader to open a network tab and check us.
+ *
+ * Two of the old sentences were about to become false rather than merely promotional, and
+ * that is why this could not just be trimmed: "no analytics run" is now wrong, and "no
+ * accounts, and none are planned" is wrong about the plan.
+ *
+ * GA_ENABLED gates the analytics section against the measurement ID actually being set, so
+ * the page describes what the site does rather than what it is configured to do one day.
+ * A page claiming to run analytics that are not running is the same class of untruth as the
+ * one this replaced, pointed the other way.
+ */
+const title = "Privacy";
 const description =
-  "There are no accounts on this site and none are planned. Your watchlist lives in your own browser, no analytics run, and the only cookie stores whether the sidebar is collapsed.";
+  "What Coinliqui collects: Google Analytics for traffic measurement, two cookies, and no payment or personal information.";
+const updated = "17 August 2026";
 ---
 
 <Base title={title} description={description}>
   <div class="page-head">
     <h1>Privacy</h1>
-    <p>What this site stores about you, in full. It is a short page because the answer is almost nothing.</p>
+    <p>What this site collects, and what it does not. Last updated {updated}.</p>
   </div>
 
-  <div class="empty" style="margin-bottom:28px">
-    <div class="empty__icon" aria-hidden="true">
-      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2.6 4.4 5v4.3c0 3.4 2.3 6.5 5.6 7.6 3.3-1.1 5.6-4.2 5.6-7.6V5Z" /><path d="m7.6 9.9 1.8 1.8 3.2-3.6" /></svg>
-    </div>
-    <div class="empty__body">
-      <p class="empty__title">There are no accounts, and none are planned</p>
-      <p class="empty__text">
-        There is nothing to sign up for, nothing to sign into, and no plan to add either. Every
-        page, number and calculator on this site works for an anonymous visitor, which is the
-        only kind of visitor there is.
-      </p>
-      <p class="empty__meta">No email. No password. No wallet connection. No exchange API keys.</p>
-    </div>
-  </div>
-
-  <h2 class="section">What is stored in your browser</h2>
+  <h2 class="section">What we do not take</h2>
   <p class="prose">
-    Two things, both local to the device you are reading this on, and neither one sent anywhere.
+    No payment details — nothing on this site is for sale and there is no checkout. No personal
+    information: no name, email address, password, wallet connection or exchange API key is
+    asked for anywhere. There are no accounts today, so there is nothing to register for and
+    nothing to sign into. If that changes, this page changes with it.
   </p>
-  <div class="panel" style="max-width:820px">
+
+  {GA_ENABLED ? (
+    <>
+      <h2 class="section">Analytics</h2>
+      <p class="prose">
+        This site uses <strong>Google Analytics 4</strong> to measure traffic. It records which
+        pages are viewed and in what order, roughly where in the world the request came from,
+        the device and browser, and how you arrived — a search result, a link, or directly.
+        Google processes this on our behalf and may transfer it outside your country, including
+        to the United States. It is used to understand which pages are worth writing and
+        nothing else: no profiles are built, nothing is sold, and no data is shared with
+        advertisers.
+      </p>
+      <p class="prose">
+        You can stop it with any content blocker, with Google's own
+        {" "}<a class="link" href="https://tools.google.com/dlpage/gaoptout" rel="nofollow noopener">opt-out add-on</a>,
+        or by blocking cookies for this site. Every page works identically either way.
+      </p>
+    </>
+  ) : (
+    <>
+      <h2 class="section">Analytics</h2>
+      <p class="prose">No analytics are running on this site at present.</p>
+    </>
+  )}
+
+  <h2 class="section">Cookies and local storage</h2>
+  <div class="panel" style="max-width:860px">
     <table class="tbl">
-      <thead><tr><th>What</th><th>Where</th><th>Written when</th><th>Contains</th></tr></thead>
+      <thead><tr><th>Name</th><th>Kind</th><th>Purpose</th><th>Expires</th></tr></thead>
       <tbody>
+        {GA_ENABLED && (
+          <tr>
+            <td><code>_ga</code>, <code>_ga_*</code></td>
+            <td>Cookie</td>
+            <td>Google Analytics — tells one browser apart from another so a visit is not counted twice</td>
+            <td>2 years</td>
+          </tr>
+        )}
         <tr>
           <td><code>rail</code></td>
           <td>Cookie</td>
-          <td>You click the sidebar collapse button</td>
-          <td><code>0</code> or <code>1</code> — nothing else is possible</td>
+          <td>Whether you collapsed the sidebar. Two possible values; not an identifier</td>
+          <td>1 year</td>
         </tr>
         <tr>
           <td><code>{PINNED_KEY}</code></td>
           <td>Local storage</td>
-          <td>You pin a coin on <a href="/watchlist">your watchlist</a></td>
-          <td>A list of ticker symbols</td>
+          <td>The coins you pinned on <a href="/watchlist">your watchlist</a>. Never sent anywhere</td>
+          <td>Until you clear it</td>
         </tr>
       </tbody>
     </table>
   </div>
   <p class="section-note" style="margin-top:10px">
-    The cookie is read during server rendering so the sidebar is already in the right state at
-    first paint rather than jumping after load. It is not an identifier: it has two possible
-    values and is shared by everyone who ever collapsed the sidebar. Clearing your browser data
-    removes both, and the site behaves identically without them.
-  </p>
-
-  <h2 class="section">What runs on the page</h2>
-  <p class="prose">
-    No analytics of ours. No tag manager, no pixel, no session recorder, no A/B testing service,
-    no consent banner — because there is nothing to consent to. No web fonts from a CDN. Reading
-    this page makes <strong>zero</strong> requests to any domain other than this one.
-  </p>
-  <p class="prose">
-    <strong>One third-party script tag is nonetheless present in the HTML, and it never loads.</strong>
-    Our host, Cloudflare, inserts a tag for its own Web Analytics beacon into every page as it
-    leaves their edge — after this site's code has finished and with no way for it to intervene.
-    We would rather it were not there and are working to switch it off at the source. In the
-    meantime the important half is true and is the half you can check: <strong>the browser never
-    fetches it.</strong> Every page is served with a <strong>Content-Security-Policy</strong>
-    whose script source is <code>'self'</code>, so a script from any other origin is refused
-    before a request is made.
-  </p>
-  <p class="prose">
-    Both halves are visible to you in about thirty seconds, and we would rather you checked than
-    believed us. View source and you will find one tag pointing at
-    {" "}<code>static.cloudflareinsights.com</code>. Open the network tab, reload, and you will
-    find no request to it — and, in the console, a Content Security Policy violation reporting
-    that the browser blocked it. That refusal is the guarantee. A promise in a paragraph is not.
-  </p>
-  <p class="prose">
-    Two scripts run, both from this site and both talking only to this site. The search box's
-    typeahead fetches a small index of these pages; what you type in it never leaves the browser.
-    On every page carrying a live figure — the <a href="/coins">coin pages</a>, the
-    {" "}<a href="/funding">funding table</a> and all fifty contract pages — a price ticker asks
-    this site for the latest quote every thirty seconds, and stops entirely while the tab is in
-    the background. (This used to say "the coin pages", which was wrong: the ticker binds to any
-    element carrying a live value, and /funding alone has 144 of them.) It sends nothing about
-    you, sets nothing, and reads no identifier — and because every price is already in the page
-    when it arrives, turning JavaScript off changes nothing except how often the number moves.
+    Clearing your browser data removes all of them and the site behaves the same without them.
   </p>
 
   <h2 class="section">The calculators</h2>
   <p class="prose">
-    The <a href="/tools">calculators</a> compute in the page. Nothing you enter is stored, and no
-    position, balance or trade is recorded anywhere.
-  </p>
-  <p class="prose">
-    One honest caveat. The forms submit as <code>GET</code>, so the values you type appear in the
-    page's own URL — <code>?account=25000&amp;entry=100000</code> and so on. That is deliberate:
-    it makes a result a link you can share or bookmark, and it is why the page renders its answer
-    on the server instead of blanking out until JavaScript runs. But URLs are the one thing that
-    does reach the host's request logs. Nothing connects those numbers to you, and you are free to
-    type round ones — but if you would rather a real account balance never appear in a log line
-    anywhere, use a representative figure instead of your actual one.
+    The <a href="/tools">calculators</a> compute in the page and store nothing. Their forms
+    submit as <code>GET</code>, so the values you enter appear in the page's own URL — which is
+    what makes a result shareable, and also means those numbers reach ordinary web-server
+    request logs. Nothing links them to you, but if you would rather a real account balance did
+    not appear in a log line, use a representative figure.
   </p>
 
-  <h2 class="section">What the host sees</h2>
+  <h2 class="section">Hosting</h2>
   <p class="prose">
-    This site runs on Cloudflare. Like any web host, it processes the requests needed to serve a
-    page and keeps aggregate traffic metrics. That is the floor for any website that exists on the
-    internet, and it is not something this site adds to: no per-visitor analytics are enabled, no
-    logging is configured beyond the platform default, and there is no database of visitors,
-    because there is no concept of a visitor here to have a row.
+    This site runs on Cloudflare, which processes the requests needed to serve a page and keeps
+    aggregate traffic metrics, as any web host does.
   </p>
 
-  <h2 class="section">Why it is built this way</h2>
+  <h2 class="section">Contact</h2>
   <p class="prose">
-    Partly principle and mostly arithmetic. Accounts mean a credential store, a reset flow, a
-    breach surface and a legal obligation, and none of that makes a funding rate more accurate. A
-    site that never accepts a password cannot leak one. A site that never asks for a wallet
-    signature cannot be phished for one. A site with no user table has nothing to lose.
-  </p>
-  <p class="prose">
-    If that ever changes, this page changes first, and it will say what is collected before
-    anything is collected — not after.
-  </p>
-
-  <p style="margin-top:24px">
-    <a class="link" href="/data-sources">Where the data comes from →</a>
-    · <a class="link" href="/methodology">How the numbers are produced →</a>
+    Questions about any of this, including a request to delete data associated with your
+    visits: <a class="link" href={`mailto:${IDENTITY.contact}`}>{IDENTITY.contact}</a>.
   </p>
 
   <Related items={[
-    { href: "/watchlist", label: "Pinned coins", note: "The only feature that stores anything, and it stores it in your browser." },
-    { href: "/data-sources", label: "Data sources", note: "Every request this site makes on your behalf, and to whom." },
-    { href: "/coins", label: "Coins", note: "The one page with a live ticker — same origin, no cookie, stops when hidden." },
-    { href: "/methodology", label: "Methodology", note: "How the numbers are produced, since nothing about you goes into them." },
+    { href: "/about", label: "About", note: "Who operates this site and what it is for." },
+    { href: "/data-sources", label: "Data sources", note: "Every endpoint behind every number here." },
+    { href: "/methodology", label: "Methodology", note: "How the numbers are produced." },
+    { href: "/watchlist", label: "Watchlist", note: "The one feature that stores anything, and it stores it in your browser." },
   ]} />
 
   <style>

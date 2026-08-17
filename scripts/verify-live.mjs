@@ -24,12 +24,12 @@ const ok = (m) => console.log("   ok    " + m);
 /**
  * SEND WHAT A BROWSER SENDS.
  *
- * This mattered more than it looks. Node's fetch defaults to `Accept: * / *`, and Cloudflare
- * only injects its Web Analytics beacon into responses for requests whose Accept header asks
- * for HTML. So the beacon check below — the one guarding the published claim that this site
- * loads no third-party scripts — passed for a year of runs while every real visitor was being
- * served exactly the script it was written to catch. A verifier that does not look like the
- * thing it is verifying is worse than no verifier: it produces confident green.
+ * This mattered more than it looks, and the lesson outlived the check that taught it. Node's
+ * fetch defaults to `Accept: * / *`, and an edge can serve a materially different body on that
+ * header than on a browser's — Cloudflare, for one, injects scripts only into responses whose
+ * Accept asks for HTML. A check here once ran for a year against a body no visitor was ever
+ * served, and reported green the whole time. A verifier that does not look like the thing it
+ * is verifying is worse than no verifier: it produces confident green.
  */
 const ACCEPT = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8";
 async function fetchAs(path, ua = "Mozilla/5.0", accept = ACCEPT) {
@@ -147,60 +147,70 @@ console.log("\n5. sitemap");
   gone.length ? bad(gone.join("; ")) : ok("withdrawn URLs return 410 and are absent from the sitemaps");
 }
 
-/* 6. The /privacy claim: no analytics, no third-party script, zero off-origin requests. */
-console.log("\n6. privacy claim");
+/* 6. THE CSP, AS THE ANTI-INJECTION CONTROL IT ACTUALLY IS.
+ *
+ * THIS SECTION USED TO ASSERT A RULE THAT NO LONGER EXISTS. It checked that the only
+ * off-origin script was Cloudflare's blocked beacon and that script-src was exactly 'self',
+ * because /privacy claimed zero third-party scripts and zero off-origin requests. The site now
+ * runs Google Analytics 4 deliberately, so that assertion would fail on correct behaviour —
+ * a check defending a retired rule, which is the drift this file exists to catch.
+ *
+ * What survives is the half that was always the real value. A CSP is protection against an
+ * origin NOBODY CHOSE: a compromised dependency, an injected tag, a rewriting proxy. So:
+ *
+ *   - every off-origin script must be on the allowlist below, BY HOSTNAME. A new one fails.
+ *   - script-src must name hosts and must never contain a scheme or a wildcard. `https:` or
+ *     `*` permits the entire internet while reading like a policy.
+ *   - the directives that do the anti-injection work must all still be present. Relaxing
+ *     script-src for analytics is a decision; quietly losing object-src 'none' is not.
+ *
+ * HOSTNAME EQUALITY OR AN EXPLICIT SUFFIX, NEVER A PREFIX. `startsWith("https://x.com")` also
+ * matches https://x.com.evil.tld. That hole was found here once by writing the blind case out
+ * and running it, and widening the allowlist makes it more dangerous rather than less —
+ * scripts/blind-cases.mjs keeps the cases.
+ */
+const SCRIPT_HOSTS = ["www.googletagmanager.com"];
+const REQUIRED_CSP = [
+  ["object-src", "'none'"], ["base-uri", "'self'"], ["frame-ancestors", "'none'"],
+  ["form-action", "'self'"], ["default-src", "'self'"],
+];
+console.log("\n6. content security policy");
 for (const p of ["/", "/funding/btc"]) {
   const r = await fetchAs(p);
-  // A canonical <link> is a hint, not a subresource — it costs the reader no request, and
-  // on a preview host it legitimately points at the apex. Only things the browser FETCHES
-  // count against the /privacy claim.
-  /* The host's injected analytics tag is exempted BY NAME, once, here — and the assertion
-     below proves it is the only exemption and that the CSP still neuters it. Two checks in
-     this file describe one policy; when the policy changed I updated the other one and left
-     this failing, which is precisely the drifted-pair shape this verifier exists to catch,
-     aimed at the verifier. Naming the exemption in one place is what stops it recurring. */
-  /* HOSTNAME EQUALITY, NOT PREFIX. `startsWith("https://static.cloudflareinsights.com")` also
-     matches https://static.cloudflareinsights.com.evil.tld/x.js — a hostile origin that merely
-     begins with the exempt one would have been waved through by the exemption meant to be
-     narrow. Found by writing the blind case out and running it rather than by rereading the
-     line. Every allowlist compared as a string prefix has this hole. */
   const hostOf = (u) => { try { return new URL(u).hostname; } catch { return null; } };
   const ORIGIN_HOST = hostOf(ORIGIN);
-  /* THE SAME HOLE WAS IN THE OTHER TWO COMPARISONS ON THIS LINE, and one was worse:
-     `u.startsWith(ORIGIN)` treats https://coinliqui.com.evil.tld/x.js as same-origin and
-     exempts it outright — an attacker-controlled host waved through as ours. schema.org had
-     it too. All three now compare the parsed hostname. */
   const sameOrigin = (u) => hostOf(u) === ORIGIN_HOST;
   const isSchemaOrg = (u) => hostOf(u) === "schema.org";
-  const isInjected = (u) => hostOf(u) === "static.cloudflareinsights.com";
-  const ext = [...r.body.matchAll(/<(?:script|img|iframe)[^>]*src="(https?:\/\/[^"]+)"|<link(?![^>]*rel="(?:canonical|alternate)")[^>]*href="(https?:\/\/[^"]+)"/g)]
-    .map((m) => m[1] || m[2])
-    .filter((u) => u && !sameOrigin(u) && !isSchemaOrg(u) && !isInjected(u));
-  ext.length ? bad(`${p} loads off-origin: ${ext.join(", ")}`) : ok(`${p} no off-origin subresource beyond the host's blocked tag`);
-  /* Checked under BOTH Accept headers, because the injection is conditional on it and the
-     browser case is the one the claim is about. Keeping the `* / *` probe alongside is not
-     redundancy — a difference between the two is itself the finding. */
-  /* THE CHECK CHANGED WHEN THE CLAIM DID. The host injects a Web Analytics tag at its edge,
-     after this Worker has finished, and the credential needed to switch that off is not one
-     this project holds. /privacy now states that plainly and stakes the guarantee on the thing
-     that is actually enforceable: the browser refuses to fetch it. So the assertion here is no
-     longer "no beacon tag exists" — which we cannot make true — but the two that we can:
-     the ONLY off-origin script is that known tag, and the CSP that neuters it is intact.
-     A NEW third-party script, or a weakened script-src, still fails. */
-  // Same rule as isInjected above: the HOST must equal it, not merely begin with it.
-  const beacon = /beacon\.min\.js|cloudflareinsights|\/cdn-cgi\/(rum|challenge-platform|zaraz)/;
-  const wild = await fetchAs(p, "Mozilla/5.0", "*/*");
-  const otherThirdParty = [...r.body.matchAll(/<script[^>]*src="(https?:\/\/[^"]+)"/g)]
-    .map((m) => m[1]).filter((u) => !sameOrigin(u) && !isInjected(u));
+  const allowed = (u) => SCRIPT_HOSTS.includes(hostOf(u));
+
+  const scripts = [...r.body.matchAll(/<script[^>]*src="(https?:\/\/[^"]+)"/g)].map((m) => m[1]);
+  const unknown = scripts.filter((u) => !sameOrigin(u) && !allowed(u));
+  unknown.length
+    ? bad(`${p} loads an UNLISTED off-origin script: ${unknown.join(", ")}`)
+    : ok(`${p} off-origin scripts: ${scripts.filter((u) => !sameOrigin(u)).length}, all on the allowlist`);
+
+  const subres = [...r.body.matchAll(/<(?:img|iframe)[^>]*src="(https?:\/\/[^"]+)"|<link(?![^>]*rel="(?:canonical|alternate)")[^>]*href="(https?:\/\/[^"]+)"/g)]
+    .map((m) => m[1] || m[2]).filter((u) => u && !sameOrigin(u) && !isSchemaOrg(u) && !allowed(u));
+  subres.length
+    ? bad(`${p} loads an unlisted off-origin subresource: ${subres.join(", ")}`)
+    : ok(`${p} no unlisted off-origin subresource`);
+
   const csp = r.headers.get("content-security-policy") ?? "";
-  const scriptSrc = (csp.match(/script-src ([^;]*)/) ?? [, ""])[1];
-  const cspSound = /'self'/.test(scriptSrc) && !/https?:|\*/.test(scriptSrc);
-  otherThirdParty.length
-    ? bad(`${p} loads an UNKNOWN third-party script: ${otherThirdParty.join(", ")}`)
-    : !cspSound
-    ? bad(`${p} script-src no longer confines scripts to this origin: "${scriptSrc.trim()}"`)
-    : ok(`${p} only the known CSP-blocked tag off-origin (browser Accept: ${beacon.test(r.body)}, */*: ${beacon.test(wild.body)}); script-src confines to self`);
-  r.headers.get("set-cookie") ? bad(`${p} sets a cookie: ${r.headers.get("set-cookie")}`) : ok(`${p} sets no cookie`);
+  if (!csp) { bad(`${p} sends no Content-Security-Policy`); continue; }
+  const dir = (name) => (csp.match(new RegExp(`(?:^|;)\\s*${name} ([^;]*)`)) ?? [, ""])[1].trim();
+
+  const scriptSrc = dir("script-src");
+  const loose = /(^|\s)(\*|https?:)(\s|$)/.test(scriptSrc);
+  const named = SCRIPT_HOSTS.every((h) => scriptSrc.includes(h));
+  loose ? bad(`${p} script-src contains a scheme or wildcard — that permits every origin: "${scriptSrc}"`)
+    : !/'self'/.test(scriptSrc) ? bad(`${p} script-src no longer allows 'self': "${scriptSrc}"`)
+    : !named ? bad(`${p} script-src is missing an allowlisted analytics host: "${scriptSrc}"`)
+    : ok(`${p} script-src names hosts, no scheme or wildcard`);
+
+  const missing = REQUIRED_CSP.filter(([k, v]) => dir(k) !== v);
+  missing.length
+    ? bad(`${p} lost anti-injection directive(s): ${missing.map(([k, v]) => `${k} ${v}`).join(", ")}`)
+    : ok(`${p} object-src, base-uri, frame-ancestors, form-action, default-src all intact`);
 }
 
 /* 7. DID THE DOCUMENT FINISH?

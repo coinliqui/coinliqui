@@ -1,5 +1,5 @@
 ---
-import { SITE, NAV, FOOTER_LINKS, IDENTITY, origin } from "../lib/site.ts";
+import { SITE, NAV, FOOTER_LINKS, IDENTITY, origin, GA_MEASUREMENT_ID, GA_ENABLED, GA_DEFER } from "../lib/site.ts";
 import ASSETS from "../data/assets.json";
 
 interface Props {
@@ -107,9 +107,8 @@ const schema = {
     {noindex && <meta name="robots" content="noindex, follow" />}
     <link rel="canonical" href={new URL(path, base).href} />
     {/* There was no favicon and no social card at all. Both are same-origin SVG served from
-        public/, so /privacy's zero-off-origin-requests guarantee is untouched — and a site
-        with a blank tab icon and no card reads as abandoned to a person and as unestablished
-        to everything else. */}
+        public/ — and a site with a blank tab icon and no card reads as abandoned to a person
+        and as unestablished to everything else. */}
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content={SITE.name} />
@@ -776,6 +775,62 @@ const schema = {
         .calc .btn, .calc button { width: 100%; }
       }
     </style>
+    {/* GOOGLE ANALYTICS 4, the standard install: async loader plus the config call.
+        Renders only when src/lib/site.ts carries a well-formed measurement ID, so with no ID
+        there is no tag, no request and no cookie — the "off" state is genuinely off rather
+        than a broken tag pointing at nothing.
+
+        DELIBERATELY NO `preconnect` to googletagmanager.com. A preconnect opens a DNS+TLS
+        connection during the window the page is racing to paint its largest text block, which
+        is the one thing on this site that must not get slower. The script is `async` and not
+        on the critical path; buying it a faster start by spending the LCP window is the wrong
+        trade for a site whose entire distribution is organic search.
+
+        If measurement shows this costing LCP or INP, the mitigation is to move the loader
+        behind the load event rather than to drop it — see the note in /privacy about what is
+        collected, which does not change either way. */}
+    {GA_ENABLED && !GA_DEFER && (
+      <script async is:inline src={`https://www.googletagmanager.com/gtag/js?id=${GA_MEASUREMENT_ID}`}></script>
+    )}
+    {GA_ENABLED && (
+      <script is:inline define:vars={{ GA_ID: GA_MEASUREMENT_ID, DEFER: GA_DEFER }}>
+        window.dataLayer = window.dataLayer || [];
+        function gtag() { window.dataLayer.push(arguments); }
+        gtag("js", new Date());
+        gtag("config", GA_ID);
+
+        /* The queue above is safe to fill before gtag.js exists — that is what dataLayer is
+           for — so deferring the LOADER changes when the hit is sent, not whether it is. */
+        if (DEFER) {
+          var armed = false;
+          var events = ["pointerdown", "keydown", "scroll", "touchstart"];
+          function load() {
+            if (armed) return;
+            armed = true;
+            for (var i = 0; i < events.length; i++) {
+              window.removeEventListener(events[i], load, { passive: true });
+            }
+            var s = document.createElement("script");
+            s.async = true;
+            s.src = "https://www.googletagmanager.com/gtag/js?id=" + GA_ID;
+            document.head.appendChild(s);
+          }
+          for (var j = 0; j < events.length; j++) {
+            window.addEventListener(events[j], load, { passive: true, once: true });
+          }
+          /* After load, not after parse: the point is to be behind everything the page needs
+             to become useful. requestIdleCallback where it exists, a timeout where it does
+             not (Safari), and a 3s backstop so a perfectly still reader is still counted. */
+          function schedule() {
+            if (window.requestIdleCallback) window.requestIdleCallback(load, { timeout: 3000 });
+            else setTimeout(load, 1200);
+            setTimeout(load, 3000);
+          }
+          if (document.readyState === "complete") schedule();
+          else window.addEventListener("load", schedule, { once: true });
+        }
+      </script>
+    )}
   </head>
   <body>
     <div class:list={["app", { "is-collapsed": collapsed }]}>

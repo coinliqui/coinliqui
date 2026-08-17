@@ -122,13 +122,15 @@ const description =
     <table class="tbl">
       <thead><tr><th>Claim</th><th>How you check it</th></tr></thead>
       <tbody>
+        {/* TWO ROWS REMOVED, not reworded. They read "it makes no off-origin requests" and
+            "its one third-party script tag never loads", and both stopped being true when this
+            site started running Google Analytics on purpose. A checkable-claims table whose
+            claims fail the check is worse than no table — this one exists precisely to be
+            audited by a reader. What is collected is now stated plainly on /privacy instead,
+            where a policy belongs, rather than argued for here. */}
         <tr>
-          <td>It makes no off-origin requests</td>
-          <td class="reason">Open your network tab on any page and reload. Every request goes to coinliqui.com. This is enforced by a <code>Content-Security-Policy</code> header you can read in the response — the browser refuses anything else, whatever we might intend.</td>
-        </tr>
-        <tr>
-          <td>Its one third-party script tag never loads</td>
-          <td class="reason">Our host inserts a <code>static.cloudflareinsights.com</code> tag into every page after our code has run. View source and you will see it; watch the network tab and you will see no request for it, and a CSP violation in the console saying the browser blocked it. The full account is on <a class="link" href="/privacy">privacy</a> — we would rather state this than claim something tidier.</td>
+          <td>No account is ever required</td>
+          <td class="reason">Every page, number and calculator works without signing in, because there is nothing to sign into. No email, password, wallet connection or exchange key is asked for anywhere on the site.</td>
         </tr>
         <tr>
           <td>The numbers come from where we say</td>

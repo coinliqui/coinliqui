@@ -158,9 +158,10 @@ to a stated reason rather than failing the run:
 The sitemaps ARE the template split — one file per template by construction — so the
 report's grouping cannot drift from the site's own.
 
-Section C reads aggregate request metrics Cloudflare already keeps, which `/privacy`
-already discloses. Nothing is added to the page: no script, no cookie, no beacon. Any
-option that would have required one is out of scope by that page rather than by preference.
+Section C reads aggregate request metrics Cloudflare already keeps at the edge, which is the
+only place a named crawler's fetch is visible at all — Googlebot runs no JavaScript, so it
+never appears in Google Analytics. The two sources answer different questions and neither
+replaces the other: GA4 measures people, section C measures crawlers.
 
 ## Not built yet
 

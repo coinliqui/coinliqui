@@ -30,9 +30,15 @@ export const SITE = {
  * So the fix is not to argue with the model. It is to stop being indistinguishable from the
  * thing it is being mistaken for, and the strongest available argument is structural rather
  * than reputational: this site has no account, no deposit, no wallet connection and nothing to
- * sign, and /privacy's guarantees are enforced by a Content-Security-Policy a reader can check
- * in their own network tab. A site that cannot receive money cannot take yours. Everything
- * below exists to put that in front of a crawler, an answer engine and a person.
+ * sign, so it cannot take a payment or a credential even in principle. A site that cannot
+ * receive money cannot take yours. Everything below exists to put that in front of a crawler,
+ * an answer engine and a person.
+ *
+ * (This used to end "…and /privacy's guarantees are enforced by a Content-Security-Policy a
+ * reader can check in their own network tab." That was an argument about analytics, which the
+ * site now runs on purpose, and it was never the load-bearing half. Nothing about the
+ * scam-signal problem depended on it: what answers that question is having no way to take
+ * money, not having no way to count visitors.)
  */
 export const IDENTITY = {
   /** First commit of the published build. Real, checkable, and not rounded up. */
@@ -68,6 +74,59 @@ export const IDENTITY = {
    */
   sameAs: ["https://github.com/coinliqui/coinliqui"] as string[],
 } as const;
+
+/**
+ * GOOGLE ANALYTICS 4. The measurement ID, and the only thing that has to be filled in.
+ *
+ * Empty string means GA does not render at all — no tag, no request, no cookie — so the site
+ * is correct and shippable before the ID exists, and a bad paste degrades to "no analytics"
+ * rather than to a broken page. Everything else (the loader, the CSP allowances, the privacy
+ * copy) is already in place and keyed off this one value.
+ *
+ * A measurement ID is public by design: it ships in the HTML of every page and identifies a
+ * property, not an account. It is not a credential and does not belong in a secret store.
+ *
+ * GA_ENABLED is a SHAPE check, not a truthiness check, so a placeholder left in by accident
+ * cannot emit a live tag pointing at nothing. It is deliberately loose about length — real IDs
+ * are G- plus ten characters, but a regex tightened to exactly ten would silently disable
+ * analytics if Google ever issues another width, and "silently off" is the worst failure this
+ * value has. Loose enough to accept anything Google plausibly issues, strict enough to reject
+ * an empty string or a leftover placeholder.
+ */
+export const GA_MEASUREMENT_ID = "";
+export const GA_ENABLED = /^G-[A-Z0-9]{6,15}$/.test(GA_MEASUREMENT_ID);
+
+/**
+ * LOAD gtag.js AFTER THE PAGE HAS SETTLED, rather than in parallel with it. Measured, not
+ * assumed — /funding/btc on the local warm build, GA off then on:
+ *
+ *                       GA off      GA on
+ *   long tasks          none        119 ms + 66 ms
+ *   total blocking      0 ms        85 ms
+ *   load event          133 ms      668 ms
+ *   off-origin hosts    0           2
+ *   transfer            —           +145.8 KB brotli (the whole page is 69 KB)
+ *   JS to parse         ~0          +419 KB decoded
+ *
+ * This site ships almost no JavaScript, so gtag.js is not an increment on the main thread —
+ * it IS the main-thread work. 419 KB to parse and execute, on a page whose own budget is a
+ * search index and a price ticker. On mid-range mobile hardware that block is typically
+ * several times longer than the 185 ms measured on a fast laptop, and INP is scored on the
+ * interactions that land while it runs.
+ *
+ * Deferring keeps the data and removes the contention. The pageview still fires; it fires a
+ * moment later. What is genuinely lost is the visitor who leaves before the trigger, which is
+ * the shortest and least informative session there is.
+ *
+ * THE TRIGGER IS WHICHEVER COMES FIRST of: the browser going idle after load, the first real
+ * interaction (a scroll, tap, key or pointer), or a 3-second backstop. The interaction case
+ * matters most — a reader who is doing something is a reader worth counting, and they arm the
+ * loader before the timer would.
+ *
+ * Set to false to get Google's stock `async`-in-head behaviour back. The numbers above are the
+ * argument for the default; if they change, change the default.
+ */
+export const GA_DEFER = true;
 
 /** Namespace for anything this site writes to a visitor's own browser. One constant, so
  *  /privacy can document the exact key rather than a copy of it that drifts. */
