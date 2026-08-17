@@ -76,9 +76,15 @@ const FILL_BACKOFF_MS = 10 * 60_000;
  * stale paste. The worker writes this on every run and /status compares it with the value
  * the site was built with.
  *
- * BUMP BOTH when you change this file: here and EXPECTED_WORKER_BUILD in src/lib/version.ts.
+ * NO LONGER TYPED BY HAND. It used to be a string here and a matching string in
+ * src/lib/version.ts, with a comment saying to bump both "when you change this file" — and
+ * "this file" was the hole. The worker bundles src/lib/hyperliquid.ts and src/lib/coins.ts,
+ * so a change to either alters what the worker DOES while touching neither place the stamp
+ * lived. That happened twice in one day (a bounded retry in info(), another in fetchSpot())
+ * and /status reported "worker bundle current" both times: a staleness guard going green
+ * while stale. scripts/stamp-worker.mjs now hashes the worker's whole dependency closure.
  */
-const WORKER_BUILD = "2026-08-17e";
+import { WORKER_BUILD } from "./build-stamp.ts";
 
 export default {
   async scheduled(event: ScheduledController, env: Env, ctx: ExecutionContext) {
