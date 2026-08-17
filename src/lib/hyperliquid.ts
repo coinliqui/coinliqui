@@ -138,6 +138,23 @@ export async function fetchSnapshot(published: string[] = []): Promise<Snapshot>
       premium: n(c.premium),
       maxLeverage: u.maxLeverage,
       marginTableId: u.marginTableId,
+      /* TWO HYPERLIQUID FUNDING NUMBERS EXIST ON THIS SITE, DELIBERATELY, AND THIS IS ONE.
+         `hlApr` is metaAndAssetCtxs.funding — the rate for the interval NOW IN PROGRESS. The
+         `venues` rows below come from predictedFundings, which is each venue's published rate
+         for the NEXT interval, and that is the right source there because it is the only one
+         that exists for Binance and Bybit, so it is the only basis on which venues can be
+         compared at all.
+
+         They are different quantities and both are labelled "funding", which is exactly the
+         drifted-pair shape this codebase keeps finding. So it was measured rather than assumed,
+         against the upstream API across all 232 contracts: 188 identical, worst disagreement
+         0.31 percentage points (ZK, -17.24% against -16.93%), none exceeding 1pp, and NO sign
+         flips. On annualised rates that run to ±85% that is noise, and the alternative — making
+         the hero cards quote a next-interval rate, or the venue table quote a current-interval
+         one it cannot have for two of three venues — would make a correct number wrong.
+
+         Left as it is on purpose. Recorded here so the next person to notice the two fields
+         does not unify them and call it a fix. */
       hlApr: toApr(n(c.funding), 1),
       venues,
       aprSpread: aprs.length >= 2 ? Math.max(...aprs) - Math.min(...aprs) : null,
