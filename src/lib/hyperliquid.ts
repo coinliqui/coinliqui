@@ -60,12 +60,36 @@ export interface Snapshot {
   available: boolean;
 }
 
+/**
+ * ONE RETRY, ON RATE LIMITING ONLY.
+ *
+ * 307 of 857 ingest runs returned HTTP 429 between 14 and 17 August — 36% — and every one of
+ * them carried symbols:0, rows:0, meaning the limit hit this call and the whole run aborted
+ * before fetching anything. The site's egress is a shared Cloudflare address and the budget
+ * measured out at ~432 requests an hour to this one host, dominated by the chunked sweeps; the
+ * snapshot fetch is simply the call that arrives after the burst.
+ *
+ * Deliberately ONE retry, not a loop, and only for 429 and 502. A retry that keeps going turns
+ * a genuine upstream outage into a slow cron and a quiet site — the failure this whole audit
+ * is about, reintroduced by the fix for a different one. If the second attempt fails the error
+ * propagates exactly as before and the run is recorded as failed.
+ *
+ * 1200ms because network wait does not count toward the Worker CPU limit, so it is free here,
+ * and one second is the shortest delay that means anything against a per-minute window.
+ */
 async function info<T>(body: unknown): Promise<T> {
-  const r = await fetch(INFO, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-  });
+  const send = () =>
+    fetch(INFO, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+  let r = await send();
+  if (r.status === 429 || r.status === 502) {
+    await new Promise((res) => setTimeout(res, 1200));
+    r = await send();
+  }
   if (!r.ok) throw new Error(`hyperliquid ${r.status}`);
   return (await r.json()) as T;
 }

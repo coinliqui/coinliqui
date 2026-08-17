@@ -9,4 +9,4 @@
  *
  * Bump this and WORKER_BUILD in worker/ingest.ts together, then rebuild and re-paste.
  */
-export const EXPECTED_WORKER_BUILD = "2026-08-17b";
+export const EXPECTED_WORKER_BUILD = "2026-08-17c";

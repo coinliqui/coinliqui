@@ -13,11 +13,16 @@ var OI_NOTIONAL_FLOOR = 5e6;
 var OI_RETIRE_FLOOR = 35e5;
 var SYMBOL_CAP = 50;
 async function info(body) {
-  const r = await fetch(INFO, {
+  const send = () => fetch(INFO, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body)
   });
+  let r = await send();
+  if (r.status === 429 || r.status === 502) {
+    await new Promise((res) => setTimeout(res, 1200));
+    r = await send();
+  }
   if (!r.ok) throw new Error(`hyperliquid ${r.status}`);
   return await r.json();
 }
@@ -553,7 +558,7 @@ var FUNDING_REFRESH_HOURS = 6;
 var CANARY_RETAIN_HOURS = 168;
 var CHUNK = 24;
 var FILL_BACKOFF_MS = 10 * 6e4;
-var WORKER_BUILD = "2026-08-17b";
+var WORKER_BUILD = "2026-08-17c";
 var ingest_default = {
   async scheduled(event, env, ctx) {
     if (event.cron === "* * * * *") {
