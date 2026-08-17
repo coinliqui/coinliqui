@@ -153,11 +153,19 @@ const description =
   <p class="section-note">
     Ranked by modelled notional whose level the bar's high or low crossed. This is model output
     against observed price — the price column is fact, the notional column is not.
+    {/* THESE ARE TWO-HOUR BARS, and the table below this one is HOURLY. Both stamp their rows
+        the same way, so "5 Feb, 19:00" appears in both with different OHLC and nothing said
+        which is which. The width was stated for the chart and in the assumptions table, and
+        not here, where the ambiguity actually lands. Verified against the frozen data: this
+        row's o/h/l/c/v is exactly the 2-hour aggregate of 19:00 and 20:00. */}
+    <strong>Each row is a two-hour bar</strong> — stamped with the hour it opens. The hourly
+    candles are in the table below, so the same timestamp appears in both with different highs
+    and lows.
   </p>
   <div class="panel">
     <table class="tbl">
       <thead>
-        <tr><th>Bar (UTC)</th><th class="num">Open</th><th class="num">High</th><th class="num">Low</th><th class="num">Close</th><th class="num">Volume</th><th class="num">Modelled notional cleared</th></tr>
+        <tr><th>2h bar, opens (UTC)</th><th class="num">Open</th><th class="num">High</th><th class="num">Low</th><th class="num">Close</th><th class="num">Volume</th><th class="num">Modelled notional cleared</th></tr>
       </thead>
       <tbody>
         {peaks.map((p) => (
