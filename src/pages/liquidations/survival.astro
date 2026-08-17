@@ -49,14 +49,31 @@ const stripT = 16 * 4, stripH = 15 * 4;
    instead of the finding. Quantising to bands the reader can name — closed the next day,
    inside a week, inside a month, never — makes the shape legible and the legend readable,
    and every exact day is still in the tooltip and the table. */
-const BUCKETS: { max: number; label: string; ramp: number }[] = [
-  { max: 1, label: "next day", ramp: 20 },
-  { max: 2, label: "2", ramp: 17 },
-  { max: 4, label: "3–4", ramp: 14 },
-  { max: 7, label: "5–7", ramp: 11 },
-  { max: 14, label: "8–14", ramp: 8 },
-  { max: Infinity, label: `15–${hold}`, ramp: 5 },
-];
+/* BUCKETS ARE CLIPPED TO THE HOLD, and their labels are derived rather than written.
+   The bands were fixed at 1 / 2 / 3-4 / 5-7 / 8-14 / 15-hold, which reads correctly at
+   hold = 30 and becomes nonsense below it: at hold = 7 the last band printed "15–7", an
+   inverted range for days that cannot occur, and three bands described windows entirely
+   outside the hold. A legend that describes days the grid cannot contain is not a rounding
+   problem — it is a legend for a different chart. */
+const EDGES = [1, 2, 4, 7, 14].filter((e) => e < hold);
+const BUCKETS: { max: number; label: string; ramp: number }[] = [];
+{
+  const RAMP = [20, 17, 14, 11, 8, 5];
+  let lo = 1;
+  for (const e of EDGES) {
+    BUCKETS.push({
+      max: e,
+      label: e === 1 ? "next day" : lo === e ? `${e}` : `${lo}–${e}`,
+      ramp: RAMP[BUCKETS.length],
+    });
+    lo = e + 1;
+  }
+  BUCKETS.push({
+    max: Infinity,
+    label: lo === hold ? `${hold}` : `${lo}–${hold}`,
+    ramp: RAMP[Math.min(BUCKETS.length, RAMP.length - 1)],
+  });
+}
 const SURVIVED = "#2b323a";   // neutral, off the ramp: a different outcome, not a dimmer one
 const bucketOf = (d: number) => BUCKETS.find((b) => d <= b.max)!;
 
@@ -243,7 +260,12 @@ const description = `Which leveraged ${perp.symbol} positions were liquidated an
       </div>
 
       <details class="src">
-        <summary>The daily price series this is computed from ({grid.entries.length} rows)</summary>
+        {/* THE ENTRY DAYS, NOT EVERY CANDLE CONSULTED. Each cell walks forward up to {hold}
+            further days looking for the crossing, so the outcome of the last entry depends on
+            candles this table does not show. Saying "the series this is computed from" over a
+            90-row table was an overclaim on a page that shows its data precisely so a reader
+            can redo the work — with only these rows, the right-hand columns cannot be redone. */}
+        <summary>The {grid.entries.length} entry days ({hold} further days are read past the last one)</summary>
         <div class="panel" style="margin-top:10px">
           <table class="tbl">
             <thead><tr><th>Entry day (UTC)</th><th class="num">Close</th><th class="num">Low</th><th class="num">High</th></tr></thead>
