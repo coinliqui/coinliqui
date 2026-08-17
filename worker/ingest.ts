@@ -78,7 +78,7 @@ const FILL_BACKOFF_MS = 10 * 60_000;
  *
  * BUMP BOTH when you change this file: here and EXPECTED_WORKER_BUILD in src/lib/version.ts.
  */
-const WORKER_BUILD = "2026-08-17a";
+const WORKER_BUILD = "2026-08-17b";
 
 export default {
   async scheduled(event: ScheduledController, env: Env, ctx: ExecutionContext) {
@@ -151,14 +151,53 @@ const SKIP_SWEEPS = Symbol("skip-sweeps");
  * Coinbase and marks come from Hyperliquid, and one venue being down must not blank the
  * other's numbers on a page that shows both side by side.
  */
+/**
+ * THE MINUTE TICK, AND IT NOW SAYS WHETHER IT WORKED.
+ *
+ * Both branches swallowed their errors and recorded nothing. That is right for the FALLBACK —
+ * a Coinbase hiccup should leave the coin pages on their last quote rather than take the tick
+ * down — but it meant the one-minute path had no observability whatsoever. /data-sources
+ * promises that mark and funding refresh every minute, and nothing anywhere could tell you
+ * whether they had.
+ *
+ * That mattered more than it looked: the five-minute ingest has been failing on HTTP 429 for
+ * 307 of 857 runs since 14 August, all of them on the FIRST call, so the upstream is rate
+ * limiting this Worker's egress — and the minute tick calls the same two endpoints sixty times
+ * an hour without recording a thing. A page could have been serving a mark it labelled
+ * "updates every minute" that had not updated in an hour, and the only evidence would have
+ * been a number that looked plausible.
+ *
+ * Failures are still swallowed for the READER — that behaviour was correct — and now written
+ * down for whoever is diagnosing.
+ */
 async function minute(env: Env): Promise<void> {
+  const started = Date.now();
+  let spotErr = "", liveErr = "";
   try {
     await env.SNAPSHOT.put("spot", JSON.stringify(await fetchSpot()));
-  } catch { /* the coin pages keep their last quote; the next minute tries again */ }
+  } catch (e) {
+    spotErr = (e instanceof Error ? e.message : String(e)).slice(0, 60);
+  }
   try {
     const published = ((await env.SNAPSHOT.get("published:set", "json")) as string[] | null) ?? [];
     if (published.length) await env.SNAPSHOT.put("live", JSON.stringify(await fetchLive(published)));
-  } catch { /* pages keep the five-minute snapshot's mark, which they label as such */ }
+  } catch (e) {
+    liveErr = (e instanceof Error ? e.message : String(e)).slice(0, 60);
+  }
+
+  /* Recorded under its own source so /status can separate the two cadences, and wrapped so a
+     failure to record a failure can never become an unhandled rejection in a cron. */
+  if (spotErr || liveErr) {
+    try {
+      const m = /(\d{3})/.exec(liveErr || spotErr);
+      await env.DB.prepare(
+        "INSERT INTO upstream_check (at, source, status, ms, ok, note) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+      )
+        .bind(started, "minute", m ? Number(m[1]) : 0, Date.now() - started, 0,
+              JSON.stringify({ spotError: spotErr || undefined, liveError: liveErr || undefined }))
+        .run();
+    } catch { /* swallowed on purpose — see above */ }
+  }
 }
 
 async function run(env: Env): Promise<RunResult> {

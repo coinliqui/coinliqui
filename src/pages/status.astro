@@ -16,7 +16,11 @@ let storeError: string | null = null;
 try {
   const db = env?.DB;
   if (db) {
-    const { results } = await db.prepare("SELECT at, source, status, ms, ok, note FROM upstream_check ORDER BY at DESC LIMIT 24").all();
+    /* SCOPED TO THE FIVE-MINUTE INGEST. The minute tick now records its own failures under
+       source='minute', and mixing the two cadences in one "last 24 runs" figure would make
+       both unreadable — twelve five-minute runs and twelve minute failures is not a rate of
+       anything. They are counted separately below. */
+    const { results } = await db.prepare("SELECT at, source, status, ms, ok, note FROM upstream_check WHERE source <> 'minute' ORDER BY at DESC LIMIT 24").all();
     checks = (results ?? []) as Check[];
   } else {
     storeError = "No D1 binding in this environment.";
@@ -31,6 +35,19 @@ const ageMin = snap.fetchedAt ? Math.round((now - snap.fetchedAt) / 60000) : nul
 // fault rather than a slow tick.
 const STALE_MIN = 15;
 const stale = ageMin === null || ageMin > STALE_MIN;
+
+/* The one-minute path, counted over a fixed window rather than a fixed number of rows: it only
+   writes a row when it FAILS, so "last 24" would be twenty-four failures however rare they are.
+   Sixty minutes is the window the "updates every minute" claim is about. */
+let minuteFails = 0;
+try {
+  const db = (Astro.locals as any)?.runtime?.env?.DB;
+  if (db) {
+    const r = await db.prepare("SELECT count(*) n FROM upstream_check WHERE source = 'minute' AND at > ?1")
+      .bind(Date.now() - 3_600_000).first();
+    minuteFails = Number(r?.n ?? 0);
+  }
+} catch { /* the page must render with no store — that is when it is read */ }
 
 const latest = checks[0];
 /* The refusal reason travels in the run's note, which is JSON. Parsed defensively: this page
@@ -124,6 +141,11 @@ const utc = (ms: number) => new Date(ms).toISOString().slice(0, 16).replace("T",
           wrong problem to whoever is reading this page at the time. */}
       <div class:list={["card__value", latest && !latest.ok && "is-bad"]} style="font-size:20px">{latest ? (latest.ok ? "ok" : latestRefused ? "refused" : `failed (${latest.status || "no response"})`) : "—"}</div>
       <div class="card__meta">{latest ? (latestRefused ? latestNote : `${latest.ms} ms · ${utc(latest.at)}`) : "no runs recorded"}</div>
+    </div>
+    <div class="card">
+      <div class="card__label">Minute tick, last hour</div>
+      <div class:list={["card__value", minuteFails > 0 && "is-bad"]}>{minuteFails === 0 ? "clean" : `${minuteFails} failed`}</div>
+      <div class="card__meta">spot and live mark · only failures are recorded</div>
     </div>
     <div class="card">
       <div class="card__label">Failures in last 24 runs</div>

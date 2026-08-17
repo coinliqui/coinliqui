@@ -553,7 +553,7 @@ var FUNDING_REFRESH_HOURS = 6;
 var CANARY_RETAIN_HOURS = 168;
 var CHUNK = 24;
 var FILL_BACKOFF_MS = 10 * 6e4;
-var WORKER_BUILD = "2026-08-17a";
+var WORKER_BUILD = "2026-08-17b";
 var ingest_default = {
   async scheduled(event, env, ctx) {
     if (event.cron === "* * * * *") {
@@ -587,14 +587,34 @@ var ingest_default = {
 };
 var SKIP_SWEEPS = /* @__PURE__ */ Symbol("skip-sweeps");
 async function minute(env) {
+  const started = Date.now();
+  let spotErr = "", liveErr = "";
   try {
     await env.SNAPSHOT.put("spot", JSON.stringify(await fetchSpot()));
-  } catch {
+  } catch (e) {
+    spotErr = (e instanceof Error ? e.message : String(e)).slice(0, 60);
   }
   try {
     const published = await env.SNAPSHOT.get("published:set", "json") ?? [];
     if (published.length) await env.SNAPSHOT.put("live", JSON.stringify(await fetchLive(published)));
-  } catch {
+  } catch (e) {
+    liveErr = (e instanceof Error ? e.message : String(e)).slice(0, 60);
+  }
+  if (spotErr || liveErr) {
+    try {
+      const m = /(\d{3})/.exec(liveErr || spotErr);
+      await env.DB.prepare(
+        "INSERT INTO upstream_check (at, source, status, ms, ok, note) VALUES (?1, ?2, ?3, ?4, ?5, ?6)"
+      ).bind(
+        started,
+        "minute",
+        m ? Number(m[1]) : 0,
+        Date.now() - started,
+        0,
+        JSON.stringify({ spotError: spotErr || void 0, liveError: liveErr || void 0 })
+      ).run();
+    } catch {
+    }
   }
 }
 async function run(env) {
