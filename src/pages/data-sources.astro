@@ -27,7 +27,15 @@ if (!snap.available) return coldStart();
  */
 const sources = [
   { what: "Funding rate, per venue", ep: "POST /info {\"type\":\"predictedFundings\"}", who: "Hyperliquid", freq: "1 min" },
-  { what: "Open interest, volume, mark and oracle price, premium", ep: "POST /info {\"type\":\"metaAndAssetCtxs\"}", who: "Hyperliquid", freq: "1 min" },
+  /* SPLIT, because one row was claiming one cadence for five figures fetched on two.
+     fetchLive — the minute tick — returns ONLY mark and funding. Open interest, volume, the
+     oracle price and the premium come from the five-minute snapshot, and that snapshot has
+     been succeeding on roughly half its scheduled ticks (npm run cadence: 47% over 24h, p90
+     gap 20 min), so calling them one-minute figures was wrong twice over. The contract pages
+     already say this correctly — "Open interest, volume and the period figures come from the
+     snapshot taken N min ago" — which made this table the drifted copy of the two. */
+  { what: "Perpetual mark price", ep: "POST /info {\"type\":\"metaAndAssetCtxs\"}", who: "Hyperliquid", freq: "1 min" },
+  { what: "Open interest, 24h volume, oracle price, premium", ep: "POST /info {\"type\":\"metaAndAssetCtxs\"}", who: "Hyperliquid", freq: "5 min, when the tick succeeds" },
   { what: "Price candles behind every chart, hourly and daily", ep: "POST /info {\"type\":\"candleSnapshot\"}", who: "Hyperliquid", freq: "2 h / 12 h" },
   { what: "Realised funding history, behind the funding series", ep: "POST /info {\"type\":\"fundingHistory\"}", who: "Hyperliquid", freq: "6 h" },
   { what: "Maintenance-margin tiers", ep: "POST /info {\"type\":\"marginTable\",\"id\":N}", who: "Hyperliquid", freq: "build time" },
