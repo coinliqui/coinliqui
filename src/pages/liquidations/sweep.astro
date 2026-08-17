@@ -96,7 +96,7 @@ const fetched = new Date(frozen.fetchedAt).toISOString().slice(0, 10);
 
 const title = "The 5 February 2026 BTC crash — liquidation model vs real candles";
 const description =
-  "BTC fell from $73,139 to a $60,000 wick in thirty hours on 5–6 February 2026. Here is the modelled liquidation field for that window, with the price path drawn over it, so you can watch price run into the bands and clear them.";
+  "BTC fell from $73,139 to a $60,000 wick in twenty-three hours on 5–6 February 2026. Here is the modelled liquidation field for that window, with the price path drawn over it, so you can watch price run into the bands and clear them.";
 ---
 
 <Base title={title} description={description} fetchedAt={frozen.fetchedAt} frozen>
@@ -106,7 +106,11 @@ const description =
     <p>
       A liquidation map is a model, and a model that is never tested is decoration. On
       <strong>5–6 February 2026</strong> Bitcoin fell from {px(dayOpen)} to a {px(dayLow)} wick in
-      thirty hours on {(eventVol / typicalOverSameSpan).toFixed(0)}× the volume a stretch that long normally carries. Below is the modelled field
+      {/* TWENTY-THREE, not thirty. Measured from the frozen series: price was last at $73,139
+          at 5 Feb 01:00 UTC and the $60,000 low prints at 6 Feb 00:00 — 23 hours. "Thirty" is
+          the width of the WINDOW this page examines (5 Feb 00:00 to 6 Feb 06:00), which is a
+          different quantity that happened to sit in the same sentence. */}
+      twenty-three hours on {(eventVol / typicalOverSameSpan).toFixed(0)}× the volume a stretch that long normally carries. Below is the modelled field
       for that window with the observed price drawn over it. Watch the bright bands under the price
       end where the candles reach them.
     </p>
@@ -185,7 +189,7 @@ const description =
 
   <h2 class="section">The hour itself</h2>
   <p class="prose">
-    The 30-hour slide is the setup; the payoff is a single bar. At
+    The slide across this 30-hour window is the setup; the payoff is a single bar. At
     <strong>{fmtT(wick[0])} UTC</strong> BTC opened at {px(wick[1])}, printed a low of
     <strong>{px(wick[3])}</strong>, and closed back at {px(wick[4])} — a
     {(((wick[1] - wick[3]) / wick[1]) * 100).toFixed(1)}% excursion recovered inside sixty minutes,

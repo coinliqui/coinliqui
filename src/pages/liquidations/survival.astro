@@ -24,9 +24,20 @@ const HOLDS = [7, 30, 90];
 const hold = HOLDS.includes(Number(q.get("hold"))) ? Number(q.get("hold")) : 30;
 const mapSide: "long" | "short" = q.get("side") === "short" ? "short" : "long";
 const candleSet = await getCandles(env?.SNAPSHOT, perp.symbol, import.meta.env.DEV);
+/* TODAY'S CANDLE IS NOT OVER, AND THIS GRID IS ABOUT COMPLETED DAYS.
+   The upstream returns the day in progress as its last row — verified against
+   candleSnapshot: at 08:30 UTC it hands back a candle stamped 00:00 today. Left in, it
+   shifts the last entry day forward by one and, worse, the rightmost column's {hold}-day
+   window ENDS on a partial low, so a position is judged survived against a day that has
+   not finished happening. The page's own sentence says every column has "a complete
+   {hold}-day window"; this is what makes that true rather than nearly true.
+   Charts elsewhere deliberately DO show the forming bar — a price chart should — so the
+   filter belongs here, at the one call that reasons about outcomes. */
+const dayMs = 86_400_000;
+const closedDays = (candleSet?.d ?? []).filter((c) => c[0] + dayMs <= Date.now());
 const grid =
-  candleSet && candleSet.d.length > hold + 12
-    ? survivalGrid({ candles: candleSet.d, mmf, levels: gridLevels(tier1.maxLeverage, 12), holdDays: hold, side: mapSide, maxEntries: 90 })
+  closedDays.length > hold + 12
+    ? survivalGrid({ candles: closedDays, mmf, levels: gridLevels(tier1.maxLeverage, 12), holdDays: hold, side: mapSide, maxEntries: 90 })
     : null;
 
 const dayLabel = (ms: number) => new Date(ms).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
