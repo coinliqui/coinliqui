@@ -541,6 +541,21 @@ const schema = {
       }
       .tbl td { padding: var(--inset-cell-y) var(--inset-cell-x); border-bottom: 1px solid var(--border-soft); }
       .tbl tbody tr:last-child td { border-bottom: 0; }
+      /* THE TAP TARGET IS THE CELL, NOT THE GLYPHS. Every coin link was a 15px-tall inline
+         anchor sitting inside a 54px row: the row reserved the space and the link did not use
+         it, so on a phone most of an apparently-tappable row did nothing. 15px fails Apple's
+         44pt guidance and WCAG 2.5.8, whose floor is 24x24 CSS px, by a wide margin.
+
+         Scoped to td.sym rather than `.tbl td a`, because that would turn inline links inside
+         prose cells into blocks and break the sentences on /about and /unlocks. Verified on the
+         live page first: all 50 anchors in a funding table live in td.sym, and no cell contains
+         both prose and a link. The negative margins pull the padding back so the anchor covers
+         the whole cell without changing the row's height by a pixel — no layout shift. */
+      .tbl td.sym a {
+        display: block;
+        padding: var(--inset-cell-y) var(--inset-cell-x);
+        margin: calc(var(--inset-cell-y) * -1) calc(var(--inset-cell-x) * -1);
+      }
       .tbl th.num, .tbl td.num { text-align: right; }
       .tbl tbody tr:hover { background: var(--surface-3); }
       .tbl tbody tr.is-active:hover { background: #333941; }
