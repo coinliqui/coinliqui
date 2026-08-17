@@ -152,7 +152,7 @@ to a stated reason rather than failing the run:
 | Section | Needs | Answers |
 |---|---|---|
 | A. Coverage | nothing | what exists per template, and whether a crawler can still fetch all of it |
-| B. Search Console | `GSC_SA_KEY` | indexed share per template, position, impressions, top queries |
+| B. Search Console | `GSC_SA_KEY` | indexed share per template, position, impressions, top queries — the service account must be a delegated **Owner** on the Domain property, not a Full user: URL Inspection is owner-only |
 | C. Crawler fetches | `CF_ANALYTICS_TOKEN`, `CF_ZONE_ID` | which named crawlers actually fetched, from Cloudflare's edge |
 
 The sitemaps ARE the template split — one file per template by construction — so the

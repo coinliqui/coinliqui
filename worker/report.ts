@@ -181,9 +181,18 @@ export async function stepReport(env: ReportEnv, force = false): Promise<string 
       st.i = 0;
       if (!env.GSC_SA_KEY) {
         say("Not available: GSC_SA_KEY is not set.\n");
-        say("To enable: create a Google Cloud service account, enable the Search Console API, add its");
-        say("email as a **full user** on the `coinliqui.com` Domain property, then");
-        say("`npx wrangler secret put GSC_SA_KEY` and paste the JSON key. Nothing about the site changes.");
+        say("To enable, in order:\n");
+        say("1. Google Cloud console: create a project, enable the **Google Search Console API**,");
+        say("   create a **service account**, and download a **JSON key**.");
+        say("2. Search Console -> the `coinliqui.com` Domain property -> Settings -> Users and");
+        say("   permissions -> Add user: paste the service account's `client_email`, permission");
+        say("   **Owner**.");
+        say("3. `npx wrangler secret put GSC_SA_KEY` and paste the whole JSON key file.\n");
+        say("Owner, not Full. Search Analytics (section B2) works for any verified user, but the");
+        say("URL Inspection API used for the per-template indexed share is owner-only and returns");
+        say("PERMISSION_DENIED for a Full user. Adding a service account as a delegated owner is");
+        say("supported on Domain properties and does not affect DNS verification.\n");
+        say("Nothing about the site itself changes; this only lets the weekly report read data.");
         st.phase = "crawlers";
       } else {
         say("### Indexed share, per template\n");
