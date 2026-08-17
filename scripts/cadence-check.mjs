@@ -55,7 +55,18 @@ const DECLARED = [
      recording a row per tick there was no way to check it. Failure-counting could not: a tick
      that never fires cannot record that it failed, which is exactly how the five-minute ingest
      read as 36% broken when it was 53% short of its schedule. */
-  { what: "minute tick — mark price and funding", source: "minute", minutes: 1 },
+  /* ONE TICK, TWO PROMISES, AND THE CHECK COULD NOT TELL THEM APART.
+     The minute tick fetches Coinbase spot AND Hyperliquid live mark/funding, and writes ok=0
+     if EITHER leg fails. /data-sources declares those as separate rows with separate sources,
+     so measuring them together cannot fail for the right reason — and it didn't: this reported
+     "minute tick 85%" against a claim about mark and funding when, over 303 recorded ticks,
+     the Hyperliquid leg had failed ZERO times and every one of the 49 failures was
+     `coinbase 429`. The number was right and the attribution was wrong, which on a check is
+     the same as being wrong. Split, so each declared row is measured against its own leg. */
+  { what: "minute tick, Hyperliquid leg — mark price and funding", source: "minute", minutes: 1,
+    okWhen: "json_extract(note,'$.liveError') is null" },
+  { what: "minute tick, Coinbase leg — spot price and 24h stats", source: "minute", minutes: 1,
+    okWhen: "json_extract(note,'$.spotError') is null" },
 ];
 
 /* The bulk sweeps refresh on hours, not minutes, so a gap-between-runs statistic says nothing
@@ -106,8 +117,10 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const since = Date.now() - hours * 3600_000;
   let bad = 0;
   for (const d of DECLARED) {
+    /* `ok=1` means "every leg of this tick worked". For a tick serving one promise that is the
+       right predicate; for one serving two it is the wrong one, so an entry may name its own. */
     const rows = d1(
-      `select at from upstream_check where source='${d.source}' and ok=1 and at > ${since} order by at asc`,
+      `select at from upstream_check where source='${d.source}' and (${d.okWhen ?? "ok=1"}) and at > ${since} order by at asc`,
     );
     const ts = rows.map((r) => Number(r.at));
 

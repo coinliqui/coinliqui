@@ -230,7 +230,7 @@ for (const p of ["/", "/funding/btc", "/coins/bitcoin", "/watchlist", "/404",
 }
 
 /* 8. Data freshness, as served. */
-console.log("\n7. data");
+console.log("\n8. data");
 {
   const r = await fetchAs("/status", "Mozilla/5.0");
   const grab = (re) => re.exec(r.body)?.[1]?.trim() ?? "?";

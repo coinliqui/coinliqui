@@ -113,7 +113,26 @@ const num = (x: unknown) => (typeof x === "string" || typeof x === "number" ? Nu
  * is the difference between an affordable spot layer and an unaffordable one.
  */
 export async function fetchSpot(): Promise<SpotSet> {
-  const r = await fetch(`${CB}/products/stats`, { headers: { "user-agent": "coinliqui.com" } });
+  /* ONE BOUNDED RETRY, for the same reason hyperliquid.ts info() has one — and it should have
+   * been added at the same time. Measured over the 5.3 hours since the minute tick began
+   * recording every attempt: 303 ticks fired, 49 failed, and every single failure was
+   * `coinbase 429`. The Hyperliquid leg failed zero times in the same 303. So the entire
+   * failure rate of the one-minute path was this call, unretried, and /data-sources' "1 min"
+   * for spot price was being delivered 80% of the time while funding and mark were at 95%.
+   *
+   * Coinbase rate-limits per IP and Workers egress from shared addresses, so a tick can be
+   * refused for traffic that is not ours — the same shape as the Hyperliquid 429s that the
+   * cron phase shift fixed. A second attempt 1.2s later is a different second of that budget.
+   *
+   * Whether this actually moves the number is a HYPOTHESIS until an hour of post-deploy data
+   * exists; `npm run cadence` reports the spot leg separately now precisely so it can be
+   * answered rather than assumed. */
+  const send = () => fetch(`${CB}/products/stats`, { headers: { "user-agent": "coinliqui.com" } });
+  let r = await send();
+  if (r.status === 429 || r.status === 502) {
+    await new Promise((res) => setTimeout(res, 1200));
+    r = await send();
+  }
   if (!r.ok) throw new Error(`coinbase ${r.status}`);
   const all = (await r.json()) as Record<string, { stats_24hour?: Record<string, string> }>;
   const q: Record<string, SpotQuote> = {};
