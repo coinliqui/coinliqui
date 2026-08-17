@@ -96,14 +96,34 @@ const description =
     {flips.status === "ready" && flips.rows.length > 0 ? (
       <div class="panel">
         <table class="tbl">
-          <thead><tr><th>Coin</th><th>Venue</th><th class="num">Was (APR)</th><th class="num">Now (APR)</th><th class="num">Flipped at (UTC)</th></tr></thead>
+          {/* "NOW (APR)" WAS NEVER NOW. That column printed the rate captured at the instant the
+              flip was observed — a D1 row frozen up to 24 hours earlier — while every other
+              funding figure on this page comes from the current snapshot. Two representations
+              of one truth, and the header asserted they were the same.
+              Worse, it was coloured with paysClass, so on a contract whose direction had since
+              reversed the red/green said the opposite of the truth — and red and green on this
+              site mean the direction of a funding payment and nothing else.
+              Now it says "After", which is what it holds, and the CURRENT rate sits beside it
+              from the same snapshot the rest of the page uses. The colour moved to the current
+              value, which is the only one it can honestly describe. */}
+          <thead><tr><th>Coin</th><th>Venue</th><th class="num">Was (APR)</th><th class="num">After the flip</th><th class="num">Now (APR)</th><th class="num">Flipped at (UTC)</th></tr></thead>
           <tbody>
             {flips.rows.map((f) => (
               <tr>
                 <td class="sym"><a href={`/funding/${f.symbol.toLowerCase()}`}>{f.symbol}</a></td>
                 <td class="dim">{VENUE_LABEL[f.venue as Venue] ?? f.venue}</td>
-                <td class:list={["num", paysClass(f.prevApr)]}>{pct(f.prevApr)}</td>
-                <td class:list={["num", paysClass(f.apr)]}>{pct(f.apr)}</td>
+                <td class="num dim">{pct(f.prevApr)}</td>
+                <td class="num dim">{pct(f.apr)}</td>
+                {(() => {
+                  /* Joined to the SAME snapshot every other number on this page reads, so the
+                     two can no longer disagree. A contract that has left coverage since the
+                     flip has no current rate; it prints an em-dash rather than borrowing the
+                     historical one. */
+                  const live = snap.perps.find((p) => p.symbol === f.symbol)?.venues.find((v) => v.venue === f.venue)?.apr;
+                  return Number.isFinite(live)
+                    ? <td class:list={["num", paysClass(live!)]}>{pct(live!)}</td>
+                    : <td class="num dim" title="no longer published at this venue">—</td>;
+                })()}
                 <td class="num faint">{new Date(f.at).toISOString().slice(11, 16)} UTC</td>
               </tr>
             ))}

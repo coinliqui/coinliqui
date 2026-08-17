@@ -62,10 +62,21 @@ export async function readFlips(db: D1Like | undefined, hours = 24): Promise<Fli
            FROM funding_snapshot
            WHERE at >= ?1
          )
-         SELECT symbol, venue, prev_apr AS prevApr, apr, at
-         FROM ordered
-         WHERE prev_apr IS NOT NULL
-           AND ((prev_apr < 0 AND apr >= 0) OR (prev_apr >= 0 AND apr < 0))
+         , flips AS (
+           SELECT symbol, venue, prev_apr AS prevApr, apr, at,
+                  ROW_NUMBER() OVER (PARTITION BY symbol, venue ORDER BY at DESC) AS rn
+           FROM ordered
+           WHERE prev_apr IS NOT NULL
+             AND ((prev_apr < 0 AND apr >= 0) OR (prev_apr >= 0 AND apr < 0))
+         )
+         /* ONE ROW PER CONTRACT — the LATEST flip.
+            Without this, every flip event in the window was listed, so LTC on Bybit appeared
+            four times and ENA on Bybit four times, each with a different value under a column
+            headed "Now (APR)". Four mutually exclusive "now"s for one contract in one document.
+            A contract that oscillates around zero is not four separate pieces of news. */
+         SELECT symbol, venue, prevApr, apr, at
+         FROM flips
+         WHERE rn = 1
          ORDER BY at DESC
          LIMIT 25`,
       )
