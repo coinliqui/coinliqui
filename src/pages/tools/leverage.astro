@@ -44,7 +44,16 @@ const next = nextTierBoundary(table, notional);
 const buffer = initialMargin - maintenanceMargin;
 
 const title = `Leverage calculator — what ${perp.symbol} actually allows at your size`;
-const description = `Maximum leverage on ${perp.symbol} perpetuals steps down as position size grows. This shows the tier that applies at your notional, the margin required, and where the next step falls.`;
+/* THE DESCRIPTION MUST NOT PROMISE A STEP THAT DOES NOT EXIST. It asserted unconditionally
+   that leverage "steps down as position size grows" — true for 30 of the 50 published
+   contracts and false for the other 20, whose margin table has a single tier (LDO, ZRO,
+   PENDLE, JTO, TAO, ETHFI and fourteen more). The page BODY was already honest: it renders
+   the next-step sentence only when nextTierBoundary returns one. The meta description was
+   not, and that is the copy a search result and an answer engine quote — the one place the
+   claim is read without the page beside it to correct it. */
+const description = next
+  ? `Maximum leverage on ${perp.symbol} perpetuals steps down as position size grows. This shows the tier that applies at your notional, the margin required, and where the next step falls.`
+  : `${perp.symbol} perpetuals have a single margin tier: the same maximum leverage and maintenance margin at every position size. This shows what that means for the margin you post and the liquidation price you get.`;
 ---
 
 <Base title={title} description={description} fetchedAt={snap.fetchedAt}>
