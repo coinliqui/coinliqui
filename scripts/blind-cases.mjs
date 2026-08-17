@@ -45,4 +45,33 @@ for(const [name,val,shouldPass] of csps){
   if(!correct) bad++;
   console.log(`  ${correct?"ok  ":"BLIND"}  ${sound?"SOUND ":"REJECT"}  script-src ${val}`);
 }
+/* THE FLIP FEED'S COLOUR RULE, and its own blind spots.
+   Red and green here mean the direction of a funding payment and nothing else, and the flip
+   table broke that in the worst available way — it coloured a rate up to 24 hours old, so a
+   contract whose direction had reversed showed the opposite of the truth. flipTableColour()
+   guards it. These are the ways that guard could pass while seeing nothing: no section, no
+   table (the gate's D1 fixture was empty for the feed's whole life), no rows, or the column
+   it anchors on renamed away. Each must be RED, or the check is decorative. */
+{
+  const { flipTableColour } = await import("./checks.mjs");
+  const head = `<h2>Funding sign flips</h2><table><thead><tr><th>Coin</th><th>Venue</th><th class="num">Was (APR)</th><th class="num">After the flip</th><th class="num">Now (APR)</th><th class="num">Detected (UTC)</th></tr></thead>`;
+  const row = (after, now) => `<tr><td class="sym">JUP</td><td class="dim">Bybit</td><td class="num dim">-1.0%</td><td class="num ${after}">2.0%</td><td class="num ${now}">3.0%</td><td class="num faint">09:12 UTC</td></tr>`;
+  const page = (rows) => head + "<tbody>" + rows + "</tbody></table><h2>Funding rates by coin</h2>";
+  const flips = [
+    ["colour only on Now (APR)",                       page(row("dim", "pays-s")),  false],
+    ["the original defect: colour on After the flip",  page(row("pays-s", "pays-s")), true],
+    ["colour on a historical column, none on Now",     page(row("pays-l", "dim")),  true],
+    ["table absent — the empty-fixture case",          `<h2>Funding sign flips</h2><div class="empty">Collecting funding history</div><h2>Funding rates by coin</h2>`, true],
+    ["table present, zero rows",                       page(""),                    true],
+    ["the anchor column renamed away",                 head.replace("Now (APR)", "Current") + "<tbody>" + row("dim", "pays-s") + "</tbody></table><h2>Funding rates by coin</h2>", true],
+    ["section removed entirely",                       `<h2>Something else</h2>`,   true],
+  ];
+  for (const [name, html, shouldFlag] of flips) {
+    const flagged = flipTableColour(html).length > 0;
+    const correct = flagged === shouldFlag;
+    if (!correct) bad++;
+    console.log(`  ${correct ? "ok  " : "BLIND"}  ${flagged ? "FLAGGED" : "clean  "}  flip feed: ${name}`);
+  }
+}
+
 console.log(bad?`\n  ${bad} BLIND SPOT(S)`:"\n  no blind spots in these cases");

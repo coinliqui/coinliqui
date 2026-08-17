@@ -466,3 +466,51 @@ export function inlineScriptSyntax(src, file) {
   }
   return out;
 }
+
+/**
+ * THE FLIP FEED: colour discipline, and that the feed rendered at all.
+ *
+ * Red and green on this site mean the direction of a funding payment and nothing else. The flip
+ * table broke that rule in the worst available way: it coloured a rate captured up to 24 hours
+ * earlier, so a contract whose direction had since reversed displayed the opposite of the truth
+ * in the site's one reserved visual language. Eight of twenty-five rows, measured.
+ *
+ * The fix moved the colour to the current rate. This asserts it stayed there — colour may appear
+ * ONLY in the "Now (APR)" cell. Scoped to the flip tbody on purpose: the same page's "Funding
+ * rates by coin" table colours a different column entirely, so a page-wide rule would be wrong.
+ *
+ * IT ALSO ASSERTS THE TABLE EXISTS, and that matters more than the colour rule. The gate's warm
+ * D1 fixture was empty for as long as the flip feed had existed, so readFlips() returned
+ * "warming" and the gate rendered a placeholder every single run — meaning the whole table,
+ * including the defect above, was only ever exercised in production. A colour check that quietly
+ * passes because there are no rows to colour is the exact placebo this repository keeps
+ * producing, so an absent table is a FAILURE here rather than a skip.
+ */
+export function flipTableColour(html) {
+  const out = [];
+  const start = html.indexOf("Funding sign flips");
+  if (start === -1) return ["/ has no \"Funding sign flips\" section"];
+  const seg = html.slice(start, html.indexOf("Funding rates by coin", start) >>> 0 || undefined);
+
+  const heads = [...seg.matchAll(/<th[^>]*>([\s\S]*?)<\/th>/g)].map((m) => m[1].replace(/<[^>]*>/g, "").trim());
+  const body = /<tbody[^>]*>([\s\S]*?)<\/tbody>/.exec(seg);
+  if (!body) {
+    return ["/ flip feed rendered no table — the warm D1 fixture is empty, so this branch is untested (node scripts/seed-smoke-d1.mjs)"];
+  }
+  const rows = [...body[1].matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/g)].map((m) => m[1]);
+  if (!rows.length) return ["/ flip feed table has no rows — nothing to check (seed the warm fixture)"];
+
+  const nowCol = heads.findIndex((h) => /^Now \(APR\)$/.test(h));
+  if (nowCol === -1) out.push(`/ flip feed has no "Now (APR)" column; headers are ${heads.join(" | ")}`);
+
+  for (const r of rows) {
+    const tds = [...r.matchAll(/<td([^>]*)>/g)].map((m) => m[1]);
+    const sym = (/<td[^>]*class="sym"[^>]*>([\s\S]*?)<\/td>/.exec(r)?.[1] ?? "?").replace(/<[^>]*>/g, "").trim();
+    tds.forEach((attrs, i) => {
+      if (/pays-[ls]\b/.test(attrs) && i !== nowCol) {
+        out.push(`/ flip feed colours column ${i} (${heads[i] ?? "?"}) on ${sym} — red/green is reserved for the current rate`);
+      }
+    });
+  }
+  return [...new Set(out)];
+}

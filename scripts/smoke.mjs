@@ -35,7 +35,7 @@
 import { spawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { readdirSync, readFileSync } from "node:fs";
-import { cssFor, undefinedClasses, undefinedVars, rawEnums, searchIndexGaps, unnamedUpstreams, formatterDrift, uncoveredRoutes, unreadableText, chartAgreement, requestedLeverageLabels, inlineScriptSyntax } from "./checks.mjs";
+import { cssFor, undefinedClasses, undefinedVars, rawEnums, searchIndexGaps, unnamedUpstreams, formatterDrift, uncoveredRoutes, unreadableText, chartAgreement, requestedLeverageLabels, inlineScriptSyntax, flipTableColour } from "./checks.mjs";
 
 /* The SERVER side of each duplicated formatter, transcribed from the file that owns it and
    named here so the pairing is explicit. Transcription is the honest cost of having no bundler:
@@ -203,6 +203,10 @@ for (const path of ROUTES) {
     const v = undefinedVars(body, css);
     const e = rawEnums(body);
     for (const d of chartAgreement(body)) content.push(`chart disagrees with the page: ${d}`);
+    /* Warm only, and only the homepage — the flip feed exists nowhere else. This is also the
+       assertion that keeps the D1 fixture honest: if it is empty the feed renders a placeholder
+       and this fails, rather than every check on that table silently having nothing to look at. */
+    if (path === "/") content.push(...flipTableColour(body));
     if (c.length) content.push(`class defined nowhere: ${c.join(", ")}`);
     if (v.length) content.push(`custom property never declared: ${v.join(", ")}`);
     if (e.length) content.push(`internal enum rendered as text: ${e.join(", ")}`);

@@ -17,10 +17,22 @@ export interface Flip {
   prevApr: number;
   apr: number;
   at: number;
+  /* HOW WIDE THE DETECTION WINDOW WAS, in minutes.
+     `at` is when the reversal was FIRST SEEN — the timestamp of the later of the two samples
+     being compared — not when it happened. Those are the same thing only when the samples are
+     adjacent. Measured against production D1 over a trailing 24 h: of the 104 contracts that
+     flipped, 21 were detected across a gap wider than 15 minutes and the worst was 890 minutes,
+     so a fifth of the feed was printing a to-the-minute time for an event that could have
+     occurred any time in the previous fourteen hours. The number travels with the row so the
+     page can say so instead of implying a precision the sampling never had. */
+  gapMin: number;
 }
 
 export type FlipsResult =
-  | { status: "ready"; rows: Flip[]; since: number }
+  /* `total` is how many contracts flipped in the window; `rows` is the truncated head of that
+     list. They were the same number in the copy and never in the data — the page said "in the
+     last 24 hours" above 25 rows while 104 contracts had flipped. */
+  | { status: "ready"; rows: Flip[]; since: number; total: number }
   | { status: "no-store" }
   | { status: "warming"; since: number; hours: number };
 
@@ -58,12 +70,14 @@ export async function readFlips(db: D1Like | undefined, hours = 24): Promise<Fli
       .prepare(
         `WITH ordered AS (
            SELECT symbol, venue, apr, at,
-                  LAG(apr) OVER (PARTITION BY symbol, venue ORDER BY at) AS prev_apr
+                  LAG(apr) OVER (PARTITION BY symbol, venue ORDER BY at) AS prev_apr,
+                  LAG(at)  OVER (PARTITION BY symbol, venue ORDER BY at) AS prev_at
            FROM funding_snapshot
            WHERE at >= ?1
          )
          , flips AS (
            SELECT symbol, venue, prev_apr AS prevApr, apr, at,
+                  (at - prev_at) / 60000 AS gapMin,
                   ROW_NUMBER() OVER (PARTITION BY symbol, venue ORDER BY at DESC) AS rn
            FROM ordered
            WHERE prev_apr IS NOT NULL
@@ -74,16 +88,22 @@ export async function readFlips(db: D1Like | undefined, hours = 24): Promise<Fli
             four times and ENA on Bybit four times, each with a different value under a column
             headed "Now (APR)". Four mutually exclusive "now"s for one contract in one document.
             A contract that oscillates around zero is not four separate pieces of news. */
-         SELECT symbol, venue, prevApr, apr, at
-         FROM flips
-         WHERE rn = 1
+         , latest AS (
+           SELECT symbol, venue, prevApr, apr, at, gapMin FROM flips WHERE rn = 1
+         )
+         /* The count comes from the same CTE the rows come from, so the number the page prints
+            and the rows it shows can never describe different sets. */
+         SELECT symbol, venue, prevApr, apr, at, gapMin,
+                (SELECT count(*) FROM latest) AS total
+         FROM latest
          ORDER BY at DESC
          LIMIT 25`,
       )
       .bind(cutoff)
-      .all<Flip>();
+      .all<Flip & { total: number }>();
 
-    return { status: "ready", rows: results ?? [], since };
+    const rows = results ?? [];
+    return { status: "ready", rows, since, total: Number(rows[0]?.total ?? rows.length) };
   } catch {
     return { status: "no-store" };
   }

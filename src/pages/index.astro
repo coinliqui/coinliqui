@@ -92,8 +92,20 @@ const description =
     </div>
 
     <h2 class="section">Funding sign flips</h2>
-    <p class="section-note">The side paying to hold the position reversed, in the last 24 hours.</p>
+    {/* THE SENTENCE PROMISED THE SET AND THE TABLE SHOWED A SAMPLE.
+        "…in the last 24 hours" sat above 25 rows while 104 contracts had flipped in that
+        window — measured against production D1 — with no count, no "most recent", no footer
+        and no link. The next element after </table> was the following <h2>, so nothing on the
+        page suggested there was more. Saying the total costs one number and turns a silent
+        truncation into a fact the reader can act on. */}
+    <p class="section-note">
+      The side paying to hold the position reversed, in the last 24 hours.
+      {flips.status === "ready" && flips.total > flips.rows.length
+        ? ` ${flips.total} contracts flipped; the ${flips.rows.length} most recent are shown.`
+        : flips.status === "ready" ? ` ${flips.total} contract${flips.total === 1 ? "" : "s"} flipped.` : ""}
+    </p>
     {flips.status === "ready" && flips.rows.length > 0 ? (
+      <>
       <div class="panel">
         <table class="tbl">
           {/* "NOW (APR)" WAS NEVER NOW. That column printed the rate captured at the instant the
@@ -106,7 +118,15 @@ const description =
               Now it says "After", which is what it holds, and the CURRENT rate sits beside it
               from the same snapshot the rest of the page uses. The colour moved to the current
               value, which is the only one it can honestly describe. */}
-          <thead><tr><th>Coin</th><th>Venue</th><th class="num">Was (APR)</th><th class="num">After the flip</th><th class="num">Now (APR)</th><th class="num">Flipped at (UTC)</th></tr></thead>
+          {/* "FLIPPED AT" CLAIMED A PRECISION THE SAMPLING NEVER HAD.
+              A flip is found by comparing a contract's two consecutive snapshots, so the
+              timestamp is when the reversal was FIRST SEEN, not when it happened — the same
+              thing only when the samples are adjacent. Against production D1: of the 104
+              contracts that flipped in a trailing 24 h, 21 were detected across a gap wider
+              than 15 minutes and the widest was 890 minutes. The column printed "09:12 UTC"
+              for an event that may have occurred any time in the previous fourteen hours.
+              "Detected" is what the number is, and rows whose window was wide now say so. */}
+          <thead><tr><th>Coin</th><th>Venue</th><th class="num">Was (APR)</th><th class="num">After the flip</th><th class="num">Now (APR)</th><th class="num">Detected (UTC)</th></tr></thead>
           <tbody>
             {flips.rows.map((f) => (
               <tr>
@@ -124,12 +144,26 @@ const description =
                     ? <td class:list={["num", paysClass(live!)]}>{pct(live!)}</td>
                     : <td class="num dim" title="no longer published at this venue">—</td>;
                 })()}
-                <td class="num faint">{new Date(f.at).toISOString().slice(11, 16)} UTC</td>
+                {/* WIDE means "wider than three scheduled ticks" — 15 min against a 5-minute
+                    ingest. Below that the sample is adjacent enough that the detection time
+                    IS the event time to the precision printed; above it, it is a deadline. */}
+                <td class="num faint">{
+                  f.gapMin > 15
+                    ? <>by {new Date(f.at).toISOString().slice(11, 16)}<span class="dim">{" · within "}{f.gapMin >= 120 ? `${(f.gapMin / 60).toFixed(1)} h` : `${f.gapMin} min`}</span></>
+                    : <>{new Date(f.at).toISOString().slice(11, 16)} UTC</>
+                }</td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+      <p class="section-note" style="margin-top:10px">
+        A flip is found by comparing a contract's consecutive snapshots, so the time is when the
+        reversal was first seen rather than when it occurred. Where the two samples were more than
+        15 minutes apart the row gives the window instead of a minute.
+        <a class="link" href="/data-sources">How often each figure is refreshed →</a>
+      </p>
+      </>
     ) : flips.status === "warming" ? (
       <div class="empty">
         <div class="empty__icon" aria-hidden="true">
