@@ -35,6 +35,13 @@ const sources = [
      already say this correctly — "Open interest, volume and the period figures come from the
      snapshot taken N min ago" — which made this table the drifted copy of the two. */
   { what: "Perpetual mark price", ep: "POST /info {\"type\":\"metaAndAssetCtxs\"}", who: "Hyperliquid", freq: "1 min" },
+  /* THE QUALIFIER STAYS UNTIL A DAY OF DATA REMOVES IT. Measured after moving the cron off
+     the round minutes: 21 of 21 runs succeeded, against 308 failures in 854 on the old
+     schedule. Under the old 36% rate, twenty-one consecutive successes has probability about
+     0.0001, so the fix is real — but 21 runs is under two hours, and dropping the qualifier on
+     that evidence would repeat the "0% from a sample of three" mistake this file's history is
+     full of. `npm run cadence` is the trigger: a full day at or above 95% and this reads a
+     plain "5 min". */
   { what: "Open interest, 24h volume, oracle price, premium", ep: "POST /info {\"type\":\"metaAndAssetCtxs\"}", who: "Hyperliquid", freq: "5 min, when the tick succeeds" },
   { what: "Price candles behind every chart, hourly and daily", ep: "POST /info {\"type\":\"candleSnapshot\"}", who: "Hyperliquid", freq: "2 h / 12 h" },
   { what: "Realised funding history, behind the funding series", ep: "POST /info {\"type\":\"fundingHistory\"}", who: "Hyperliquid", freq: "6 h" },
