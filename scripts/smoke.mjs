@@ -35,7 +35,7 @@
 import { spawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { readdirSync } from "node:fs";
-import { cssFor, undefinedClasses, undefinedVars, rawEnums, searchIndexGaps, unnamedUpstreams, formatterDrift, uncoveredRoutes } from "./checks.mjs";
+import { cssFor, undefinedClasses, undefinedVars, rawEnums, searchIndexGaps, unnamedUpstreams, formatterDrift, uncoveredRoutes, unreadableText } from "./checks.mjs";
 
 /* The SERVER side of each duplicated formatter, transcribed from the file that owns it and
    named here so the pairing is explicit. Transcription is the honest cost of having no bundler:
@@ -210,6 +210,20 @@ for (const path of ROUTES) {
     } catch (e) {
       bad++;
       console.log(`  FAIL          upstream comparison failed: ${e.message}`);
+    }
+    try {
+      const css = await cssFor(await (await fetch(`http://127.0.0.1:${PORT}/`)).text(), `http://127.0.0.1:${PORT}`);
+      const un = unreadableText(css);
+      if (un.length) {
+        bad++;
+        console.log(`  FAIL  ${String(un.length).padStart(4)}         text colour below WCAG AA on a surface it is used on`);
+        for (const l of un) console.log(`          ${l}`);
+      } else {
+        console.log(`  ok            every text token clears 4.5:1 on every surface`);
+      }
+    } catch (e) {
+      bad++;
+      console.log(`  FAIL          contrast check failed: ${e.message}`);
     }
     try {
       const drift = formatterDrift(await readFile("public/interact.js", "utf8"), SERVER_FORMATTERS);

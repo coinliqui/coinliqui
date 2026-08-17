@@ -140,7 +140,14 @@ const schema = {
         /* text */
         --text:  #e6e8ec;
         --text-dim:   #9aa1ab;
-        --text-faint: #6c737d;
+        /* RAISED FROM #6c737d, which failed WCAG AA against every surface it is used on:
+           2.82:1 on --surface-3 (where .tbl th sits, at 12px), 3.22 on --surface-2, 3.72 on
+           --bg. It is not decorative text — it carries table headers, the funding legend, card
+           meta and section notes. #8f96a0 clears 4.5:1 on all four surfaces (worst case 4.52
+           on --surface-3) and stays dimmer than --text-dim, 5.17 against 5.92 on a panel, so
+           the three-step hierarchy is intact. Computed, not eyeballed; scripts/checks.mjs now
+           fails the gate if any text token drops below the floor on any surface. */
+        --text-faint: #8f96a0;
 
         /* one accent — active nav, links, primary action. Nowhere else. */
         --accent:       #8ab4f8;

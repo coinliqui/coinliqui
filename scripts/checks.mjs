@@ -288,3 +288,54 @@ export function rawEnums(html) {
   const bare = text.replace(/<[^>]+>/g, " ");
   return ENUMS.filter((e) => new RegExp(`(^|[\\s>(,])${e}([\\s<),.]|$)`).test(bare));
 }
+
+/**
+ * A text colour that cannot be read on the surface it is printed on.
+ *
+ * The design system defines three text steps and four surfaces. Nothing checked that any pair
+ * of them was legible, and one was not: --text-faint was 2.82:1 on --surface-3, where .tbl th
+ * renders at 12px. WCAG AA wants 4.5:1 below 18.66px. That is not a taste call — it is a
+ * number the tokens either meet or do not, and it had never been computed.
+ *
+ * This is a consistency pair like the others: the palette asserts a hierarchy, WCAG asserts a
+ * floor, and until now the two were never compared.
+ */
+const SURFACES = ["--bg", "--surface-1", "--surface-2", "--surface-3"];
+const TEXTS = ["--text", "--text-dim", "--text-faint"];
+const AA_NORMAL = 4.5;
+
+const srgb = (h) => {
+  const v = h.replace("#", "");
+  const f = v.length === 3 ? [...v].map((c) => c + c).join("") : v;
+  return [0, 2, 4].map((i) => parseInt(f.slice(i, i + 2), 16));
+};
+const chan = (c) => (c / 255 <= 0.03928 ? c / 255 / 12.92 : Math.pow((c / 255 + 0.055) / 1.055, 2.4));
+const lum = (h) => { const [r, g, b] = srgb(h); return 0.2126 * chan(r) + 0.7152 * chan(g) + 0.0722 * chan(b); };
+export const contrast = (a, b) => {
+  const [x, y] = [lum(a), lum(b)];
+  return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
+};
+
+export function unreadableText(css) {
+  /* EVERY DEFINITION, NOT THE FIRST. The first version kept only the first hex it saw for each
+     token, so a later `@media { :root { --text-faint: #3a3f45 } }` was invisible to it and the
+     check passed while the palette it described no longer existed. Tested by writing that CSS
+     out and running it — see scripts/blind-cases.mjs — rather than by rereading the loop.
+     Each token currently has exactly one definition, so this changed no result today; it
+     changes what happens the first time someone adds a responsive or themed override. */
+  const tok = {};
+  for (const m of css.matchAll(/(--[\w-]+):\s*(#[0-9a-fA-F]{3,8})\b/g)) (tok[m[1]] ??= []).push(m[2]);
+  const out = [];
+  for (const t of TEXTS) {
+    for (const s of SURFACES) {
+      if (!tok[t] || !tok[s]) { out.push(`${t} or ${s} is not a hex token in the built CSS`); continue; }
+      for (const tv of tok[t]) {
+        for (const sv of tok[s]) {
+          const r = contrast(tv, sv);
+          if (r < AA_NORMAL) out.push(`${t} (${tv}) on ${s} (${sv}) is ${r.toFixed(2)}:1, below ${AA_NORMAL}`);
+        }
+      }
+    }
+  }
+  return [...new Set(out)];
+}
