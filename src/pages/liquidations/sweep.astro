@@ -238,7 +238,16 @@ const description =
   </p>
 
   <h2 class="section">Every hour of the event, as traded</h2>
-  <p class="section-note">Hyperliquid's own candles from 5 February 00:00 to 6 February 06:00 UTC, unmodified. The chart above is drawn from these.</p>
+  {/* "The chart above is drawn from these" was false by about nine to one. This table is 31
+      hourly rows covering the event itself; the chart spans 1-12 February — 288 hourly candles
+      aggregated to two-hour bars. The table is a SLICE of what the chart is drawn from, which
+      is a useful thing to publish and a different claim to make. */}
+  <p class="section-note">
+    Hyperliquid's own candles from 5 February 00:00 to 6 February 06:00 UTC, unmodified — the
+    event itself, hour by hour. The chart above covers a wider window (1–12 February, in
+    two-hour bars), so these rows are the part of its input that matters most rather than all
+    of it.
+  </p>
   <div class="panel">
     <table class="tbl">
       <thead><tr><th>Hour (UTC)</th><th class="num">Open</th><th class="num">High</th><th class="num">Low</th><th class="num">Close</th><th class="num">Volume (BTC)</th><th class="num">vs prior hourly median</th></tr></thead>
