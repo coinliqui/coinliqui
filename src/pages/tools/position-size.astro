@@ -131,26 +131,34 @@ const description = `Risk-based position sizing for ${perp.symbol} perpetuals th
     </div>
   </div>
 
-  <div class:list={["verdict", liquidatedFirst ? "verdict--warn" : "verdict--ok"]} id="out-verdict">
-    {liquidatedFirst ? (
-      <div>
+  {/* BOTH VERDICTS ARE RENDERED, and a data attribute chooses which is shown.
+      The client used to update only this element's className, so changing an input turned the
+      box amber while the sentence inside it still read "The stop is reachable" — the colour and
+      the words asserting opposite things, on a page someone sizes a position from. Verified in
+      the browser: a 20% stop with liquidation 5.26% away flipped the class and the "before your
+      stop" note, and left the prose untouched.
+
+      Rendering both and toggling is the fix that respects the house rule rather than working
+      around it: every number is server-rendered at first byte, a crawler sees the true state,
+      and the interaction layer only reveals what is already there. Every live figure inside the
+      prose carries an id so the same set() that updates the cards updates the sentence. */}
+  <div class:list={["verdict", liquidatedFirst ? "verdict--warn" : "verdict--ok"]} id="out-verdict" data-state={liquidatedFirst ? "liq" : "stop"}>
+    <div data-when="liq">
         <b>The stop never executes.</b> At {r.effectiveLeverage}×{r.leverageClamped ? " — this contract's tier maximum, so the leverage you asked for cannot be opened —" : ""} the exchange closes this position at
-        {" "}<b>{px(r.liquidationPrice)}</b> — a <b>{pct(liqMove)}</b> move — while your stop sits
-        {" "}{pct(stopMove)} away at {px(stop)}. The trade gets <b>{pct(liqMove)}</b> of room
+        {" "}<b id="v-liq1">{px(r.liquidationPrice)}</b> — a <b id="v-move1">{pct(liqMove)}</b> move — while your stop sits
+        {" "}<span id="v-stopmove1">{pct(stopMove)}</span> away at <span id="v-stop1">{px(stop)}</span>. The trade gets <b>{pct(liqMove)}</b> of room
         instead of the {pct(stopMove)} it was sized to survive, and the entire
         {" "}<b>{usd(marginAtRisk, 2)}</b> of margin goes with it.
         That the margin happens to be {marginAtRisk < riskUsd ? "smaller" : "larger"} than your
         {" "}{usd(riskUsd, 2)} budget is beside the point: the position never got to be wrong slowly.
-        Drop to <b>{safeLeverage}×</b> or move the stop closer.
-      </div>
-    ) : (
-      <div>
-        <b>The stop is reachable.</b> Liquidation sits at <b>{px(r.liquidationPrice)}</b>
-        ({pct(liqMove)} away), past your stop at {pct(stopMove)}, so the stop executes first and the
+        Drop to <b id="v-safe2">{safeLeverage}×</b> or move the stop closer.
+    </div>
+    <div data-when="stop">
+        <b>The stop is reachable.</b> Liquidation sits at <b id="v-liq2">{px(r.liquidationPrice)}</b>
+        (<span id="v-move2">{pct(liqMove)}</span> away), past your stop at <span id="v-stopmove2">{pct(stopMove)}</span>, so the stop executes first and the
         loss is bounded by the <b>{usd(riskUsd, 2)}</b> you budgeted. Leverage up to
-        {" "}<b>{safeLeverage}×</b> keeps that true.
-      </div>
-    )}
+        {" "}<b id="v-safe1">{safeLeverage}×</b> keeps that true.
+    </div>
   </div>
 
   <h2 class="section">Why sizing alone is not enough</h2>
@@ -217,6 +225,18 @@ const description = `Risk-based position sizing for ${perp.symbol} perpetuals th
         const mv = document.getElementById("out-move");
         if (mv) mv.className = "card__value" + (first ? " pays-l" : "");
         set("out-safe", safe + "×");
+        /* The VERDICT is a state, not a colour. Setting className alone left the sentence
+           contradicting its own box; the attribute selects which server-rendered variant shows,
+           and the ids below keep its figures current. */
+        const v = document.getElementById("out-verdict");
+        if (v) v.dataset.state = first ? "liq" : "stop";
+        const setAll = (ids, val) => ids.forEach((i) => set(i, val));
+        setAll(["v-liq1", "v-liq2"], price(liq));
+        setAll(["v-move1", "v-move2"], ((Math.abs(liq - E) / E) * 100).toFixed(2) + "%");
+        setAll(["v-stopmove1", "v-stopmove2"], ((Math.abs(S - E) / E) * 100).toFixed(2) + "%");
+        setAll(["v-safe1", "v-safe2"], safe + "×");
+        set("v-stop1", price(S));
+
         const liqEl = document.getElementById("out-liq");
         if (liqEl) liqEl.className = "card__value" + (first ? " pays-l" : "");
         const v = document.getElementById("out-verdict");
