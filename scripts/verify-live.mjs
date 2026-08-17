@@ -203,7 +203,33 @@ for (const p of ["/", "/funding/btc"]) {
   r.headers.get("set-cookie") ? bad(`${p} sets a cookie: ${r.headers.get("set-cookie")}`) : ok(`${p} sets no cookie`);
 }
 
-/* 7. Data freshness, as served. */
+/* 7. DID THE DOCUMENT FINISH?
+      Astro streams. A throw partway through a template flushes the status and everything
+      rendered so far, then stops — the error goes to the log, never into the body. So the
+      reader gets a correct status code, a correct content-type, a header, a nav, and then
+      nothing: no h1, no content, no </html>.
+
+      This lives HERE rather than only in smoke.mjs, and the distinction is not academic.
+      `wrangler pages dev` BUFFERS: locally the same throw yields a 0-byte body, which the
+      smoke gate catches as EMPTY BODY. Production STREAMS: the body is 9,159 bytes and
+      looks alive. Measured on both, on the very defect that prompted this — an unimported
+      SYMBOL_CAP in 404.astro that made every mistyped coin URL serve an amputated page.
+
+      The paths below are chosen to cover the BRANCHES of /404, not just the template. The
+      generic branch (/404 itself) rendered perfectly throughout; only the rewrite branch —
+      the one a real person reaches by mistyping a coin — was broken. */
+console.log("\n7. documents render to completion");
+for (const p of ["/", "/funding/btc", "/coins/bitcoin", "/watchlist", "/404",
+                 "/funding/notacoin", "/coins/notacoin", "/tools/leverage"]) {
+  const r = await fetchAs(p, "Mozilla/5.0");
+  const isDoc = /^\s*<!doctype html/i.test(r.body);
+  if (!isDoc) { bad(`${p} did not return an HTML document (${r.status}, ${r.body.length}b)`); continue; }
+  /<\/html>\s*$/i.test(r.body)
+    ? ok(`${p.padEnd(20)} ${String(r.status)} complete, ${r.body.length}b`)
+    : bad(`${p} TRUNCATED — ${r.status} with ${r.body.length}b and no </html>; the render threw mid-stream`);
+}
+
+/* 8. Data freshness, as served. */
 console.log("\n7. data");
 {
   const r = await fetchAs("/status", "Mozilla/5.0");

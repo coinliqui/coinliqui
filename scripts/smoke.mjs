@@ -62,7 +62,15 @@ const ROUTES = [
   "/tools/funding-arbitrage", "/tools/liquidation-price", "/methodology",
   "/methodology/liquidations", "/data-sources", "/privacy", "/about", "/llms.txt",
   "/.well-known/security.txt", "/watchlist", "/status",
-  "/status/indexation", "/404", "/api/live.json", "/robots.txt", "/sitemap-index.xml",
+  "/status/indexation", "/404",
+  /* THE OTHER BRANCH OF /404, which is the one real people reach.
+     404.astro renders two different pages: a generic "that page does not exist" when nothing
+     rewrote to it, and "X is not published" when a contract or coin page did. The gate asked
+     for /404 — the generic branch — and so rendered green for as long as the other branch
+     threw. Route coverage could not help: both branches live in one template, and the template
+     was covered. A gate that asks for one URL per template sees one path through it. */
+  "/funding/notacoin", "/coins/notacoin",
+  "/api/live.json", "/robots.txt", "/sitemap-index.xml",
   "/search-index.json", "/rail",
   /* EVERY sitemap, not a sample. Six of these were never requested by anything until the
      coverage check below started comparing this list against the build manifest — so a 500 in
@@ -76,7 +84,8 @@ const ROUTES = [
  *  flash — so a GET is correctly 404. That proves the route exists and does not crash on an
  *  unexpected method; it does NOT exercise the POST handler, and this comment says so rather
  *  than letting a green line imply otherwise. */
-const EXPECT = { "/tools/liquidation-price": 410, "/404": 404, "/rail": 404 };
+const EXPECT = { "/tools/liquidation-price": 410, "/404": 404, "/rail": 404,
+  "/funding/notacoin": 404, "/coins/notacoin": 404 };
 
 const warmDir = process.argv.includes("--warm") ? process.argv[process.argv.indexOf("--warm") + 1] : null;
 const MODES = warmDir ? [{ name: "cold", args: [] }, { name: "warm", args: ["--kv", "SNAPSHOT", "--d1", "DB", "--persist-to", warmDir] }]
@@ -174,6 +183,16 @@ for (const path of ROUTES) {
   const empty = body.length === 0;
   const crashed = /ReferenceError|is not defined|Cannot read propert|Internal Server Error/i.test(body);
 
+  /* DID THE DOCUMENT FINISH?
+     Astro streams an SSR response, so a throw partway through a template flushes the status
+     and everything rendered up to that point, then simply stops. The status is already
+     committed and correct, the body is not empty, and the error text goes to the log rather
+     than into the stream — so `empty` and `crashed` above are both structurally blind to it.
+     /404 served a truncated 9,159-byte body on every mistyped or below-floor coin URL for as
+     long as SYMBOL_CAP went unimported, and this gate printed `ok 404` at it. */
+  const isDoc = /^\s*<!doctype html/i.test(body);
+  const truncated = isDoc && !/<\/html>\s*$/i.test(body);
+
   /* CONTENT CHECKS. A 200 with a body is not the same as a correct page: today's three
      silent defects all rendered 200 and lost a colour or leaked an identifier. These run
      only on HTML, and only warm — a cold page is the 503 notice and has nothing to check. */
@@ -189,11 +208,12 @@ for (const path of ROUTES) {
     if (e.length) content.push(`internal enum rendered as text: ${e.join(", ")}`);
   }
 
-  const ok = okStatus && !empty && !crashed && !err && !content.length;
+  const ok = okStatus && !empty && !crashed && !truncated && !err && !content.length;
   if (!ok) bad++;
   console.log(
     `  ${ok ? "ok  " : "FAIL"}  ${String(status || err).padEnd(4)} ${String(body.length).padStart(7)}b  ${path}` +
-      (crashed ? "   <- runtime error in the body" : empty ? "   <- EMPTY BODY" : ""),
+      (crashed ? "   <- runtime error in the body" : empty ? "   <- EMPTY BODY"
+       : truncated ? "   <- TRUNCATED, no </html> — the render threw mid-stream" : ""),
   );
   for (const c of content) console.log(`          ${c}`);
 }

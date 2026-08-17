@@ -1,0 +1,39 @@
+{
+  "extends": "astro/tsconfigs/base",
+  "include": [".astro/types.d.ts", "**/*", "**/*.astro"],
+  "exclude": ["dist", "worker-dist", ".wrangler"],
+  "compilerOptions": {
+    /* THIS FILE EXISTS FOR ONE DIAGNOSTIC: ts(2304), "Cannot find name".
+     *
+     * Three times now this project has shipped an identifier that is used in a template and
+     * never imported — MONO in the chart builder, coldStart() in /data-sources, SYMBOL_CAP in
+     * /404 — and each one compiled perfectly, because `astro build` for an SSR target compiles
+     * the worker without rendering a page. The last of them served a truncated, blank body on
+     * every mistyped or below-floor coin URL for as long as it was live, under a correct 404
+     * status, with no error text anywhere in the response. `npm run smoke` could not see it:
+     * the body was 9,159 bytes, so not empty, and the throw goes to the log rather than into
+     * the stream, so the "runtime error in the body" regex never fired.
+     *
+     * `astro check` finds that class statically, in every branch of every template, including
+     * the branches no gate happens to request. It reported exactly one ts(2304) across 27
+     * files and it was the real one.
+     *
+     * The two settings below are here to make that signal legible rather than to loosen
+     * anything. Without them the run buries one true error under 95 diagnostics:
+     *
+     *   allowImportingTsExtensions   72x ts(5097). Every import in this repo is written
+     *                                "../lib/funding.ts" and resolved by Vite, which is
+     *                                correct for the build and simply not TypeScript's
+     *                                default assumption. Nothing is emitted from tsc, so
+     *                                this is a statement of fact, not a relaxation.
+     *   noUnusedLocals: false        23x ts(6133). Real, worth cleaning, and not a reason
+     *                                to fail a push — they are reported as hints instead.
+     *
+     * Nothing here suppresses an undefined name. If you are tempted to add something that
+     * does, that is the one diagnostic this file was written to keep. */
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false
+  }
+}
