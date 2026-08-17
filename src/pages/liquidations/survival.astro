@@ -129,11 +129,14 @@ const description = `Which leveraged ${perp.symbol} positions were liquidated an
     <p class="crumb"><a href="/liquidations">Liquidations</a> › Survival</p>
     <h1>Leverage survival</h1>
     <p>
-      Nothing here is modelled. Every cell is one checkable question about the real price path:
-      a <strong>{mapSide}</strong> opened at that day's close, at that leverage, held {hold} days
-      — did the rules close it, and on which day? That is what separates this from
-      {" "}<a class="link" href="/liquidations">the modelled density map</a>, which answers a
-      different question and needs assumptions to do it.
+      <strong>The prices are real; the closing rule is a model.</strong> Every cell asks one
+      checkable question about an observed price path — a <strong>{mapSide}</strong> opened at
+      that day's close, at that leverage, held {hold} days: did the maintenance-margin threshold
+      get crossed, and on which day? No price here is simulated. But deciding that a position
+      <em>would have closed</em> takes assumptions, and they are listed below rather than left
+      implicit. That is a smaller set than
+      {" "}<a class="link" href="/liquidations">the density map</a> needs, which is the honest
+      version of the claim this paragraph used to make.
     </p>
   </div>
 
@@ -187,6 +190,58 @@ const description = `Which leveraged ${perp.symbol} positions were liquidated an
         </table>
       </div>
 
+      {/* WHAT THIS PAGE USED TO SAY WAS "Nothing here is modelled", on a page whose entire
+          argument is that it is more honest than the density map beside it. The prices are
+          indeed real, but the closing rule is a model with at least six assumptions, and none
+          of them were stated. An unstated assumption on a page selling its own rigour is worse
+          than the same assumption on a page that admits it.
+
+          The direction of each bias is given because that is the part a reader can actually
+          use: several push the same way, and two push back. */}
+      <h2 class="section">What the closing rule assumes</h2>
+      <p class="section-note">
+        Every one of these would move some cells. They are not all in the same direction, so the
+        grid is not simply optimistic or simply pessimistic — it is a rule applied consistently,
+        with these six things left out.
+      </p>
+      <div class="panel">
+        <table class="tbl">
+          <thead><tr><th>Assumption</th><th>What is left out</th><th>Which way it bends the answer</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><strong>No funding</strong></td>
+              <td class="reason">A leveraged position pays or receives funding every settlement. Over a {hold}-day hold that is {hold * 24} payments on this venue, and it moves margin, not price.</td>
+              <td class="reason">Usually <strong>too kind</strong>: a long paying funding runs out of margin sooner than this grid says.</td>
+            </tr>
+            <tr>
+              <td><strong>No fees</strong></td>
+              <td class="reason">Opening and closing both cost. Small beside funding over {hold} days, but the same sign.</td>
+              <td class="reason">Too kind, slightly.</td>
+            </tr>
+            <tr>
+              <td><strong>Isolated margin</strong></td>
+              <td class="reason">Each position is assumed to stand on its own margin, with no account balance behind it and no top-ups.</td>
+              <td class="reason"><strong>Too harsh</strong> for anyone trading cross-margin or adding margin — those positions survive longer.</td>
+            </tr>
+            <tr>
+              <td><strong>Traded price, not mark price</strong></td>
+              <td class="reason">Exchanges liquidate against a mark or index price, which is smoothed. This tests the candle's own low and high.</td>
+              <td class="reason"><strong>Too harsh</strong>: a thin wick can cross this threshold without moving the mark that far.</td>
+            </tr>
+            <tr>
+              <td><strong>One maintenance margin</strong></td>
+              <td class="reason">{pct(mmf, 3)}, from tier 1 of the venue's table. Real tiers step up with position size.</td>
+              <td class="reason">Too kind at large size, exact at small size.</td>
+            </tr>
+            <tr>
+              <td><strong>Daily candles</strong></td>
+              <td class="reason">The check is one low and one high per day, so the day a position closes is known and the hour is not.</td>
+              <td class="reason">Neither — it limits resolution, not direction.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
       <details class="src">
         <summary>The daily price series this is computed from ({grid.entries.length} rows)</summary>
         <div class="panel" style="margin-top:10px">
@@ -224,6 +279,10 @@ const description = `Which leveraged ${perp.symbol} positions were liquidated an
     .heat { display: block; width: 100%; height: auto; aspect-ratio: var(--heatRatio); }
     .heat :global(rect) { shape-rendering: crispEdges; }
     .src { margin-top: var(--gap-cluster); }
+    /* Astro scopes styles per page, so a rule defined on another page never reaches this one.
+       The pre-push check caught this the moment the assumptions table was added. */
+    .reason { color: var(--text-dim); white-space: normal; }
+    .tbl td { vertical-align: top; }
     .src summary { font-size: 13px; color: var(--text-dim); cursor: pointer; padding: 8px 0; }
     .src summary:hover { color: var(--text); }
   </style>
