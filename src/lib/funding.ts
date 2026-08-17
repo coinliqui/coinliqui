@@ -33,6 +33,40 @@ export interface VenueFunding {
   nextFundingTime: number | null;
 }
 
+/**
+ * THE NEXT SETTLEMENT, WHICH MUST BE IN THE FUTURE.
+ *
+ * "Next settlement" on all 50 contract pages printed Hyperliquid's `nextFundingTime` verbatim,
+ * and that field is not what the label says. Measured against the live endpoint: all 232
+ * Hyperliquid contracts carried a timestamp already in the PAST, while all 395 Binance and
+ * Bybit contracts carried one in the future. It is systematic, not a race — Hyperliquid
+ * publishes the START of the hour whose funding is being predicted, and that hour settles at
+ * its END. A page rendered at 14:27:48 UTC announced the next settlement as 14:00.
+ *
+ * The rule here does not depend on having diagnosed that correctly, which is the point: a
+ * value labelled "next" must be in the future, so roll forward by whole intervals until it is.
+ * Binance and Bybit are already ahead and pass through untouched; Hyperliquid's 14:00 becomes
+ * 15:00; and if the upstream ever changes its convention this keeps giving the right answer
+ * instead of inheriting a new off-by-one.
+ *
+ * Returns null rather than a guess when there is no interval to step by — an unknown next
+ * settlement is a dash on the page, not a fabricated time.
+ */
+export function nextSettlement(
+  nextFundingTime: number | null,
+  intervalHours: number,
+  now: number = Date.now(),
+): number | null {
+  if (!Number.isFinite(nextFundingTime as number) || nextFundingTime === null) return null;
+  if (!Number.isFinite(intervalHours) || intervalHours <= 0) {
+    return nextFundingTime > now ? nextFundingTime : null;
+  }
+  const step = intervalHours * 3_600_000;
+  let t = nextFundingTime;
+  if (t <= now) t += Math.ceil((now - t + 1) / step) * step;
+  return t;
+}
+
 /** Annualise a per-interval funding rate. Simple annualisation, no compounding. */
 export function toApr(ratePerInterval: number, intervalHours: number): number {
   if (!Number.isFinite(ratePerInterval) || !Number.isFinite(intervalHours) || intervalHours <= 0) {

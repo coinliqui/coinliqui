@@ -1,7 +1,7 @@
 ---
 import Base from "../../layouts/Base.astro";
 import { getSnapshot, coldStart, findPerp } from "../../lib/hyperliquid.ts";
-import { VENUE_LABEL, pct, usd, rawRate, carryCost, settlementsPerYear, paysClass, paysLabel, type Venue } from "../../lib/funding.ts";
+import { VENUE_LABEL, pct, usd, rawRate, carryCost, settlementsPerYear, nextSettlement, paysClass, paysLabel, type Venue } from "../../lib/funding.ts";
 import { liquidationPrice, type MarginTable } from "../../lib/margin.ts";
 import { getCandles, getHourly, getFunding } from "../../lib/candles.ts";
 import { TIMEFRAMES, DEFAULT_TF, aggregate, buildPriceChart, shortDate, CHART_H } from "../../lib/series.ts";
@@ -43,7 +43,11 @@ const by = new Map(p.venues.map((v) => [v.venue, v]));
 const hl = by.get("HlPerp");
 const carry7d = hl ? carryCost(10_000, hl.apr, 7) : NaN;
 const liq = liquidationPrice({ entryPrice: p.markPx, positionSize: 1, leverage: 10, side: "long", table });
-const nextFunding = hl?.nextFundingTime ? new Date(hl.nextFundingTime) : null;
+/* Not `new Date(hl.nextFundingTime)`. That field sits in the PAST on every Hyperliquid
+   contract — see nextSettlement() in src/lib/funding.ts — so this card announced a settlement
+   that had already happened, on all 50 contract pages, every hour of every day. */
+const nextSettleAt = hl ? nextSettlement(hl.nextFundingTime, hl.intervalHours) : null;
+const nextFunding = nextSettleAt ? new Date(nextSettleAt) : null;
 
 const dp = p.markPx >= 100 ? 2 : p.markPx >= 1 ? 3 : p.markPx >= 0.01 ? 5 : 7;
 const px = (v: number) => usd(v, dp);

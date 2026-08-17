@@ -229,8 +229,38 @@ for (const p of ["/", "/funding/btc", "/coins/bitcoin", "/watchlist", "/404",
     : bad(`${p} TRUNCATED — ${r.status} with ${r.body.length}b and no </html>; the render threw mid-stream`);
 }
 
-/* 8. Data freshness, as served. */
-console.log("\n8. data");
+/* 8. "NEXT SETTLEMENT" MUST BE IN THE FUTURE, on every contract page.
+ *
+ * The card printed Hyperliquid's `nextFundingTime` verbatim, and that field is in the past on
+ * every one of its 232 contracts — it publishes the START of the hour being predicted, and the
+ * hour settles at its end. A page rendered at 14:27:48 UTC announced the next settlement as
+ * 14:00. Fifty pages, every hour, for as long as the card has existed.
+ *
+ * The assertion is deliberately tighter than "in the future": the card's own meta says
+ * "Hyperliquid, hourly", so the value must be within the next SIXTY MINUTES of the render time.
+ * Merely testing "later than now" would be satisfied by rolling a wrong time to tomorrow, which
+ * is exactly the shape of a check that cannot fail. Both times come from the same document, so
+ * this compares the page against itself and needs no clock of ours. */
+console.log("\n8. next settlement is in the future");
+for (const p of ["/funding/btc", "/funding/eth", "/funding/sol", "/funding/kpepe"]) {
+  const r = await fetchAs(p, "Mozilla/5.0");
+  const card = /Next settlement<\/div>\s*<div[^>]*>([^<]*)</.exec(r.body)?.[1]?.trim();
+  const stampStr = /<time datetime="([^"]+)"/.exec(r.body)?.[1];
+  if (!card || !stampStr) { bad(`${p} has no readable "Next settlement" card or render stamp`); continue; }
+  if (card === "—") { ok(`${p.padEnd(16)} no next settlement published — dash, not a guess`); continue; }
+  const m = /^(\d{2}):(\d{2})$/.exec(card);
+  if (!m) { bad(`${p} "Next settlement" is not a HH:MM time: "${card}"`); continue; }
+  const stamp = new Date(stampStr);
+  const cand = new Date(stamp); cand.setUTCHours(Number(m[1]), Number(m[2]), 0, 0);
+  if (cand <= stamp) cand.setUTCDate(cand.getUTCDate() + 1);
+  const aheadMin = Math.round((cand - stamp) / 60000);
+  aheadMin <= 60
+    ? ok(`${p.padEnd(16)} ${card} UTC, ${aheadMin} min after the page's own stamp (${stampStr.slice(11, 19)})`)
+    : bad(`${p} "Next settlement ${card}" is ${aheadMin} min from the page's stamp ${stampStr.slice(11, 19)} — an hourly contract cannot settle that far out, so this time is in the past`);
+}
+
+/* 9. Data freshness, as served. */
+console.log("\n9. data");
 {
   const r = await fetchAs("/status", "Mozilla/5.0");
   const grab = (re) => re.exec(r.body)?.[1]?.trim() ?? "?";
