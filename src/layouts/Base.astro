@@ -653,7 +653,6 @@ const schema = {
       .navtoggle, .nav__scrim { display: none; }
       @media (max-width: 900px) {
         .app, .app.is-collapsed { grid-template-columns: minmax(0,1fr); }
-        .rail { display: none; }
         .topbar { padding: 0 16px; }
         .page { margin: 0 12px 12px; padding: 16px 16px 24px; min-height: 0; }
         /* THE AGE STAYS ON MOBILE. This used to hide every span in the pill so the cluster
@@ -692,7 +691,13 @@ const schema = {
         .navtoggle:hover, .navtoggle:focus-visible { background: var(--surface-3); color: var(--text); }
 
         .rail {
-          display: flex; position: fixed; inset-block: 0; left: 0; z-index: 40;
+          /* BLOCK, not flex. The desktop rail is a plain block and its children — rail__top,
+             then one div per nav group — stack in normal flow. Setting `display: flex` here to
+             beat the old `display: none` turned them into a ROW: the wordmark, "Markets" and
+             the groups laid out side by side, with every label clipped at the drawer edge
+             ("Overvie", "Liquida", "Unlock"). Overriding a display value is not free; it has
+             to be overridden to the one the layout was written for. */
+          display: block; position: fixed; inset-block: 0; left: 0; z-index: 40;
           width: min(var(--rail-w), 84vw); max-width: 320px;
           background: var(--surface-1); border-right: 1px solid var(--border);
           transform: translateX(-100%); transition: transform .22s ease;
