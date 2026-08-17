@@ -396,3 +396,39 @@ export function chartAgreement(html) {
   }
   return out;
 }
+/**
+ * A page that computes a tier-correct liquidation price and labels it with the leverage the
+ * READER ASKED FOR rather than the one the exchange would allow.
+ *
+ * src/lib/margin.ts silently clamps a requested leverage to the tier maximum and reports both
+ * `effectiveLeverage` and `leverageClamped`. Twice now, a page has ignored them and printed the
+ * requested figure beside the clamped number: /funding/[symbol] said "At 10x long" on twenty
+ * contracts whose tier caps at 3x or 5x, and /tools/position-size said "Liquidation at 10x
+ * $0.01793" for MON, where $0.01793 is the FIVE-times price. Both render perfectly and mislead
+ * exactly the reader who is sizing a position.
+ *
+ * This is the third time one policy has been implemented on two templates and fixed on one —
+ * the /coins case guard and two off-origin checks in verify-live were the others. So the
+ * invariant is written down instead of remembered: a file that calls liquidationPrice() must
+ * use effectiveLeverage. Source-level, because it is a property of the code rather than of any
+ * one rendered page, and a page can be correct today and wrong at the next symbol.
+ */
+export function requestedLeverageLabels(files, read) {
+  const out = [];
+  for (const f of files) {
+    let src;
+    try { src = read(f); } catch { continue; }
+    if (!/\bliquidationPrice\s*\(/.test(src)) continue;
+    /* CLAMP-AWARE BY EITHER ROUTE. The first version demanded `effectiveLeverage` by name and
+       flagged /tools/leverage, which is correct: it derives `permitted` from the same tierFor()
+       and computes `effective = Math.min(requested, permitted)` itself, so its label already
+       matches its number. A check that tests for a variable name rather than a behaviour cries
+       wolf, and an alarm that cries wolf is one you stop reading — which is how the real
+       instance gets through. What must never happen is a page computing a liquidation price
+       while showing the RAW requested leverage with no clamp anywhere. */
+    const clampAware = /effectiveLeverage|leverageClamped/.test(src) ||
+      (/maxLeverage/.test(src) && /Math\.min\s*\(/.test(src));
+    if (!clampAware) out.push(`${f} computes a liquidation price but is unaware of the tier clamp — it will label a clamped number with the requested leverage`);
+  }
+  return out;
+}

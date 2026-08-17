@@ -34,8 +34,8 @@
  */
 import { spawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
-import { readdirSync } from "node:fs";
-import { cssFor, undefinedClasses, undefinedVars, rawEnums, searchIndexGaps, unnamedUpstreams, formatterDrift, uncoveredRoutes, unreadableText, chartAgreement } from "./checks.mjs";
+import { readdirSync, readFileSync } from "node:fs";
+import { cssFor, undefinedClasses, undefinedVars, rawEnums, searchIndexGaps, unnamedUpstreams, formatterDrift, uncoveredRoutes, unreadableText, chartAgreement, requestedLeverageLabels } from "./checks.mjs";
 
 /* The SERVER side of each duplicated formatter, transcribed from the file that owns it and
    named here so the pairing is explicit. Transcription is the honest cost of having no bundler:
@@ -91,6 +91,16 @@ try {
   const dir = "dist/_worker.js";
   const manifest = readdirSync(dir).find((f) => /^manifest_.*\.mjs$/.test(f));
   if (!manifest) throw new Error(`no manifest_*.mjs in ${dir} — was the build run?`);
+  /* Source invariant, checked before anything renders: no page may compute a tier-correct
+     liquidation price while displaying the leverage the reader requested. That mislabelling
+     shipped twice — twenty contract pages, then the position-size calculator. */
+  const lev = requestedLeverageLabels(
+    readdirSync("src/pages/tools").filter((f) => f.endsWith(".astro")).map((f) => `src/pages/tools/${f}`)
+      .concat(["src/pages/funding/[symbol].astro", "src/pages/liquidations/index.astro", "src/pages/liquidations/survival.astro"]),
+    (f) => { try { return readFileSync(f, "utf8"); } catch { return ""; } },
+  );
+  if (lev.length) { failures++; console.log(`\n  FAIL  ${lev.length} page(s) mislabel a clamped leverage:`); for (const l of lev) console.log(`          ${l}`); }
+
   const un = uncoveredRoutes(await readFile(`${dir}/${manifest}`, "utf8"), ROUTES);
   if (un.length) {
     failures++;

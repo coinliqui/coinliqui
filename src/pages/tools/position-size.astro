@@ -107,7 +107,15 @@ const description = `Risk-based position sizing for ${perp.symbol} perpetuals th
       <div class="card__meta">{perp.symbol} · notional <span id="out-notional">{usd(notional)}</span></div>
     </div>
     <div class="card">
-      <div class="card__label">Liquidation at {leverage}×</div>
+      {/* THE LEVERAGE THAT WAS USED, not the one requested. margin.ts clamps the request to
+          the tier maximum and reports it in effectiveLeverage; this card printed the requested
+          figure beside the clamped result. On MON — tier max 5x — it read "Liquidation at 10x
+          $0.01793", and $0.01793 is entry x (1 - 1/5) / (1 - 1/10): the FIVE-times price under
+          a TEN-times label, on a page someone sizes a position from.
+
+          The identical bug was fixed on /funding/[symbol] earlier today and this sibling never
+          got the change — the same one-policy-two-templates shape as the /coins case guard. */}
+      <div class="card__label">Liquidation at {r.effectiveLeverage}×{r.leverageClamped && <span class="card__scope">tier max</span>}</div>
       <div class:list={["card__value", liquidatedFirst && "pays-l"]} id="out-liq">{px(r.liquidationPrice)}</div>
       <div class="card__meta" id="out-liqnote">{liquidatedFirst ? "before your stop" : "beyond your stop"}</div>
     </div>
@@ -126,7 +134,7 @@ const description = `Risk-based position sizing for ${perp.symbol} perpetuals th
   <div class:list={["verdict", liquidatedFirst ? "verdict--warn" : "verdict--ok"]} id="out-verdict">
     {liquidatedFirst ? (
       <div>
-        <b>The stop never executes.</b> At {leverage}× the exchange closes this position at
+        <b>The stop never executes.</b> At {r.effectiveLeverage}×{r.leverageClamped ? " — this contract's tier maximum, so the leverage you asked for cannot be opened —" : ""} the exchange closes this position at
         {" "}<b>{px(r.liquidationPrice)}</b> — a <b>{pct(liqMove)}</b> move — while your stop sits
         {" "}{pct(stopMove)} away at {px(stop)}. The trade gets <b>{pct(liqMove)}</b> of room
         instead of the {pct(stopMove)} it was sized to survive, and the entire
