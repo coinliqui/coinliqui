@@ -475,6 +475,17 @@ const schema = {
          and the emphasis now points at the case that deserves it. */
       .verdict--warn { border-left: 3px solid var(--accent); }
       .verdict--ok { border-left: 3px solid var(--border); }
+      /* TWO VERDICTS IN THE DOM, ONE VISIBLE. /tools/position-size renders both the
+         "liquidation first" and "stop first" sentences server-side and flips [data-state], so
+         every number is present at first byte and the interaction layer only reveals what is
+         already there — rather than rewriting prose, which is how the box came to be amber
+         while the sentence inside it said the opposite.
+         Global rather than page-scoped because that page has no <style> block: the first
+         attempt inserted the rule with a replace() on "<style>" that matched nothing and
+         silently did nothing, shipping a page that showed BOTH verdicts at once. Asserting on
+         every edit is the rule; I asserted on the others and not on that one. */
+      #out-verdict[data-state="liq"] [data-when="stop"],
+      #out-verdict[data-state="stop"] [data-when="liq"] { display: none; }
       .verdict b { font-weight: 600; }
 
       .chip { display: inline-block; font-size: 12px; color: var(--text-dim); background: var(--surface-3); border-radius: var(--r-xs); padding: 2px 8px; }
