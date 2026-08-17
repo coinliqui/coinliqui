@@ -228,14 +228,15 @@ const description = `Risk-based position sizing for ${perp.symbol} perpetuals th
         /* The VERDICT is a state, not a colour. Setting className alone left the sentence
            contradicting its own box; the attribute selects which server-rendered variant shows,
            and the ids below keep its figures current. */
-        const v = document.getElementById("out-verdict");
-        if (v) {
-          v.dataset.state = first ? "liq" : "stop";
+        const verdictEl = document.getElementById("out-verdict");
+        if (verdictEl) {
+          verdictEl.dataset.state = first ? "liq" : "stop";
           /* `hidden` rather than CSS alone: a text extractor that applies no stylesheet — which
              is what an AI crawler is — would otherwise read BOTH sentences and take the first,
              so a page in the "stop" state would read as "The stop never executes". The CSS rule
              stays for the visual case; this is what makes the DOM itself honest. */
-          v.querySelectorAll("[data-when]").forEach((d) => { d.hidden = d.dataset.when !== v.dataset.state; });
+          verdictEl.className = "verdict " + (first ? "verdict--warn" : "verdict--ok");
+          verdictEl.querySelectorAll("[data-when]").forEach((d) => { d.hidden = d.dataset.when !== verdictEl.dataset.state; });
         }
         const setAll = (ids, val) => ids.forEach((i) => set(i, val));
         setAll(["v-liq1", "v-liq2"], price(liq));
@@ -246,8 +247,6 @@ const description = `Risk-based position sizing for ${perp.symbol} perpetuals th
 
         const liqEl = document.getElementById("out-liq");
         if (liqEl) liqEl.className = "card__value" + (first ? " card__value--alert" : "");
-        const v = document.getElementById("out-verdict");
-        if (v) v.className = "verdict " + (first ? "verdict--warn" : "verdict--ok");
       };
       form.addEventListener("input", recalc);
       form.addEventListener("change", (e) => { if (e.target.name === "symbol") form.submit(); else recalc(); });

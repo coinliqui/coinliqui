@@ -432,3 +432,37 @@ export function requestedLeverageLabels(files, read) {
   }
   return out;
 }
+
+/**
+ * An inline client script that does not parse.
+ *
+ * A SyntaxError in an `is:inline` island kills the WHOLE island: no handler binds, and every
+ * interaction on the page silently stops working. Nothing else in this repository can see it.
+ * The build does not parse these scripts, the smoke gate renders server-side and gets a perfect
+ * page, and verify-live fetches HTML rather than executing it — so the gate reports green while
+ * the calculator is dead.
+ *
+ * That is not hypothetical. Adding `const v = ...` to /tools/position-size collided with an
+ * existing `v` in the same scope, the island failed to parse, and the calculator stopped
+ * recalculating entirely — shipped, green, and found only by opening the browser console.
+ *
+ * `new Function(body)` compiles without running, which is exactly the question being asked.
+ * define:vars names are injected by Astro at runtime, so they are declared into the preamble
+ * before parsing; otherwise every island would fail on its own inputs.
+ */
+export function inlineScriptSyntax(src, file) {
+  const out = [];
+  for (const m of src.matchAll(/<script\s+is:inline[^>]*>([\s\S]*?)<\/script>/g)) {
+    const tag = m[0].slice(0, m[0].indexOf(">"));
+    const vars = (tag.match(/define:vars=\{\{([^}]*)\}\}/) ?? [, ""])[1]
+      .split(",").map((v) => v.split(":")[0].trim()).filter(Boolean);
+    const preamble = vars.length ? `let ${vars.join(", ")};` : "";
+    try {
+      // eslint-disable-next-line no-new-func
+      new Function(preamble + m[1]);
+    } catch (e) {
+      out.push(`${file}: inline script does not parse — ${e.message}`);
+    }
+  }
+  return out;
+}

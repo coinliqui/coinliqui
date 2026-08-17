@@ -35,7 +35,7 @@
 import { spawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { readdirSync, readFileSync } from "node:fs";
-import { cssFor, undefinedClasses, undefinedVars, rawEnums, searchIndexGaps, unnamedUpstreams, formatterDrift, uncoveredRoutes, unreadableText, chartAgreement, requestedLeverageLabels } from "./checks.mjs";
+import { cssFor, undefinedClasses, undefinedVars, rawEnums, searchIndexGaps, unnamedUpstreams, formatterDrift, uncoveredRoutes, unreadableText, chartAgreement, requestedLeverageLabels, inlineScriptSyntax } from "./checks.mjs";
 
 /* The SERVER side of each duplicated formatter, transcribed from the file that owns it and
    named here so the pairing is explicit. Transcription is the honest cost of having no bundler:
@@ -100,6 +100,15 @@ try {
     (f) => { try { return readFileSync(f, "utf8"); } catch { return ""; } },
   );
   if (lev.length) { failures++; console.log(`\n  FAIL  ${lev.length} page(s) mislabel a clamped leverage:`); for (const l of lev) console.log(`          ${l}`); }
+
+  /* EVERY inline island must PARSE. A SyntaxError kills the whole island and every handler in
+     it, while the server render stays perfect — so this is the one class the rest of the gate
+     is structurally unable to see. */
+  const walk = (d) => readdirSync(d, { withFileTypes: true }).flatMap((e) =>
+    e.isDirectory() ? walk(`${d}/${e.name}`) : e.name.endsWith(".astro") ? [`${d}/${e.name}`] : []);
+  const syn = walk("src/pages").concat(["src/layouts/Base.astro"])
+    .flatMap((p) => { try { return inlineScriptSyntax(readFileSync(p, "utf8"), p); } catch { return []; } });
+  if (syn.length) { failures++; console.log(`\n  FAIL  ${syn.length} inline script(s) do not parse:`); for (const l of syn) console.log(`          ${l}`); }
 
   const un = uncoveredRoutes(await readFile(`${dir}/${manifest}`, "utf8"), ROUTES);
   if (un.length) {
