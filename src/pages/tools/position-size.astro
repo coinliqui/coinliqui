@@ -116,12 +116,12 @@ const description = `Risk-based position sizing for ${perp.symbol} perpetuals th
           The identical bug was fixed on /funding/[symbol] earlier today and this sibling never
           got the change — the same one-policy-two-templates shape as the /coins case guard. */}
       <div class="card__label">Liquidation at {r.effectiveLeverage}×{r.leverageClamped && <span class="card__scope">tier max</span>}</div>
-      <div class:list={["card__value", liquidatedFirst && "pays-l"]} id="out-liq">{px(r.liquidationPrice)}</div>
+      <div class:list={["card__value", liquidatedFirst && "card__value--alert"]} id="out-liq">{px(r.liquidationPrice)}</div>
       <div class="card__meta" id="out-liqnote">{liquidatedFirst ? "before your stop" : "beyond your stop"}</div>
     </div>
     <div class="card">
       <div class="card__label">Closed out by a move of</div>
-      <div class:list={["card__value", liquidatedFirst && "pays-l"]} id="out-move">{pct(liqMove)}</div>
+      <div class:list={["card__value", liquidatedFirst && "card__value--alert"]} id="out-move">{pct(liqMove)}</div>
       <div class="card__meta">you sized for <span id="out-stopmove">{pct(stopMove)}</span></div>
     </div>
     <div class="card">
@@ -223,7 +223,7 @@ const description = `Risk-based position sizing for ${perp.symbol} perpetuals th
         set("out-move", ((Math.abs(liq - E) / E) * 100).toFixed(2) + "%");
         set("out-stopmove", ((Math.abs(S - E) / E) * 100).toFixed(2) + "%");
         const mv = document.getElementById("out-move");
-        if (mv) mv.className = "card__value" + (first ? " pays-l" : "");
+        if (mv) mv.className = "card__value" + (first ? " card__value--alert" : "");
         set("out-safe", safe + "×");
         /* The VERDICT is a state, not a colour. Setting className alone left the sentence
            contradicting its own box; the attribute selects which server-rendered variant shows,
@@ -238,7 +238,7 @@ const description = `Risk-based position sizing for ${perp.symbol} perpetuals th
         set("v-stop1", price(S));
 
         const liqEl = document.getElementById("out-liq");
-        if (liqEl) liqEl.className = "card__value" + (first ? " pays-l" : "");
+        if (liqEl) liqEl.className = "card__value" + (first ? " card__value--alert" : "");
         const v = document.getElementById("out-verdict");
         if (v) v.className = "verdict " + (first ? "verdict--warn" : "verdict--ok");
       };

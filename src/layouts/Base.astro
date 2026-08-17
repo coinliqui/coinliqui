@@ -474,6 +474,13 @@ const schema = {
          warning, and a benign confirmation needs no border at all. Same two states, one hue,
          and the emphasis now points at the case that deserves it. */
       .verdict--warn { border-left: 3px solid var(--accent); }
+      /* ATTENTION WITHOUT A FUNDING MEANING. /tools/position-size coloured the liquidation
+         price and the move-to-liquidation with .pays-l — the token whose one job on this site
+         is "longs pay shorts". It was being read as "bad", which is exactly the overloading
+         the colour rule exists to prevent: on the funding tables red is a DIRECTION, and a
+         reader who has learned that then meets it meaning DANGER two pages later.
+         --accent is what this site already uses for attention (see verdict--warn above). */
+      .card__value--alert { color: var(--accent); }
       .verdict--ok { border-left: 3px solid var(--border); }
       /* TWO VERDICTS IN THE DOM, ONE VISIBLE. /tools/position-size renders both the
          "liquidation first" and "stop first" sentences server-side and flips [data-state], so
