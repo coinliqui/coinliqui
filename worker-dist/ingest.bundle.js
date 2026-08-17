@@ -558,7 +558,7 @@ var FUNDING_REFRESH_HOURS = 6;
 var CANARY_RETAIN_HOURS = 168;
 var CHUNK = 24;
 var FILL_BACKOFF_MS = 10 * 6e4;
-var WORKER_BUILD = "2026-08-17d";
+var WORKER_BUILD = "2026-08-17e";
 var ingest_default = {
   async scheduled(event, env, ctx) {
     if (event.cron === "* * * * *") {
@@ -605,21 +605,19 @@ async function minute(env) {
   } catch (e) {
     liveErr = (e instanceof Error ? e.message : String(e)).slice(0, 60);
   }
-  if (spotErr || liveErr) {
-    try {
-      const m = /(\d{3})/.exec(liveErr || spotErr);
-      await env.DB.prepare(
-        "INSERT INTO upstream_check (at, source, status, ms, ok, note) VALUES (?1, ?2, ?3, ?4, ?5, ?6)"
-      ).bind(
-        started,
-        "minute",
-        m ? Number(m[1]) : 0,
-        Date.now() - started,
-        0,
-        JSON.stringify({ spotError: spotErr || void 0, liveError: liveErr || void 0 })
-      ).run();
-    } catch {
-    }
+  try {
+    const m = /(\d{3})/.exec(liveErr || spotErr);
+    await env.DB.prepare(
+      "INSERT INTO upstream_check (at, source, status, ms, ok, note) VALUES (?1, ?2, ?3, ?4, ?5, ?6)"
+    ).bind(
+      started,
+      "minute",
+      spotErr || liveErr ? m ? Number(m[1]) : 0 : 200,
+      Date.now() - started,
+      spotErr || liveErr ? 0 : 1,
+      JSON.stringify({ spotError: spotErr || void 0, liveError: liveErr || void 0 })
+    ).run();
+  } catch {
   }
 }
 async function run(env) {
@@ -666,6 +664,15 @@ async function run(env) {
       const insert = env.DB.prepare("INSERT INTO funding_snapshot (symbol, venue, apr, at) VALUES (?1, ?2, ?3, ?4)");
       if (!collapsed) await env.DB.batch(rows.map((r) => insert.bind(...r)));
       await env.DB.prepare("DELETE FROM funding_snapshot WHERE at < ?1").bind(at - RETAIN_HOURS * 36e5).run();
+    }
+    try {
+      const ages = {};
+      for (const [name, key] of [["hourly", "hourly:meta"], ["funding", "funding:meta"], ["candles", "candles:meta"]]) {
+        const m = await env.SNAPSHOT.get(key, "json");
+        if (m?.u) ages[name] = Math.round((Date.now() - m.u) / 6e4);
+      }
+      if (Object.keys(ages).length) result.sweepAgeMin = ages;
+    } catch {
     }
     result.ok = !collapsed && rows.length > 0;
     if (!result.ok && !result.error) result.error = "upstream returned no usable funding rows";
@@ -803,7 +810,7 @@ async function run(env) {
       result.status,
       result.ms,
       result.ok ? 1 : 0,
-      JSON.stringify({ symbols: result.symbols, rows: result.rows, venues: result.venues, error: result.error })
+      JSON.stringify({ symbols: result.symbols, rows: result.rows, venues: result.venues, error: result.error, sweepAgeMin: result.sweepAgeMin })
     ).run();
     await env.DB.prepare("DELETE FROM upstream_check WHERE at < ?1").bind(started - CANARY_RETAIN_HOURS * 36e5).run();
   } catch {

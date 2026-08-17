@@ -78,7 +78,7 @@ const FILL_BACKOFF_MS = 10 * 60_000;
  *
  * BUMP BOTH when you change this file: here and EXPECTED_WORKER_BUILD in src/lib/version.ts.
  */
-const WORKER_BUILD = "2026-08-17d";
+const WORKER_BUILD = "2026-08-17e";
 
 export default {
   async scheduled(event: ScheduledController, env: Env, ctx: ExecutionContext) {
@@ -129,6 +129,9 @@ interface RunResult {
   hourly?: number;
   funding?: number;
   candleError?: string;
+  /** Minutes since each bulk sweep last completed a full cycle — the only way a 2h/6h/12h
+   *  cadence is observable without reading fifty KV keys by hand. */
+  sweepAgeMin?: Record<string, number>;
   /** The set of published contracts changed this run — a URL was added or retired. */
   coverageChanged?: boolean;
   /** A slice of the weekly indexation report ran instead of the bulk sweeps. */
@@ -185,19 +188,31 @@ async function minute(env: Env): Promise<void> {
     liveErr = (e instanceof Error ? e.message : String(e)).slice(0, 60);
   }
 
-  /* Recorded under its own source so /status can separate the two cadences, and wrapped so a
-     failure to record a failure can never become an unhandled rejection in a cron. */
-  if (spotErr || liveErr) {
-    try {
-      const m = /(\d{3})/.exec(liveErr || spotErr);
-      await env.DB.prepare(
-        "INSERT INTO upstream_check (at, source, status, ms, ok, note) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-      )
-        .bind(started, "minute", m ? Number(m[1]) : 0, Date.now() - started, 0,
-              JSON.stringify({ spotError: spotErr || undefined, liveError: liveErr || undefined }))
-        .run();
-    } catch { /* swallowed on purpose — see above */ }
-  }
+  /* EVERY TICK, NOT ONLY THE FAILURES.
+   *
+   * Recording only failures has the exact blind spot that made the five-minute ingest look
+   * healthier than it was: a tick that never fires cannot record that it failed. Counting
+   * failures gave 36%; counting against EXPECTED ticks gave 47% succeeding. The difference was
+   * entirely ticks that produced no row at all.
+   *
+   * So the minute tick writes a row every time, ok=1 or ok=0, and its success rate becomes
+   * rows-with-ok / expected-ticks — a number that can only be computed with a positive signal.
+   * 1,440 rows a day, aged out by the same 168-hour retention as everything else in this table,
+   * which is about 10k rows: nothing against D1's included write allowance, and the cheapest
+   * honest way to check a claim printed on fifty pages.
+   *
+   * Wrapped, as ever: a failure to record a failure must never become an unhandled rejection
+   * in a cron. */
+  try {
+    const m = /(\d{3})/.exec(liveErr || spotErr);
+    await env.DB.prepare(
+      "INSERT INTO upstream_check (at, source, status, ms, ok, note) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+    )
+      .bind(started, "minute", spotErr || liveErr ? (m ? Number(m[1]) : 0) : 200, Date.now() - started,
+            spotErr || liveErr ? 0 : 1,
+            JSON.stringify({ spotError: spotErr || undefined, liveError: liveErr || undefined }))
+      .run();
+  } catch { /* swallowed on purpose — see above */ }
 }
 
 async function run(env: Env): Promise<RunResult> {
@@ -294,6 +309,19 @@ async function run(env: Env): Promise<RunResult> {
         .bind(at - RETAIN_HOURS * 3_600_000)
         .run();
     }
+
+    /* SWEEP FRESHNESS, carried on the run row so a 2h/6h/12h cadence is observable at all.
+       Each sweep stamps `u` on its meta when a full cycle completes; without surfacing it,
+       the only way to know whether the charts are being refreshed on the interval
+       /data-sources declares is to read fifty KV keys by hand. */
+    try {
+      const ages: Record<string, number> = {};
+      for (const [name, key] of [["hourly", "hourly:meta"], ["funding", "funding:meta"], ["candles", "candles:meta"]] as const) {
+        const m = (await env.SNAPSHOT.get(key, "json")) as { u?: number } | null;
+        if (m?.u) ages[name] = Math.round((Date.now() - m.u) / 60000);
+      }
+      if (Object.keys(ages).length) result.sweepAgeMin = ages;
+    } catch { /* observability must never break the thing it observes */ }
 
     result.ok = !collapsed && rows.length > 0;
     if (!result.ok && !result.error) result.error = "upstream returned no usable funding rows";
@@ -501,7 +529,7 @@ async function run(env: Env): Promise<RunResult> {
         result.status,
         result.ms,
         result.ok ? 1 : 0,
-        JSON.stringify({ symbols: result.symbols, rows: result.rows, venues: result.venues, error: result.error }),
+        JSON.stringify({ symbols: result.symbols, rows: result.rows, venues: result.venues, error: result.error, sweepAgeMin: result.sweepAgeMin }),
       )
       .run();
     await env.DB.prepare("DELETE FROM upstream_check WHERE at < ?1")

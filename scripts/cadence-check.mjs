@@ -44,7 +44,22 @@ const hours = Number(process.argv[process.argv.indexOf("--hours") + 1]) || 24;
 /* The declared side. Sourced from the same constants the page renders from, NOT retyped —
    a check that carries its own copy of the promise is checking itself. */
 const DECLARED = [
-  { what: "five-minute ingest (snapshot, funding rows)", source: "hyperliquid", minutes: 5 },
+  { what: "five-minute ingest — open interest, volume, oracle price, premium", source: "hyperliquid", minutes: 5 },
+  /* THE ONE WITH THE CLAIM ON FIFTY PAGES. "Mark price and funding update every minute" is
+     printed on every contract page and on /data-sources, and until the minute tick started
+     recording a row per tick there was no way to check it. Failure-counting could not: a tick
+     that never fires cannot record that it failed, which is exactly how the five-minute ingest
+     read as 36% broken when it was 53% short of its schedule. */
+  { what: "minute tick — mark price and funding", source: "minute", minutes: 1 },
+];
+
+/* The bulk sweeps refresh on hours, not minutes, so a gap-between-runs statistic says nothing
+   about them. Each stamps its meta when a full cycle completes and the ingest now carries that
+   age on its run row; this compares it to what /data-sources declares. */
+const SWEEPS = [
+  { key: "hourly", what: "hourly candles behind every chart", hours: 2 },
+  { key: "funding", what: "realised funding history", hours: 6 },
+  { key: "candles", what: "daily candles", hours: 12 },
 ];
 
 const d1 = (sql) => {
@@ -97,8 +112,11 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       console.log(`  SKIP  ${d.what}: too few successful runs in ${hours}h to say anything`);
       continue;
     }
-    /* 90% is the line. Below it, more than one tick in ten produced nothing and the interval
-       printed on /data-sources is not the interval a reader is getting. */
+    /* 90% is the line, and EXACTLY 90% passes — the comparison is strict. One tick in ten
+       missing means the figure is one interval stale a tenth of the time, which is within what
+       "every N minutes" fairly implies; below that it is not the interval a reader is getting.
+       Stated because a boundary nobody wrote down is a boundary someone later reads wrongly:
+       my own blind-case test asserted failure at exactly 0.9 and was wrong, not the check. */
     const over = rate < 0.9;
     if (over) bad++;
     console.log(
@@ -107,6 +125,28 @@ if (import.meta.url === `file://${process.argv[1]}`) {
         `(${rows.length} runs) · p90 gap ${p90.toFixed(0)} min · median ${med.toFixed(0)} min`,
     );
   }
+  /* SWEEPS: read the freshest run row that carried sweep ages. A sweep that has never completed
+     a cycle reports nothing rather than zero — silence and "up to date" must not look alike. */
+  const [latest] = d1(
+    `select note from upstream_check where source='hyperliquid' and ok=1 and note like '%sweepAgeMin%' order by at desc limit 1`,
+  );
+  const ages = (() => { try { return JSON.parse(latest?.note ?? "{}").sweepAgeMin ?? null; } catch { return null; } })();
+  if (!ages) {
+    console.log(`  SKIP  bulk sweeps: no run has reported a completed cycle yet`);
+  } else {
+    for (const sw of SWEEPS) {
+      const mins = ages[sw.key];
+      if (mins === undefined) { console.log(`  SKIP  ${sw.what}: never completed a cycle`); continue; }
+      /* Twice the declared interval: one missed window is a slow tick, two is a cadence. */
+      const over = mins > sw.hours * 60 * 2;
+      if (over) bad++;
+      console.log(
+        `  ${over ? "FAIL" : "ok  "}  ${sw.what}\n` +
+          `          declared every ${sw.hours} h · last full cycle ${(mins / 60).toFixed(1)} h ago`,
+      );
+    }
+  }
+
   console.log(bad ? `\n  ${bad} cadence(s) slower than /data-sources claims\n` : `\n  every declared cadence matches what actually happened\n`);
   process.exit(bad ? 1 : 0);
 }
