@@ -37,6 +37,7 @@ const maxOi = Math.max(...snap.perps.map((p) => p.oiNotional || 0), 1);
     <p class="legend" style="margin:0">{LEGEND} — colour encodes the direction of payment only.</p>
     <button class="btn wl-clear" type="button" id="wl-clear" hidden>Clear pinned coins</button>
   </div>
+  <p class="section-note wl-off" id="wl-offcoverage" hidden></p>
 
   <div class="panel">
     <table class="tbl" id="wl">
@@ -115,9 +116,23 @@ const maxOi = Math.max(...snap.perps.map((p) => p.oiNotional || 0), 1);
          the case that matters most, and that is how this got lost the first time. */
       var rows = Array.prototype.slice.call(tbody.querySelectorAll("tr"));
       var ord = function (tr) { return rows.indexOf(tr); };
+      var byId = {};
+      rows.forEach(function (tr) { byId[tr.getAttribute("data-sym")] = tr; });
+      var note = document.getElementById("wl-offcoverage");
 
       function paint() {
         var pinned = read();
+
+        /* MOVING A ROW BLURS THE BUTTON INSIDE IT.
+           appendChild relocates the node, and a focused element that is moved loses focus —
+           document.activeElement becomes <body> and the tab order restarts at the top of the
+           page. So pinning with the keyboard threw you back to the site navigation every
+           time, and pinning four coins meant tabbing down the whole document four times.
+           Nothing was visibly broken, which is why it survived: with a mouse it is invisible. */
+        var active = document.activeElement;
+        var refocus = active && active.classList && active.classList.contains("pin")
+          ? active.getAttribute("data-sym") : null;
+
         rows.forEach(function (tr) {
           var sym = tr.getAttribute("data-sym");
           var on = pinned.indexOf(sym) !== -1;
@@ -140,7 +155,34 @@ const maxOi = Math.max(...snap.perps.map((p) => p.oiNotional || 0), 1);
             return ia - ib;
           })
           .forEach(function (tr) { tbody.appendChild(tr); });
-        if (clear) clear.hidden = pinned.length === 0;
+
+        if (refocus) {
+          var back = tbody.querySelector('.pin[data-sym="' + refocus + '"]');
+          if (back) back.focus();
+        }
+
+        /* PINS FOR COINS THAT HAVE LEFT COVERAGE.
+           A pin is a ticker string in this browser; the table is the ~50 contracts above the
+           open-interest floor today. Pin PENGU, let it fall below the floor, and the page
+           rendered fifty rows with none highlighted, no star lit — and "Clear pinned coins"
+           sitting there offering to clear nothing visible. The button was reading raw storage
+           length and reporting it as a state of the table.
+
+           The pins are NOT pruned. Coverage moves both ways and a coin that drops out this
+           week can come back next; silently deleting the pin would lose a choice the reader
+           made, to tidy a number. So the button now follows what is actually pinned ON THIS
+           PAGE, and the count of the others is stated rather than hidden — which is the same
+           rule the rest of the site follows about things it cannot show. */
+        var present = pinned.filter(function (s) { return byId[s]; }).length;
+        var offCoverage = pinned.length - present;
+        if (clear) clear.hidden = present === 0 && offCoverage === 0;
+        if (note) {
+          note.hidden = offCoverage === 0;
+          note.textContent = offCoverage === 0 ? "" :
+            offCoverage + (offCoverage === 1 ? " pinned coin is" : " pinned coins are") +
+            " below the coverage floor today, so nothing is listed for " +
+            (offCoverage === 1 ? "it" : "them") + ". The pin is kept and returns when it does.";
+        }
       }
 
       tbody.addEventListener("click", function (e) {
@@ -160,6 +202,8 @@ const maxOi = Math.max(...snap.perps.map((p) => p.oiNotional || 0), 1);
 
   <style>
     .wl-bar { display: flex; align-items: center; gap: 16px; margin-bottom: var(--gap-block); }
+    .wl-off { margin: -6px 0 var(--gap-block); }
+    .wl-off[hidden] { display: none; }
     .wl-clear { margin-left: auto; height: 32px; padding: 0 12px; font-size: 13px; }
     .pin {
       position: relative;
