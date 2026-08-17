@@ -85,7 +85,10 @@ const seriesGap = series.some((s) => s.known && s.missing.length > 0);
 const utc = (ms: number) => new Date(ms).toISOString().slice(0, 16).replace("T", " ") + " UTC";
 ---
 
-<Base title="Status" description="Ingest health: snapshot age, upstream status codes and per-venue coverage.">
+{/* noindex, NOT a robots.txt Disallow. This page is linked from /about and /data-sources, and
+    a Disallow'd URL can still be indexed from inbound links with no snippet — the crawler is
+    never allowed to fetch it and see a directive. noindex only works on a crawlable page. */}
+<Base title="Status" description="Ingest health: snapshot age, upstream status codes and per-venue coverage." noindex>
   <div class="page-head">
     <h1>Status</h1>
     <p>

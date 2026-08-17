@@ -89,9 +89,16 @@ export function undefinedVars(html, css) {
 export async function searchIndexGaps(origin) {
   const locs = async (u) =>
     [...(await (await fetch(u)).text()).matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]);
+  /* SITEMAP <loc> VALUES ARE ABSOLUTE PRODUCTION URLS, which is correct in a sitemap and wrong
+     to follow here. The first version fetched them as given, so a check running against a
+     locally-built worker was reading PRODUCTION's child sitemaps and comparing them to the
+     LOCAL search index. It passed for the same reason it was meaningless: the two sides
+     usually agree, and when production was briefly unreachable the whole gate failed with
+     "fetch failed" and no indication why. Both halves must come from the build under test. */
+  const local = (u) => origin + new URL(u).pathname;
   const maps = await locs(`${origin}/sitemap-index.xml`);
   const urls = new Set();
-  for (const m of maps) for (const u of await locs(m)) urls.add(new URL(u).pathname);
+  for (const m of maps) for (const u of await locs(local(m))) urls.add(new URL(u).pathname);
   const index = await (await fetch(`${origin}/search-index.json`)).json();
   const known = new Set(index.map((r) => r.href));
   return [...urls].filter((p) => !known.has(p));

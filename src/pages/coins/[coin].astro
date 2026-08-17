@@ -20,6 +20,18 @@ import { CH } from "../../lib/chart.ts";
 
 const env = (Astro.locals as any)?.runtime?.env;
 const coin = findCoin(Astro.params.coin);
+/* ONE URL PER COIN, the same answer /funding/[symbol] already gives.
+   findCoin() lowercases its argument, so /coins/BITCOIN and /coins/Bitcoin both resolved and
+   rendered — and because the canonical tag is built from the REQUESTED pathname, each declared
+   ITSELF canonical. That is a duplicate-content split across every coin page, and a canonical
+   tag cannot fix it when both copies are self-referencing. The sibling template has had the
+   301 since the trailing-slash work; this one was simply never given it. */
+if (coin && Astro.params.coin !== coin.slug) {
+  return new Response(null, {
+    status: 301,
+    headers: { location: `/coins/${coin.slug}`, "cache-control": "public, max-age=86400" },
+  });
+}
 // Staged publication: a coin that has not reached its date has no URL yet. See COINS.
 if (!coin || !isLive(coin)) return Astro.rewrite(`/404?symbol=${encodeURIComponent(Astro.params.coin ?? "")}`);
 

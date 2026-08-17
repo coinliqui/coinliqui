@@ -11,8 +11,14 @@ import { origin } from "../lib/site.ts";
 // instead, which requires crawlability to work at all. The earlier crawl-budget argument
 // does not apply to a 38-page site.
 //
-// /status stays disallowed: it is operational, changes every five minutes, and has no
-// inbound links worth preserving.
+// /status USED TO BE DISALLOWED HERE, justified by "no inbound links worth preserving".
+// That premise stopped being true the moment /about and /data-sources started linking to it —
+// three inbound links from indexed pages — and the paragraph above says exactly what happens
+// then: a Disallow'd URL can still be indexed FROM those links, with no snippet, because the
+// crawler is never permitted to fetch the page and discover a directive. The site was doing
+// the one thing its own comment says not to do, to the one page that reports whether the data
+// is healthy. It now carries `noindex, follow` in its head like every other excluded page,
+// which is the mechanism that actually works.
 const CITATION_BOTS = [
   "Googlebot", "Bingbot", "OAI-SearchBot", "ChatGPT-User", "GPTBot",
   "ClaudeBot", "Claude-User", "Claude-SearchBot", "PerplexityBot", "Perplexity-User",
@@ -36,8 +42,8 @@ export const GET: APIRoute = ({ site, url }) => {
 
   return new Response(
     [
-      ...CITATION_BOTS.map((b) => `User-agent: ${b}\nAllow: /\nDisallow: /status\n`),
-      `User-agent: *\nAllow: /\nDisallow: /status\n`,
+      ...CITATION_BOTS.map((b) => `User-agent: ${b}\nAllow: /\n`),
+      `User-agent: *\nAllow: /\n`,
       ...BLOCKED.map((b) => `User-agent: ${b}\nDisallow: /\n`),
       `Sitemap: ${canonical}/sitemap-index.xml\n`,
     ].join("\n"),
