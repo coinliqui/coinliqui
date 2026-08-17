@@ -395,6 +395,9 @@ const schema = {
       a.card:hover { background: var(--surface-3); }
       .card { display: flex; flex-direction: column; }
       .card__label { font-size: 13px; color: var(--text-dim); margin-bottom: 8px; min-height: 20px; }
+      /* The venue a superlative was computed over, said quietly next to it rather than left to
+         context. Not a colour — this is scope, not direction of payment. */
+      .card__scope { font-weight: 400; color: var(--text-faint); }
       /* The VALUE is the live part, so its line box is fixed — that is what must never
          shift. Label and meta are static copy and may wrap freely; clipping them to a
          fixed height (as an earlier pass did) truncates real text for no benefit. */

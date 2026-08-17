@@ -35,7 +35,14 @@ const parts: [string, boolean][] = [
   ["Open interest across ", false], [String(snap.perps.length), true],
   [" coins is ", false], [usd(totalOi), true],
   [", on ", false], [usd(totalVol), true],
-  [" of 24-hour volume. Funding is most expensive on ", false], [richest?.symbol ?? "—", true],
+  /* "MOST EXPENSIVE" NEEDS A VENUE, because it is computed over one. hlApr is Hyperliquid's
+     rate; unqualified, the sentence reads as a claim about funding everywhere, and /funding at
+     the same moment can show a larger number for the SAME coin on another venue — measured:
+     the homepage said FARTCOIN 66.70% while Bybit's rate for FARTCOIN was 80.35%. Two
+     superlatives for one word, on a site whose whole premise is that venues differ. Naming the
+     venue costs three words and makes the sentence true; the card beside it already covers the
+     cross-venue question. */
+  [" of 24-hour volume. Hyperliquid funding is most expensive on ", false], [richest?.symbol ?? "—", true],
   [" at ", false], [richest ? pct(richest.hlApr) : "—", true],
   [" a year. The widest spread between venues is ", false], [widest?.symbol ?? "—", true],
   [", ", false], [widest?.aprSpread != null ? pct(widest.aprSpread) : "—", true], [".", false],
@@ -60,12 +67,12 @@ const description =
         <div class="card__meta">{widest?.symbol ?? "—"} · across three venues</div>
       </a>
       <a class="card" href={richest ? `/funding/${richest.symbol.toLowerCase()}` : "/funding"}>
-        <div class="card__label">Most expensive funding</div>
+        <div class="card__label">Most expensive funding <span class="card__scope">Hyperliquid</span></div>
         <div class:list={["card__value", richest && paysClass(richest.hlApr)]}>{richest ? pct(richest.hlApr) : "—"}</div>
         <div class="card__meta">{richest?.symbol ?? "—"} · {richest ? paysLabel(richest.hlApr) : ""}</div>
       </a>
       <a class="card" href={cheapest ? `/funding/${cheapest.symbol.toLowerCase()}` : "/funding"}>
-        <div class="card__label">Most negative funding</div>
+        <div class="card__label">Most negative funding <span class="card__scope">Hyperliquid</span></div>
         <div class:list={["card__value", cheapest && paysClass(cheapest.hlApr)]}>{cheapest ? pct(cheapest.hlApr) : "—"}</div>
         <div class="card__meta">{cheapest?.symbol ?? "—"} · {cheapest ? paysLabel(cheapest.hlApr) : ""}</div>
       </a>
