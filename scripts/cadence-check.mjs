@@ -40,6 +40,11 @@
 import { execFileSync } from "node:child_process";
 
 const hours = Number(process.argv[process.argv.indexOf("--hours") + 1]) || 24;
+/* The site whose /status is compared against this same database. Overridable so the check can
+   be pointed at a preview deployment before the change reaches the apex. */
+const ORIGIN = process.argv.includes("--origin")
+  ? process.argv[process.argv.indexOf("--origin") + 1]
+  : "https://coinliqui.com";
 
 /* The declared side. Sourced from the same constants the page renders from, NOT retyped —
    a check that carries its own copy of the promise is checking itself. */
@@ -152,6 +157,48 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       console.log(
         `  ${over ? "FAIL" : "ok  "}  ${sw.what}\n` +
           `          declared every ${sw.hours} h · last full cycle ${(mins / 60).toFixed(1)} h ago`,
+      );
+    }
+  }
+
+  /* DOES /status DESCRIBE THIS SAME DATABASE?
+   *
+   * Everything above compares a PAGE'S PROMISE against D1. This compares a PAGE'S REPORT
+   * against D1 — the other half, and the one that went wrong. /status read
+   * `count(*) WHERE source='minute'` and labelled the answer "failed", under a comment
+   * saying the writer only wrote rows on failure. A later commit made the writer record
+   * every tick, ok=1 or ok=0, so the reader silently began reporting total attempts as
+   * total failures. Caught with D1 saying 60 recorded / 7 failed while /status printed
+   * "60 failed" in the alert colour: the healthiest hour possible, rendered as the worst.
+   *
+   * Two independent representations of one truth, and only the database was being read.
+   * A cron expression cannot catch this and neither can the pre-push gate, because both
+   * halves are individually correct — they only disagree about what a row MEANS. */
+  {
+    const [m] = d1(
+      `select count(*) n, sum(case when ok=0 then 1 else 0 end) bad from upstream_check
+         where source='minute' and at > strftime('%s','now')*1000 - 3600000`,
+    );
+    const runs = Number(m?.n ?? 0), fails = Number(m?.bad ?? 0);
+    const html = await fetch(`${ORIGIN}/status`).then((r) => r.text()).catch(() => "");
+    const card = /Minute tick, last hour<\/div>\s*<div[^>]*>([^<]*)</.exec(html)?.[1]?.trim() ?? null;
+
+    if (!card) {
+      bad++;
+      console.log(`\n  FAIL  /status no longer has a "Minute tick, last hour" card this check can read`);
+    } else {
+      /* Every number the card can print must be one of these two, whichever wording is used.
+         Reading the digits out and comparing them to D1 means a rewording cannot quietly
+         turn the check off — a card with no digits, or the wrong ones, fails. */
+      const nums = (card.match(/\d+/g) ?? []).map(Number);
+      const agrees = fails > 0
+        ? nums.includes(fails) && nums.includes(runs)
+        : runs === 0 ? /no ticks|no store/i.test(card)
+        : nums.includes(runs) && !/failed/i.test(card);
+      if (!agrees) bad++;
+      console.log(
+        `\n  ${agrees ? "ok  " : "FAIL"}  /status agrees with D1 about the minute tick\n` +
+          `          D1: ${runs} recorded, ${fails} failed in the last hour · /status: "${card}"`,
       );
     }
   }

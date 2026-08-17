@@ -36,18 +36,38 @@ const ageMin = snap.fetchedAt ? Math.round((now - snap.fetchedAt) / 60000) : nul
 const STALE_MIN = 15;
 const stale = ageMin === null || ageMin > STALE_MIN;
 
-/* The one-minute path, counted over a fixed window rather than a fixed number of rows: it only
-   writes a row when it FAILS, so "last 24" would be twenty-four failures however rare they are.
-   Sixty minutes is the window the "updates every minute" claim is about. */
+/* THE ONE-MINUTE PATH. Sixty minutes is the window the "updates every minute" claim is about.
+ *
+ * This card read `count(*)` and called the answer "failed", under a comment that said the
+ * writer "only writes a row when it FAILS". That was true when the card was written (ba7ca32)
+ * and stopped being true in a LATER commit (62e4922) that made minute() record every tick with
+ * ok=1 or ok=0 — a change made precisely so a tick that never runs becomes visible, since a
+ * tick that never runs cannot report that it failed.
+ *
+ * The reader was not updated with the writer, so the healthiest possible hour rendered as the
+ * worst possible reading. Measured against production D1 the moment this was found: 60 rows
+ * recorded, 7 with ok=0, and this page printing "60 failed" in the alert colour. The health
+ * page was the least healthy thing on the site.
+ *
+ * Both numbers are read now, and the count is used for what it is worth — COVERAGE. Sixty
+ * ticks with none failing is clean; forty ticks with none failing is twenty ticks that never
+ * ran, which the old schema could not express and the old card would have called clean. */
+const MINUTE_EXPECTED = 60;
+let minuteRuns: number | null = null;
 let minuteFails = 0;
 try {
   const db = (Astro.locals as any)?.runtime?.env?.DB;
   if (db) {
-    const r = await db.prepare("SELECT count(*) n FROM upstream_check WHERE source = 'minute' AND at > ?1")
-      .bind(Date.now() - 3_600_000).first();
-    minuteFails = Number(r?.n ?? 0);
+    const r = await db.prepare(
+      "SELECT count(*) n, sum(CASE WHEN ok = 0 THEN 1 ELSE 0 END) bad FROM upstream_check WHERE source = 'minute' AND at > ?1",
+    ).bind(Date.now() - 3_600_000).first();
+    minuteRuns = Number(r?.n ?? 0);
+    minuteFails = Number(r?.bad ?? 0);
   }
 } catch { /* the page must render with no store — that is when it is read */ }
+/* Under 90% of the expected ticks is the same fault as a failing one and is reported as one. */
+const minuteMissing = minuteRuns !== null && minuteRuns < MINUTE_EXPECTED * 0.9;
+const minuteBad = minuteRuns === null || minuteRuns === 0 || minuteFails > 0 || minuteMissing;
 
 const latest = checks[0];
 /* The refusal reason travels in the run's note, which is JSON. Parsed defensively: this page
@@ -144,8 +164,14 @@ const utc = (ms: number) => new Date(ms).toISOString().slice(0, 16).replace("T",
     </div>
     <div class="card">
       <div class="card__label">Minute tick, last hour</div>
-      <div class:list={["card__value", minuteFails > 0 && "is-bad"]}>{minuteFails === 0 ? "clean" : `${minuteFails} failed`}</div>
-      <div class="card__meta">spot and live mark · only failures are recorded</div>
+      <div class:list={["card__value", minuteBad && "is-bad"]}>{
+        minuteRuns === null ? "no store"
+        : minuteRuns === 0 ? "no ticks recorded"
+        : minuteFails > 0 ? `${minuteFails} failed of ${minuteRuns}`
+        : minuteMissing ? `only ${minuteRuns} of ${MINUTE_EXPECTED} ran`
+        : `clean · ${minuteRuns} of ${MINUTE_EXPECTED}`
+      }</div>
+      <div class="card__meta">spot and live mark · every tick records, so a tick that never ran is visible here</div>
     </div>
     <div class="card">
       <div class="card__label">Failures in last 24 runs</div>
