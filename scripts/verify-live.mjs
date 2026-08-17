@@ -114,13 +114,28 @@ console.log("\n5. sitemap");
        timeframe bar above an empty space where the chart should have been — this check
        passed for every hour that page was broken. A contract page promises a chart; if the
        selected timeframe has no panel, the page is hollow and the check has to say so. */
-    if (/\/funding\/[a-z0-9]/i.test(u) && r.status === 200 && !/data-tfpanel="[^"]+" [^>]*data-on/.test(r.body)) {
+    /* A CHART OR THE DOCUMENTED ABSENCE OF ONE. This check flagged /funding/chip, a contract
+       that had just crossed the coverage floor and whose candles the chunked sweep had not
+       reached yet. That page is CORRECT: it says "Candles not collected yet", explains that a
+       new contract is fetched within five minutes, and still carries mark, 24-hour change,
+       open interest, max leverage, the venue comparison and the margin tiers. The check was
+       asserting something the site deliberately does not promise, and would have gone on
+       failing for every newly-listed contract forever.
+
+       The real defect it was written for — /funding/uni rendering a timeframe bar above empty
+       space, silently, for an hour — is still caught: that page had NEITHER a panel NOR the
+       empty state. Requiring one of the two keeps the alarm and drops the false one. */
+    if (
+      /\/funding\/[a-z0-9]/i.test(u) && r.status === 200 &&
+      !/data-tfpanel="[^"]+" [^>]*data-on/.test(r.body) &&
+      !/Candles not collected yet/.test(r.body)
+    ) {
       hollow.push(u);
     }
   }
   broken.length ? bad(`non-200: ${broken.join(", ")}`) : ok("every sitemap URL 200 as GPTBot");
   thin.length ? bad(`missing brand: ${thin.join(", ")}`) : ok("every sitemap URL carries the brand");
-  hollow.length ? bad(`contract page with no chart panel: ${hollow.join(", ")}`) : ok("every contract page renders a chart");
+  hollow.length ? bad(`contract page with no chart panel: ${hollow.join(", ")}`) : ok("every contract page renders a chart, or says why it cannot yet");
 
   /* Withdrawn URLs must stay withdrawn. A 410 that silently becomes a 200 or a 301 puts a
      commodity page back into the index, which is the whole thing the removal was for. */
