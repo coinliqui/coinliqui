@@ -165,7 +165,27 @@ const description = `What holding a ${perp.symbol} perpetual actually costs in f
         set("out-per", money(N * v.rate * sign));
       };
       form.addEventListener("input", recalc);
-      form.addEventListener("change", (e) => { if (e.target.name === "symbol") form.submit(); else recalc(); });
+      /* SIDE ROUND-TRIPS TO THE SERVER, like symbol, because the client cannot express it.
+         Every figure recalc() writes goes through money()/pc(), which are Math.abs() — the
+         magnitude is identical for a long and a short. The SIGN lives entirely in the "You
+         pay" / "You receive" label and in the ± of the venue table, and neither has an id, so
+         switching to Short left the page reading "You pay $12.72" for a position that PAYS
+         YOU $12.72. A full sign inversion of the page's only output, on the one input whose
+         only job is the sign.
+
+         Submitting is the honest fix rather than teaching the client to rewrite labels: the
+         server already renders both cases correctly, so the round-trip makes it the single
+         source of the sign instead of a second, partial renderer racing it. */
+      form.addEventListener("change", (e) => {
+        /* WHICH INPUTS CAN CHANGE THE SIGN. cost = notional x rate x settlements x sign, so
+           only `side` (the sign term) and `venue` (which selects the rate, and a rate can be
+           negative) can flip it. notional, days and leverage scale the magnitude and nothing
+           else, so recalc() can express them honestly. venue is included even though all
+           three rates happen to be positive today — that is a fact about this afternoon, not
+           a property of the page. */
+        if (["symbol", "side", "venue"].includes(e.target.name)) form.submit();
+        else recalc();
+      });
     }
   </script>
 </Base>
