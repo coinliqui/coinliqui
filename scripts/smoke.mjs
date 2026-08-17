@@ -35,7 +35,7 @@
 import { spawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { readdirSync } from "node:fs";
-import { cssFor, undefinedClasses, undefinedVars, rawEnums, searchIndexGaps, unnamedUpstreams, formatterDrift, uncoveredRoutes, unreadableText } from "./checks.mjs";
+import { cssFor, undefinedClasses, undefinedVars, rawEnums, searchIndexGaps, unnamedUpstreams, formatterDrift, uncoveredRoutes, unreadableText, chartAgreement } from "./checks.mjs";
 
 /* The SERVER side of each duplicated formatter, transcribed from the file that owns it and
    named here so the pairing is explicit. Transcription is the honest cost of having no bundler:
@@ -164,6 +164,7 @@ for (const path of ROUTES) {
     const c = undefinedClasses(body, css);
     const v = undefinedVars(body, css);
     const e = rawEnums(body);
+    for (const d of chartAgreement(body)) content.push(`chart disagrees with the page: ${d}`);
     if (c.length) content.push(`class defined nowhere: ${c.join(", ")}`);
     if (v.length) content.push(`custom property never declared: ${v.join(", ")}`);
     if (e.length) content.push(`internal enum rendered as text: ${e.join(", ")}`);

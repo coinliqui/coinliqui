@@ -339,3 +339,60 @@ export function unreadableText(css) {
   }
   return [...new Set(out)];
 }
+
+/**
+ * A chart that disagrees with the numbers printed beside it.
+ *
+ * The candles are drawn from a points array, and the same page separately prints "Period high",
+ * "Period low" and "over N daily bars" from that array. Two renderings of one dataset, which is
+ * the shape that has produced every real find here — a basis computed across two clocks inverted
+ * its own sign, and a bar table rewrote 200 volume cells on a click.
+ *
+ * Swept exhaustively once across all 50 symbols and 200 panels (scripts/sweep-charts.mjs): all
+ * agreed. This keeps the cheap half in the gate for the contract pages it already renders, so a
+ * future divergence fails before it ships rather than at the next manual sweep.
+ */
+export function chartAgreement(html) {
+  const out = [];
+  const active = html.match(/data-tfpanel="([^"]+)"[^>]*data-on/);
+  if (!active) return out; // no chart on this page — the empty state is checked elsewhere
+  let pts = null;
+  for (const m of html.matchAll(/<script[^>]*id="pts-([^"]+)"[^>]*>([\s\S]*?)<\/script>/g)) {
+    if (m[1] === active[1]) { try { pts = JSON.parse(m[2]); } catch { out.push(`points for ${m[1]} are not parsable JSON`); } }
+  }
+  if (!Array.isArray(pts) || !pts.length) return out;
+
+  const txt = html.replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ");
+  /* THE FIRST NUMBER AFTER THE LABEL, not every digit near it. The first version stripped all
+     non-numerics from a 40-character slice — and that slice contains the NEXT figure too, so
+     "$97,949.00    Period low $57,768.00" collapsed to "97949.0057768.00" and Number() gave
+     NaN. NaN > 0.005 is FALSE, so the comparison did not fail: it silently passed, on every
+     symbol. A check that cannot fail is worse than no check, because it is quoted as evidence.
+     Found by running the blind case (a page whose figures genuinely agree) and watching this
+     report a finding anyway; the same bug in the other direction was hiding the real answer. */
+  const first = (v) => { const m = String(v).match(/-?[\d,]+(?:\.\d+)?/); return m ? Number(m[0].replace(/,/g, "")) : null; };
+  const grab = (label) => { const i = txt.indexOf(label); return i < 0 ? null : first(txt.slice(i + label.length, i + label.length + 40)); };
+  const rel = (a, b) => Math.abs(a - b) / Math.max(Math.abs(a), Math.abs(b), 1e-12);
+
+  const highs = pts.map((p) => p[3]).filter(Number.isFinite);
+  const lows = pts.map((p) => p[4]).filter(Number.isFinite);
+  if (highs.length) {
+    const cH = Math.max(...highs), cL = Math.min(...lows);
+    const pHigh = grab("Period high"), pLow = grab("Period low");
+    // 0.5% tolerance: the printed figures are rounded for display, the array is not.
+    if (pHigh && rel(pHigh, cH) > 0.005) out.push(`"Period high" ${pHigh} but the chart's maximum is ${cH}`);
+    if (pLow && rel(pLow, cL) > 0.005) out.push(`"Period low" ${pLow} but the chart's minimum is ${cL}`);
+  }
+  const bars = txt.match(/over ([\d,]+) (daily|hourly|weekly|4-hour) bars/);
+  if (bars && Number(bars[1].replace(/,/g, "")) !== pts.length)
+    out.push(`prose says ${bars[1]} bars, the active chart has ${pts.length}`);
+
+  for (const p of pts) {
+    const [, , o, h, l, c] = p;
+    if (![o, h, l, c].every(Number.isFinite)) { out.push("a candle has non-finite OHLC"); break; }
+    if (h < Math.max(o, c) - 1e-9 || l > Math.min(o, c) + 1e-9 || h < l) {
+      out.push(`incoherent candle: o=${o} h=${h} l=${l} c=${c}`); break;
+    }
+  }
+  return out;
+}
