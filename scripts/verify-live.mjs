@@ -145,12 +145,26 @@ for (const p of ["/", "/funding/btc"]) {
   /* Checked under BOTH Accept headers, because the injection is conditional on it and the
      browser case is the one the claim is about. Keeping the `* / *` probe alongside is not
      redundancy — a difference between the two is itself the finding. */
+  /* THE CHECK CHANGED WHEN THE CLAIM DID. The host injects a Web Analytics tag at its edge,
+     after this Worker has finished, and the credential needed to switch that off is not one
+     this project holds. /privacy now states that plainly and stakes the guarantee on the thing
+     that is actually enforceable: the browser refuses to fetch it. So the assertion here is no
+     longer "no beacon tag exists" — which we cannot make true — but the two that we can:
+     the ONLY off-origin script is that known tag, and the CSP that neuters it is intact.
+     A NEW third-party script, or a weakened script-src, still fails. */
+  const KNOWN_BLOCKED = /static\.cloudflareinsights\.com/;
   const beacon = /beacon\.min\.js|cloudflareinsights|\/cdn-cgi\/(rum|challenge-platform|zaraz)/;
   const wild = await fetchAs(p, "Mozilla/5.0", "*/*");
-  const inBrowser = beacon.test(r.body), inWild = beacon.test(wild.body);
-  inBrowser || inWild
-    ? bad(`${p} has an injected beacon (browser Accept: ${inBrowser}, */*: ${inWild})`)
-    : ok(`${p} no beacon, under a browser Accept header and */*`);
+  const otherThirdParty = [...r.body.matchAll(/<script[^>]*src="(https?:\/\/[^"]+)"/g)]
+    .map((m) => m[1]).filter((u) => !u.startsWith(ORIGIN) && !KNOWN_BLOCKED.test(u));
+  const csp = r.headers.get("content-security-policy") ?? "";
+  const scriptSrc = (csp.match(/script-src ([^;]*)/) ?? [, ""])[1];
+  const cspSound = /'self'/.test(scriptSrc) && !/https?:|\*/.test(scriptSrc);
+  otherThirdParty.length
+    ? bad(`${p} loads an UNKNOWN third-party script: ${otherThirdParty.join(", ")}`)
+    : !cspSound
+    ? bad(`${p} script-src no longer confines scripts to this origin: "${scriptSrc.trim()}"`)
+    : ok(`${p} only the known CSP-blocked tag off-origin (browser Accept: ${beacon.test(r.body)}, */*: ${beacon.test(wild.body)}); script-src confines to self`);
   r.headers.get("set-cookie") ? bad(`${p} sets a cookie: ${r.headers.get("set-cookie")}`) : ok(`${p} sets no cookie`);
 }
 

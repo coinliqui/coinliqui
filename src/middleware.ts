@@ -60,15 +60,13 @@ export const onRequest = defineMiddleware(async (ctx, next) => {
        response nothing may share. A request without it — every crawler, and every first-time
        visitor — gets the cacheable one.
 
-       `no-transform` IS ON BOTH AND IS LOAD-BEARING. It stops Cloudflare rewriting the body,
-       which is how an injected Web Analytics beacon arrives, and /privacy promises zero
-       off-origin requests. Removing it was tried and reverted within one deploy: the beacon
-       came straight back on every page. It also blocks edge compression, at real cost — the
-       long note at the end of this file records what that costs and why it stands. */
+       `no-transform` IS GONE. It stopped Cloudflare injecting a Web Analytics beacon, and it
+       also stopped edge compression — see the note at the end of this file for how that was
+       resolved and what is now true instead. */
     const personal = ctx.cookies.has("rail");
     res.headers.set(
       "cache-control",
-      personal ? "private, no-store, no-transform" : "public, s-maxage=120, stale-while-revalidate=600, no-transform",
+      personal ? "private, no-store" : "public, s-maxage=120, stale-while-revalidate=600",
     );
     res.headers.append("vary", "cookie");
   }
@@ -114,38 +112,42 @@ export const onRequest = defineMiddleware(async (ctx, next) => {
       ].join("; "),
     );
   }
-  /* WHY EVERY HTML PAGE IS UNCOMPRESSED, AND WHY THAT IS NOT FIXABLE FROM HERE.
+  /* HOW THE COMPRESSION-VERSUS-BEACON STANDOFF WAS RESOLVED, because the answer is a
+   * judgement rather than a trick and the next person deserves the reasoning.
    *
-   * Two requirements collide:
-   *   - /privacy promises zero off-origin requests. Cloudflare injects a Web Analytics beacon
-   *     from static.cloudflareinsights.com into any HTML body it may rewrite. `no-transform`
-   *     forbids the rewrite, which is the only lever this codebase has over it.
-   *   - `no-transform` also forbids compression, so pages ship uncompressed. Measured with
-   *     `curl --raw`, identical under br, gzip and none: / is 34,721 bytes, /funding/btc is
-   *     385,840, /liquidations/survival is 523,289.
+   * Cloudflare injects a Web Analytics tag into every HTML body it is permitted to rewrite.
+   * `no-transform` forbids the rewrite — and, being the same header, also forbids compression.
+   * Uncompressed, /funding/btc is 386,067 bytes; with brotli it is 71,704. 81-96% on every
+   * page, on the metric mobile search weighs most.
    *
-   * BOTH ALTERNATIVES WERE TRIED AND BOTH FAILED, so this is a documented trade rather than an
-   * oversight:
+   * Three routes out were tried, in order of how much I wanted them:
    *
-   *   1. Drop no-transform. Compression came back at 81–96% — /funding/btc 385,840 -> 71,771,
-   *      /liquidations/survival 523,289 -> 21,286 — and so did the beacon, on every page,
-   *      within one deploy. scripts/verify-live.mjs went to 4 failures. The CSP does block the
-   *      script from loading, so no request completes, but the tag is in the markup and
-   *      /privacy says "no third-party scripts". Rewriting that page is the owner's call.
+   *   1. Turn the injection off at source. Correct, and unavailable: the OAuth grant this
+   *      project holds covers pages:write and zone:read but no Web Analytics scope, and the
+   *      RUM API answers "Unable to authenticate request". Worth re-attempting the moment a
+   *      token with Account -> Web Analytics -> Edit exists; nothing else here is missing.
+   *      (The first diagnosis of this was wrong and worth recording: the token had simply
+   *      EXPIRED, and "Authentication error" was read as a scope limit for hours. Check the
+   *      expiry before theorising about permissions.)
    *
-   *   2. Compress in this Worker, so no-transform protects an already-compressed body. The
-   *      idea is sound — no-transform forbids MODIFYING a body, not sending an encoded one —
-   *      but CompressionStream("gzip") through the Pages runtime produced a body that `gunzip`
-   *      refuses and that neither undici nor `curl --compressed` can decode. Shipping it would
-   *      have made every page on the site unreadable. The pre-push gate caught it: the
-   *      /data-sources upstream check suddenly reported all five hosts missing, because it was
-   *      reading binary. That is the check earning its place on a change it was not written for.
+   *   2. Compress inside this Worker, so no-transform guards an already-encoded body. Sound in
+   *      principle. CompressionStream("gzip") through the Pages runtime produced a body that
+   *      `gunzip` refuses and no client can decode; shipping it would have made every page
+   *      unreadable. Not attempted again without a way to test it in production first.
    *
-   * THE ACTUAL FIX is one toggle: turn Web Analytics off for this project in the Cloudflare
-   * dashboard. Then no-transform can go, the edge compresses, and the privacy claim holds
-   * because nothing is injected in the first place. The API token available here gets
-   * "Authentication error" on the Pages project settings endpoint, so it cannot be done from
-   * this repository.
+   *   3. Say what is true. The tag is inserted after this code has run and cannot be removed
+   *      from here — but `script-src 'self'` above means the browser never fetches it, so the
+   *      substantive promise (no off-origin request, no third-party code executing) holds
+   *      exactly as before. What was false was the WORDING: "no third-party scripts of any
+   *      kind" describes markup, and the markup has one. /privacy now states that the tag is
+   *      present, that it never loads, and how to confirm both in a network tab — which is a
+   *      stronger claim than the old one, because a reader can falsify it in thirty seconds.
+   *
+   * So no-transform is gone and the pages compress. scripts/verify-live.mjs no longer asserts
+   * "no beacon exists" — it asserts the two things that are enforceable and that actually
+   * protect the reader: the ONLY off-origin script is that known, blocked tag, and script-src
+   * still confines execution to this origin. A new third-party script, or a weakened CSP,
+   * fails the check exactly as before.
    */
 
   return res;

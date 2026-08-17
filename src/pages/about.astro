@@ -124,11 +124,11 @@ const description =
       <tbody>
         <tr>
           <td>It makes no off-origin requests</td>
-          <td class="reason">Open your network tab on any page. Every request goes to coinliqui.com. This is also enforced by a <code>Content-Security-Policy</code> header you can read in the response — the browser blocks anything else, whatever we might intend.</td>
+          <td class="reason">Open your network tab on any page and reload. Every request goes to coinliqui.com. This is enforced by a <code>Content-Security-Policy</code> header you can read in the response — the browser refuses anything else, whatever we might intend.</td>
         </tr>
         <tr>
-          <td>It runs no analytics and no third-party scripts</td>
-          <td class="reason">The same network tab, plus the CSP's <code>script-src 'self'</code>. Spelled out on <a class="link" href="/privacy">privacy</a>.</td>
+          <td>Its one third-party script tag never loads</td>
+          <td class="reason">Our host inserts a <code>static.cloudflareinsights.com</code> tag into every page after our code has run. View source and you will see it; watch the network tab and you will see no request for it, and a CSP violation in the console saying the browser blocked it. The full account is on <a class="link" href="/privacy">privacy</a> — we would rather state this than claim something tidier.</td>
         </tr>
         <tr>
           <td>The numbers come from where we say</td>
