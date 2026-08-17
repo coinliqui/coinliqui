@@ -68,7 +68,7 @@ export const onRequest = defineMiddleware(async (ctx, next) => {
     const personal = ctx.cookies.has("rail");
     res.headers.set(
       "cache-control",
-      personal ? "private, no-store, no-transform" : "public, s-maxage=120, stale-while-revalidate=600, no-transform",
+      personal ? "private, no-store" : "public, s-maxage=120, stale-while-revalidate=600",
     );
     res.headers.append("vary", "cookie");
   }
