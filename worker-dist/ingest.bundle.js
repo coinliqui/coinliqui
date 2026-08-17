@@ -558,7 +558,7 @@ var FUNDING_REFRESH_HOURS = 6;
 var CANARY_RETAIN_HOURS = 168;
 var CHUNK = 24;
 var FILL_BACKOFF_MS = 10 * 6e4;
-var WORKER_BUILD = "2026-08-17c";
+var WORKER_BUILD = "2026-08-17d";
 var ingest_default = {
   async scheduled(event, env, ctx) {
     if (event.cron === "* * * * *") {

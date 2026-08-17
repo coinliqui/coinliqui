@@ -14,7 +14,14 @@ compatibility_date = "2026-08-01"
 #        rather than five. It costs 1,440 light invocations and 1,440 writes a day and touches
 #        nothing else — raising the main cron to a minute would have multiplied the D1 funding
 #        rows by five to fix a number that has nothing to do with them.
-crons = ["*/5 * * * *", "* * * * *"]
+# PHASE-SHIFTED OFF THE ROUND MINUTES, from measurement rather than taste.
+# Across 853 recorded runs the failure rate by minute-of-hour is ~29% almost everywhere and
+# 58% at :00 and 61% at :30 — roughly double, at exactly the two minutes every other cron on
+# the internet fires. Our own sweeps run uniformly on */5 and cannot produce that shape; the
+# contention is with everyone else's schedulers, and this Worker shares a Cloudflare egress
+# address with them. Two minutes off the boundary keeps the five-minute cadence and steps out
+# of the queue. Re-measure by minute-of-hour before concluding anything.
+crons = ["2-59/5 * * * *", "* * * * *"]
 
 # IDs are filled in from the dashboard after the namespace and database are created.
 # They are identifiers, not secrets: KV and D1 are reachable only through a binding on a

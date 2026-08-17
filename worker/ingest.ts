@@ -78,7 +78,7 @@ const FILL_BACKOFF_MS = 10 * 60_000;
  *
  * BUMP BOTH when you change this file: here and EXPECTED_WORKER_BUILD in src/lib/version.ts.
  */
-const WORKER_BUILD = "2026-08-17c";
+const WORKER_BUILD = "2026-08-17d";
 
 export default {
   async scheduled(event: ScheduledController, env: Env, ctx: ExecutionContext) {
