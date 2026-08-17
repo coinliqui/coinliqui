@@ -183,11 +183,25 @@ for (const p of ["/", "/funding/btc"]) {
   const isSchemaOrg = (u) => hostOf(u) === "schema.org";
   const allowed = (u) => SCRIPT_HOSTS.includes(hostOf(u));
 
+  const csp0 = r.headers.get("content-security-policy") ?? "";
+  const scriptSrc0 = (csp0.match(/(?:^|;)\s*script-src ([^;]*)/) ?? [, ""])[1];
+  /* A SCRIPT TAG IN THE MARKUP IS NOT A SCRIPT THAT RUNS, and conflating the two made this
+     check fail on correct behaviour the first time it ran. Cloudflare injects its own Web
+     Analytics beacon into every page as it leaves the edge, after this Worker is done — the
+     tag is in the HTML and the CSP does not permit its host, so the browser refuses to fetch
+     it. That is the intended state: GA4 is the analytics this site chose, and a second
+     off-origin script for duplicate data is weight nobody asked for.
+     So the question is not "is there an off-origin tag" but "is there an off-origin script
+     that IS PERMITTED TO RUN and that we did not choose". A tag present in the markup AND
+     allowed by script-src, without being on the deliberate list, is the actual failure. */
+  const permitted = (u) => { const h = hostOf(u); return !!h && scriptSrc0.includes(h); };
   const scripts = [...r.body.matchAll(/<script[^>]*src="(https?:\/\/[^"]+)"/g)].map((m) => m[1]);
-  const unknown = scripts.filter((u) => !sameOrigin(u) && !allowed(u));
-  unknown.length
-    ? bad(`${p} loads an UNLISTED off-origin script: ${unknown.join(", ")}`)
-    : ok(`${p} off-origin scripts: ${scripts.filter((u) => !sameOrigin(u)).length}, all on the allowlist`);
+  const offOrigin = scripts.filter((u) => !sameOrigin(u));
+  const runsUnchosen = offOrigin.filter((u) => permitted(u) && !allowed(u));
+  const blocked = offOrigin.filter((u) => !permitted(u));
+  runsUnchosen.length
+    ? bad(`${p} permits an off-origin script nobody chose: ${runsUnchosen.join(", ")}`)
+    : ok(`${p} off-origin scripts: ${offOrigin.length - blocked.length} allowed and intended, ${blocked.length} present but CSP-blocked`);
 
   const subres = [...r.body.matchAll(/<(?:img|iframe)[^>]*src="(https?:\/\/[^"]+)"|<link(?![^>]*rel="(?:canonical|alternate)")[^>]*href="(https?:\/\/[^"]+)"/g)]
     .map((m) => m[1] || m[2]).filter((u) => u && !sameOrigin(u) && !isSchemaOrg(u) && !allowed(u));
@@ -201,11 +215,22 @@ for (const p of ["/", "/funding/btc"]) {
 
   const scriptSrc = dir("script-src");
   const loose = /(^|\s)(\*|https?:)(\s|$)/.test(scriptSrc);
-  const named = SCRIPT_HOSTS.every((h) => scriptSrc.includes(h));
+  /* HOSTNAME EQUALITY, NOT SUBSTRING — and this file wrote the blind cases warning about
+     exactly this hole before reintroducing it two directives later. `scriptSrc.includes(h)`
+     is satisfied by `https://www.googletagmanager.com.evil.tld`, so a policy that had been
+     quietly widened to an attacker-controlled lookalike would have reported "names hosts, no
+     scheme or wildcard" and passed. Tokenise and parse each source instead. */
+  const cspHosts = scriptSrc.split(/\s+/).filter(Boolean).map((tok) => {
+    if (tok.startsWith("'")) return null;
+    try { return new URL(tok.includes("://") ? tok : `https://${tok}`).hostname; } catch { return null; }
+  }).filter(Boolean);
+  const named = SCRIPT_HOSTS.every((h) => cspHosts.includes(h));
+  const strayHosts = cspHosts.filter((h) => !SCRIPT_HOSTS.includes(h));
   loose ? bad(`${p} script-src contains a scheme or wildcard — that permits every origin: "${scriptSrc}"`)
     : !/'self'/.test(scriptSrc) ? bad(`${p} script-src no longer allows 'self': "${scriptSrc}"`)
     : !named ? bad(`${p} script-src is missing an allowlisted analytics host: "${scriptSrc}"`)
-    : ok(`${p} script-src names hosts, no scheme or wildcard`);
+    : strayHosts.length ? bad(`${p} script-src permits a host nobody chose: ${strayHosts.join(", ")}`)
+    : ok(`${p} script-src permits exactly ${cspHosts.join(", ")} — parsed as hostnames, not matched as substrings`);
 
   const missing = REQUIRED_CSP.filter(([k, v]) => dir(k) !== v);
   missing.length

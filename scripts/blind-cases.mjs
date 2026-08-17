@@ -55,9 +55,22 @@ const csps=[
   ["scheme allowed",           "'self' https:",                                   false],
   ["scheme buried mid-list",   "'self' https://www.googletagmanager.com https:",  false],
   ["no self at all",           "https://www.googletagmanager.com",                false],
+  /* THE SUBSTRING HOLE, IN THE CHECK THAT WAS WRITTEN TO GUARD AGAINST IT. verify-live
+     confirmed "script-src names hosts" with `scriptSrc.includes(host)`, which a lookalike
+     satisfies. These two are the cases that must reject and that a substring test accepts. */
+  ["lookalike host in script-src",  "'self' https://www.googletagmanager.com.evil.tld", false],
+  ["allowed host as a subdomain of a hostile one", "'self' https://evil.tld/www.googletagmanager.com", false],
 ];
 for(const [name,val,shouldPass] of csps){
-  const sound = /'self'/.test(val) && !/(^|\s)(\*|https?:)(\s|$)/.test(val);
+  /* The predicate verify-live actually uses, transcribed: tokenise, parse each source as a
+     hostname, and require every host to be one we chose. Not `includes`. */
+  const hosts = val.split(/\s+/).filter(Boolean).map((t) => {
+    if (t.startsWith("'")) return null;
+    try { return new URL(t.includes("://") ? t : `https://${t}`).hostname; } catch { return null; }
+  }).filter(Boolean);
+  const sound = /'self'/.test(val)
+    && !/(^|\s)(\*|https?:)(\s|$)/.test(val)
+    && hosts.every((h) => h === ALLOWED);
   const correct = sound === shouldPass;
   if(!correct) bad++;
   console.log(`  ${correct?"ok  ":"BLIND"}  ${sound?"SOUND ":"REJECT"}  script-src ${val}`);

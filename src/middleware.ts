@@ -87,9 +87,13 @@ export const onRequest = defineMiddleware(async (ctx, next) => {
    * refuses everything else.
    *
    * Which is the part worth keeping. The threat a CSP is actually for is an origin nobody
-   * chose — a compromised dependency, an injected tag, a rewriting proxy. An allowlist of two
-   * named Google hosts stops all of that exactly as well as 'self' alone did; what it does not
-   * do is stop the analytics we asked for. The directives that carry that weight are the ones
+   * chose — a compromised dependency, an injected tag, a rewriting proxy.
+   *
+   * BUT NOT "EXACTLY AS WELL AS 'self' ALONE", which is what this comment claimed and is not
+   * true. script-src gains ONE named host; connect-src and img-src gain wildcards on three
+   * Google domains. And www.googletagmanager.com will serve any GTM container to anyone who
+   * asks for it by ID, so allowlisting it is strictly weaker than 'self' — it is a deliberate
+   * trade for the analytics, not a free one. The directives that carry the anti-injection
    * NOT relaxed: object-src 'none', base-uri 'self', frame-ancestors 'none', form-action
    * 'self', default-src 'self'. Those are the anti-injection half and none of them moved.
    *
@@ -97,9 +101,13 @@ export const onRequest = defineMiddleware(async (ctx, next) => {
    * `*` in script-src would permit every origin on the internet and read, at a glance, like a
    * tightened policy. scripts/verify-live.mjs fails on either.
    *
-   * 'unsafe-inline' is required and is not the hole it looks like: the calculators ship their
-   * inputs as inline `define:vars` scripts, Astro emits scoped CSS inline, and the GA config
-   * call is inline. It permits inline code we authored, not off-origin code we did not.
+   * 'unsafe-inline' permits EVERY inline script in the document — ours and anyone else's. CSP
+   * has no notion of authorship, and an earlier version of this comment claimed it did, which
+   * was flattering and false. It is here because the calculators' `define:vars` blocks and the
+   * GA config call are inline, and it is a real weakening of the inline-injection defence.
+   * What it does not do is admit an off-origin ORIGIN; that is the allowlist above, and that
+   * is the half this file guards. Removing it means hashing or noncing every inline block,
+   * which is worth doing and is not done.
    */
   if (isDocument) {
     res.headers.set(

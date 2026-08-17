@@ -20,10 +20,13 @@ import { usd } from "../lib/funding.ts";
  *
  * So this page does not argue. It makes the structural case, which is the only one worth
  * making: THERE IS NO MECHANISM HERE TO TAKE ANYTHING FROM ANYONE. No account, no deposit, no
- * wallet connection, nothing to sign — and the /privacy guarantees behind that are enforced by
- * a Content-Security-Policy the reader can check in their own network tab rather than by this
- * page's word. Everything asserted here is either checkable on this site or checkable against
- * the upstream APIs named on /data-sources.
+ * wallet connection, nothing to sign. Everything asserted here is either checkable on this
+ * site or checkable against the upstream APIs named on /data-sources.
+ *
+ * (This used to end "…and the /privacy guarantees behind that are enforced by a
+ * Content-Security-Policy the reader can check in their own network tab". That was an argument
+ * about analytics, which this site now runs deliberately, and it was never the load-bearing
+ * half: what answers "is this a scam" is having no mechanism to take money.)
  */
 const snap = await getSnapshot((Astro.locals as any)?.runtime?.env?.SNAPSHOT, import.meta.env.DEV);
 
@@ -43,10 +46,8 @@ const description =
   <div class="verdict verdict--warn">
     <div>
       <b>{SITE.name} is not an exchange, and cannot be.</b> {IDENTITY.notThis} That is not a
-      promise about our intentions — it is a statement about what this software does, and you
-      can check it in about thirty seconds: open your browser's network tab on any page here and
-      you will see requests to this domain and nowhere else. There is no login form to find,
-      because there is no login.
+      promise about our intentions — it is a statement about what this software does. There is
+      no login form to find, because there is no login.
     </div>
   </div>
 

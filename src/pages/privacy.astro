@@ -25,8 +25,14 @@ import { PINNED_KEY, IDENTITY, GA_ENABLED } from "../lib/site.ts";
  * one this replaced, pointed the other way.
  */
 const title = "Privacy";
-const description =
-  "What Coinliqui collects: Google Analytics for traffic measurement, two cookies, and no payment or personal information.";
+/* GATED ON THE SAME FLAG AS THE BODY. The description asserted "Google Analytics for traffic
+   measurement, two cookies" while the body, correctly gated, said "No analytics are running on
+   this site at present" — the page contradicting itself in the one line search engines quote.
+   Written the moment the body was gated and the head was not, which is why both read from
+   GA_ENABLED now rather than from what the site is configured to do one day. */
+const description = GA_ENABLED
+  ? "What Coinliqui collects: Google Analytics for traffic measurement, cookies, and no payment or personal information."
+  : "What Coinliqui collects: no analytics at present, one preference cookie, and no payment or personal information.";
 const updated = "17 August 2026";
 ---
 
