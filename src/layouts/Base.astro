@@ -199,7 +199,7 @@ const schema = {
         --r-xs: 6px; --r-sm: 8px; --r-md: 12px; --r-pill: 999px;
 
         /* shell metrics — comfortable, reference-set sized */
-        --rail-w: 260px; --rail-w-collapsed: 72px; --topbar-h: 60px; --tabbar-h: 56px;
+        --rail-w: 260px; --rail-w-collapsed: 72px; --topbar-h: 60px;
 
         /* type scale — one number leads, everything else defers to it */
         --fs-hero: 46px; --fs-xl: 28px; --fs-lg: 19px; --fs-md: 15px;
@@ -650,12 +650,12 @@ const schema = {
       }
 
       /* --- mobile: same anchors, re-laid-out. Never a second DOM copy. --- */
-      .tabbar { display: none; }
+      .navtoggle, .nav__scrim { display: none; }
       @media (max-width: 900px) {
         .app, .app.is-collapsed { grid-template-columns: minmax(0,1fr); }
         .rail { display: none; }
         .topbar { padding: 0 16px; }
-        .page { margin: 0 12px 12px; padding: 16px 16px calc(var(--tabbar-h) + 24px); min-height: 0; }
+        .page { margin: 0 12px 12px; padding: 16px 16px 24px; min-height: 0; }
         /* THE AGE STAYS ON MOBILE. This used to hide every span in the pill so the cluster
            could be two even 40px controls — a layout convenience that cost the site its
            central claim. What a phone showed was a bare clock glyph: an icon that IMPLIES
@@ -668,13 +668,45 @@ const schema = {
         .freshness__word { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
         .cta { padding: 0; width: 40px; justify-content: center; }
         .cta__label { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-        .tabbar {
-          display: grid; grid-auto-flow: column; grid-auto-columns: 1fr;
-          position: fixed; inset-inline: 0; bottom: 0; height: var(--tabbar-h); z-index: 20;
-          background: var(--surface-1); border-top: 1px solid var(--border-soft);
+        /* ── MOBILE NAVIGATION: A DRAWER, NOT A TAB BAR ──────────────────────────────
+           The bar carried five of eleven destinations as a SECOND COPY of five anchors —
+           directly beneath a comment reading "Never a second DOM copy". It had already broken
+           once: adding Coins made six tabs and "Open interest" wrapped to two lines at 375px,
+           and the fix was to demote a section rather than to admit the pattern does not scale.
+           Six of eleven destinations, including Watchlist and every reference page, were
+           reachable on a phone only through the footer.
+
+           The drawer is the rail itself — the same <nav>, the same anchors, no duplication —
+           moved off-canvas and slid back in. Opened by :target from a real <a href="#nav">, so
+           it works with JavaScript disabled and in anything that follows links. THE MARKUP IS
+           IDENTICAL OPEN AND CLOSED; only a transform differs, exactly as the desktop collapse
+           works, so a crawler is never shown a different page than a reader.
+
+           Crawlability does not depend on any of this: every destination is also a real anchor
+           in the footer, which is why /watchlist was added there in the same commit. */
+        .navtoggle {
+          display: grid; place-items: center; width: 44px; height: 44px; flex: 0 0 44px;
+          margin-left: -8px; border-radius: var(--r-pill); color: var(--text-dim);
+          text-decoration: none;
         }
-        .tabbar a { display: grid; place-items: center; gap: 3px; text-decoration: none; color: var(--text-faint); font-size: 11px; }
-        .tabbar a[aria-current="page"] { color: var(--accent); }
+        .navtoggle:hover, .navtoggle:focus-visible { background: var(--surface-3); color: var(--text); }
+
+        .rail {
+          display: flex; position: fixed; inset-block: 0; left: 0; z-index: 40;
+          width: min(var(--rail-w), 84vw); max-width: 320px;
+          background: var(--surface-1); border-right: 1px solid var(--border);
+          transform: translateX(-100%); transition: transform .22s ease;
+          overflow-y: auto; overscroll-behavior: contain;
+        }
+        .rail:target { transform: translateX(0); box-shadow: 0 0 60px #0009; }
+
+        /* The scrim only exists once the drawer is open, so it can never swallow a tap. */
+        .nav__scrim { display: block; position: fixed; inset: 0; z-index: 30; background: #0009; opacity: 0; pointer-events: none; transition: opacity .22s ease; }
+        .rail:target ~ .nav__scrim { opacity: 1; pointer-events: auto; }
+
+        /* Every rail row is a 44px target inside the drawer — the bar's 56px height was doing
+           that job before and the rail's own rows are laid out for a pointer, not a thumb. */
+        .rail .nav-item { min-height: 44px; }
 
         /* TOUCH TARGETS. A finger is not a cursor: the chart's timeframe pills were 29px,
            the related-coin chips 34px and the primary action 40px, all under the 44px
@@ -697,7 +729,7 @@ const schema = {
   <body>
     <div class:list={["app", { "is-collapsed": collapsed }]}>
       <!-- ONE nav element. The mobile bar below reuses these same anchors via CSS. -->
-      <nav class="rail" aria-label="Main">
+      <nav class="rail" id="nav" aria-label="Main">
         <div class="rail__top">
           <form method="POST" action="/rail" style="display:contents">
             <button class="icon-btn" type="submit" name="collapsed" value={collapsed ? "0" : "1"}
@@ -722,9 +754,19 @@ const schema = {
           </div>
         ))}
       </nav>
+      {/* Closes the drawer by clearing :target. A real anchor, so it works with JS off. */}
+      <a class="nav__scrim" href="#" aria-label="Close navigation" tabindex="-1"></a>
 
       <div class="col">
         <header class="topbar">
+          {/* MOBILE NAVIGATION IS A DRAWER, AND IT IS A LINK, NOT A BUTTON.
+              href="#nav" opens the rail via :target — no JavaScript, so it works in a crawler,
+              in a text browser, and on a page whose script failed. The markup is IDENTICAL
+              open and closed; only a transform differs, which is the same rule the desktop
+              collapse follows. */}
+          <a class="navtoggle" href="#nav" aria-label="Open navigation">
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M3 5h14M3 10h14M3 15h14" /></svg>
+          </a>
           <div class="search">
             <label class="vh" for="q">Search</label>
             <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true" focusable="false"><circle cx="9" cy="9" r="5.5" /><path d="m13 13 4 4" /></svg>
@@ -761,14 +803,6 @@ const schema = {
       </div>
     </div>
 
-    <nav class="tabbar" aria-label="Main mobile">
-      {NAV.flatMap((g) => g.items).filter((i) => i.mobile && i.href).map((item) => (
-        <a href={item.href!} aria-current={isActive(item.href!) ? "page" : undefined}>
-          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d={item.icon} /></svg>
-          <span>{item.label}</span>
-        </a>
-      ))}
-    </nav>
 
     {/* Fingerprinted — see scripts/gen-assets.mjs. Pages serves public/ with a four-hour
         max-age and no hash in the filename, so without this a returning visitor runs the
