@@ -1,7 +1,7 @@
 ---
 import Base from "../../layouts/Base.astro";
 import { getSnapshot, coldStart, findPerp } from "../../lib/hyperliquid.ts";
-import { usd, pct, rawRate, settlementsPerYear, VENUE_LABEL, paysClass, type Venue } from "../../lib/funding.ts";
+import { usd, pct, rawRate, settlementsPerYear, VENUE_LABEL, paysClass, type Venue, queryNum, paymentDirection } from "../../lib/funding.ts";
 
 const snap = await getSnapshot((Astro.locals as any)?.runtime?.env?.SNAPSHOT, import.meta.env.DEV);
 // Cold store: 503 + Retry-After rather than a page rendered from nothing.
@@ -12,15 +12,21 @@ const perp = findPerp(snap.perps, q.get("symbol")) ?? snap.perps[0];
 const venueParam = (q.get("venue") ?? "HlPerp") as Venue;
 const f = perp.venues.find((v) => v.venue === venueParam) ?? perp.venues[0];
 const side = q.get("side") === "short" ? "short" : "long";
-const notional = Number(q.get("notional") ?? 10_000);
-const days = Number(q.get("days") ?? 30);
-const leverage = Number(q.get("leverage") ?? 10);
+const notional = queryNum(q.get("notional"), 10_000, { min: 1 });
+const days = queryNum(q.get("days"), 30, { min: 0, max: 3650 });
+const leverage = queryNum(q.get("leverage"), 10, { min: 1, max: 1000 });
 
 // Correct: the quoted rate applies PER SETTLEMENT, and the number of settlements in the
 // window is set by the venue's interval. Sign convention: a positive rate means longs pay.
 const settlements = (days * 24) / f.intervalHours;
 const signed = side === "long" ? 1 : -1;
 const cost = notional * f.rate * settlements * signed;
+/* DIRECTION AND MAGNITUDE ARE COMPUTED SEPARATELY, and this line is the whole reason.
+   The label used to read `cost >= 0`, so any term in that product could flip the verdict —
+   a negative `days` did, printing "You receive $67.65" where the truth was "You pay $67.65".
+   Direction is a function of the rate's sign and the side, so it is derived from those and
+   the money is derived from the arithmetic, and the two can no longer contradict. */
+const dir = paymentDirection(f.rate, side);
 
 // The naive reading treats the quoted rate as a DAILY number. On an hourly venue that is
 // wrong by 24x; on an 8-hour venue by 3x. It is the single most common funding error.
@@ -72,7 +78,7 @@ const description = `What holding a ${perp.symbol} perpetual actually costs in f
 
   <div class="cards" style="margin-top:12px">
     <div class="card card--lead">
-      <div class="card__label">{cost >= 0 ? "You pay" : "You receive"}</div>
+      <div class="card__label">{dir === null ? "No funding either way" : dir === "pay" ? "You pay" : "You receive"}</div>
       <div class="card__value" id="out-cost">{usd(Math.abs(cost), 2)}</div>
       <div class="card__meta">over {days} days · <span id="out-settle">{Math.round(settlements).toLocaleString("en-US")}</span> settlements</div>
     </div>
@@ -126,7 +132,7 @@ const description = `What holding a ${perp.symbol} perpetual actually costs in f
               <td class="num">{v.intervalHours}h</td>
               <td class="num">{Math.round(s).toLocaleString("en-US")}</td>
               <td class:list={["num", paysClass(v.apr)]}>{pct(v.apr)}</td>
-              <td class="num" style="font-weight:600">{c >= 0 ? "−" : "+"}{usd(Math.abs(c), 2)}</td>
+              <td class="num" style="font-weight:600">{(() => { const d = paymentDirection(v.rate, side); return d === null ? "" : d === "pay" ? "−" : "+"; })()}{usd(Math.abs(c), 2)}</td>
             </tr>
           );
         })}

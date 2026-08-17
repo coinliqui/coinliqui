@@ -16,7 +16,7 @@
  *
  *   node --experimental-strip-types scripts/funding-cases.mjs
  */
-import { nextSettlement, toApr, settlementsPerYear } from "../src/lib/funding.ts";
+import { nextSettlement, toApr, settlementsPerYear, queryNum, usd, paymentDirection } from "../src/lib/funding.ts";
 
 const now = Date.parse("2026-08-17T14:27:48Z");
 const at = (s) => Date.parse(s);
@@ -66,6 +66,58 @@ t("a zero interval cannot annualise", String(Number.isNaN(toApr(0.0001, 0))), "t
 t("a NaN rate cannot annualise", String(Number.isNaN(toApr(NaN, 8))), "true");
 t("settlements per year, hourly", settlementsPerYear(1), 8760);
 t("settlements per year, 8-hourly", settlementsPerYear(8), 1095);
+
+/* QUERY INPUTS. Every calculator read `Number(q.get("x") ?? default)`, which defaults only on
+   an ABSENT parameter — so a present, invalid one reached the arithmetic. */
+console.log("\n  queryNum — a present but invalid parameter must not reach the arithmetic");
+t("absent falls back", queryNum(null, 30), 30);
+t("ordinary value passes", queryNum("45", 30), 45);
+t("the inversion: negative days", queryNum("-30", 30), 30);
+t("empty string", queryNum("", 30), 30);
+t("whitespace only", queryNum("   ", 30), 30);
+t("non-numeric", queryNum("abc", 30), 30);
+t("the literal NaN", queryNum("NaN", 30), 30);
+t("Infinity", queryNum("Infinity", 30), 30);
+t("1e30 float-noise notional", queryNum("1e30", 10_000), 10_000);
+t("zero leverage", queryNum("0", 10, { min: 1 }), 10);
+t("valid leverage passes", queryNum("5", 10, { min: 1 }), 5);
+t("exactly min is valid", queryNum("0", 30, { min: 0 }), 0);
+
+/* THE INVARIANT THE INVERSION BROKE, swept rather than sampled. Direction is a function of
+   sign(rate) and side ONLY. No holding period and no position size may change who pays whom.
+   This is the assertion that would have caught "You pay $67.65" becoming "You receive $67.65"
+   on the same contract at the same rate. */
+const direction = (rate, side, days, notional) => {
+  /* Transcribed from the page: inputs sanitised, cost computed, direction taken from the rate
+     and the side alone. The cost is still computed here on purpose — the assertion is that it
+     CANNOT influence the answer. */
+  const d = queryNum(String(days), 30, { min: 0, max: 3650 });
+  const n = queryNum(String(notional), 10_000, { min: 1 });
+  const signed = side === "long" ? 1 : -1;
+  void (n * rate * ((d * 24) / 8) * signed);
+  return paymentDirection(rate, side);
+};
+let dirBad = 0, dirChecked = 0;
+for (const rate of [0.0000772, -0.0000772, 0.001, -0.001]) {
+  for (const side of ["long", "short"]) {
+    const truth = direction(rate, side, 30, 10_000);
+    for (const days of [1, 30, 365, 0, -30, -1, "abc", "", "NaN", "-1e9"]) {
+      for (const notional of [1, 10_000, 1e9, -10_000, "xyz", "1e30"]) {
+        dirChecked++;
+        if (direction(rate, side, days, notional) !== truth) dirBad++;
+      }
+    }
+  }
+}
+if (dirBad) bad++;
+console.log(`  ${dirBad ? "FAIL" : "ok  "}  ${dirChecked} combinations of rate x side x days x notional — ${dirBad} changed who pays`);
+
+console.log("\n  usd — no rung above B meant float noise was printed as currency");
+t("a real open-interest figure", usd(2.85e9), "$2.85B");
+t("1e30 is not a dollar amount", usd(1e30), "—");
+t("nor is 5e19", usd(5e19), "—");
+t("negatives too", usd(-1e30), "—");
+t("1e12 still prints", usd(1e12), "$1000.00B");
 
 console.log(bad ? `\n  ${bad} failure(s) in the funding library\n` : "\n  funding library invariants hold\n");
 process.exit(bad ? 1 : 0);

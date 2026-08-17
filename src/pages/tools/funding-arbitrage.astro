@@ -1,7 +1,7 @@
 ---
 import Base from "../../layouts/Base.astro";
 import { getSnapshot, coldStart, findPerp } from "../../lib/hyperliquid.ts";
-import { usd, pct, rawRate, VENUE_LABEL, paysClass, type Venue } from "../../lib/funding.ts";
+import { usd, pct, rawRate, VENUE_LABEL, paysClass, type Venue, queryNum } from "../../lib/funding.ts";
 
 const snap = await getSnapshot((Astro.locals as any)?.runtime?.env?.SNAPSHOT, import.meta.env.DEV);
 // Cold store: 503 + Retry-After rather than a page rendered from nothing.
@@ -14,8 +14,8 @@ const widest = [...tradable].sort((a, b) => (b.aprSpread ?? 0) - (a.aprSpread ??
 
 const q = Astro.url.searchParams;
 const perp = findPerp(tradable, q.get("symbol")) ?? widest ?? snap.perps[0];
-const capital = Number(q.get("capital") ?? 10_000);
-const days = Number(q.get("days") ?? 30);
+const capital = queryNum(q.get("capital"), 10_000, { min: 1 });
+const days = queryNum(q.get("days"), 30, { min: 0, max: 3650 });
 
 const sorted = [...perp.venues].sort((a, b) => b.apr - a.apr);
 const shortLeg = sorted[0];          // highest APR — as a short you are paid

@@ -1,7 +1,7 @@
 ---
 import Base from "../../layouts/Base.astro";
 import { getSnapshot, coldStart, findPerp } from "../../lib/hyperliquid.ts";
-import { usd, pct } from "../../lib/funding.ts";
+import { usd, pct, queryNum } from "../../lib/funding.ts";
 import { liquidationPrice, tierFor, maintenanceMarginFraction, nextTierBoundary, type MarginTable, type Side } from "../../lib/margin.ts";
 import tables from "../../data/margin-tables.json";
 
@@ -18,8 +18,8 @@ const side = (q.get("side") === "short" ? "short" : "long") as Side;
 // on the case the headline number gets wrong rather than on the case where it happens to hold.
 const boundary = [...table.marginTiers].sort((a, b) => a.lowerBound - b.lowerBound)[1]?.lowerBound;
 const defaultNotional = boundary ? Math.round(boundary * 1.2) : 250_000;
-const notional = Number(q.get("notional") ?? defaultNotional);
-const requested = Number(q.get("leverage") ?? perp.maxLeverage);
+const notional = queryNum(q.get("notional"), defaultNotional, { min: 1 });
+const requested = queryNum(q.get("leverage"), perp.maxLeverage, { min: 1, max: 1000 });
 
 /* PRICE PRECISION FROM MAGNITUDE, the same rule the contract pages use
    (src/pages/funding/[symbol].astro). usd(x, 2) annihilates anything under half a cent, so

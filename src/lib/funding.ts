@@ -122,8 +122,86 @@ export const LEGEND = "▲ longs pay shorts · ▼ shorts pay longs";
 export function usd(x: number, decimals = 0): string {
   if (!Number.isFinite(x)) return "—";
   const abs = Math.abs(x);
+  /* NO RUNG ABOVE B, AND NO CEILING, meant the mantissa noise of a double was printed verbatim
+     as currency: /tools/leverage?notional=1e30 rendered "$50000000000000008192.00B". Above 1e15
+     a double no longer represents integers exactly, so every digit past the first ~16 is an
+     artefact of the format rather than a quantity. Nothing honest on this site exceeds it —
+     total open interest across all fifty coins is order 1e10 — so beyond that the truthful
+     output is the same em-dash used for every other figure that cannot be stated. */
+  if (abs >= 1e15) return "—";
   if (abs >= 1e9) return `$${(x / 1e9).toFixed(2)}B`;
   if (abs >= 1e6) return `$${(x / 1e6).toFixed(2)}M`;
   if (abs >= 1e3 && decimals === 0) return `$${Math.round(x).toLocaleString("en-US")}`;
   return `$${x.toLocaleString("en-US", { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}`;
+}
+
+/**
+ * A QUERY PARAMETER THAT IS ACTUALLY A NUMBER.
+ *
+ * Every calculator read its inputs as `Number(q.get("x") ?? someDefault)`, in fourteen places
+ * across four pages. `??` substitutes only when the parameter is ABSENT, so a parameter that is
+ * present and nonsense goes straight into the arithmetic: `?days=abc` is NaN, `?leverage=` is
+ * 0, `?days=-30` is -30, and each one is then formatted into a confident answer.
+ *
+ * The worst of them was not a NaN, which at least looks broken. It was the sign. /tools/funding-cost
+ * computed `notional * rate * settlements * signed` and read the sign of that product to decide
+ * WHO PAYS WHOM — but only `rate` and `signed` carry direction; `days` and `notional` are
+ * magnitudes. A negative `days` contributed a third sign with no financial meaning, and the
+ * page inverted its verdict while printing the correct amount:
+ *
+ *   ?side=long&venue=BinPerp&days=30   ->  "You pay $67.65 · over 30 days · 90 settlements"
+ *   ?side=long&venue=BinPerp&days=-30  ->  "You receive $67.65 · over -30 days · -90 settlements"
+ *
+ * Same coin, same venue, same rate, same snapshot. Direction is a function of sign(rate) and
+ * side; holding time cannot change who pays. And it was reachable without touching the URL:
+ * `min="0"` on the input is not consulted by `form.submit()`, which the page's own
+ * side/venue/coin change handler calls.
+ *
+ * So inputs are sanitised at the boundary, once, here. Out-of-domain values fall back to the
+ * default AND the form re-renders that default, so the page always shows the inputs it actually
+ * used — the answer on screen is the true answer to the question on screen. That is the whole
+ * invariant; there is no state in which a printed figure describes inputs the reader cannot see.
+ *
+ * A ceiling is not optional either: `?notional=1e30` rendered "$50000000000000008192.00B",
+ * float noise printed as currency by a K/M/B ladder with no rung above B and no upper bound.
+ */
+export function queryNum(
+  raw: string | null,
+  fallback: number,
+  opts: { min?: number; max?: number } = {},
+): number {
+  const { min = 0, max = 1e12 } = opts;
+  if (raw === null) return fallback;
+  const trimmed = raw.trim();
+  if (trimmed === "") return fallback;
+  const n = Number(trimmed);
+  if (!Number.isFinite(n)) return fallback;
+  if (n < min || n > max) return fallback;
+  return n;
+}
+
+/**
+ * WHO PAYS WHOM — from the rate and the side, and from nothing else.
+ *
+ * /tools/funding-cost derived this from `Math.sign(notional * rate * settlements * signed)`.
+ * Only two of those four terms carry direction. The other two are magnitudes, and splicing them
+ * into the same product let a negative holding period invert the verdict while the amount stayed
+ * correct — "You pay $67.65" and "You receive $67.65" for the same contract at the same rate.
+ *
+ * Validating the inputs fixed the negative case and left a smaller one standing, which a swept
+ * check caught and a table of examples would not have: at days = 0 the cost is exactly 0, and
+ * `cost >= 0` reads that as "You pay". Twenty-four of 480 rate x side x days x notional
+ * combinations disagreed with the direction implied by the rate alone.
+ *
+ * So direction is computed here and magnitude is computed separately, and the page prints
+ * `usd(Math.abs(cost))` beside this. There is no arithmetic path by which a quantity can reach
+ * the verdict any more.
+ *
+ * Returns null when there is no direction to state: a zero rate is neither party paying, and a
+ * page with nothing to say should say nothing rather than round toward "pay".
+ */
+export function paymentDirection(rate: number, side: "long" | "short"): "pay" | "receive" | null {
+  if (!Number.isFinite(rate) || rate === 0) return null;
+  const longPays = rate > 0;
+  return (side === "long") === longPays ? "pay" : "receive";
 }
