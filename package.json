@@ -12,6 +12,7 @@
     "gen:lastmod": "node scripts/gen-lastmod.mjs",
     "gen:assets": "node scripts/gen-assets.mjs",
     "smoke": "node scripts/smoke.mjs",
+    "cadence": "node scripts/cadence-check.mjs",
     "check": "npm run build && node scripts/smoke.mjs --warm .wrangler/smoke",
     "apply": "node scripts/apply-edits.mjs"
   },

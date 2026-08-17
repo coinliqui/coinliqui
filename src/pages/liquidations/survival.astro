@@ -157,7 +157,8 @@ const description = `Which leveraged ${perp.symbol} positions were liquidated an
     <p class="crumb"><a href="/liquidations">Liquidations</a> › Survival</p>
     <h1>Leverage survival</h1>
     <p>
-      <strong>The prices are real; the closing rule is a model.</strong> Every cell asks one
+      <strong>The prices are real; the closing rule is a model.</strong> Both come from
+      <strong>Hyperliquid</strong> — its candles, and its margin table. Every cell asks one
       checkable question about an observed price path — a <strong>{mapSide}</strong> opened at
       that day's close, at that leverage, held {hold} days: did the maintenance-margin threshold
       get crossed, and on which day? No price here is simulated. But deciding that a position
@@ -257,8 +258,8 @@ const description = `Which leveraged ${perp.symbol} positions were liquidated an
               <td class="reason"><strong>Too harsh</strong>: a thin wick can cross this threshold without moving the mark that far.</td>
             </tr>
             <tr>
-              <td><strong>One maintenance margin</strong></td>
-              <td class="reason">{pct(mmf, 3)}, from tier 1 of the venue's table. Real tiers step up with position size.</td>
+              <td><strong>Hyperliquid's tier 1</strong></td>
+              <td class="reason">{pct(mmf, 3)}, from the first tier of <strong>Hyperliquid's</strong> margin table for {perp.symbol} — this page names the venue because a maintenance margin is venue-specific and "the venue's table" left a reader to guess which. Real tiers step up with position size; only the first is used.</td>
               <td class="reason">Too kind at large size, exact at small size.</td>
             </tr>
             <tr>
