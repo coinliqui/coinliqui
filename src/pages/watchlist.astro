@@ -100,9 +100,24 @@ const maxOi = Math.max(...snap.perps.map((p) => p.oiNotional || 0), 1);
       var read = function () { try { return JSON.parse(localStorage.getItem(KEY) || "[]"); } catch (e) { return []; } };
       var write = function (v) { try { localStorage.setItem(KEY, JSON.stringify(v)); } catch (e) {} };
 
+      /* THE SERVER ORDER IS CAPTURED ONCE, HERE, AND NEVER RE-READ FROM THE DOM.
+         It used to be read inside paint(), which quietly redefined "unpinned" as
+         "wherever the last paint left you" instead of "where the server put you".
+         Measured on the real page: pin MON, unpin MON, and MON stays at row 1 —
+         above BTC, with 1/113th of its open interest, with the pin dark, no row
+         highlight and the Clear button hidden. Every visual signal said "this is
+         the ordinary open-interest table" and it was not. Pinning four coins and
+         unpinning all four left 45 of 50 rows displaced, worst by 43 positions.
+
+         `ord` is an explicit tiebreaker rather than a lean on Array#sort being
+         stable. The guarantee is real in every engine that matters, but a
+         comparator whose commonest branch returns 0 is stating no opinion about
+         the case that matters most, and that is how this got lost the first time. */
+      var rows = Array.prototype.slice.call(tbody.querySelectorAll("tr"));
+      var ord = function (tr) { return rows.indexOf(tr); };
+
       function paint() {
         var pinned = read();
-        var rows = Array.prototype.slice.call(tbody.querySelectorAll("tr"));
         rows.forEach(function (tr) {
           var sym = tr.getAttribute("data-sym");
           var on = pinned.indexOf(sym) !== -1;
@@ -113,13 +128,13 @@ const maxOi = Math.max(...snap.perps.map((p) => p.oiNotional || 0), 1);
             b.setAttribute("aria-label", (on ? "Unpin " : "Pin ") + sym);
           }
         });
-        // Pinned rows rise, in the order they were pinned; everything else keeps server order.
+        // Pinned rows rise, in the order they were pinned; everything else returns to server order.
         rows
           .slice()
           .sort(function (a, b) {
             var ia = pinned.indexOf(a.getAttribute("data-sym"));
             var ib = pinned.indexOf(b.getAttribute("data-sym"));
-            if (ia === -1 && ib === -1) return 0;
+            if (ia === -1 && ib === -1) return ord(a) - ord(b);
             if (ia === -1) return 1;
             if (ib === -1) return -1;
             return ia - ib;
@@ -147,9 +162,15 @@ const maxOi = Math.max(...snap.perps.map((p) => p.oiNotional || 0), 1);
     .wl-bar { display: flex; align-items: center; gap: 16px; margin-bottom: var(--gap-block); }
     .wl-clear { margin-left: auto; height: 32px; padding: 0 12px; font-size: 13px; }
     .pin {
+      position: relative;
       display: grid; place-items: center; width: 28px; height: 28px; padding: 0;
       background: none; border: 0; border-radius: var(--r-pill); color: var(--text-faint); cursor: pointer;
     }
+    /* The star reads better small, but 28px is a poor thumb target — the row is 45px tall and
+       the column 38px wide, so the hit area can fill both without moving a pixel of the visual
+       or reaching into the coin link beside it. Bounded deliberately: two vertically adjacent
+       pins must not overlap, or a tap near a row edge toggles the wrong coin. */
+    .pin::after { content: ""; position: absolute; inset: -8px -4px; }
     .pin:hover { background: var(--surface-3); color: var(--text); }
     .pin[aria-pressed="true"] { color: var(--accent); }
     .pin[aria-pressed="true"] svg { fill: var(--accent); }
