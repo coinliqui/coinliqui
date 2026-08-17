@@ -316,8 +316,8 @@ export async function stepReport(env: ReportEnv, force = false): Promise<string 
     const j = (await r.json()) as any;
     if (j.errors?.length) throw new Error(j.errors.map((e: any) => e.message).join("; "));
     const groups: any[] = j.data?.viewer?.zones?.[0]?.httpRequestsAdaptiveGroups ?? [];
-    say("Last 7 days, from Cloudflare's edge. Aggregate request metrics the host already keeps —");
-    say("no script, no cookie, nothing added to the page.\n");
+    say("Last 7 days, from Cloudflare's edge — the only place a named crawler is visible at all,");
+    say("since Googlebot runs no JavaScript and never appears in Google Analytics.\n");
     say("| Crawler | Requests |");
     say("|---|---:|");
     let any = false;

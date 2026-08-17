@@ -63,6 +63,18 @@ export const onRequest = defineMiddleware(async (ctx, next) => {
        `no-transform` is not set and must not be: it forbids edge compression, and brotli is
        worth 81-96% on every page here. It was once set to stop an injected analytics beacon,
        back when this site claimed to load no third-party scripts. That claim is retired. */
+    /* `_ga` ARMS THIS, and the trap is the same one this block already describes.
+       `Vary: Cookie` keys a shared cache on the WHOLE Cookie header. Today the only cookie is
+       `rail`, with two values, so the cacheable branch has two variants at most. The moment a
+       measurement ID is set, every returning visitor carries a distinct `_ga` value and every
+       one of them becomes its own cache entry — a shared cache with a ~100% miss rate, which
+       is worse than no cache because it still costs the lookup.
+       It is INERT TODAY for the reason stated above: Cloudflare does not cache HTML unless a
+       Cache Rule says so, and there is none. So this is not a live defect; it is a second
+       thing armed and waiting for whoever adds that rule. Whoever does must key the rule on
+       the `rail` cookie specifically rather than on Cookie, or drop the cookie-driven rail
+       state first. Written down because the previous armed-and-waiting bug in this exact
+       block was found by reading rather than by breaking, and only once. */
     const personal = ctx.cookies.has("rail");
     res.headers.set(
       "cache-control",
