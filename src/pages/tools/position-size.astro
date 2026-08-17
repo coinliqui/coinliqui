@@ -178,10 +178,16 @@ const description = `Risk-based position sizing for ${perp.symbol} perpetuals th
     · <a class="link" href={`/funding/${perp.symbol.toLowerCase()}`}>{perp.symbol} detail →</a>
   </p>
 
-  <script is:inline define:vars={{ table, symbol: perp.symbol }}>
+  <script is:inline define:vars={{ table, symbol: perp.symbol, dp }}>
     const form = document.querySelector(".calc");
     if (form) {
+      /* TWO FORMATTERS, because two kinds of number. `money` is account currency — the risk
+         budget, the margin — and cents are right for those. `price` is an instrument price and
+         takes the SERVER's magnitude-derived precision, or the client rewrites kBONK's correct
+         $0.0022225 into $0.00 the moment any input is touched. Same server/client pair that
+         rewrote 200 volume cells on a click. */
       const money = (x) => "$" + Math.abs(x).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      const price = (x) => "$" + Math.abs(x).toLocaleString("en-US", { minimumFractionDigits: dp, maximumFractionDigits: dp });
       const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
       const tiers = [...table.marginTiers].sort((a, b) => a.lowerBound - b.lowerBound);
       const recalc = () => {
@@ -204,7 +210,7 @@ const description = `Risk-based position sizing for ${perp.symbol} perpetuals th
         const safe = Math.max(1, Math.min(maxLev, Math.floor(denom > 0 ? 1 / denom : maxLev)));
         set("out-size", size.toFixed(4));
         set("out-notional", "$" + Math.round(notional).toLocaleString("en-US"));
-        set("out-liq", money(liq));
+        set("out-liq", price(liq));
         set("out-liqnote", first ? "before your stop" : "beyond your stop");
         set("out-move", ((Math.abs(liq - E) / E) * 100).toFixed(2) + "%");
         set("out-stopmove", ((Math.abs(S - E) / E) * 100).toFixed(2) + "%");

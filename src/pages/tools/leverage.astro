@@ -21,6 +21,12 @@ const defaultNotional = boundary ? Math.round(boundary * 1.2) : 250_000;
 const notional = Number(q.get("notional") ?? defaultNotional);
 const requested = Number(q.get("leverage") ?? perp.maxLeverage);
 
+/* PRICE PRECISION FROM MAGNITUDE, the same rule the contract pages use
+   (src/pages/funding/[symbol].astro). usd(x, 2) annihilates anything under half a cent, so
+   /tools/leverage?symbol=PUMP rendered "Liquidation falls at $0.00, 5.26% from the mark" —
+   two statements that cannot both be true, server-side, at first byte. */
+const pdp = perp.markPx >= 100 ? 2 : perp.markPx >= 1 ? 3 : perp.markPx >= 0.01 ? 5 : 7;
+const px = (v: number) => usd(v, pdp);
 const { tier, index } = tierFor(table, notional);
 const permitted = tier.maxLeverage;
 const mmf = maintenanceMarginFraction(permitted);
@@ -102,7 +108,7 @@ const description = `Maximum leverage on ${perp.symbol} perpetuals steps down as
       ) : (
         <><b>{requested}× is available at this size.</b> {usd(notional)} of notional sits in tier
         {" "}{index + 1}, where the cap is {permitted}×. Liquidation falls at
-        {" "}<b>{usd(r.liquidationPrice, 2)}</b>, {pct(r.distancePct)} from the mark.</>
+        {" "}<b>{px(r.liquidationPrice)}</b>, {pct(r.distancePct)} from the mark.</>
       )}
     </div>
   </div>
@@ -150,10 +156,14 @@ const description = `Maximum leverage on ${perp.symbol} perpetuals steps down as
     · <a class="link" href="/methodology">How these numbers are produced →</a>
   </p>
 
-  <script is:inline define:vars={{ table, markPx: perp.markPx, headline }}>
+  <script is:inline define:vars={{ table, markPx: perp.markPx, headline, pdp }}>
     const form = document.querySelector(".calc");
     if (form) {
+      /* MUST MATCH the server's px() above. Math.round() is right for notional and margin —
+         whole dollars — and catastrophic for a PRICE: it turns every sub-cent liquidation into
+         $0. The server picks decimals from magnitude; so does this. */
       const money = (x) => "$" + Math.round(Math.abs(x)).toLocaleString("en-US");
+      const price = (x) => "$" + Math.abs(x).toLocaleString("en-US", { minimumFractionDigits: pdp, maximumFractionDigits: pdp });
       const pc = (x, d = 3) => (x * 100).toFixed(d) + "%";
       const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
       const tiers = [...table.marginTiers].sort((a, b) => a.lowerBound - b.lowerBound);

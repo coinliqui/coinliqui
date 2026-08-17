@@ -27,13 +27,23 @@ const perLeg = capital / 2;
 const grossPeriod = perLeg * spreadApr * (days / 365);
 const grossYear = perLeg * spreadApr;
 
-// The naive spread: difference the QUOTED rates and annualise both as if every venue
-// settled every 8 hours. This is what a side-by-side funding table implies.
-const ASSUMED = 8;
+/* The naive spread: difference the QUOTED rates and annualise them at ONE assumed interval,
+   which is what reading a side-by-side funding table does to you.
+
+   THE ASSUMED INTERVAL WAS HARDCODED TO 8 HOURS AND THE CAPTION DID NOT KNOW. `sameInterval`
+   asks whether the two legs match EACH OTHER, not whether they match the assumption — so on
+   the default pair, where both legs settle every 4h, the card printed 32.86% beside a real
+   spread of 65.71%, exactly half, under the words "same here — intervals match". Two numbers
+   presented as the same number, one of them double the other.
+
+   When the legs DO share an interval there is no naive error to illustrate: the side-by-side
+   reading is simply correct, and the honest counterfactual is the legs' own interval, which
+   makes the two cards agree and the caption true. The 8-hour assumption only means anything
+   when the legs differ and a reader has to pick one — and then the card says which was picked. */
+const sameInterval = shortLeg.intervalHours === longLeg.intervalHours;
+const ASSUMED = sameInterval ? shortLeg.intervalHours : 8;
 const naiveSpreadApr = (shortLeg.rate - longLeg.rate) * (8760 / ASSUMED);
 const naivePeriod = perLeg * naiveSpreadApr * (days / 365);
-
-const sameInterval = shortLeg.intervalHours === longLeg.intervalHours;
 
 const title = `Funding arbitrage calculator — cross-venue spread`;
 const description = `What the funding spread between venues is actually worth on a delta-neutral position, with both legs annualised on their own settlement interval rather than assumed to match. Opens on the widest live spread.`;
@@ -70,9 +80,9 @@ const description = `What the funding spread between venues is actually worth on
       <div class="card__meta">annualised · both legs on their own interval</div>
     </div>
     <div class="card">
-      <div class="card__label">If both settled 8-hourly</div>
+      <div class="card__label">{sameInterval ? `Read side by side at ${ASSUMED}h` : "If both settled 8-hourly"}</div>
       <div class="card__value dim" id="out-naive">{pct(naiveSpreadApr)}</div>
-      <div class="card__meta">{sameInterval ? "same here — intervals match" : "the side-by-side reading"}</div>
+      <div class="card__meta">{sameInterval ? `same as above — both legs settle every ${ASSUMED}h` : "the side-by-side reading, assuming 8h"}</div>
     </div>
     <div class="card">
       <div class="card__label">Gross over {days} days</div>
