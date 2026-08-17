@@ -105,7 +105,16 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       `select at from upstream_check where source='${d.source}' and ok=1 and at > ${since} order by at asc`,
     );
     const ts = rows.map((r) => Number(r.at));
-    const rate = successRate(ts, d.minutes, hours * 60);
+
+    /* THE WINDOW CANNOT PREDATE THE RECORDING. Asked for an hour thirty minutes after the
+       minute tick started writing a row per tick, this reported "50% succeeded" — thirty rows
+       against sixty expected — when the truth was thirty out of thirty. A check that cries wolf
+       at 100% health is one that gets ignored, which is worse than not having it. So the window
+       is clamped to the data that exists, and says when it had to be. */
+    const availableMin = ts.length ? Math.round((Date.now() - ts[0]) / 60000) + d.minutes : 0;
+    const windowMin = Math.min(hours * 60, availableMin);
+    const clamped = windowMin < hours * 60 - d.minutes;
+    const rate = successRate(ts, d.minutes, windowMin);
     const p90 = p90GapMinutes(ts);
     const med = medianGapMinutes(ts);
     if (rate === null || p90 === null) {
@@ -121,7 +130,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     if (over) bad++;
     console.log(
       `  ${over ? "FAIL" : "ok  "}  ${d.what}\n` +
-        `          declared every ${d.minutes} min · succeeded ${(rate * 100).toFixed(0)}% of ticks over ${hours}h ` +
+        `          declared every ${d.minutes} min · succeeded ${(rate * 100).toFixed(0)}% of ticks over ${(windowMin / 60).toFixed(1)}h${clamped ? " (clamped — no data before that)" : ""} ` +
         `(${rows.length} runs) · p90 gap ${p90.toFixed(0)} min · median ${med.toFixed(0)} min`,
     );
   }
