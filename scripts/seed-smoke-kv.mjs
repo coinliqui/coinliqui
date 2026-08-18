@@ -85,6 +85,37 @@ for (const { key, blob_id } of rows) {
   wrote++;
   console.log(`  m15:${sym}  ${d.length} bars derived from ${src.length} hourly`);
 }
+/* THE FLIP FEED IS READ FROM KV NOW, SO THE FIXTURE HAS TO CARRY IT.
+   The homepage used to compute this from D1 on every render; the ingest worker computes it
+   once per pass and stores it here. The gate caught the gap the moment the read moved — the
+   homepage rendered its "warming" branch and the flip table went untested, which is exactly
+   what fixtureGaps exists to prevent.
+
+   These rows exercise the RENDER path: a mix of directions so the colour rule has both cases
+   to get wrong, a wide gapMin so the detection-window caveat has something to print, and a
+   `total` larger than `rows.length` so the truncation sentence is exercised rather than
+   trivially true. The SQL's correctness is not what this proves and does not pretend to be —
+   that is covered by scripts/flips-parity.mjs, which compares the stored feed against a live
+   recomputation from D1. */
+{
+  const now = Date.now();
+  const flips = {
+    computedAt: now,
+    result: {
+      status: "ready",
+      since: now - 24 * 3600_000,
+      total: 33,
+      rows: [
+        { symbol: "BTC", venue: "HlPerp", prevApr: -0.0412, apr: 0.0231, at: now - 12 * 60_000, gapMin: 5 },
+        { symbol: "ETH", venue: "BinPerp", prevApr: 0.0187, apr: -0.0094, at: now - 47 * 60_000, gapMin: 5 },
+        { symbol: "kPEPE", venue: "BybitPerp", prevApr: -0.1103, apr: 0.0552, at: now - 96 * 60_000, gapMin: 890 },
+      ],
+    },
+  };
+  put.run("flips:24h", (() => { const id = randomBytes(40).toString("hex"); writeFileSync(join(blobDir, id), JSON.stringify(flips)); return id; })());
+  console.log(`  flips:24h  ${flips.result.rows.length} rows of ${flips.result.total}, one with a 890-minute detection gap`);
+}
+
 db.close();
 console.log(wrote ? `seeded ${wrote} m15 series into the gate's fixture` : "nothing written");
 process.exit(wrote ? 0 : 1);

@@ -2,6 +2,7 @@ import { fetchSnapshot, fetchLive } from "../src/lib/hyperliquid.ts";
 import { fetchCandles, fetchHourly, fetchM15, fetchFundingHistory, mergeFunding, type FundingPoint } from "../src/lib/candles.ts";
 import { orderSweeps } from "../src/lib/sweep-order.ts";
 import { stepIndexNow, publishedUrls } from "./indexnow.ts";
+import { readFlips, writeCachedFlips, type D1Like } from "../src/lib/flips.ts";
 import { stepReport, stepProbe } from "./report.ts";
 import { COINS, fetchSpot, fetchSpotCandles } from "../src/lib/coins.ts";
 
@@ -155,6 +156,8 @@ interface RunResult {
   /** What the IndexNow step did, including when it did nothing — a silent step is one nobody
    *  notices has stopped working. */
   indexnow?: string;
+  /** What the flip precompute did, so a stalled feed is visible in the run log. */
+  flips?: string;
   funding?: number;
   candleError?: string;
   /** Minutes since each bulk sweep last completed a full cycle — the only way a 2h/6h/12h
@@ -380,6 +383,28 @@ async function run(env: Env): Promise<RunResult> {
 
       const step = await stepReport(env);
       if (step) { result.report = step; throw SKIP_SWEEPS; }
+
+      /* THE FLIP FEED IS COMPUTED HERE, ONCE, INSTEAD OF ON EVERY HOMEPAGE RENDER.
+         Same function, same SQL, same rows — only the caller moved. It ran per reader before,
+         which the meter showed as 64.5M D1 rows read per day against a 83,808-row table: the
+         one cost line on this project that scaled with traffic, on a project whose entire
+         current work is to increase traffic. A failure here leaves the previous value in place
+         until it ages out, at which point the page says "warming" rather than showing a stale
+         feed as current. */
+      try {
+        /* D1Like is the structural subset flips.ts needs; the worker's D1Database is wider and
+             the compiler will not narrow it implicitly. Asserting to the interface the callee
+             declares is honest — it is exactly the shape being used. */
+        const flips = await readFlips(env.DB as unknown as D1Like, 24);
+        if (flips.status !== "no-store") {
+          await writeCachedFlips(env.SNAPSHOT, flips, Date.now());
+          result.flips = flips.status === "ready" ? `${flips.total} flip(s), ${flips.rows.length} shown` : flips.status;
+        } else {
+          result.flips = "no-store";
+        }
+      } catch (e) {
+        result.flips = `threw (${e instanceof Error ? e.message : String(e)})`;
+      }
 
       /* ANNOUNCED ONLY WHEN THE SET OF PUBLISHED URLS CHANGES — see worker/indexnow.ts for
          why that, and not "the page changed". Placed after the report and before the sweeps

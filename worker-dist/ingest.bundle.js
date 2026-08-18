@@ -261,6 +261,60 @@ async function stepIndexNow(env, current) {
   }
 }
 
+// src/lib/flips.ts
+async function readFlips(db, hours = 24) {
+  if (!db) return { status: "no-store" };
+  try {
+    const oldest = await db.prepare("SELECT MIN(at) AS a FROM funding_snapshot").first();
+    const since = oldest?.a ?? 0;
+    if (!since) return { status: "warming", since: 0, hours: 0 };
+    const covered = (Date.now() - since) / 36e5;
+    if (covered < hours) return { status: "warming", since, hours: covered };
+    const cutoff = Date.now() - hours * 36e5;
+    const { results } = await db.prepare(
+      `WITH ordered AS (
+           SELECT symbol, venue, apr, at,
+                  LAG(apr) OVER (PARTITION BY symbol, venue ORDER BY at) AS prev_apr,
+                  LAG(at)  OVER (PARTITION BY symbol, venue ORDER BY at) AS prev_at
+           FROM funding_snapshot
+           WHERE at >= ?1
+         )
+         , flips AS (
+           SELECT symbol, venue, prev_apr AS prevApr, apr, at,
+                  (at - prev_at) / 60000 AS gapMin,
+                  ROW_NUMBER() OVER (PARTITION BY symbol, venue ORDER BY at DESC) AS rn
+           FROM ordered
+           WHERE prev_apr IS NOT NULL
+             AND ((prev_apr < 0 AND apr >= 0) OR (prev_apr >= 0 AND apr < 0))
+         )
+         /* ONE ROW PER CONTRACT \u2014 the LATEST flip.
+            Without this, every flip event in the window was listed, so LTC on Bybit appeared
+            four times and ENA on Bybit four times, each with a different value under a column
+            headed "Now (APR)". Four mutually exclusive "now"s for one contract in one document.
+            A contract that oscillates around zero is not four separate pieces of news. */
+         , latest AS (
+           SELECT symbol, venue, prevApr, apr, at, gapMin FROM flips WHERE rn = 1
+         )
+         /* The count comes from the same CTE the rows come from, so the number the page prints
+            and the rows it shows can never describe different sets. */
+         SELECT symbol, venue, prevApr, apr, at, gapMin,
+                (SELECT count(*) FROM latest) AS total
+         FROM latest
+         ORDER BY at DESC
+         LIMIT 25`
+    ).bind(cutoff).all();
+    const rows = results ?? [];
+    return { status: "ready", rows, since, total: Number(rows[0]?.total ?? rows.length) };
+  } catch {
+    return { status: "no-store" };
+  }
+}
+var FLIPS_KEY = "flips:24h";
+var FLIPS_MAX_AGE_MS = 20 * 60 * 1e3;
+async function writeCachedFlips(kv, result, now) {
+  await kv.put(FLIPS_KEY, JSON.stringify({ computedAt: now, result }));
+}
+
 // worker/report.ts
 var UA = "GPTBot/1.1";
 var SLICE = 20;
@@ -708,7 +762,7 @@ async function fetchSpotCandles(product, granularity) {
 }
 
 // worker/build-stamp.ts
-var WORKER_BUILD = "ba838ee32fe1";
+var WORKER_BUILD = "27428a6f43f6";
 
 // worker/ingest.ts
 var RETAIN_HOURS = 72;
@@ -843,6 +897,17 @@ async function run(env) {
       if (step) {
         result.report = step;
         throw SKIP_SWEEPS;
+      }
+      try {
+        const flips = await readFlips(env.DB, 24);
+        if (flips.status !== "no-store") {
+          await writeCachedFlips(env.SNAPSHOT, flips, Date.now());
+          result.flips = flips.status === "ready" ? `${flips.total} flip(s), ${flips.rows.length} shown` : flips.status;
+        } else {
+          result.flips = "no-store";
+        }
+      } catch (e) {
+        result.flips = `threw (${e instanceof Error ? e.message : String(e)})`;
       }
       try {
         result.indexnow = await stepIndexNow(env, publishedUrls(env.SITE_ORIGIN || "https://coinliqui.com", nowPublished, []));

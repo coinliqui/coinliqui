@@ -109,6 +109,74 @@ export async function readFlips(db: D1Like | undefined, hours = 24): Promise<Fli
   }
 }
 
+/* =========================================================================================
+   THE SAME ANSWER, COMPUTED ONCE PER SNAPSHOT INSTEAD OF ONCE PER READER.
+
+   readFlips above is a windowed scan with two window functions over every funding_snapshot
+   row in the trailing 24 hours. It ran on EVERY uncached homepage render, and the meter is
+   what exposed the size of that: 64.5 million D1 rows read per day, against a table holding
+   83,808 rows and a site receiving two clicks a week. Roughly 43,200 rows per homepage
+   render — the whole window, every time — for an answer that changes only when the cron
+   writes a new snapshot, which is once every five minutes.
+
+   Nothing about it was wrong. It was correct, indexed, and bounded. It was simply being asked
+   the same question by every reader, and D1 bills rows read, so it was the one cost line on
+   this project that scaled with traffic. That mattered more than its size: the whole point of
+   the current work is to increase traffic, so the cheap line was the one that would stop being
+   cheap precisely when the work succeeded.
+
+   The computation is unchanged and still lives in readFlips — the WORKER calls it once per
+   ingest pass and stores the result. Pages read the stored result. Same rows, same ordering,
+   same dedupe, because it is the same function and the same SQL producing them.
+   ========================================================================================= */
+
+/** What the worker stores. The result plus when it was computed, so staleness is observable. */
+export interface CachedFlips {
+  computedAt: number;
+  result: FlipsResult;
+}
+
+export const FLIPS_KEY = "flips:24h";
+
+/** Anything older than this is not shown. Two ingest passes; a third missed one is a fault. */
+export const FLIPS_MAX_AGE_MS = 20 * 60 * 1000;
+
+export interface KVLike {
+  get(key: string, type: "json"): Promise<unknown>;
+  put(key: string, value: string): Promise<void>;
+}
+
+/**
+ * Read the precomputed feed. Deliberately does NOT fall back to the D1 query: a fallback would
+ * reintroduce the per-render scan exactly when something is already wrong, and would hide the
+ * fault by continuing to look correct. "warming" is a state this page already renders honestly,
+ * and /status reports the age so a stalled worker is visible rather than silently absorbed.
+ */
+export async function readCachedFlips(kv: KVLike | undefined): Promise<FlipsResult> {
+  if (!kv) return { status: "no-store" };
+  let cached: CachedFlips | null = null;
+  try {
+    cached = (await kv.get(FLIPS_KEY, "json")) as CachedFlips | null;
+  } catch {
+    return { status: "no-store" };
+  }
+  if (!cached || typeof cached.computedAt !== "number" || !cached.result) {
+    return { status: "warming", since: 0, hours: 0 };
+  }
+  if (Date.now() - cached.computedAt > FLIPS_MAX_AGE_MS) {
+    /* Stale is not the same as missing, and printing a day-old event feed as current would be
+       the exact defect this codebase keeps finding elsewhere. Report it as what it is. */
+    const since = cached.result.status === "ready" ? cached.result.since : 0;
+    return { status: "warming", since, hours: 0 };
+  }
+  return cached.result;
+}
+
+/** Written by the ingest worker, once per pass. */
+export async function writeCachedFlips(kv: KVLike, result: FlipsResult, now: number): Promise<void> {
+  await kv.put(FLIPS_KEY, JSON.stringify({ computedAt: now, result } satisfies CachedFlips));
+}
+
 export function describeCoverage(r: FlipsResult): string {
   if (r.status === "no-store") {
     return "The flip feed reads the funding-history database, and it is not answering here.";
