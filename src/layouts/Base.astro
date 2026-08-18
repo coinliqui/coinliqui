@@ -102,7 +102,16 @@ const schema = {
       "@type": "WebSite",
       "@id": `${base}#website`,
       name: SITE.name,
-      alternateName: `${SITE.name} — ${SITE.tagline}`,
+      /* THE PROPERTY IS FOR AN ALTERNATE NAME, AND THIS WAS A TAGLINE.
+         Google defines alternateName as "the alternate name of the website (for example, if
+         there's a commonly recognized acronym or shorter name)" and says a generic descriptive
+         string is unlikely to be selected — so "Coinliqui — Perpetual funding, normalised." was
+         filling the one slot Google offers for a second name with a sentence it will not use.
+         Deleting it would leave that slot empty; the domain is the one value the documentation
+         says it will strongly consider, and it is also the exact string a reader types when
+         they are trying to work out whether this site is what it claims to be. og:site_name is
+         already the plain name and is left alone. */
+      alternateName: new URL(base).host,
       url: base,
       inLanguage: SITE.locale,
       publisher: { "@id": `${base}#org` },
