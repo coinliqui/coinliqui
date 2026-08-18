@@ -277,9 +277,18 @@ ${origin} \xB7 started ${now.toISOString().slice(0, 16).replace("T", " ")} UTC
       st.i = 0;
       if (!env.GSC_SA_KEY) {
         say("Not available: GSC_SA_KEY is not set.\n");
-        say("To enable: create a Google Cloud service account, enable the Search Console API, add its");
-        say("email as a **full user** on the `coinliqui.com` Domain property, then");
-        say("`npx wrangler secret put GSC_SA_KEY` and paste the JSON key. Nothing about the site changes.");
+        say("To enable, in order:\n");
+        say("1. Google Cloud console: create a project, enable the **Google Search Console API**,");
+        say("   create a **service account**, and download a **JSON key**.");
+        say("2. Search Console -> the `coinliqui.com` Domain property -> Settings -> Users and");
+        say("   permissions -> Add user: paste the service account's `client_email`, permission");
+        say("   **Owner**.");
+        say("3. `npx wrangler secret put GSC_SA_KEY` and paste the whole JSON key file.\n");
+        say("Owner, not Full. Search Analytics (section B2) works for any verified user, but the");
+        say("URL Inspection API used for the per-template indexed share is owner-only and returns");
+        say("PERMISSION_DENIED for a Full user. Adding a service account as a delegated owner is");
+        say("supported on Domain properties and does not affect DNS verification.\n");
+        say("Nothing about the site itself changes; this only lets the weekly report read data.");
         st.phase = "crawlers";
       } else {
         say("### Indexed share, per template\n");
@@ -397,8 +406,8 @@ Search performance not available: ${e instanceof Error ? e.message : String(e)}`
     const j = await r.json();
     if (j.errors?.length) throw new Error(j.errors.map((e) => e.message).join("; "));
     const groups = j.data?.viewer?.zones?.[0]?.httpRequestsAdaptiveGroups ?? [];
-    say("Last 7 days, from Cloudflare's edge. Aggregate request metrics the host already keeps \u2014");
-    say("no script, no cookie, nothing added to the page.\n");
+    say("Last 7 days, from Cloudflare's edge \u2014 the only place a named crawler is visible at all,");
+    say("since Googlebot runs no JavaScript and never appears in Google Analytics.\n");
     say("| Crawler | Requests |");
     say("|---|---:|");
     let any = false;
@@ -528,7 +537,12 @@ var COINS = [
 ];
 var num = (x) => typeof x === "string" || typeof x === "number" ? Number(x) : NaN;
 async function fetchSpot() {
-  const r = await fetch(`${CB}/products/stats`, { headers: { "user-agent": "coinliqui.com" } });
+  const send = () => fetch(`${CB}/products/stats`, { headers: { "user-agent": "coinliqui.com" } });
+  let r = await send();
+  if (r.status === 429 || r.status === 502) {
+    await new Promise((res) => setTimeout(res, 1200));
+    r = await send();
+  }
   if (!r.ok) throw new Error(`coinbase ${r.status}`);
   const all = await r.json();
   const q = {};
@@ -550,6 +564,9 @@ async function fetchSpotCandles(product, granularity) {
   return rows.map((x) => [x[0] * 1e3, x[3], x[2], x[1], x[4], x[5]]).filter((c) => c.every(Number.isFinite)).sort((a, b) => a[0] - b[0]);
 }
 
+// worker/build-stamp.ts
+var WORKER_BUILD = "8bb19a3c307b";
+
 // worker/ingest.ts
 var RETAIN_HOURS = 72;
 var CANDLE_REFRESH_HOURS = 12;
@@ -558,7 +575,6 @@ var FUNDING_REFRESH_HOURS = 6;
 var CANARY_RETAIN_HOURS = 168;
 var CHUNK = 24;
 var FILL_BACKOFF_MS = 10 * 6e4;
-var WORKER_BUILD = "2026-08-17e";
 var ingest_default = {
   async scheduled(event, env, ctx) {
     if (event.cron === "* * * * *") {

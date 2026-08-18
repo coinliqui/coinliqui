@@ -40,6 +40,39 @@ async function fetchAs(path, ua = "Mozilla/5.0", accept = ACCEPT) {
   return { status: r.status, headers: r.headers, body: await r.text() };
 }
 
+/**
+ * BYTES ON THE WIRE, which `fetch` cannot tell you.
+ *
+ * The first version of the weight check did this:
+ *
+ *   const r = await fetch(url, { headers: { "accept-encoding": "br, gzip" } });
+ *   const wire = (await r.arrayBuffer()).byteLength;   // 387,021
+ *
+ * and reported every page as several times over budget. undici DECOMPRESSES transparently and
+ * leaves `content-encoding: br` on the response, so the header confirms compression while the
+ * body you measure is the decoded one — the check reads as correct and is wrong by 5x. There is
+ * no `content-length` to fall back on either; these responses are chunked.
+ *
+ * node:https does not decompress, so this counts what a client actually waits for. It is the
+ * same shape as the HEAD-versus-GET lesson recorded elsewhere in this file: the convenient API
+ * answered a different question than the one being asked, confidently.
+ */
+async function wireSize(path) {
+  const https = await import("node:https");
+  return new Promise((resolve, reject) => {
+    const u = new URL(ORIGIN + path);
+    https.get(
+      { hostname: u.hostname, path: u.pathname + u.search,
+        headers: { "user-agent": "Mozilla/5.0", accept: ACCEPT, "accept-encoding": "br, gzip" } },
+      (res) => {
+        let wire = 0;
+        res.on("data", (c) => { wire += c.length; });
+        res.on("end", () => resolve({ wire, enc: res.headers["content-encoding"] ?? "none", status: res.statusCode }));
+      },
+    ).on("error", reject);
+  });
+}
+
 console.log(`\n=== ${ORIGIN} ===\n`);
 
 /* 1. Crawler access. The whole project's visibility rests on this, and it cannot be
@@ -378,7 +411,45 @@ console.log("\n10. the cache headers this repo declares are the ones served");
 }
 
 /* 10. Data freshness, as served. */
-console.log("\n11. data");
+/* 11. PAGE WEIGHT, AS A RATCHET RATHER THAN A TARGET.
+      Measured on the wire, brotli, live. The heaviest page here is a contract page at ~72 KB
+      compressed / 386 KB decoded, and 43% of its 4,519 DOM nodes belong to timeframe panels the
+      reader cannot see — three of four charts are rendered and hidden so switching needs no
+      request and no JavaScript. Stripping the hidden panels' SVG would save 18 KB on the wire
+      and 162 KB decoded.
+
+      THAT TRADE IS DELIBERATE AND IS NOT CHANGED HERE. It is the house rule working as intended
+      — interaction as a layer over already-rendered values — and I could not measure whether it
+      costs anything that matters: this environment records no paint timings, and the anonymous
+      PageSpeed Insights quota is exhausted, so LCP and TBT are UNMEASURED. Acting on "4,519
+      nodes exceeds a Lighthouse threshold" would be optimising against a number nobody here has
+      seen. What IS measured and good: CLS 0.0000 across zero layout shifts, TTFB 81 ms.
+
+      So this is a ratchet. It does not judge whether today's weight is right; it fails the day
+      a page grows past it, which is the failure that actually arrives — a template gains a
+      section, fifty pages gain 40 KB, and nobody notices because each page still renders.
+      Budgets are the observed size plus roughly a quarter of headroom. Raising one is a
+      decision someone makes on purpose, in a diff, with a reason. */
+console.log("\n11. page weight on the wire");
+{
+  const BUDGET = [
+    ["/", 8_000], ["/funding", 9_500], ["/funding/btc", 92_000], ["/coins/bitcoin", 72_000],
+    ["/open-interest", 6_500], ["/liquidations", 60_000], ["/liquidations/survival", 30_000],
+    ["/unlocks", 14_000], ["/watchlist", 12_000], ["/tools/leverage", 8_000], ["/about", 8_000],
+  ];
+  for (const [path, budget] of BUDGET) {
+    const { wire, enc } = await wireSize(path);
+    if (enc === "none") {
+      bad(`${path} is served UNCOMPRESSED (${wire.toLocaleString()}b) — compression is worth 70-96% on every page here`);
+    } else if (wire > budget) {
+      bad(`${path} is ${wire.toLocaleString()}b on the wire, over its ${budget.toLocaleString()}b budget by ${(wire - budget).toLocaleString()}b`);
+    } else {
+      ok(`${path.padEnd(24)} ${String(wire).padStart(7)}b ${enc}  (budget ${budget.toLocaleString()})`);
+    }
+  }
+}
+
+console.log("\n12. data");
 {
   const r = await fetchAs("/status", "Mozilla/5.0");
   const grab = (re) => re.exec(r.body)?.[1]?.trim() ?? "?";
