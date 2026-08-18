@@ -151,11 +151,8 @@ const description =
 
   <h2 class="section">Who runs it, and how to reach us</h2>
   <p class="prose">
-    {SITE.name} is built and operated by <strong>{IDENTITY.operator}</strong> — one person, not
-    a company, funded by nobody. The source of this site is public at
-    {" "}<a class="link" href={IDENTITY.sameAs[0]} rel="noopener">github.com/coinliqui/coinliqui</a>,
-    which is the same code that renders the page you are reading and carries the commit history
-    behind it. It has been publishing since {new Date(IDENTITY.launched).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" })}.
+    {SITE.name} is independently built and operated, not by a company and not funded by anyone.
+    It has been publishing since {new Date(IDENTITY.launched).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" })}.
     Coverage grows deliberately slowly: a contract gets a page once it holds
     {" "}{usd(OI_NOTIONAL_FLOOR)} of open interest, and pages are added at a few a week rather
     than generated in bulk.

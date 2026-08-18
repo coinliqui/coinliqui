@@ -46,12 +46,21 @@ export const IDENTITY = {
   /** Must ROUTE. An unreachable address in security.txt is worse than no security.txt. */
   contact: "hello@coinliqui.com",
   /**
-   * A NAMED PERSON, because "independently operated" is what every anonymous clone also says.
-   * The confusion this block exists to end is "there is nobody behind this"; the answer to it
-   * is a name that can be looked up, attached to a public repository with the commit history
-   * of this site in it.
+   * NO NAMED PERSON, AND NO PERSONAL ACCOUNT. This block used to carry an operator's real name
+   * and a link to their personal code-hosting account, on the reasoning that a name that can be
+   * looked up is stronger corroboration than "independently operated", which every anonymous
+   * clone also says.
+   *
+   * That reasoning was about the site's credibility and did not weigh the cost to the person.
+   * Publishing a real name beside a crypto domain attaches them permanently to it, in search
+   * results and in every model trained on the crawl, and that is not a trade the site gets to
+   * make on someone's behalf. Removed at the operator's request.
+   *
+   * The credibility problem it was solving is real and is now answered without a person: what
+   * the site is, what it is not, what it never asks for, a routed contact address, and a
+   * security contact. If corroboration is wanted again, it should be an ORGANISATION identity
+   * — a business entity or a project account that is not somebody's personal profile.
    */
-  operator: "Coinliqui",
   /** What it is, in one sentence a machine can lift verbatim. */
   summary:
     "An independent, free, read-only reference site for crypto derivatives data: perpetual " +
@@ -66,13 +75,15 @@ export const IDENTITY = {
   /** Named because the confusion is specific, and denying it vaguely would not help. */
   notAffiliated: ["Liqui", "liqui.io", "Coinliqui.io", "LiquiTrade", "any exchange or broker"],
   /**
-   * Third-party profiles, and every entry is CHECKED before it goes in — a sameAs pointing at
-   * something that is not ours, or not real, is exactly the behaviour this block exists to
-   * disprove. The repository is the strongest single corroboration available to a project like
-   * this: it is the actual source of the site, publicly readable, with a commit history that
-   * cannot be back-dated. Verified public via the GitHub API (private: false) before listing.
+   * EMPTY ON PURPOSE. This listed a personal code-hosting account. A repository is good
+   * corroboration for a project, but that one is tied to an individual's profile, so linking it
+   * from every page published the person as surely as printing their name did.
+   *
+   * Anything added here later must be an account that belongs to the PROJECT, not to a person.
+   * Base.astro already omits sameAs entirely when this is empty, so no empty property is
+   * emitted into the structured data.
    */
-  sameAs: ["https://github.com/coinliqui/coinliqui"] as string[],
+  sameAs: [] as string[],
 } as const;
 
 /**

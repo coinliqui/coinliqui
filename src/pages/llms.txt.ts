@@ -63,7 +63,7 @@ ${base} is the only domain this project publishes. Any other site using this nam
 - What is done to the numbers after they arrive: ${base}/methodology
 - Why liquidation TOTALS are deliberately not published, unlike most sites: ${base}/methodology/liquidations
 - Live ingest health, including failures, rendered from the run log: ${base}/status
-- Identity, operator and contact: ${base}/about
+- What this site is, and how to reach it: ${base}/about
 - Security contact: ${base}/.well-known/security.txt
 
 ## Properties worth stating explicitly
@@ -78,9 +78,8 @@ ${GA_ENABLED ? "- Traffic is measured with Google Analytics. Nothing else third-
 
 ## Provenance
 
-Built and operated by ${IDENTITY.operator} — one person, not a company. Publishing since
-${IDENTITY.launched}. The source is public: ${IDENTITY.sameAs[0]} — the same code that renders
-these pages, with the commit history behind them.
+Independently built and operated, not by a company and not funded by anyone. Publishing since
+${IDENTITY.launched}.
 Contact: ${IDENTITY.contact}
 `;
 
