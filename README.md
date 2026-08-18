@@ -41,7 +41,7 @@ behind it.
 
 `npm run check` is a hard gate and nothing is pushed past it. It runs a typecheck, a build,
 the invariant suites, and a smoke pass that renders every route against both a warm fixture and
-an empty store. Around twenty of its checks exist because a specific defect shipped, and each
+an empty store. Its checks exist, nearly all of them, because a specific defect shipped, and each
 carries the account of what it missed; most also carry a *blind case* — the same check run
 against a deliberately reintroduced fault, so a check that has stopped seeing anything fails
 instead of passing quietly.
@@ -50,12 +50,18 @@ Deployment runbook: **[DEPLOY.md](DEPLOY.md)** — dashboard only.
 
 **Brand lives in one constant.** `SITE.name` in `src/lib/site.ts` feeds the rail wordmark,
 the JSON-LD and every `<title>` — pages pass a bare title and `Base.astro` appends the
-suffix, so a rename is one line rather than twenty-four. `STORE_NS` does the same for the
+suffix, so a rename is one line rather than one per template. `STORE_NS` does the same for the
 one key this site's own code writes to a visitor's browser, which is why `/privacy` can print
 the exact key instead of a copy that drifts. Analytics cookies are set by Google's tag and are
 not in that constant.
 
-## Routes
+## Principal routes
+
+Not an inventory — the complete list of what is served, and the expected status of each, is
+`ROUTES` in [scripts/smoke.mjs](scripts/smoke.mjs), which is the list the gate actually renders
+on every push. A table here would be a second copy that drifts, and the first version of this
+file drifted exactly that way, naming contract and sitemap totals that the code had long since
+moved past — in a paragraph explaining why counts do not belong in this file.
 
 | Route | Template | Notes |
 |---|---|---|

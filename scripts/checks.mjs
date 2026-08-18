@@ -925,6 +925,11 @@ export function readmeCounts(readme) {
     [/\b(\d+)\s+pages\b/gi, "pages"],
     [/\b(\d+)\s+URLs?\s+across\b/gi, "sitemap URLs"],
     [/\b(\d+)\s+coins?\b/gi, "coins"],
+    /* Added after both drifted in the published README: "around twenty" checks when there were
+       26, and "twenty-four" templates. Word-form numbers count — the file broke its own rule in
+       words, not digits, which is exactly how it evaded the first version of this check. */
+    [/\b(\d+|twenty|thirty|forty|fifty)[\s-]+(?:of its )?checks\b/gi, "checks"],
+    [/\bthan (\d+|twenty-four|twelve|twenty)\b/gi, "templates or files"],
   ];
   for (const [re, what] of patterns) {
     for (const m of readme.matchAll(re)) {
