@@ -7,6 +7,13 @@ rates compared across Hyperliquid, Binance and Bybit on a common annualisation; 
 modelled liquidation levels; on-chain token vesting contracts read directly from Ethereum; and
 spot prices from Coinbase Exchange.
 
+**How the three venues are read, stated up front because it is the one claim here that could
+otherwise be falsified.** Only Hyperliquid is queried directly. The Binance and Bybit funding
+rates arrive because Hyperliquid republishes them in its `predictedFundings` feed, so this site
+compares three venues' rates through one venue's endpoint — a normalisation of a republished
+figure, not three independent connections. [/data-sources](https://coinliqui.com/data-sources)
+names the endpoint behind every number, this one included.
+
 **It is not an exchange.** There are no accounts, no sign-up, no deposits or withdrawals, no
 wallet connection, no token and no referral programme. It never asks for money, keys, seed
 phrases or personal details, and has no mechanism to accept them. It is not affiliated with

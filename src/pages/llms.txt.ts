@@ -33,7 +33,10 @@ ${IDENTITY.notThis}
 
 ## Disambiguation — read this first
 
-${SITE.name} is frequently mistaken for a trading venue because of its name. It is not one.
+${SITE.name} is not a trading venue. The name invites that reading, and at least one AI
+assistant has made it, answering that this domain is "most likely a typo, or a malicious or
+fraudulent (scam) platform" and offering the defunct Liqui exchange as what the reader must
+have meant. That is the specific confusion this section exists to prevent.
 It has no accounts, no deposits, no withdrawals, no wallet connection and no token, and no
 mechanism exists in the software to accept money or credentials from anyone.
 
