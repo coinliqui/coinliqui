@@ -35,7 +35,7 @@
 import { spawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { readdirSync, readFileSync } from "node:fs";
-import { cssFor, undefinedClasses, undefinedVars, rawEnums, searchIndexGaps, unnamedUpstreams, formatterDrift, uncoveredRoutes, unreadableText, chartAgreement, requestedLeverageLabels, inlineScriptSyntax, flipTableColour, colourPalettes, colourLanguageDrift, colourLegend, publishesAPerson, fixtureGaps, staleDerivedCells, basisSelfConsistent, sitemapLastmodHonesty, breadcrumbAgreement, founderAgreement } from "./checks.mjs";
+import { cssFor, undefinedClasses, undefinedVars, rawEnums, searchIndexGaps, unnamedUpstreams, formatterDrift, uncoveredRoutes, unreadableText, chartAgreement, requestedLeverageLabels, inlineScriptSyntax, flipTableColour, colourPalettes, colourLanguageDrift, colourLegend, publishesAPerson, fixtureGaps, staleDerivedCells, basisSelfConsistent, sitemapLastmodHonesty, breadcrumbAgreement, founderAgreement, readmeCounts } from "./checks.mjs";
 
 /* The SERVER side of each duplicated formatter, transcribed from the file that owns it and
    named here so the pairing is explicit. Transcription is the honest cost of having no bundler:
@@ -317,6 +317,20 @@ for (const path of ROUTES) {
     } catch (e) {
       bad++;
       console.log(`  FAIL          contrast check failed: ${e.message}`);
+    }
+    try {
+      /* The repository is a published surface too, once it is public. */
+      const stale = readmeCounts(await readFile("README.md", "utf8"));
+      if (stale.length) {
+        bad++;
+        console.log(`  FAIL  ${String(stale.length).padStart(4)}         the README names a count the code sizes`);
+        for (const l of stale) console.log(`          ${l}`);
+      } else {
+        console.log(`  ok            the README names no count that can go stale`);
+      }
+    } catch (e) {
+      bad++;
+      console.log(`  FAIL          README audit failed: ${e.message}`);
     }
     try {
       const drift = formatterDrift(await readFile("public/interact.js", "utf8"), SERVER_FORMATTERS);

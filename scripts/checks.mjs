@@ -902,3 +902,37 @@ export function breadcrumbAgreement(html) {
   if (parent.item && !String(parent.item).endsWith(wantHref)) out.push(`the trail links to ${wantHref} but the markup points at ${parent.item}`);
   return out;
 }
+
+
+/**
+ * THE README STATES ITS OWN RULE AND THEN BROKE IT THREE TIMES.
+ *
+ * "this file deliberately names the constants rather than a count, because the count goes stale
+ * here and nothing notices" — and two lines above it said "25 contracts", "25 pages", and
+ * "42 URLs across 7". By the time anyone read it the site published 50 contracts across 78
+ * sitemap URLs. Nothing noticed, exactly as the file predicted of itself.
+ *
+ * That matters more once the repository is public, because the README stops being a note to
+ * ourselves and becomes the front page a reader uses to decide whether the site's claims can
+ * be trusted. A front page whose first checkable fact is wrong answers that question badly.
+ *
+ * So: no bare count of a thing the code sizes. Named constants, or a live URL, or nothing.
+ */
+export function readmeCounts(readme) {
+  const out = [];
+  const patterns = [
+    [/\b(\d+)\s+contracts?\b/gi, "contracts"],
+    [/\b(\d+)\s+pages\b/gi, "pages"],
+    [/\b(\d+)\s+URLs?\s+across\b/gi, "sitemap URLs"],
+    [/\b(\d+)\s+coins?\b/gi, "coins"],
+  ];
+  for (const [re, what] of patterns) {
+    for (const m of readme.matchAll(re)) {
+      /* A count inside a quoted upstream fact is a measurement, not a claim about our own size. */
+      const around = readme.slice(Math.max(0, m.index - 90), m.index);
+      if (/verified|as of|upstream|returned|POST |`\/info/i.test(around)) continue;
+      out.push(`README says "${m[0]}" — a bare count of ${what}, which the code sizes and this file's own rule says to name by constant instead`);
+    }
+  }
+  return [...new Set(out)];
+}

@@ -1,8 +1,43 @@
-# coinliqui.com — phase 0
+# coinliqui
 
-Perpetual funding, normalised. Built to the project's SEO constitution: every displayed
-number is in the server-rendered HTML at first byte, every navigation link is a real
-`<a href>`, no page ships without real data behind it.
+**[coinliqui.com](https://coinliqui.com)** — perpetual funding, normalised.
+
+A free, independent, read-only reference site for crypto derivatives data: perpetual funding
+rates compared across Hyperliquid, Binance and Bybit on a common annualisation; open interest;
+modelled liquidation levels; on-chain token vesting contracts read directly from Ethereum; and
+spot prices from Coinbase Exchange.
+
+**It is not an exchange.** There are no accounts, no sign-up, no deposits or withdrawals, no
+wallet connection, no token and no referral programme. It never asks for money, keys, seed
+phrases or personal details, and has no mechanism to accept them. It is not affiliated with
+Liqui, liqui.io, Coinliqui.io, LiquiTrade, or any exchange or broker.
+
+This repository is the source of that site. It is published so the claims the site makes about
+itself can be checked rather than taken on trust:
+
+| Claim the site makes | Where to check it in this repo | Where to check it live |
+|---|---|---|
+| Every number names its source | [`src/lib/`](src/lib) fetchers, one per upstream | [/data-sources](https://coinliqui.com/data-sources) |
+| The arithmetic is stated, not hidden | [`src/lib/funding.ts`](src/lib/funding.ts), [`src/lib/margin.ts`](src/lib/margin.ts) | [/methodology](https://coinliqui.com/methodology) |
+| Figures are rendered server-side, not fetched by script | `.astro` templates under [`src/pages/`](src/pages) | view-source on any page |
+| Nothing is published that cannot be stood behind | [`/methodology/liquidations`](src/pages/methodology/liquidations.astro) — why no liquidation totals exist here | [/methodology/liquidations](https://coinliqui.com/methodology/liquidations) |
+| The ingest's real success rate, failures included | [`worker/ingest.ts`](worker/ingest.ts) | [/status](https://coinliqui.com/status) |
+| Indexation is reported, not asserted | [`worker/report.ts`](worker/report.ts) | [/status/indexation](https://coinliqui.com/status/indexation) |
+
+Contact: **hello@coinliqui.com** · Security reports: [security.txt](https://coinliqui.com/.well-known/security.txt)
+
+## How it is built
+
+Built to the project's SEO constitution: every displayed number is in the server-rendered HTML
+at first byte, every navigation link is a real `<a href>`, no page ships without real data
+behind it.
+
+`npm run check` is a hard gate and nothing is pushed past it. It runs a typecheck, a build,
+the invariant suites, and a smoke pass that renders every route against both a warm fixture and
+an empty store. Around twenty of its checks exist because a specific defect shipped, and each
+carries the account of what it missed; most also carry a *blind case* — the same check run
+against a deliberately reintroduced fault, so a check that has stopped seeing anything fails
+instead of passing quietly.
 
 Deployment runbook: **[DEPLOY.md](DEPLOY.md)** — dashboard only.
 
@@ -18,8 +53,8 @@ not in that constant.
 | Route | Template | Notes |
 |---|---|---|
 | `/` | homepage | Dated factual H1, change cards, flip feed, top-20 table |
-| `/funding` | hub | 25 contracts × 3 venues, annualised. One link per row |
-| `/funding/{symbol}` | entity | 25 pages. Candles, volume and the funding band on one time axis. 404s below the coverage floor rather than rendering thin |
+| `/funding` | hub | Every published contract × 3 venues, annualised. One link per row |
+| `/funding/{symbol}` | entity | One page per published contract, capped at `SYMBOL_CAP`. Candles, volume and the funding band on one time axis. 404s below the coverage floor rather than rendering thin |
 | `/open-interest` | hub | OI, volume, turnover multiple |
 | `/liquidations` | model | Modelled liquidation density, every assumption printed and adjustable, plus the derived corridor chart |
 | `/liquidations/sweep` | case | The 5–6 Feb 2026 event, frozen with its provenance — the model tested against real candles |
@@ -33,7 +68,7 @@ not in that constant.
 | `/data-sources` | reference | Every endpoint, cadence, and what is deliberately absent |
 | `/privacy` | reference | What is collected: no accounts, no payment or personal data, GA4 |
 | `/status` | operational | Snapshot age, per-venue coverage, canary history. `Disallow`ed |
-| `/robots.txt`, `/sitemap-index.xml`, `/sitemaps/*.xml` | — | One sitemap per template. 42 URLs across 7 |
+| `/robots.txt`, `/sitemap-index.xml`, `/sitemaps/*.xml` | — | One sitemap per template, so Search Console reports an indexation rate per template |
 
 ## Data
 

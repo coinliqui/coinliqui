@@ -25,7 +25,15 @@ import { execFileSync } from "node:child_process";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-const ACCOUNT = "7118e7c838c68b1c370b7837743a150e";
+/* NOT A SECRET, AND NOT FREE EITHER. An account id is an identifier rather than a credential —
+   knowing it grants nothing, and Cloudflare prints them in its own examples. But it is a
+   permanent, unrotatable handle on the owner's account, and it appears here only because two
+   scripts need it in a URL path, so it costs nothing to take it from the environment instead
+   of publishing it. The resource ids in wrangler.toml are a different case and stay: wrangler
+   requires them to deploy at all, every public Cloudflare project commits them, and they
+   confer no access. */
+const ACCOUNT = process.env.CF_ACCOUNT_ID;
+if (!ACCOUNT) { console.error("CF_ACCOUNT_ID is required — the Cloudflare account these calls address. Not defaulted on purpose."); process.exit(1); }
 const cfg = join(homedir(), ".wrangler/config/default.toml");
 if (!existsSync(cfg)) { console.error("no wrangler credential — run `npx wrangler login`"); process.exit(1); }
 const token = /oauth_token\s*=\s*"([^"]+)"/.exec(readFileSync(cfg, "utf8"))?.[1];
