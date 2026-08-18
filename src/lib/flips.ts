@@ -49,7 +49,13 @@ export interface D1Like {
  * "no flips" and "not enough history to know" are different statements and must not be
  * collapsed into the same empty state.
  */
-export async function readFlips(db: D1Like | undefined, hours = 24): Promise<FlipsResult> {
+export async function readFlips(db: D1Like | undefined, hours = 24, now = Date.now()): Promise<FlipsResult> {
+  /* `now` IS A PARAMETER SO THE WINDOW CAN BE PINNED. The cutoff is `now - hours`, a window
+     that slides continuously, so recomputing this two minutes after the worker did returns a
+     legitimately different answer — one flip ages out of the window and `total` drops by one.
+     That is correct behaviour and it is indistinguishable, to a comparison, from the cache
+     being wrong. scripts/flips-parity.mjs passes the stored computedAt so both sides evaluate
+     the same window and any difference that remains is a real one. */
   if (!db) return { status: "no-store" };
 
   // The store may be bound but not yet migrated — that must degrade to an honest message,
@@ -62,10 +68,10 @@ export async function readFlips(db: D1Like | undefined, hours = 24): Promise<Fli
     const since = oldest?.a ?? 0;
     if (!since) return { status: "warming", since: 0, hours: 0 };
 
-    const covered = (Date.now() - since) / 3_600_000;
+    const covered = (now - since) / 3_600_000;
     if (covered < hours) return { status: "warming", since, hours: covered };
 
-    const cutoff = Date.now() - hours * 3_600_000;
+    const cutoff = now - hours * 3_600_000;
     const { results } = await db
       .prepare(
         `WITH ordered AS (

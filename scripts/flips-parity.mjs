@@ -45,12 +45,16 @@ const remoteD1 = {
   },
 };
 
-console.log("recomputing the flip feed from production D1 …");
-const live = await readFlips(remoteD1, 24);
-
+/* THE STORED FEED IS READ FIRST, so its computedAt can pin the window for the recomputation.
+   Comparing against a window evaluated `now` compares two different questions: the cutoff
+   slides, flips age out of it, and `total` legitimately differs. Pinning makes any remaining
+   difference a real one. */
 console.log("reading what the worker stored …");
 const raw = sh(["wrangler", "kv", "key", "get", "--remote", "--namespace-id", NS, FLIPS_KEY]);
 const stored = JSON.parse(raw);
+
+console.log(`recomputing from production D1, pinned to the stored instant (${new Date(stored.computedAt).toISOString()}) …`);
+const live = await readFlips(remoteD1, 24, stored.computedAt);
 
 const fail = [];
 const ageMin = Math.round((Date.now() - stored.computedAt) / 60000);

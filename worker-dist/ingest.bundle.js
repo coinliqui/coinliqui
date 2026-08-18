@@ -262,15 +262,15 @@ async function stepIndexNow(env, current) {
 }
 
 // src/lib/flips.ts
-async function readFlips(db, hours = 24) {
+async function readFlips(db, hours = 24, now = Date.now()) {
   if (!db) return { status: "no-store" };
   try {
     const oldest = await db.prepare("SELECT MIN(at) AS a FROM funding_snapshot").first();
     const since = oldest?.a ?? 0;
     if (!since) return { status: "warming", since: 0, hours: 0 };
-    const covered = (Date.now() - since) / 36e5;
+    const covered = (now - since) / 36e5;
     if (covered < hours) return { status: "warming", since, hours: covered };
-    const cutoff = Date.now() - hours * 36e5;
+    const cutoff = now - hours * 36e5;
     const { results } = await db.prepare(
       `WITH ordered AS (
            SELECT symbol, venue, apr, at,
@@ -762,7 +762,7 @@ async function fetchSpotCandles(product, granularity) {
 }
 
 // worker/build-stamp.ts
-var WORKER_BUILD = "27428a6f43f6";
+var WORKER_BUILD = "c2fe1e472f4e";
 
 // worker/ingest.ts
 var RETAIN_HOURS = 72;
