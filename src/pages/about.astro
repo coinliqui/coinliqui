@@ -163,7 +163,24 @@ const description =
   <p class="prose">
     Corrections are welcome and acted on — if a number here disagrees with the venue it came
     from, that is a bug and we want to know. Write to
-    {" "}<a class="link" href={`mailto:${IDENTITY.contact}`}>{IDENTITY.contact}</a>. Security
+    {" "}{/* CLOUDFLARE WAS EATING THE ONLY CONTACT ADDRESS ON THE SITE.
+        Email Address Obfuscation rewrites any mailto: it finds in HTML as it leaves the edge —
+        after this code has run, with no way for it to intervene. Live, before this: the href
+        became /cdn-cgi/l/email-protection#58303d3434371... which returns 404, and the visible
+        text became the literal string "[email protected]". So the address was unreachable by
+        click and read as nonsense to every crawler and answer engine — on the pages built to
+        establish that a real person operates this site, which is the whole reason the address
+        was published.
+
+        <!--email_off--> is Cloudflare's own documented opt-out and needs no dashboard access,
+        which matters because this project's grant cannot even READ zone settings. Emitted via
+        Fragment set:html so the comments survive verbatim; the anchor stays ordinary Astro
+        markup so its scoped class still applies.
+
+        The plain-text surfaces were never affected — /llms.txt and /.well-known/security.txt
+        are not HTML, so the rewriter left them alone, and the JSON-LD was fine for the same
+        reason. Only the two human-readable pages were broken. */}
+      <!--email_off--><a class="link" href={`mailto:${IDENTITY.contact}`}>{IDENTITY.contact}</a><!--email_on-->. Security
     reports have their own route at <a class="link" href="/.well-known/security.txt">/.well-known/security.txt</a>.
   </p>
 

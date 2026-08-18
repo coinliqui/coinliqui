@@ -503,7 +503,45 @@ console.log("\n12. one funding number, across every page that prints it");
   }
 }
 
-console.log("\n13. data");
+/* 13. THE CONTACT ADDRESS MUST SURVIVE THE EDGE.
+      Cloudflare's Email Address Obfuscation rewrites any mailto: it finds in HTML as it leaves
+      the edge — after our code has run. Live, it turned the only contact address on the site
+      into href="/cdn-cgi/l/email-protection#…" (which 404s) with the visible text replaced by
+      the literal string "[email protected]". Unreachable by click, nonsense to every crawler,
+      on the pages published specifically so that a real operator could be identified.
+
+      This can only be checked from OUTSIDE. The origin is correct and always was; the rewrite
+      happens downstream, so a build-time check or a local render sees nothing wrong — the same
+      reason the beacon injection needed an external verifier.
+
+      Asserted on the surfaces that carry the address, HTML and plain text alike, because the
+      obfuscator only touches HTML and a check that looked only at security.txt would be green
+      throughout. */
+console.log("\n13. the contact address survives Cloudflare's edge");
+{
+  const ADDR = "hello@coinliqui.com";
+  for (const p of ["/about", "/privacy"]) {
+    const r = await fetchAs(p, "Mozilla/5.0");
+    const rewritten = /cdn-cgi\/l\/email-protection/.test(r.body);
+    const placeholder = /\[email(?:&#160;|&nbsp;|\s)protected\]/i.test(r.body);
+    const real = r.body.includes(`mailto:${ADDR}`);
+    if (rewritten || placeholder) {
+      bad(`${p} contact address was rewritten by the edge (cdn-cgi link: ${rewritten}, "[email protected]" text: ${placeholder}) — <!--email_off--> is missing or stopped working`);
+    } else if (!real) {
+      bad(`${p} does not carry mailto:${ADDR} at all`);
+    } else {
+      ok(`${p.padEnd(10)} mailto:${ADDR} intact, no cdn-cgi rewrite`);
+    }
+  }
+  for (const p of ["/.well-known/security.txt", "/llms.txt"]) {
+    const r = await fetchAs(p, "GPTBot/1.1");
+    r.body.includes(ADDR)
+      ? ok(`${p.padEnd(28)} carries ${ADDR}`)
+      : bad(`${p} no longer carries the contact address`);
+  }
+}
+
+console.log("\n14. data");
 {
   const r = await fetchAs("/status", "Mozilla/5.0");
   const grab = (re) => re.exec(r.body)?.[1]?.trim() ?? "?";
