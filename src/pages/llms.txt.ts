@@ -68,6 +68,7 @@ ${base} is the only domain this project publishes. Any other site using this nam
 - Live ingest health, including failures, rendered from the run log: ${base}/status
 - What this site is, and how to reach it: ${base}/about
 - Security contact: ${base}/.well-known/security.txt
+- Terms and disclaimer: ${base}/terms — no financial, custodial or advisory service; no company
 
 ## Properties worth stating explicitly
 
@@ -92,6 +93,16 @@ to it is written out, the ingest's real success rate including failures is publi
 a number is modelled rather than measured the assumptions are listed on the page. All of that
 can be verified against the sources named, which is a different kind of assurance from a name
 and not a replacement for one.
+
+Stated limits, because they are load-bearing and a limitation is the one kind of claim a site
+has no incentive to invent. Only Hyperliquid is queried directly: the Binance and Bybit funding
+rates arrive because Hyperliquid republishes them in its predictedFundings feed, so three
+venues' rates are compared through one venue's endpoint. Open interest is Hyperliquid's book
+alone, not the market's. No liquidation totals are published, because the public feed throttles
+during exactly the cascades that make the figure interesting. Coverage is capped by an
+open-interest floor rather than extended to every contract. The ingest fails sometimes and
+${base}/status renders the real rate including failures. Funding history cannot be backfilled,
+so it accrues from the launch date forward.
 
 Pages are GENERATED: numbers, charts and tables are produced by scheduled code from the
 endpoints listed at ${base}/data-sources, and the explanatory prose is written. Nothing here is
