@@ -33,9 +33,14 @@ const path = Astro.url.pathname;
 const base = origin(Astro.site);
 const isActive = (href: string) => (href === "/" ? path === "/" : path === href || path.startsWith(href + "/"));
 
-// Rail state is decided on the SERVER from a cookie: no flash, no layout shift, and a
-// crawler (which sends no cookie) always receives the expanded rail with visible labels.
-const collapsed = Astro.cookies.get("rail")?.value === "0";
+/* RAIL STATE IS NO LONGER IN THE HTML, and the reason is the cache rather than the rail.
+   It used to be read from a cookie during server rendering, which made every document
+   cookie-dependent and forced `Vary: Cookie` on the response. `Vary: Cookie` keys a shared
+   cache on the WHOLE Cookie header — fine while `rail` was the only cookie and had two
+   values, and useless the moment an analytics cookie gives every returning visitor a unique
+   one. Every visitor would become their own cache entry.
+   So the document is now identical for everyone, and the collapsed class is applied from the
+   cookie by a parser-blocking script in <head>, before first paint. See the note there. */
 const ageMin = fetchedAt && !frozen ? Math.max(0, Math.round((Date.now() - fetchedAt) / 60000)) : null;
 
 /* "361 min ago" is arithmetic homework, not a reading. Minutes up to an hour, then hours,
@@ -102,6 +107,29 @@ const schema = {
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    {/* THE RAIL'S COLLAPSED STATE, APPLIED BEFORE FIRST PAINT.
+        This is the counterpart to removing the cookie from the server render. It is inline and
+        parser-blocking on purpose: the browser runs it before it paints anything, so a reader
+        who collapsed the rail still sees it collapsed with no flash and no layout shift — the
+        same guarantee the server-side read gave, bought without making the document personal.
+
+        The class goes on <html> rather than on .app, which is why the CSS above uses
+        `.is-collapsed .app` and not `.app.is-collapsed`: <html> exists at this point and .app
+        does not. Every other `.is-collapsed X` rule is a descendant selector and matches from
+        the root unchanged.
+
+        WHAT THIS COSTS, stated rather than glossed: with JavaScript disabled the rail always
+        renders expanded. The toggle still works — it is a form POST — but the preference does
+        not persist visually. That is a cosmetic preference, and the alternative was a document
+        that no shared cache can reuse across visitors. Nothing about the DATA depends on this
+        script; every number is already in the HTML. */}
+    <script is:inline>
+      try {
+        if (document.cookie.split(";").some(function (c) { return c.trim() === "rail=0"; })) {
+          document.documentElement.classList.add("is-collapsed");
+        }
+      } catch (e) { /* a rail that will not collapse is not a reason to break a page */ }
+    </script>
     <title>{fullTitle}</title>
     <meta name="description" content={description} />
     {noindex && <meta name="robots" content="noindex, follow" />}
@@ -237,7 +265,7 @@ const schema = {
          SHELL
          ========================================================================== */
       .app { display: grid; grid-template-columns: var(--rail-w) minmax(0,1fr); min-height: 100vh; }
-      .app.is-collapsed { grid-template-columns: var(--rail-w-collapsed) minmax(0,1fr); }
+      .is-collapsed .app { grid-template-columns: var(--rail-w-collapsed) minmax(0,1fr); }
 
       /* --- rail: comfortable rows, soft pill active state (Drive / Gemini) --- */
       /* Chrome is ambient: the rail carries no fill and no border, sitting directly on
@@ -697,7 +725,7 @@ const schema = {
       /* --- mobile: same anchors, re-laid-out. Never a second DOM copy. --- */
       .navtoggle, .nav__scrim { display: none; }
       @media (max-width: 900px) {
-        .app, .app.is-collapsed { grid-template-columns: minmax(0,1fr); }
+        .app, .is-collapsed .app { grid-template-columns: minmax(0,1fr); }
         .topbar { padding: 0 16px; }
         .page { margin: 0 12px 12px; padding: 16px 16px 24px; min-height: 0; }
         /* THE AGE STAYS ON MOBILE. This used to hide every span in the pill so the cluster
@@ -833,13 +861,12 @@ const schema = {
     )}
   </head>
   <body>
-    <div class:list={["app", { "is-collapsed": collapsed }]}>
+    <div class="app">
       <!-- ONE nav element. The mobile bar below reuses these same anchors via CSS. -->
       <nav class="rail" id="nav" aria-label="Main">
         <div class="rail__top">
           <form method="POST" action="/rail" style="display:contents">
-            <button class="icon-btn" type="submit" name="collapsed" value={collapsed ? "0" : "1"}
-                    aria-label={collapsed ? "Expand navigation" : "Collapse navigation"}>
+            <button class="icon-btn" type="submit" aria-label="Toggle navigation">
               <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M3 5h14M3 10h14M3 15h14" /></svg>
             </button>
           </form>

@@ -295,7 +295,47 @@ for (const p of ["/funding/btc", "/funding/eth", "/funding/sol", "/funding/kpepe
 }
 
 /* 9. Data freshness, as served. */
-console.log("\n9. data");
+/* 9. THE DOCUMENT MUST NOT DEPEND ON A COOKIE.
+      `Vary: Cookie` keys a shared cache on the whole Cookie header, so one cookie with a
+      per-visitor value — any analytics cookie — turns a shared cache into a per-visitor cache
+      with a ~100% miss rate. The fix was not to drop the header but to remove the dependency:
+      the rail's collapsed state is applied client-side before paint, so the HTML is the same
+      for everyone and there is nothing to vary on.
+
+      BOTH halves are asserted, because either alone can hold while the bug is present. A page
+      could drop `Vary` and still render per-cookie HTML — now serving the wrong nav state from
+      a shared cache — or keep identical HTML and still send `Vary`, paying the whole cost for
+      nothing. Compared as full bodies rather than lengths: the two documents used to differ by
+      the token `is-collapsed`, and a length comparison treats near-misses as equal.
+
+      The freshness stamp moves between requests, so it is normalised out. That is a real
+      difference and not the one under test; everything else must match exactly. */
+console.log("\n9. the document does not depend on a cookie");
+for (const p of ["/", "/funding/btc"]) {
+  const plain = await fetchAs(p, "Mozilla/5.0");
+  const withCookie = await fetch(ORIGIN + p, {
+    headers: { "user-agent": "Mozilla/5.0", accept: ACCEPT, cookie: "rail=0; _ga=GA1.1.1234567890.1700000000" },
+    redirect: "manual",
+  }).then(async (r) => ({ status: r.status, headers: r.headers, body: await r.text() }));
+
+  const norm = (b) => b.replace(/datetime="[^"]*"/g, "").replace(/>[^<]*(?:just now|min ago|h ago|d ago)[^<]*</g, "><");
+  const a = norm(plain.body), b = norm(withCookie.body);
+  if (a !== b) {
+    /* Name the first divergence rather than only reporting inequality — a diff nobody can
+       locate is a check nobody acts on. */
+    let i = 0; while (i < a.length && i < b.length && a[i] === b[i]) i++;
+    bad(`${p} renders DIFFERENT html with a cookie — first divergence at byte ${i}: ${JSON.stringify(a.slice(Math.max(0, i - 40), i + 40))} vs ${JSON.stringify(b.slice(Math.max(0, i - 40), i + 40))}`);
+  } else {
+    ok(`${p.padEnd(14)} identical with and without cookies (${plain.body.length}b)`);
+  }
+  const vary = (plain.headers.get("vary") ?? "").toLowerCase();
+  vary.includes("cookie")
+    ? bad(`${p} still sends Vary: Cookie ("${vary}") — one per-visitor cookie makes every visitor their own cache entry`)
+    : ok(`${p.padEnd(14)} no Vary: Cookie (vary: ${vary || "none"})`);
+}
+
+/* 10. Data freshness, as served. */
+console.log("\n10. data");
 {
   const r = await fetchAs("/status", "Mozilla/5.0");
   const grab = (re) => re.exec(r.body)?.[1]?.trim() ?? "?";

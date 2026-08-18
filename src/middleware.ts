@@ -49,38 +49,28 @@ export const onRequest = defineMiddleware(async (ctx, next) => {
   }
 
   if (isDocument && cacheable && !res.headers.has("cache-control")) {
-    /* THE RAIL COOKIE MAKES THE RESPONSE PERSONAL.
-       Every page reads the `rail` cookie on the server to decide whether the navigation is
-       collapsed, and every page was being sent `public, s-maxage=120` with no Vary. Nothing
-       broke, because Cloudflare does not cache HTML unless a Cache Rule says so — which is
-       precisely what makes it dangerous: the bug is armed and waiting for whoever adds that
-       rule, and the symptom would be visitors seeing each other's navigation state.
+    /* NO `Vary: Cookie`, BECAUSE THE DOCUMENT NO LONGER DEPENDS ON ONE.
+       This block used to split every response in two: a request carrying the `rail` cookie got
+       `private, no-store`, everything else got the shared-cacheable variant, and both carried
+       `Vary: Cookie` so a shared cache could not mix them up.
 
-       So the two cases are separated at the source. A request carrying the cookie gets a
-       response nothing may share. A request without it — every crawler, and every first-time
-       visitor — gets the cacheable one.
+       That was correct and it was a trap. `Vary: Cookie` keys a shared cache on the ENTIRE
+       Cookie header. With `rail` as the only cookie that is two variants. Add any analytics
+       cookie and every returning visitor carries a unique value, so every visitor becomes their
+       own cache entry — a shared cache with a ~100% miss rate, which is worse than no cache
+       because the lookup still costs. It would have fired silently, months later, on whoever
+       enabled caching or analytics first.
 
-       `no-transform` is not set and must not be: it forbids edge compression, and brotli is
-       worth 81-96% on every page here. It was once set to stop an injected analytics beacon,
-       back when this site claimed to load no third-party scripts. That claim is retired. */
-    /* `_ga` ARMS THIS, and the trap is the same one this block already describes.
-       `Vary: Cookie` keys a shared cache on the WHOLE Cookie header. Today the only cookie is
-       `rail`, with two values, so the cacheable branch has two variants at most. The moment a
-       measurement ID is set, every returning visitor carries a distinct `_ga` value and every
-       one of them becomes its own cache entry — a shared cache with a ~100% miss rate, which
-       is worse than no cache because it still costs the lookup.
-       It is INERT TODAY for the reason stated above: Cloudflare does not cache HTML unless a
-       Cache Rule says so, and there is none. So this is not a live defect; it is a second
-       thing armed and waiting for whoever adds that rule. Whoever does must key the rule on
-       the `rail` cookie specifically rather than on Cookie, or drop the cookie-driven rail
-       state first. Written down because the previous armed-and-waiting bug in this exact
-       block was found by reading rather than by breaking, and only once. */
-    const personal = ctx.cookies.has("rail");
-    res.headers.set(
-      "cache-control",
-      personal ? "private, no-store" : "public, s-maxage=120, stale-while-revalidate=600",
-    );
-    res.headers.append("vary", "cookie");
+       It is fixed at the source instead of worked around: the rail's collapsed state is no
+       longer read during server rendering, so the HTML is byte-identical for every visitor and
+       there is nothing to vary on. Base.astro applies the class before first paint from the
+       cookie, and /rail toggles server-side so the button's markup carries no state either.
+
+       One consequence worth naming: responses are now cacheable for visitors who have cookies,
+       which they were not before. That is the point, and it is only safe because the document
+       genuinely does not depend on them. Anything added later that DOES depend on a cookie must
+       either go client-side the same way or bring `Vary` back with its cost understood. */
+    res.headers.set("cache-control", "public, s-maxage=120, stale-while-revalidate=600");
   }
 
   // The rail toggle sets a cookie and redirects; a shared cache must never hold that.
@@ -105,9 +95,9 @@ export const onRequest = defineMiddleware(async (ctx, next) => {
    * true. script-src gains ONE named host; connect-src and img-src gain wildcards on three
    * Google domains. And www.googletagmanager.com will serve any GTM container to anyone who
    * asks for it by ID, so allowlisting it is strictly weaker than 'self' — it is a deliberate
-   * trade for the analytics, not a free one. The directives that carry the anti-injection
+   * trade for the analytics, not a free one. What carries the anti-injection weight is the set
    * NOT relaxed: object-src 'none', base-uri 'self', frame-ancestors 'none', form-action
-   * 'self', default-src 'self'. Those are the anti-injection half and none of them moved.
+   * 'self', default-src 'self'. None of those moved.
    *
    * The rule for editing this: name hosts, never a scheme and never a wildcard. `https:` or
    * `*` in script-src would permit every origin on the internet and read, at a glance, like a

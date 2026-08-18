@@ -8,9 +8,12 @@ import type { APIRoute } from "astro";
  * sends no cookie — always receives the expanded rail with visible labels.
  */
 export const POST: APIRoute = async ({ request, cookies, redirect }) => {
-  const form = await request.formData();
-  const collapsed = form.get("collapsed") === "1";
-  cookies.set("rail", collapsed ? "0" : "1", {
+  /* THE BUTTON NO LONGER SENDS THE STATE, so this reads it. That is not a refactor for its own
+     sake: the value the button used to submit was rendered from the cookie, which made the
+     document differ per visitor and forced `Vary: Cookie` on every response. Toggling here
+     leaves the markup identical for everyone and the response cacheable. */
+  const nowCollapsed = cookies.get("rail")?.value === "0";
+  cookies.set("rail", nowCollapsed ? "1" : "0", {
     path: "/",
     httpOnly: false,
     sameSite: "lax",
