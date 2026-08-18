@@ -659,3 +659,39 @@ export function fixtureGaps(sources, fixtureKeys) {
   }
   return gaps.sort();
 }
+
+/**
+ * A CELL DERIVED FROM A LIVE RATE MUST BE LIVE TOO.
+ *
+ * The one-minute overlay repaints elements carrying data-spot. It repainted the APR cell and
+ * left everything computed FROM that rate at the value the server rendered five minutes
+ * earlier, so a row contradicted itself a minute after load. Measured on /coins/bitcoin: one
+ * row read 0.90% APR beside $2.30, and $2.30 is the weekly cost of the 1.20% that cell held
+ * before the pull — 0.90% gives $1.73.
+ *
+ * This is the SECOND time two representations of one funding rate have drifted apart: the
+ * first was hlApr against the venue array, fixed at the source. This one arrived from the
+ * other end, through an overlay rather than a render, which is why fixing the source did not
+ * prevent it and why a check is worth more than either fix.
+ *
+ * It works on the SOURCE rather than the rendered page on purpose — the defect is a missing
+ * attribute, and an attribute that is missing produces no evidence in the HTML to find.
+ */
+export function staleDerivedCells(sources) {
+  const out = [];
+  for (const [file, src] of sources) {
+    /* Rows/blocks that contain a live APR. Split coarsely on the element that carries it and
+       look at what follows within the same table row or card. */
+    for (const m of src.matchAll(/data-spot=\{?[^}]*?"apr"/g)) {
+      const after = src.slice(m.index, m.index + 900);
+      const block = after.slice(0, after.search(/<\/tr>|<\/div>\s*<\/div>/) + 1 || 900);
+      /* Anything computing from an apr in that block must carry its own data-spot. */
+      for (const d of block.matchAll(/<(td|div|span)\b([^>]*)>\{[^}]*?\b(week\(|carryCost\(|aprSpread|\.apr\s*>=\s*0)/g)) {
+        if (!/data-spot/.test(d[2])) {
+          out.push(`${file}: a cell derived from a live APR carries no data-spot — it will hold the render-time value after the overlay repaints the rate (${d[0].slice(0, 70).replace(/\s+/g, " ")}…)`);
+        }
+      }
+    }
+  }
+  return [...new Set(out)];
+}

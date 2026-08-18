@@ -67,7 +67,7 @@ const description =
                 </td>
               );
             })}
-            <td class="num">{spread != null ? pct(spread) : <span class="faint">—</span>}</td>
+            <td class="num" data-spot={spread != null ? "spread" : undefined} data-sym={p.symbol}>{spread != null ? pct(spread) : <span class="faint">—</span>}</td>
             <td class="num">{usd(p.oiNotional)}</td>
             <td class="num">{usd(p.dayNtlVlm)}</td>
           </tr>

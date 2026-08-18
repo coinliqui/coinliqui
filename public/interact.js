@@ -540,6 +540,39 @@
             el.classList.toggle("pays-l", a >= 0);
             el.classList.toggle("pays-s", a < 0);
           }
+        } else if (kind === "carry" || kind === "dir" || kind === "spread") {
+          /* EVERYTHING DERIVED FROM A REPAINTED RATE MUST BE REPAINTED WITH IT.
+             The overlay used to update the APR cell alone, so the weekly cost, the direction
+             words and the spread beside it kept the value the server rendered five minutes
+             earlier. Measured live on /coins/bitcoin: one row read 0.90% APR next to $2.30,
+             and $2.30 is the weekly cost of the 1.20% that cell held before the pull. Adjacent
+             cells of one row could not both be true — the same defect the funding fields had,
+             arriving from the other end, through an overlay rather than a render.
+
+             The arithmetic here is the whole reason these carry attributes: notional and days
+             come from the markup, so this is not a second copy of a business rule, it is the
+             same rule applied to a newer number. */
+          const vs = d.apr[sym];
+          if (vs) {
+            if (kind === "spread") {
+              const xs = Object.values(vs).filter(Number.isFinite);
+              if (xs.length > 1) next = pctOf(Math.max(...xs) - Math.min(...xs));
+            } else {
+              const a = vs[el.dataset.venue];
+              if (Number.isFinite(a)) {
+                if (kind === "dir") {
+                  next = a >= 0 ? (el.dataset.pay ?? "longs pay") : (el.dataset.recv ?? "longs receive");
+                  el.classList.toggle("pays-l", a >= 0);
+                  el.classList.toggle("pays-s", a < 0);
+                } else {
+                  const notional = +el.dataset.notional || 10000;
+                  const days = +el.dataset.days || 7;
+                  const v = Math.abs(a) * notional * (days / 365);
+                  next = "$" + v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                }
+              }
+            }
+          }
         } else if (kind === "chgmark" && Number.isFinite(mk) && +el.dataset.prev > 0) {
           const c = mk / +el.dataset.prev - 1;
           next = `${c >= 0 ? "▲" : "▼"} ${(Math.abs(c) * 100).toFixed(2)}%`;

@@ -35,7 +35,7 @@
 import { spawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { readdirSync, readFileSync } from "node:fs";
-import { cssFor, undefinedClasses, undefinedVars, rawEnums, searchIndexGaps, unnamedUpstreams, formatterDrift, uncoveredRoutes, unreadableText, chartAgreement, requestedLeverageLabels, inlineScriptSyntax, flipTableColour, colourPalettes, colourLanguageDrift, colourLegend, publishesAPerson, fixtureGaps } from "./checks.mjs";
+import { cssFor, undefinedClasses, undefinedVars, rawEnums, searchIndexGaps, unnamedUpstreams, formatterDrift, uncoveredRoutes, unreadableText, chartAgreement, requestedLeverageLabels, inlineScriptSyntax, flipTableColour, colourPalettes, colourLanguageDrift, colourLegend, publishesAPerson, fixtureGaps, staleDerivedCells } from "./checks.mjs";
 
 /* The SERVER side of each duplicated formatter, transcribed from the file that owns it and
    named here so the pairing is explicit. Transcription is the honest cost of having no bundler:
@@ -116,6 +116,8 @@ try {
   /* EVERY inline island must PARSE. A SyntaxError kills the whole island and every handler in
      it, while the server render stays perfect — so this is the one class the rest of the gate
      is structurally unable to see. */
+  const walkAstro = (d) => readdirSync(d, { withFileTypes: true }).flatMap((e) =>
+    e.isDirectory() ? walkAstro(`${d}/${e.name}`) : e.name.endsWith(".astro") ? [`${d}/${e.name}`] : []);
   const walk = (d) => readdirSync(d, { withFileTypes: true }).flatMap((e) =>
     e.isDirectory() ? walk(`${d}/${e.name}`) : e.name.endsWith(".astro") ? [`${d}/${e.name}`] : []);
   const syn = walk("src/pages").concat(["src/layouts/Base.astro"])
@@ -151,6 +153,11 @@ try {
       console.log(`\n  FAIL  fixture coverage could not be checked: ${e.message}`);
     }
   }
+
+  /* Source invariant: a cell computed from a live rate must be repainted with it. The overlay
+     shipped this defect once and a rendered page cannot reveal a MISSING attribute. */
+  const stale = staleDerivedCells(walkAstro("src/pages").map((f) => [f, readFileSync(f, "utf8")]));
+  if (stale.length) { failures++; console.log(`\n  FAIL  ${stale.length} cell(s) derived from a live rate are never repainted:`); for (const l of stale) console.log(`          ${l}`); }
 
   const un = uncoveredRoutes(await readFile(`${dir}/${manifest}`, "utf8"), ROUTES);
   if (un.length) {

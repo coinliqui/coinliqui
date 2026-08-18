@@ -231,7 +231,8 @@ const description = `Live ${coin.name} (${coin.symbol}) spot price from ${SPOT_S
     </div>
     <div class="card">
       <div class="card__label">Cost to hold $10,000 long</div>
-      <div class="card__value">{hl ? usd(Math.abs(week(hl.apr)), 2) : "—"}</div>
+      <div class="card__value" data-spot={hl ? "carry" : undefined} data-sym={coin.symbol} data-venue="HlPerp"
+           data-notional="10000" data-days="7">{hl ? usd(Math.abs(week(hl.apr)), 2) : "—"}</div>
       <div class="card__meta">{hl ? `per week · ${hl.apr >= 0 ? "you pay" : "you receive"}` : "—"}</div>
     </div>
     <div class="card">
@@ -259,8 +260,14 @@ const description = `Live ${coin.name} (${coin.symbol}) spot price from ${SPOT_S
               <td class="num">{f && Number.isFinite(f.intervalHours) ? `${f.intervalHours}h` : <span class="faint">—</span>}</td>
               <td class:list={["num", ok && paysClass(f!.apr)]} style="font-weight:600"
                   data-spot={ok ? "apr" : undefined} data-sym={coin.symbol} data-venue={v}>{ok ? pct(f!.apr) : "—"}</td>
-              <td class="num">{ok ? usd(Math.abs(week(f!.apr)), 2) : "—"}</td>
-              <td>{ok ? (f!.apr >= 0 ? "longs pay" : "longs receive") : <span class="faint">—</span>}</td>
+              {/* Both cells are DERIVED FROM THE SAME f.apr the cell before them carries, so
+                  they must be repainted with it or the row contradicts itself one minute after
+                  load. notional and days travel as attributes so the overlay applies this
+                  page's rule rather than carrying its own copy of it. */}
+              <td class="num" data-spot={ok ? "carry" : undefined} data-sym={coin.symbol} data-venue={v}
+                  data-notional="10000" data-days="7">{ok ? usd(Math.abs(week(f!.apr)), 2) : "—"}</td>
+              <td data-spot={ok ? "dir" : undefined} data-sym={coin.symbol} data-venue={v}
+                  data-pay="longs pay" data-recv="longs receive">{ok ? (f!.apr >= 0 ? "longs pay" : "longs receive") : <span class="faint">—</span>}</td>
             </tr>
           );
         })}

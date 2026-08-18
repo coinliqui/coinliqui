@@ -303,7 +303,9 @@ const description = `What a ${p.symbol} perpetual costs to hold: ${venuePhrase},
     </div>
     <div class="card">
       <div class="card__label">Spread between venues</div>
-      <div class="card__value">{p.aprSpread != null ? pct(p.aprSpread) : "—"}</div>
+      {/* max-min over the venue cells below, so it must be recomputed from the SAME numbers
+          after a live pull — otherwise the card describes a set the table no longer shows. */}
+      <div class="card__value" data-spot={p.aprSpread != null ? "spread" : undefined} data-sym={p.symbol}>{p.aprSpread != null ? pct(p.aprSpread) : "—"}</div>
       <div class="card__meta">annualised difference</div>
     </div>
     <div class="card">
