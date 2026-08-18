@@ -575,6 +575,28 @@ console.log("\n12. one funding number, across every page that prints it");
       Asserted on the surfaces that carry the address, HTML and plain text alike, because the
       obfuscator only touches HTML and a check that looked only at security.txt would be green
       throughout. */
+/* 12b. THE CANONICAL MUST NAME THE HOST THAT SERVED IT.
+   For about eight hours every canonical on this site read http://localhost:4321, because the
+   build moved from Cloudflare to a laptop and astro.config only fails closed when CF_PAGES is
+   set. Production is the only place this is observable, so it is checked here as well as in the
+   artifact — a canonical pointing at an unfetchable host is the most damaging single line the
+   site can publish, and it published it without anything going red. */
+console.log("\n12b. every canonical names the canonical origin");
+{
+  for (const p of ["/", "/about", "/funding/btc", "/coins/bitcoin", "/unlocks"]) {
+    const r = await fetchAs(p, "Mozilla/5.0");
+    const can = (r.body.match(/<link rel="canonical" href="([^"]+)"/) || [])[1];
+    if (!can) bad(`${p} has no canonical at all`);
+    else if (!can.startsWith(ORIGIN)) bad(`${p} canonical is ${can} — not ${ORIGIN}`);
+    else ok(`${p.padEnd(16)} canonical ${can}`);
+  }
+  for (const p of ["/llms.txt", "/.well-known/security.txt", "/sitemap-index.xml"]) {
+    const r = await fetchAs(p, "Mozilla/5.0");
+    const n = (r.body.match(/(localhost|127\.0\.0\.1)/g) || []).length;
+    n ? bad(`${p} carries ${n} localhost reference(s)`) : ok(`${p.padEnd(28)} no localhost origin`);
+  }
+}
+
 console.log("\n13. the contact address survives Cloudflare's edge");
 {
   const ADDR = "hello@coinliqui.com";

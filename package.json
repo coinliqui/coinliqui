@@ -21,7 +21,7 @@
     "stamp:worker": "node scripts/stamp-worker.mjs",
     "deploy:worker": "node scripts/credentials.mjs --strict && node scripts/stamp-worker.mjs && wrangler deploy",
     "preflight": "node scripts/credentials.mjs",
-    "deploy:site": "node scripts/credentials.mjs --strict && npm run check && wrangler pages deploy dist --project-name coinliqui --branch main"
+    "deploy:site": "node scripts/credentials.mjs --strict && npm run check && SITE_URL=https://coinliqui.com npm run build && node scripts/no-localhost.mjs && wrangler pages deploy dist --project-name coinliqui --branch main"
   },
   "dependencies": {
     "@astrojs/cloudflare": "^12.6.10",
