@@ -35,7 +35,7 @@
 import { spawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { readdirSync, readFileSync } from "node:fs";
-import { cssFor, undefinedClasses, undefinedVars, rawEnums, searchIndexGaps, unnamedUpstreams, formatterDrift, uncoveredRoutes, unreadableText, chartAgreement, requestedLeverageLabels, inlineScriptSyntax, flipTableColour } from "./checks.mjs";
+import { cssFor, undefinedClasses, undefinedVars, rawEnums, searchIndexGaps, unnamedUpstreams, formatterDrift, uncoveredRoutes, unreadableText, chartAgreement, requestedLeverageLabels, inlineScriptSyntax, flipTableColour, colourPalettes, colourLanguageDrift, colourLegend } from "./checks.mjs";
 
 /* The SERVER side of each duplicated formatter, transcribed from the file that owns it and
    named here so the pairing is explicit. Transcription is the honest cost of having no bundler:
@@ -53,6 +53,9 @@ const SERVER_FORMATTERS = {
     return `$${Math.round(v)}`;
   },
 };
+
+/* Read out of the source, never transcribed here — see colourPalettes(). */
+const PALETTE = colourPalettes(readFileSync("src/lib/chart.ts", "utf8"), readFileSync("src/layouts/Base.astro", "utf8"));
 
 const PORT = 8791;
 const ROUTES = [
@@ -118,6 +121,11 @@ try {
   const syn = walk("src/pages").concat(["src/layouts/Base.astro"])
     .flatMap((p) => { try { return inlineScriptSyntax(readFileSync(p, "utf8"), p); } catch { return []; } });
   if (syn.length) { failures++; console.log(`\n  FAIL  ${syn.length} inline script(s) do not parse:`); for (const l of syn) console.log(`          ${l}`); }
+
+  /* THE TWO PALETTES MUST NOT COLLIDE, checked before a single page renders — a shared hue is
+     wrong on every page at once, so it is a source invariant rather than a per-route one. */
+  const pdrift = colourLanguageDrift(PALETTE);
+  if (pdrift.length) { failures++; console.log(`\n  FAIL  colour languages have collided:`); for (const d of pdrift) console.log(`          ${d}`); }
 
   const un = uncoveredRoutes(await readFile(`${dir}/${manifest}`, "utf8"), ROUTES);
   if (un.length) {
@@ -207,6 +215,9 @@ for (const path of ROUTES) {
        assertion that keeps the D1 fixture honest: if it is empty the feed renders a placeholder
        and this fails, rather than every check on that table silently having nothing to look at. */
     if (path === "/") content.push(...flipTableColour(body));
+    /* Two colour languages now exist. A page may speak either, and must name whichever it
+       speaks — a rule that only means anything if it is asserted per page rather than once. */
+    content.push(...colourLegend(body, PALETTE));
     if (c.length) content.push(`class defined nowhere: ${c.join(", ")}`);
     if (v.length) content.push(`custom property never declared: ${v.join(", ")}`);
     if (e.length) content.push(`internal enum rendered as text: ${e.join(", ")}`);

@@ -118,6 +118,20 @@ export const paysClass = (apr: number) => (apr >= 0 ? "pays-l" : "pays-s");
 export const paysLabel = (apr: number) => (apr >= 0 ? "longs pay shorts" : "shorts pay longs");
 export const paysArrow = (apr: number) => (apr >= 0 ? "▲" : "▼");
 export const LEGEND = "▲ longs pay shorts · ▼ shorts pay longs";
+/**
+ * TWO COLOUR LANGUAGES NOW EXIST AND EVERY PAGE THAT USES ONE MUST NAME IT.
+ *
+ * Funding direction was green and red until candles took that pair for price up and down. Two
+ * meanings cannot share one pair, so funding moved to amber and cyan — chosen by simulating
+ * normal, deuteranopic, protanopic and tritanopic vision rather than by taste.
+ *
+ * The sentence these replace was "colour encodes the direction of payment only", which was a
+ * claim about the WHOLE SITE and stopped being true the moment a chart drew a green candle.
+ * LEGEND_PAYS is for pages that show funding figures; LEGEND_CANDLE is added wherever a chart
+ * appears, so no page shows both languages without saying so.
+ */
+export const LEGEND_PAYS = "amber = longs pay shorts · cyan = shorts pay longs";
+export const LEGEND_CANDLE = "hollow green candle = price up · filled red = price down";
 
 export function usd(x: number, decimals = 0): string {
   if (!Number.isFinite(x)) return "—";

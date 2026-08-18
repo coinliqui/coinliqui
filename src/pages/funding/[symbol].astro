@@ -174,10 +174,14 @@ const description = `What a ${p.symbol} perpetual costs to hold: funding across 
       ))}
 
       <p class="legend">
-        <b>Candles</b> are monochrome — light for up, muted for down — because red and green on this
-        site mean one thing only: <b class="pays-l">longs paying shorts</b> and
-        <b class="pays-s">shorts paying longs</b>. That is the band under the volume histogram, on the
-        same time axis as the price, and it is the reason this chart is not the one everybody else draws.
+        <b>Candles</b> are green for up and red for down. The up candles are <b>hollow</b>, which is
+        the older convention and the one that matters here: simulated for protanopia the two candle
+        colours separate by very little, so the body carries the direction when the hue cannot.
+        The band under the volume histogram is a different language and a different pair —
+        <b class="pays-l">amber where longs pay shorts</b> and <b class="pays-s">cyan where shorts
+        pay longs</b>, deliberately not the candle colours, so one screen never says two things with
+        one pair. It sits on the same time axis as the price, and it is the reason this chart is not
+        the one everybody else draws.
         {active!.chart.fundingFrom && (
           <> Hyperliquid publishes its own funding hourly; this series reaches back to {shortDate(active!.chart.fundingFrom)},
           and the shaded region to its left is the part of the window with no funding to show.</>

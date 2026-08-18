@@ -1,7 +1,7 @@
 ---
 import Base from "../layouts/Base.astro";
 import { getSnapshot, coldStart } from "../lib/hyperliquid.ts";
-import { pct, usd, paysClass, paysArrow, LEGEND } from "../lib/funding.ts";
+import { pct, usd, paysClass, paysArrow, LEGEND, LEGEND_PAYS } from "../lib/funding.ts";
 import { PINNED_KEY } from "../lib/site.ts";
 
 // Every covered contract renders server-side, so the page is a complete, useful table for a
@@ -34,7 +34,7 @@ const maxOi = Math.max(...snap.perps.map((p) => p.oiNotional || 0), 1);
   </div>
 
   <div class="wl-bar">
-    <p class="legend" style="margin:0">{LEGEND} — colour encodes the direction of payment only.</p>
+    <p class="legend" style="margin:0">{LEGEND} — {LEGEND_PAYS}. No other figure is tinted.</p>
     <button class="btn wl-clear" type="button" id="wl-clear" hidden>Clear pinned coins</button>
   </div>
   <p class="section-note wl-off" id="wl-offcoverage" hidden></p>

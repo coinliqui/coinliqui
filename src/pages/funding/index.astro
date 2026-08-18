@@ -1,7 +1,7 @@
 ---
 import Base from "../../layouts/Base.astro";
 import { getSnapshot, coldStart } from "../../lib/hyperliquid.ts";
-import { VENUE_LABEL, pct, usd, rawRate, paysClass, paysArrow, LEGEND, type Venue } from "../../lib/funding.ts";
+import { VENUE_LABEL, pct, usd, rawRate, paysClass, paysArrow, LEGEND, LEGEND_PAYS, type Venue } from "../../lib/funding.ts";
 
 const snap = await getSnapshot((Astro.locals as any)?.runtime?.env?.SNAPSHOT, import.meta.env.DEV);
 // Cold store: 503 + Retry-After rather than a page rendered from nothing.
@@ -30,7 +30,7 @@ const description =
     </p>
   </div>
 
-  <p class="legend">{LEGEND} — colour encodes the direction of payment only. Every other figure is neutral.</p>
+  <p class="legend">{LEGEND} — {LEGEND_PAYS}. Every other figure is neutral.</p>
 
   <p class="clock" style="margin:0 0 12px">
     Funding updates every minute. Open interest and 24-hour volume come from the snapshot taken

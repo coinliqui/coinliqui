@@ -32,24 +32,46 @@ export const CH = {
 
 /* ---------------------------------------------------------------------------- palette
    Chart ink. Red and green appear ONLY in the funding band and its legend: they encode the
-   direction of a funding payment and nothing else, which is why candles are monochrome and
-   the density ramp is built to avoid both hues entirely. */
+   direction of a funding payment and nothing else. Candles used to be monochrome to protect
+   that, and now they are not: price up/down takes green and red, because that convention is
+   not this site's to redefine — a reader imports it from every chart they have ever seen, and
+   a green candle body reads as "price rose" whatever a legend says. Funding direction is the
+   invented meaning, so funding is the one that moved: amber and cyan, chosen by CVD
+   measurement. Funding also keeps two hue-free encodings the candles do not have — the arrow
+   and sign in tables, position around zero in the band — so it survives the change better.
+   The density ramp still avoids all four hues. */
 export const INK = {
   well: "#14171b",       // recessed plot ground, one step below the card
   hair: "#22272e",       // gridline
   zero: "#2b3138",       // the one line that means zero
   dim: "#9aa1ab",        // axis values — 6.9:1 on the well
   faint: "#6c737d",      // secondary labels
-  up: "#e8ecf1",
-  down: "#737e8c",
-  upVol: "#59636f",
-  downVol: "#3b434d",
+  /* CANDLES TAKE GREEN/RED, and funding gave it up. See the note above INK for why that way
+     round. Direction never rests on hue alone: an up candle is HOLLOW and a down candle is
+     FILLED, which is the original Japanese convention and survives greyscale, protanopia and a
+     printed page. Measured under simulated CVD, the two candle hues separate by only dE 12.1
+     for a protanope — the fill does the work there, not the colour. */
+  /* NEUTRAL, and it must stay neutral. This was the value of INK.up before candles took green,
+     and two charts used INK.up for things that are not candles and carry no direction — the
+     survival page's price strip and the line-mode price line. Repointing `up` to green silently
+     turned both of those into a third meaning: a green line that means nothing. Caught by the
+     colour-language check on its first run, which is the whole reason it exists. */
+  neutral: "#e8ecf1",
+  up: "#4fb477",
+  down: "#e2685c",
+  upVol: "#2f5f45",
+  downVol: "#6b3a37",
   acc: "#8ab4f8",
   accInk: "#12161c",
-  paysLFill: "#e0655a",  // band fill — lower chroma than the text token
-  paysSFill: "#4bb583",
-  paysL: "#ef6b5e",      // edge stroke and text
-  paysS: "#58c48c",
+  /* FUNDING DIRECTION, moved off green/red. Amber and cyan were chosen by measurement, not
+     taste: simulated across normal, deuteranopic, protanopic and tritanopic vision, this pair
+     separates by dE 64.2 at worst, sits 12.5 from the candle hues and 13.2 from the accent.
+     The old green/red pair separated by 16.3 from itself and by 3.0 from the candle colours —
+     under protanopia the two meanings would have been very nearly the same colour. */
+  paysLFill: "#c8913f",  // band fill — lower chroma than the text token
+  paysSFill: "#3aa8bd",
+  paysL: "#e3a857",      // edge stroke and text — longs pay shorts
+  paysS: "#4fc3d9",      // shorts pay longs
 } as const;
 
 /* ------------------------------------------------------------------------- ramp

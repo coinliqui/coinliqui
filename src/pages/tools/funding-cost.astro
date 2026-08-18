@@ -1,7 +1,7 @@
 ---
 import Base from "../../layouts/Base.astro";
 import { getSnapshot, coldStart, findPerp } from "../../lib/hyperliquid.ts";
-import { usd, pct, rawRate, settlementsPerYear, VENUE_LABEL, paysClass, type Venue, queryNum, paymentDirection } from "../../lib/funding.ts";
+import { usd, pct, rawRate, settlementsPerYear, VENUE_LABEL, paysClass, type Venue, queryNum, paymentDirection, LEGEND_PAYS } from "../../lib/funding.ts";
 
 const snap = await getSnapshot((Astro.locals as any)?.runtime?.env?.SNAPSHOT, import.meta.env.DEV);
 // Cold store: 503 + Retry-After rather than a page rendered from nothing.
@@ -117,7 +117,7 @@ const description = `What holding a ${perp.symbol} perpetual actually costs in f
   </p>
 
   <h2 class="section">Same position, every venue</h2>
-  <p class="section-note">Identical notional and holding period. The ordering by cost is frequently not the ordering by quoted rate.</p>
+  <p class="section-note">Identical notional and holding period. The ordering by cost is frequently not the ordering by quoted rate. {LEGEND_PAYS}.</p>
   <div class="panel">
     <table class="tbl">
       <thead><tr><th>Venue</th><th class="num">Quoted rate, per settlement</th><th class="num">Interval</th><th class="num">Settlements over {days}d</th><th class="num">APR</th><th class="num">Cost over {days}d</th></tr></thead>

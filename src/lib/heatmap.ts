@@ -11,7 +11,12 @@ import { CH, INK, RAMP, transfer, rampIndex, rampValue, niceTicks, timeTicks, te
    mostly ground with bands rather than a wall of cyan.
 
    Candles are drawn over the field with a dark halo, so they read on the ground and on the
-   brightest cell alike. They are monochrome: red and green mean funding direction.
+   brightest cell alike. They stay MONOCHROME here even though candles elsewhere on the site
+   now take green and red — the reason changed rather than disappeared. On the contract charts
+   hue is free, because nothing else on that canvas competes for it. Here the density field IS
+   the information, and it owns the full ramp; tinting the candles would put a second hue
+   channel on top of the one the page exists to show. This page carries no funding figures at
+   all (verified: zero pays-* elements), so nothing is ambiguous either way.
    ========================================================================================= */
 
 const MAP_H = 576;
@@ -63,7 +68,7 @@ export function paintHeatMap(m: LiqMap, opts: { height?: number; mid?: number; m
      band is a price level persisting through time. Cleared is the opposite event — one
      moment, many prices at once — so it is drawn across the grain, and a sweep becomes a
      continuous bright vertical streak instead of another bright horizontal thing to tell
-     apart from the ramp. Neutral white, because red and green are the funding payment's.
+     apart from the ramp. Neutral white, because the ramp owns the colour on this canvas.
      Under the candles: the observed price path stays the top layer. */
   const cpk = m.clearedPeak || 1;
   const tickW = Math.max(1.2, Math.min(2.4, cw * 0.5));

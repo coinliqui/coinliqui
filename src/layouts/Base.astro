@@ -188,8 +188,15 @@ const schema = {
         --on-accent:    #17191c;
 
         /* semantic — direction of funding payment ONLY */
-        --pays-l: #ef6b5e;   /* longs pay shorts */
-        --pays-s: #58c48c;   /* shorts pay longs */
+        /* FUNDING DIRECTION IS AMBER AND CYAN, NOT GREEN AND RED, and the reason is that
+           candles now take green/red for price up/down. Two meanings cannot share one pair.
+           Chosen by simulating normal, deuteranopic, protanopic and tritanopic vision: this
+           pair separates by dE 64.2 at worst, 12.5 from the candle hues, 13.2 from --accent.
+           Green/red separated by 16.3 from itself and 3.0 from the candle colours — for a
+           protanope the two meanings would have been nearly indistinguishable.
+           Hue is never the only carrier: every funding figure also has an arrow and a sign. */
+        --pays-l: #e3a857;   /* longs pay shorts */
+        --pays-s: #4fc3d9;   /* shorts pay longs */
 
         /* ── SPACE ─────────────────────────────────────────────────────────
            NAMED FOR THE JOB, NOT THE SIZE. Every value is a multiple of 4 — the

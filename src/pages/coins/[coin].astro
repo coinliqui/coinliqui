@@ -174,7 +174,9 @@ const description = `Live ${coin.name} (${coin.symbol}) spot price from ${SPOT_S
         Period high <b data-tfstat data-group="cx" {...stat((p) => px(p.chart!.high))}>{px(active!.chart!.high)}</b>,
         low <b data-tfstat data-group="cx" {...stat((p) => px(p.chart!.low))}>{px(active!.chart!.low)}</b>,
         over <b data-tfstat data-group="cx" {...stat((p) => `${p.chart!.bars} ${span(p.tf.key)}`)}>{active!.chart!.bars} {span(active!.tf.key)}</b>.
-        No funding band here — funding is a property of the perpetual, not of spot, and it has
+        Candles are green for up and red for down, with the up candles hollow so direction reads
+        without relying on colour. No funding band here — funding is a property of the perpetual,
+        not of spot, and it has
         {" "}<a class="link" href={`/funding/${coin.symbol.toLowerCase()}`}>its own chart</a>.
       </p>
     </>

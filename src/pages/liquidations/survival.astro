@@ -115,7 +115,7 @@ if (grid && grid.entries.length > 4) {
   const pts = cl.map((v, i) => `${(hpL + i * colW + colW / 2).toFixed(1)},${sy(v).toFixed(1)}`);
   const ax0 = (hpL + colW / 2).toFixed(1), ax1 = (hpL + (cols - 0.5) * colW).toFixed(1);
   out.push(`<path d="M${ax0},${(stripT + stripH).toFixed(1)} L${pts.join(" L")} L${ax1},${(stripT + stripH).toFixed(1)} Z" fill="${INK.acc}" fill-opacity="0.09"/>`);
-  out.push(`<polyline points="${pts.join(" ")}" fill="none" stroke="${INK.up}" stroke-width="1.5" stroke-linejoin="round"/>`);
+  out.push(`<polyline points="${pts.join(" ")}" fill="none" stroke="${INK.neutral}" stroke-width="1.5" stroke-linejoin="round"/>`);
   /* Round ticks, like every other price axis here — the raw extremes of a window are not
      numbers anyone holds in their head. */
   for (const v of niceTicks(pmin, pmax, 2)) {

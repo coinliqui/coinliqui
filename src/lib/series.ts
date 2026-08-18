@@ -188,17 +188,32 @@ export function buildPriceChart(
     const floor = (priceY + priceH).toFixed(1);
     s.push(
       `<defs><linearGradient id="ln${tf.key}" x1="0" y1="0" x2="0" y2="1">` +
-        `<stop offset="0" stop-color="${INK.up}" stop-opacity="0.16"/>` +
-        `<stop offset="1" stop-color="${INK.up}" stop-opacity="0"/></linearGradient></defs>`,
+        /* NEUTRAL, not the candle-up green. In line mode there are no candles and no per-bar
+           direction — one continuous price line for the whole window. Tinting it green would
+           assert a direction the line does not have. */
+        `<stop offset="0" stop-color="${INK.neutral}" stop-opacity="0.16"/>` +
+        `<stop offset="1" stop-color="${INK.neutral}" stop-opacity="0"/></linearGradient></defs>`,
     );
     s.push(`<path d="M${xOf(0).toFixed(1)},${floor} L${pts.split(" ").join(" L")} L${xOf(n - 1).toFixed(1)},${floor} Z" fill="url(#ln${tf.key})"/>`);
-    s.push(`<polyline points="${pts}" fill="none" stroke="${INK.up}" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/>`);
+    s.push(`<polyline points="${pts}" fill="none" stroke="${INK.neutral}" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/>`);
   } else {
+    /* HOLLOW UP, FILLED DOWN — the original candlestick convention, and here it is the part
+       that carries the meaning when hue cannot. Measured under simulated protanopia the two
+       candle colours separate by only dE 12.1, so a reader who cannot tell the hues apart
+       still reads direction off the body: outlined means the close was above the open.
+       The wick stays solid in both cases; only the body changes. */
     for (let i = 0; i < n; i++) {
-      const c = candles[i], x = xOf(i), k = c[C] >= c[O] ? INK.up : INK.down;
+      const c = candles[i], x = xOf(i), up = c[C] >= c[O], k = up ? INK.up : INK.down;
       s.push(rect(x - ww / 2, yOf(c[H]), ww, Math.max(0.7, yOf(c[L]) - yOf(c[H])), k));
       const bt = yOf(Math.max(c[O], c[C])), bb = yOf(Math.min(c[O], c[C]));
-      s.push(rect(x - bw / 2, bt, bw, Math.max(1, bb - bt), k, rx));
+      const bh = Math.max(1, bb - bt);
+      if (up && bh > 2.2) {
+        /* A hollow body needs a stroke on the path, and stroke straddles the edge, so the rect
+           is inset by half a stroke to keep the drawn width equal to the filled case. */
+        s.push(`<rect x="${n2(x - bw / 2 + 0.5)}" y="${n2(bt + 0.5)}" width="${n2(Math.max(0.5, bw - 1))}" height="${n2(Math.max(0.5, bh - 1))}" rx="${rx}" fill="none" stroke="${k}" stroke-width="1"/>`);
+      } else {
+        s.push(rect(x - bw / 2, bt, bw, bh, k, rx));
+      }
     }
   }
   for (let i = 0; i < n; i++) {

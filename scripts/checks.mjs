@@ -526,3 +526,63 @@ export function flipTableColour(html) {
   }
   return [...new Set(out)];
 }
+
+/**
+ * TWO COLOUR LANGUAGES, AND THE RULE THAT KEEPS THEM APART.
+ *
+ * Candles mean price up/down in green and red. Funding means who pays in amber and cyan. Those
+ * were the same pair until candles were added, and the site's legend said so on every page:
+ * "colour encodes the direction of payment only". Two meanings sharing one pair is the defect;
+ * a page showing both without naming both is the same defect one step later.
+ *
+ * The palettes are READ OUT OF THE SOURCE, never listed here. A checker with its own copy of
+ * the hexes is the drifted pair this file exists to catch — change a token, and a transcribed
+ * check keeps passing against a colour nobody uses any more.
+ *
+ * Four things are asserted:
+ *   1. the CSS token and the chart ink agree, so a table and a chart band cannot disagree;
+ *   2. no candle hue equals a funding hue;
+ *   3. a page rendering both languages names both in its legend;
+ *   4. a page rendering funding colour names the funding legend at all.
+ */
+export function colourPalettes(chartSrc, baseSrc) {
+  const ink = (k) => new RegExp(`\\b${k}:\\s*"(#[0-9a-fA-F]{6})"`).exec(chartSrc)?.[1] ?? null;
+  const tok = (k) => new RegExp(`--${k}:\\s*(#[0-9a-fA-F]{6})`).exec(baseSrc)?.[1] ?? null;
+  return {
+    candle: { up: ink("up"), down: ink("down") },
+    funding: { paysL: ink("paysL"), paysS: ink("paysS") },
+    token: { paysL: tok("pays-l"), paysS: tok("pays-s") },
+  };
+}
+
+export function colourLanguageDrift(p) {
+  const out = [];
+  const all = [p.candle.up, p.candle.down, p.funding.paysL, p.funding.paysS, p.token.paysL, p.token.paysS];
+  if (all.some((v) => !v)) return [`could not read every colour out of the source (${JSON.stringify(p)}) — this check is not looking at anything`];
+  if (p.funding.paysL.toLowerCase() !== p.token.paysL.toLowerCase())
+    out.push(`chart ink paysL ${p.funding.paysL} and CSS --pays-l ${p.token.paysL} disagree — a table and a chart band would show one meaning in two colours`);
+  if (p.funding.paysS.toLowerCase() !== p.token.paysS.toLowerCase())
+    out.push(`chart ink paysS ${p.funding.paysS} and CSS --pays-s ${p.token.paysS} disagree`);
+  for (const [cn, cv] of Object.entries(p.candle))
+    for (const [fn, fv] of Object.entries(p.funding))
+      if (cv.toLowerCase() === fv.toLowerCase())
+        out.push(`candle ${cn} and funding ${fn} are both ${cv} — one colour cannot carry two meanings`);
+  return out;
+}
+
+/** Does a page that speaks a colour language explain it? */
+export function colourLegend(html, p) {
+  const out = [];
+  const has = (hex) => html.toLowerCase().includes(hex.toLowerCase());
+  const candles = has(p.candle.up) || has(p.candle.down);
+  const funding = /class="[^"]*\bpays-[ls]\b/.test(html) || has(p.funding.paysL) || has(p.funding.paysS);
+  /* Matched on meaning, not on an exact sentence, so rewording the copy does not fail the
+     build — but removing the explanation does. */
+  const saysCandle = /candles?\b[^.]{0,120}(green|red)/i.test(html) || /(green|red)[^.]{0,60}candle/i.test(html);
+  const saysFunding = /(amber|cyan)[^.]{0,80}(pay|longs|shorts)/i.test(html) || /(longs pay shorts|shorts pay longs)/i.test(html);
+  if (candles && !saysCandle) out.push("draws candle colours but never says what green and red mean");
+  if (funding && !saysFunding) out.push("shows funding colour but never says what it encodes");
+  if (candles && funding && !(saysCandle && saysFunding))
+    out.push("shows BOTH colour languages and does not name both");
+  return out;
+}
