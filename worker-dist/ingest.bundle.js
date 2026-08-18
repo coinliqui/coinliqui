@@ -368,6 +368,17 @@ ${origin} \xB7 started ${now.toISOString().slice(0, 16).replace("T", " ")} UTC
           t.indexed = q.PASS;
           say(`| \`${t.name}\` | ${q.PASS}/${t.urls.length} (${pct(q.PASS, t.urls.length)}) | ${q.NEUTRAL} | ${q.FAIL} | ${q.other} |`);
         }
+        try {
+          const prev = await env.SNAPSHOT.get("index:history", "json") ?? [];
+          const point = {
+            at: Date.now(),
+            total: flat.length,
+            indexed: st.templates.reduce((n2, t) => n2 + (t.indexed ?? 0), 0),
+            byTemplate: st.templates.map((t) => [t.name, t.indexed ?? 0, t.urls.length])
+          };
+          await env.SNAPSHOT.put("index:history", JSON.stringify([point, ...prev].slice(0, 26)));
+        } catch {
+        }
         st.phase = "search";
         st.i = 0;
       }
@@ -606,7 +617,7 @@ async function fetchSpotCandles(product, granularity) {
 }
 
 // worker/build-stamp.ts
-var WORKER_BUILD = "86c3ee86184a";
+var WORKER_BUILD = "cd6c878fa96b";
 
 // worker/ingest.ts
 var RETAIN_HOURS = 72;

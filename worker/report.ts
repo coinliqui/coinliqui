@@ -34,6 +34,15 @@ export interface ReportEnv {
   CF_ZONE_ID?: string;
 }
 
+/** One dated observation of how much of the site Google has indexed. Kept as a SERIES so
+ *  "deferred" can be told from "rejected" — a single snapshot cannot separate them. */
+interface IndexPoint {
+  at: number;
+  total: number;
+  indexed: number;
+  byTemplate: [name: string, indexed: number, total: number][];
+}
+
 interface Template { name: string; urls: string[]; ok?: number; indexed?: number; tally?: Record<string, number> }
 interface State {
   week: string;
@@ -236,6 +245,27 @@ export async function stepReport(env: ReportEnv, force = false): Promise<string 
           t.indexed = q.PASS;
           say(`| \`${t.name}\` | ${q.PASS}/${t.urls.length} (${pct(q.PASS, t.urls.length)}) | ${q.NEUTRAL} | ${q.FAIL} | ${q.other} |`);
         }
+        /* A SNAPSHOT CANNOT ANSWER THE QUESTION THIS DATA GETS ASKED.
+           Four URLs came back "Discovered - currently not indexed" and the obvious causes were
+           all tested and all failed: the unindexed pages are not thinner than the indexed ones
+           (/tools at 210 words is indexed, /tools/position-size at 488 is not), not less linked
+           (/tools/funding-cost has one inbound link and is indexed, /tools/position-size has
+           three and is not), and not victims of a bad canonical (every one self-canonicalises).
+           On a four-day-old domain the honest reading is that Google is deferring, and the only
+           thing that can confirm or refute that is MOVEMENT.
+           So each completed inspection appends a dated row here. Twenty-six of them is six
+           months of weekly runs, which is enough to tell "deferred" from "rejected" — and small
+           enough to stay one KV value. */
+        try {
+          const prev = ((await env.SNAPSHOT.get("index:history", "json")) as IndexPoint[] | null) ?? [];
+          const point: IndexPoint = {
+            at: Date.now(),
+            total: flat.length,
+            indexed: st.templates.reduce((n, t) => n + (t.indexed ?? 0), 0),
+            byTemplate: st.templates.map((t) => [t.name, t.indexed ?? 0, t.urls.length] as [string, number, number]),
+          };
+          await env.SNAPSHOT.put("index:history", JSON.stringify([point, ...prev].slice(0, 26)));
+        } catch { /* the history is an observation, never a reason to fail the report */ }
         st.phase = "search";
         st.i = 0;
       }
