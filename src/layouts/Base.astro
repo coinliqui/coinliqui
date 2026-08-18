@@ -85,6 +85,24 @@ const age = (m: number) =>
    nothing would ever read. Found by verifying production rather than by the gate, which had
    been told to ignore noindex pages entirely instead of holding them to the other half of
    the same rule. */
+/* THE SITE'S WHOLE CLAIM IS THAT EVERY FIGURE NAMES ITS AGE, AND THE MACHINE LAYER SAID NOTHING
+   ABOUT AGE AT ALL. A reader gets "Updated 4 min ago" in the pill and an exact UTC stamp in the
+   footer; a crawler or an answer engine got a WebSite and an Organization and no date anywhere.
+
+   Fed from the SNAPSHOT timestamp, never from the request clock. A dateModified taken from
+   Date.now() would change on every request, which is the same false signal that made every URL
+   in this site's sitemaps claim it had been modified at the instant of the fetch — a mistake
+   already made once here, and expensive because a host that lies about dates gets its dates
+   disregarded. Pages with no data behind them (the prose, the 404) emit no node rather than a
+   date they cannot justify. */
+const pageNode = fetchedAt && !noindex && {
+  "@type": "WebPage",
+  "@id": `${base}${Astro.url.pathname}#page`,
+  url: `${base}${Astro.url.pathname}`,
+  isPartOf: { "@id": `${base}#website` },
+  dateModified: new Date(fetchedAt).toISOString(),
+};
+
 const crumbNode = crumb && !noindex && {
   "@type": "BreadcrumbList",
   "@id": `${Astro.url.pathname}#breadcrumb`,
@@ -97,6 +115,7 @@ const crumbNode = crumb && !noindex && {
 const schema = {
   "@context": "https://schema.org",
   "@graph": [
+    ...(pageNode ? [pageNode] : []),
     ...(crumbNode ? [crumbNode] : []),
     {
       "@type": "WebSite",

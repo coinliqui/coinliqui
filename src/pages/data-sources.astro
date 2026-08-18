@@ -25,6 +25,12 @@ if (!snap.available) return coldStart();
  * Cadences below are the constants, not prose: RETAIN/CANDLE/HOURLY/FUNDING_REFRESH_HOURS in
  * worker/ingest.ts and the two crons in wrangler.toml.
  */
+/* NAMING AN UPSTREAM WITHOUT LINKING TO IT IS HALF A CITATION.
+   This table is the site's provenance claim — every number, the endpoint behind it, the
+   cadence. It named five upstreams and linked to none, on a site that had zero external hrefs
+   anywhere. A reader who wants to confirm that `predictedFundings` returns what this page says
+   it returns had to go and find the documentation themselves. */
+const UPSTREAM_DOCS: Record<string, string> = {"Hyperliquid": "https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api", "Coinbase Exchange": "https://docs.cdp.coinbase.com/exchange/docs/welcome", "Coinbase": "https://docs.cdp.coinbase.com/exchange/docs/welcome", "Ethereum JSON-RPC": "https://ethereum.org/en/developers/docs/apis/json-rpc/", "Cloudflare": "https://developers.cloudflare.com/"};
 const sources = [
   { what: "Funding rate, per venue", ep: "POST /info {\"type\":\"predictedFundings\"}", who: "Hyperliquid", freq: "1 min" },
   /* SPLIT, because one row was claiming one cadence for five figures fetched on two.
@@ -56,7 +62,7 @@ const sources = [
   <p class="prose">Every displayed figure comes from the table below and is rendered on the server before the page is sent, so it is present for readers, search crawlers and answer engines alike.</p>
   <div class="panel"><table class="tbl">
     <thead><tr><th>Figure</th><th>Endpoint</th><th>Source</th><th>Refresh</th></tr></thead>
-    <tbody>{sources.map((s) => (<tr><td>{s.what}</td><td><code>{s.ep}</code></td><td>{s.who}</td><td>{s.freq}</td></tr>))}</tbody>
+    <tbody>{sources.map((s) => (<tr><td>{s.what}</td><td><code>{s.ep}</code></td><td>{UPSTREAM_DOCS[s.who] ? <a href={UPSTREAM_DOCS[s.who]} rel="noopener" target="_blank">{s.who}</a> : s.who}</td><td>{s.freq}</td></tr>))}</tbody>
   </table></div>
   <h2>Why spot comes from Coinbase</h2>
   <p class="prose">

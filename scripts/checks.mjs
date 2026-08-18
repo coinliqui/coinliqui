@@ -1099,3 +1099,46 @@ export function extractionRatio(html) {
   const prose = html.replace(/<(script|style)\b[\s\S]*?<\/\1>/gi, "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().length;
   return { scripts, prose, ratio: prose ? +(scripts / prose).toFixed(1) : Infinity };
 }
+
+
+/**
+ * THE DATE THE MACHINE LAYER STATES MUST BE THE DATE THE PAGE STATES.
+ *
+ * dateModified is the one structured-data field a crawler acts on for recrawl scheduling, and
+ * the one most easily filled with the request clock — which is what this site's sitemaps did
+ * once, giving every URL a modification time equal to the instant of the fetch. Two requests
+ * five seconds apart returned two different dates for a page unchanged in days. Here the page
+ * already prints its own timestamp in the freshness pill, so the two are checkable against each
+ * other and there is no excuse for them to differ.
+ */
+export function dateModifiedAgreement(html) {
+  const out = [];
+  const pill = (html.match(/data-fresh="(\d+)"/) || [])[1];
+  let ld = null;
+  for (const m of html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)) {
+    let j; try { j = JSON.parse(m[1]); } catch { continue; }
+    const walk = (n) => {
+      if (Array.isArray(n)) return n.forEach(walk);
+      if (!n || typeof n !== "object") return;
+      if (n.dateModified) ld = n.dateModified;
+      Object.values(n).forEach(walk);
+    };
+    walk(j);
+  }
+  /* A noindex page has no search result to schedule a recrawl for, so the field is not owed —
+     the same rule the breadcrumb check settled. /watchlist is the live case. */
+  if (/<meta name="robots" content="[^"]*noindex/.test(html)) return out;
+  if (!pill && !ld) return out;
+  if (pill && !ld) out.push("the page prints a freshness timestamp but the structured data carries no dateModified — the age is stated to readers and withheld from every machine");
+  /* dateModified WITHOUT a live pill is not a contradiction. /liquidations/sweep publishes a
+     frozen dataset: it deliberately shows no "updated N min ago", and the date the underlying
+     data was captured is exactly what dateModified is for. Demanding a live pill there would
+     be demanding the page pretend to be live, which is the opposite of the point. */
+  if (pill && ld) {
+    const a = Number(pill), b = Date.parse(ld);
+    if (!Number.isFinite(b) || Math.abs(a - b) > 1000) {
+      out.push(`the pill says ${new Date(a).toISOString()} and dateModified says ${ld} — one of them is not the snapshot`);
+    }
+  }
+  return out;
+}

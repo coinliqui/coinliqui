@@ -96,6 +96,15 @@ const description =
         were not, and the file's own verifiedAt was never rendered anywhere on the page, so a
         reader had a block number that means nothing and a freshness that belongs to something
         else. Both clocks are now stated where the numbers are. */}
+    {/* THE ADDRESS IS NOW A LINK, AND IT SHOULD ALWAYS HAVE BEEN ONE.
+        This page's whole argument is that you do not have to trust it: every figure is an
+        eth_call at a stated block, so go and check. Checking meant selecting a 42-character
+        hex string, copying it by hand, and finding an explorer yourself. The site had exactly
+        ZERO external links on any page — it named Hyperliquid, Binance, Bybit, Coinbase and
+        these contracts and linked to none of them — so it participated in no link graph in
+        either direction, and the checkability it is proudest of was gated behind clerical work.
+        #readContract lands on the tab where the same getters this page calls can be called by
+        hand, which is the actual verification path rather than a gesture at one. */}
     <p class="clock">
       The on-chain amounts were read at <strong>block {reg.verifiedBlock.toLocaleString("en-US")}</strong>,
       {" "}<b><time datetime={reg.verifiedAt}>{new Date(reg.verifiedAt).toISOString().slice(0, 16).replace("T", " ")} UTC</time></b> — they change only when this register is re-read, not every minute. The USD values
@@ -368,7 +377,7 @@ const description =
       <tbody>
         {reg.unverified.map((u: any) => (
           <tr>
-            <td style="white-space:nowrap">{u.label}<br /><code class="addr">{u.address}</code></td>
+            <td style="white-space:nowrap">{u.label}<br /><a class="addr" href={`https://etherscan.io/address/${u.address}#readContract`} rel="noopener" target="_blank"><code>{u.address}</code></a></td>
             <td class="num">{u.heldNow === null ? <span class="dim" title="Each recipient's schedule is a separate clone; enumerating them needs an archival endpoint">not enumerable</span> : `${num(u.heldNow)} ${u.symbol}`}</td>
             <td class="reason">{u.reason}</td>
           </tr>
@@ -442,6 +451,8 @@ const description =
     .st--unfunded { background: none; color: var(--text); border: 1px dashed var(--border); }
     .st--releasing { background: var(--surface-3); color: var(--text); }
     .st--emptied { background: none; color: var(--text-faint); border: 1px solid var(--border); }
+    a.addr { color: inherit; text-decoration-color: var(--border-soft); }
+    a.addr:hover { color: var(--accent); }
     .addr { font-size: 11.5px; color: var(--text-faint); background: none; padding: 0; }
     .sub { font-size: var(--fs-xs); color: var(--text-faint); font-variant-numeric: tabular-nums; }
     .reason { color: var(--text-dim); white-space: normal; }
