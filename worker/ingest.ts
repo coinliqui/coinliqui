@@ -1,5 +1,6 @@
 import { fetchSnapshot, fetchLive } from "../src/lib/hyperliquid.ts";
 import { fetchCandles, fetchHourly, fetchM15, fetchFundingHistory, mergeFunding, type FundingPoint } from "../src/lib/candles.ts";
+import { orderSweeps } from "../src/lib/sweep-order.ts";
 import { stepReport } from "./report.ts";
 import { COINS, fetchSpot, fetchSpotCandles } from "../src/lib/coins.ts";
 
@@ -163,6 +164,10 @@ interface RunResult {
   /** Coinbase was unreachable; coin pages keep their last spot price. */
   spotError?: string;
 }
+
+/** The shape every sweep keeps in KV: last full cycle, cursor, frozen list, symbols with data,
+ *  failure-backoff stamp, and the first error of a fruitless pass. */
+interface SweepMeta { u?: number; i?: number; l?: string[]; h?: string[]; f?: number; e?: string }
 
 /** Sentinel: not an error, just "this tick was spent on the report". */
 const SKIP_SWEEPS = Symbol("skip-sweeps");
@@ -392,11 +397,14 @@ async function run(env: Env): Promise<RunResult> {
         write: (sym: string) => Promise<boolean>,
         extra = 0,
         over: string[] = syms,
+        preloaded: SweepMeta | null | undefined = undefined,
       ): Promise<number | undefined> => {
         const scope = over;
-        const m = (await env.SNAPSHOT.get(key, "json")) as
-          | { u?: number; i?: number; l?: string[]; h?: string[]; f?: number }
-          | null;
+        /* The scheduler above has already read every meta to decide the order; re-reading here
+           would cost one subrequest per sweep per tick for a value we are holding. */
+        const m = preloaded !== undefined
+          ? preloaded
+          : ((await env.SNAPSHOT.get(key, "json")) as SweepMeta | null);
         const have = new Set(m?.h ?? []);
         const room = Math.max(1, CHUNK - extra);
 
@@ -491,71 +499,69 @@ async function run(env: Env): Promise<RunResult> {
         return done.length;
       };
 
-      const hourly = await sweep("hourly:meta", HOURLY_REFRESH_HOURS, async (s) => {
-        const c = await fetchHourly(s);
-        await env.SNAPSHOT.put(`hourly:${s}`, JSON.stringify(c));
-        return true;
-      });
-      if (hourly !== undefined) result.hourly = hourly;
-      else {
-        /* Each pass fetches the newest window for its chunk and ALSO pages one step further
-           back for a rotating slice of 6 — a refresh alone only accumulates forward, and the
-           rotation is what deepens history. The 6 are counted against the chunk so the
-           ceiling holds. */
-        const since = Date.now() - 19 * 86_400_000;
-        const rot = (await env.SNAPSHOT.get("funding:rot", "json")) as { c?: number } | null;
-        const cursor = rot?.c ?? 0;
-        let deep = 0;
-        const funding = await sweep("funding:meta", FUNDING_REFRESH_HOURS, async (s) => {
-          const prev = ((await env.SNAPSHOT.get(`funding:${s}`, "json")) as FundingPoint[] | null) ?? [];
-          let merged = mergeFunding(prev, await fetchFundingHistory(s, since));
-          const idx = syms.indexOf(s);
-          if (deep < 6 && (idx - cursor + syms.length) % syms.length < 6 && merged.length) {
-            deep++;
-            try { merged = mergeFunding(await fetchFundingHistory(s, merged[0][0] - 21 * 86_400_000), merged); } catch { /* depth is optional */ }
-          }
-          await env.SNAPSHOT.put(`funding:${s}`, JSON.stringify(merged));
-          return true;
-        }, 6);
-        if (funding !== undefined) {
-          result.funding = funding;
-          await env.SNAPSHOT.put("funding:rot", JSON.stringify({ c: (cursor + 6) % Math.max(1, syms.length) }));
-        } else {
-          const candles = await sweep("candles:meta", CANDLE_REFRESH_HOURS, async (s) => {
-            const c = await fetchCandles(s);
-            await env.SNAPSHOT.put(`candles:${s}`, JSON.stringify(c));
-            return true;
-          });
-          if (candles !== undefined) result.candles = candles;
-          else {
-            /* Coinbase spot candles for the coin pages. Two granularities per coin — hourly
-               and daily — which the site aggregates into 1H/4H and 1D/1W exactly as it does
-               for the perpetual series. Ten coins is twenty fetches, one chunk. */
-            const cb = await sweep("cb:meta", HOURLY_REFRESH_HOURS, async (s) => {
-              const c = COINS.find((x) => x.symbol === s);
-              if (!c) return false;
-              const [h, d] = await Promise.all([fetchSpotCandles(c.product, 3600), fetchSpotCandles(c.product, 86400)]);
-              await env.SNAPSHOT.put(`cbh:${s}`, JSON.stringify(h));
-              await env.SNAPSHOT.put(`cbd:${s}`, JSON.stringify(d));
-              return true;
-            }, 10, COINS.map((c) => c.symbol));
-            if (cb !== undefined) result.spot = cb;
-            else {
-              /* LAST IN THE CHAIN ON PURPOSE. Each sweep claims a tick only when it is due and
-                 no earlier one took it, so position sets priority. 15m is newest-data-first by
-                 nature and could argue for the front, but putting it there would starve the
-                 hourly series that four timeframes and the whole liquidation model depend on.
-                 At 288 ticks a day against four sweeps that each need two or three, there is
-                 ample idle for the tail of the chain to run. */
-              const m15 = await sweep("m15:meta", M15_REFRESH_HOURS, async (s) => {
-                const c = await fetchM15(s);
-                await env.SNAPSHOT.put(`m15:${s}`, JSON.stringify(c));
-                return true;
-              });
-              if (m15 !== undefined) result.m15 = m15;
+      /* Funding pages one step further back for a rotating slice of six each pass; a refresh
+         alone only accumulates forward, and the rotation is what deepens history. */
+      const since = Date.now() - 19 * 86_400_000;
+      const rot = (await env.SNAPSHOT.get("funding:rot", "json")) as { c?: number } | null;
+      const rotCursor = rot?.c ?? 0;
+      let deep = 0;
+
+      /* ONE SWEEP PER TICK, CHOSEN BY STATE RATHER THAN BY POSITION IN THIS FILE.
+         These used to be a chain of `else`s, which made source order into priority and gave
+         every sweep a hard dependency on every sweep above it. A fifth added at the end
+         produced nothing for half an hour while four ahead of it took the ticks. Now the most
+         starved eligible sweep goes — see orderSweeps() for the rule and its pathologies.
+
+         Metas are read ONCE here and handed to sweep(), rather than each sweep re-reading its
+         own: five extra KV reads a tick would be five extra subrequests against the ceiling
+         that CHUNK is sized for, and the ordering needs them all anyway. */
+      const jobs: { name: keyof RunResult; key: string; hours: number; extra?: number; over?: string[]; write: (s: string) => Promise<boolean>; after?: () => Promise<void> }[] = [
+        { name: "hourly", key: "hourly:meta", hours: HOURLY_REFRESH_HOURS, write: async (s) => {
+            await env.SNAPSHOT.put(`hourly:${s}`, JSON.stringify(await fetchHourly(s))); return true; } },
+        { name: "funding", key: "funding:meta", hours: FUNDING_REFRESH_HOURS, extra: 6, write: async (s) => {
+            const prev = ((await env.SNAPSHOT.get(`funding:${s}`, "json")) as FundingPoint[] | null) ?? [];
+            let merged = mergeFunding(prev, await fetchFundingHistory(s, since));
+            const idx = syms.indexOf(s);
+            if (deep < 6 && (idx - rotCursor + syms.length) % syms.length < 6 && merged.length) {
+              deep++;
+              try { merged = mergeFunding(await fetchFundingHistory(s, merged[0][0] - 21 * 86_400_000), merged); } catch { /* depth is optional */ }
             }
-          }
-        }
+            await env.SNAPSHOT.put(`funding:${s}`, JSON.stringify(merged)); return true; },
+          after: async () => { await env.SNAPSHOT.put("funding:rot", JSON.stringify({ c: (rotCursor + 6) % Math.max(1, syms.length) })); } },
+        { name: "candles", key: "candles:meta", hours: CANDLE_REFRESH_HOURS, write: async (s) => {
+            await env.SNAPSHOT.put(`candles:${s}`, JSON.stringify(await fetchCandles(s))); return true; } },
+        { name: "spot", key: "cb:meta", hours: HOURLY_REFRESH_HOURS, extra: 10, over: COINS.map((c) => c.symbol), write: async (s) => {
+            const c = COINS.find((x) => x.symbol === s);
+            if (!c) return false;
+            const [h, d] = await Promise.all([fetchSpotCandles(c.product, 3600), fetchSpotCandles(c.product, 86400)]);
+            await env.SNAPSHOT.put(`cbh:${s}`, JSON.stringify(h));
+            await env.SNAPSHOT.put(`cbd:${s}`, JSON.stringify(d));
+            return true; } },
+        { name: "m15", key: "m15:meta", hours: M15_REFRESH_HOURS, write: async (s) => {
+            await env.SNAPSHOT.put(`m15:${s}`, JSON.stringify(await fetchM15(s))); return true; } },
+      ];
+
+      const metas = await Promise.all(jobs.map((j) => env.SNAPSHOT.get(j.key, "json") as Promise<SweepMeta | null>));
+      const byKey = new Map(jobs.map((j, i) => [j.key, metas[i]]));
+      const order = orderSweeps(
+        jobs.map((j, i) => ({
+          name: j.key,
+          hours: j.hours,
+          lastCycle: metas[i]?.u ?? 0,
+          cursor: metas[i]?.i ?? 0,
+          stalledSince: metas[i]?.f ?? 0,
+        })),
+        Date.now(),
+        FILL_BACKOFF_MS,
+      );
+
+      for (const chosen of order) {
+        const j = jobs.find((x) => x.key === chosen.name)!;
+        const n = await sweep(j.key, j.hours, j.write, j.extra ?? 0, j.over ?? syms, byKey.get(j.key) ?? null);
+        if (n === undefined) continue;
+        (result as unknown as Record<string, number>)[j.name] = n;
+        await j.after?.();
+        break;
       }
     } catch (e) {
       if (e !== SKIP_SWEEPS) result.candleError = (e instanceof Error ? e.message : String(e)).slice(0, 120);
