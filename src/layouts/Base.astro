@@ -1,6 +1,7 @@
 ---
 import { SITE, NAV, FOOTER_LINKS, IDENTITY, origin, GA_MEASUREMENT_ID, GA_ENABLED, GA_DEFER } from "../lib/site.ts";
 import ASSETS from "../data/assets.json";
+import { SPOT_SOURCE } from "../lib/coins.ts";
 
 interface Props {
   /** Bare page title. The brand suffix is appended here, not typed into every page. */
@@ -950,7 +951,19 @@ const schema = {
           <footer>
             <nav aria-label="Footer">{FOOTER_LINKS.map((l) => <a href={l.href}>{l.label}</a>)}</nav>
             <p style="margin:0">
-              Market data via Hyperliquid. Not investment advice.
+              {/* "MARKET DATA VIA HYPERLIQUID" WAS ON EVERY PAGE, INCLUDING THE ONES IT WAS
+                  WRONG ABOUT. /coins and every coin page lead with Coinbase Exchange spot;
+                  /unlocks is entirely eth_call against Ethereum and contains no market data at
+                  all; the venue comparison carries Binance and Bybit rates. One credit line
+                  named one venue for all of it — the same scope defect as open interest, in
+                  the site's own signature.
+
+                  A footer is a CREDIT, not a provenance statement, so it names every source
+                  the site draws on and hands the per-figure question to the page that answers
+                  it properly. Naming them all is true on every page; naming one was not. */}
+              Data via Hyperliquid, Binance and Bybit (derivatives), {SPOT_SOURCE} (spot) and
+              Ethereum JSON-RPC (on-chain). <a href="/data-sources">Which endpoint feeds which
+              figure →</a> Not investment advice.
               {fetchedAt && <> Figures as of <time datetime={new Date(fetchedAt).toISOString()}>{new Date(fetchedAt).toISOString().replace("T", " ").slice(0, 16)} UTC</time>.</>}
             </p>
           </footer>

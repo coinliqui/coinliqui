@@ -21,6 +21,8 @@ const byApr = [...snap.perps].filter((p) => Number.isFinite(p.hlApr)).sort((a, b
 const richest = byApr[0];
 const cheapest = byApr[byApr.length - 1];
 const widest = [...snap.perps].filter((p) => p.aprSpread != null).sort((a, b) => (b.aprSpread ?? 0) - (a.aprSpread ?? 0))[0];
+/* Every (coin, venue) pair the site actually tracks — the denominator the flip count needs. */
+const venueLegs = snap.perps.reduce((n, p) => n + p.venues.filter((v) => Number.isFinite(v.apr)).length, 0);
 const totalOi = snap.perps.reduce((s, p) => s + (Number.isFinite(p.oiNotional) ? p.oiNotional : 0), 0);
 const totalVol = snap.perps.reduce((s, p) => s + (Number.isFinite(p.dayNtlVlm) ? p.dayNtlVlm : 0), 0);
 const btc = snap.perps.find((p) => p.symbol === "BTC");
@@ -105,9 +107,15 @@ const description =
         truncation into a fact the reader can act on. */}
     <p class="section-note">
       The side paying to hold the position reversed, in the last 24 hours.
+      {/* "119 CONTRACTS FLIPPED" ON A PAGE THAT SAYS 50 COINS reads as impossible, even though
+          it is exactly right: a contract is a coin ON A VENUE, and the same coin can flip on
+          Hyperliquid and not on Bybit. The site's dominant unit everywhere else is the coin,
+          so the number arrived without the unit that makes it make sense. Naming the unit and
+          giving the denominator turns a figure that looks like a bug into one that says how
+          widespread the reversal was. */}
       {flips.status === "ready" && flips.total > flips.rows.length
-        ? ` ${flips.total} contracts flipped; the ${flips.rows.length} most recent are shown.`
-        : flips.status === "ready" ? ` ${flips.total} contract${flips.total === 1 ? "" : "s"} flipped.` : ""}
+        ? ` ${flips.total} of the ${venueLegs} coin–venue pairs flipped; the ${flips.rows.length} most recent are shown.`
+        : flips.status === "ready" ? ` ${flips.total} of the ${venueLegs} coin–venue pairs flipped.` : ""}
     </p>
     {flips.status === "ready" && flips.rows.length > 0 ? (
       <>
