@@ -571,7 +571,75 @@ console.log("\n14. the social card renders where it is shared");
   }
 }
 
-console.log("\n15. data");
+/* 15. A MEASUREMENT THAT WAS TRUE ONCE, TURNED INTO ONE THAT STAYS TRUE.
+      worker/ingest.ts carries a write budget "measured rather than assumed, at 49 published
+      contracts" — ~1,228 KV writes/day, 3.7% of the paid million a month. Correct when written,
+      and it SCALES WITH THE PUBLISHED SET: every sweep writes once per contract per cycle, so
+      raising the coverage floor or the symbol cap multiplies it, and nothing re-checked the
+      premise.
+
+      That is the same shape as the defect found today by measurement rather than by review: the
+      note in hyperliquid.ts said two funding fields agreed to within 0.31pp with no sign flips,
+      which was true when measured and false a fortnight later — and the note asking the next
+      person not to touch it was the thing standing in the way. A measured justification with no
+      trip point is a decision that will be wrong eventually and silent when it is.
+
+      So the arithmetic is recomputed here from the LIVE published count and the sweep cadences,
+      and it fails at 25% of quota rather than at 100% — a trigger that fires with room to act,
+      not an alarm at the moment of breach. */
+console.log("\n15. the ingest write budget still holds at today's coverage");
+{
+  const ds = await fetchAs("/data-sources", "Mozilla/5.0");
+  const m = /([\d,]+) of ([\d,]+) perpetuals clear that floor today; ([\d,]+) are published/.exec(
+    ds.body.replace(/<[^>]+>/g, " ").replace(/\s+/g, " "),
+  );
+  if (!m) {
+    bad("could not read the published count off /data-sources — this check is not looking at anything");
+  } else {
+    const published = Number(m[3].replace(/,/g, ""));
+    /* THE CADENCES ARE READ OUT OF worker/ingest.ts, NOT TRANSCRIBED.
+       The first version copied them into this file, and measuring where it fired showed the
+       problem: it only tripped past 429 published contracts against a universe of 232, so
+       coverage alone could never reach it and the check was close to inert. The change that
+       actually moves this number is someone tightening a sweep, and a transcribed copy would not
+       have noticed — the same drifted-pair failure this whole file exists to catch, aimed at
+       itself.
+
+       HOW MUCH HEADROOM THERE ACTUALLY IS, measured rather than asserted, because the first
+       draft of this comment guessed and was wrong. Today: 3.7%. Every sweep moved to hourly at
+       today's coverage: 12.3%. The full 232-contract universe at today's cadences: 13.9%. The
+       full universe with every sweep hourly: 53.1%, which trips. So no single realistic change
+       reaches the limit and a combination does — which is the honest description of a 27x
+       margin, and the reason the trip point is 25% rather than something tuned to fire. */
+    const { readFileSync } = await import("node:fs");
+    const src = readFileSync("worker/ingest.ts", "utf8");
+    const constOf = (name) => {
+      const v = new RegExp(`const ${name}\\s*=\\s*(\\d+)`).exec(src)?.[1];
+      return v ? Number(v) : null;
+    };
+    const CHUNK = constOf("CHUNK");
+    const SWEEPS = [["hourly", constOf("HOURLY_REFRESH_HOURS")], ["funding", constOf("FUNDING_REFRESH_HOURS")], ["candles", constOf("CANDLE_REFRESH_HOURS")]];
+    const cron = /crons\s*=\s*\[([^\]]*)\]/.exec(readFileSync("wrangler.toml", "utf8"))?.[1] ?? "";
+    const everyN = /"\d+-\d+\/(\d+)/.exec(cron)?.[1];
+    const TICKS = everyN ? Math.floor((24 * 60) / Number(everyN)) : null;
+
+    if (!CHUNK || !TICKS || SWEEPS.some(([, h]) => !h)) {
+      bad(`could not read the ingest constants (CHUNK=${CHUNK}, ticks/day=${TICKS}, sweeps=${JSON.stringify(SWEEPS)}) — the budget cannot be recomputed, so this check is blind`);
+    } else {
+      const chunks = Math.ceil(published / CHUNK);
+      const perDay = TICKS + SWEEPS.reduce((a, [, h]) => a + published * (24 / h) + chunks * (24 / h), 0);
+      const perMonth = perDay * 30;
+      const QUOTA = 1_000_000, TRIP = 0.25;
+      const pct = (100 * perMonth) / QUOTA;
+      const cad = SWEEPS.map(([n, h]) => `${n} ${h}h`).join(", ");
+      pct > TRIP * 100
+        ? bad(`ingest would write ~${Math.round(perMonth).toLocaleString()} KV writes/month at ${published} published contracts (${cad}, ${TICKS} ticks/day) — ${pct.toFixed(1)}% of the ${QUOTA.toLocaleString()} quota, past the ${TRIP * 100}% trip point. The budget in worker/ingest.ts was measured at 49 contracts and no longer holds.`)
+        : ok(`~${Math.round(perMonth).toLocaleString()} writes/month at ${published} published · ${cad} · ${TICKS} ticks/day (${pct.toFixed(1)}% of quota, trips at ${TRIP * 100}%)`);
+    }
+  }
+}
+
+console.log("\n16. data");
 {
   const r = await fetchAs("/status", "Mozilla/5.0");
   const grab = (re) => re.exec(r.body)?.[1]?.trim() ?? "?";

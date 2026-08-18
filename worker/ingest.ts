@@ -50,6 +50,17 @@ const RETAIN_HOURS = 72;
  *
  * Daily candles change once a day, so the 5-minute tick refreshing them would be 7,200
  * pointless upstream calls a day.
+ *
+ * THE 49 IN THE FIRST LINE IS AN EXPIRY DATE. This budget is correct only while the published
+ * set and the sweep cadences stay near what they were when it was measured, and it scales with
+ * both. scripts/verify-live.mjs section 15 recomputes it from the LIVE published count and from
+ * the constants below — read out of this file, not copied into that one — and fails at 25% of
+ * quota rather than at 100%. Measured headroom: 3.7% today, 12.3% with every sweep hourly, 13.9%
+ * at the full 232-contract universe, 53.1% at both, which trips.
+ *
+ * The trigger exists because a note exactly like this one, in src/lib/hyperliquid.ts, justified
+ * leaving two funding fields unreconciled on a measurement that later stopped being true — and
+ * the note asking the next person not to touch it was what stood in the way.
  */
 const CANDLE_REFRESH_HOURS = 12;
 /* Every 2 hours. The liquidation map's right edge is only as current as this, and a 6-hour
