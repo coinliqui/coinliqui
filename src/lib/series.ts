@@ -18,8 +18,17 @@ export interface Timeframe {
 export const TIMEFRAMES: Timeframe[] = [
   { key: "1h", label: "1H", base: "hour", factor: 1, bars: 300, hours: 1 },
   { key: "4h", label: "4H", base: "hour", factor: 4, bars: 180, hours: 4 },
+  /* 12H AND 1M ARE SET BY WHAT THE STORE ACTUALLY HOLDS, not by what looks tidy in a bar.
+     Measured: the hourly series retains 1,081 bars (45 days) and the daily series 801 bars
+     (800 days). So 12H can offer 90 bars and no more without inventing history, and 1M gets 26
+     — two years of monthly closes, which is the longest honest view this data supports.
+     Nothing shorter than 1H is listed, because nothing shorter is collected: a 15m timeframe
+     needs a new upstream series, not a new row here, and a button for data that does not exist
+     is the defect this bar already had once. */
+  { key: "12h", label: "12H", base: "hour", factor: 12, bars: 90, hours: 12 },
   { key: "1d", label: "1D", base: "day", factor: 1, bars: 220, hours: 24 },
   { key: "1w", label: "1W", base: "day", factor: 7, bars: 130, hours: 168 },
+  { key: "1m", label: "1M", base: "day", factor: 30, bars: 26, hours: 720 },
 ];
 export const DEFAULT_TF = "1d";
 

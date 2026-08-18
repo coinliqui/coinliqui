@@ -41,6 +41,16 @@ function hourlyCandles(startMs, n) {
   return out;
 }
 
+/** Daily candles, for the day-based timeframes (1D, 1W, 1M). */
+function dailyCandles(startMs, n) {
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const px = 60_000 + Math.sin(i / 11) * 1400;
+    out.push([startMs + i * 24 * HOUR, px, px + 300, px - 300, px + Math.cos(i / 7) * 180, 400 + (i % 13)]);
+  }
+  return out;
+}
+
 /** Hourly funding whose sign changes often, so a misaligned window shows up as a colour error. */
 function hourlyFunding(startMs, n) {
   const out = [];
@@ -81,12 +91,21 @@ const blind = process.argv.includes("--blind");
 let bad = 0, checked = 0, mismatches = 0, signFlips = 0;
 
 /* Every offset from the epoch grid, on the two timeframes whose candles are NOT aligned. */
-for (const tf of TIMEFRAMES.filter((t) => t.factor > 1 && t.base === "hour")) {
+/* EVERY aggregated timeframe, hourly-based and daily-based alike. The first version swept only
+   the hourly ones, which silently exempted 1W and would have exempted 1M — and a daily-based
+   aggregation has exactly the same epoch-grid hazard, just with a coarser bar. Sweeping the
+   whole set is the difference between an invariant and a spot check. */
+for (const tf of TIMEFRAMES.filter((t) => t.factor > 1)) {
   const barMs = tf.hours * HOUR;
-  for (let offsetH = 0; offsetH < tf.hours; offsetH++) {
+  const stepH = tf.base === "hour" ? 1 : 24;
+  /* Offsets are stepped in the BASE candle's units: a daily-based bar can only start on a day
+     boundary, so sweeping hour-by-hour there would test positions the data cannot produce. */
+  for (let offsetH = 0; offsetH < tf.hours; offsetH += stepH) {
     const start = Date.UTC(2026, 7, 1) + offsetH * HOUR;
-    const src = hourlyCandles(start, 240);
-    const funding = hourlyFunding(start, 240);
+    /* Enough base candles to produce a useful number of bars at every factor, including 30. */
+    const n = Math.max(240, tf.factor * 40);
+    const src = tf.base === "hour" ? hourlyCandles(start, n) : dailyCandles(start, n);
+    const funding = hourlyFunding(start, tf.base === "hour" ? n : n * 24);
     const candles = aggregate(src, tf.factor);
     const truth = truthFor(candles, funding, barMs);
 
