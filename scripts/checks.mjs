@@ -625,3 +625,37 @@ export function publishesAPerson(html) {
   }
   return [...new Set(out)];
 }
+
+/**
+ * DOES THE GATE'S FIXTURE STILL COVER WHAT THE CODE READS?
+ *
+ * The warm store is a capture. Every feature added after it reads a key that is not there, so
+ * the page renders its "no data" branch, the gate reports green, and the feature is only ever
+ * exercised in production. Twice now: the flip feed rendered a placeholder on every gate run
+ * for its whole life, and the 15-minute series did the same — `npm run check` never drew a 15m
+ * panel until this check existed.
+ *
+ * The prefixes are DISCOVERED from the source, never listed here. A hardcoded list is a third
+ * copy that ages into the same problem: add a series, forget the list, and the check certifies
+ * a fixture that cannot render it.
+ *
+ * It reports prefixes that the code reads and the fixture lacks. It deliberately does NOT
+ * complain about the reverse — a fixture holding keys nothing reads is harmless clutter, not a
+ * blind spot.
+ */
+export function fixtureGaps(sources, fixtureKeys) {
+  const wanted = new Map();
+  for (const [file, src] of sources) {
+    /* Template reads of the form kv.get(`prefix:${sym}`) — the shape every per-symbol series
+       uses. Bare constant keys ("snapshot", "live") are matched separately below. */
+    for (const m of src.matchAll(/\.get\(\s*`([a-z0-9]+):\$\{/gi)) {
+      if (!wanted.has(m[1])) wanted.set(m[1], file);
+    }
+  }
+  const have = new Set([...fixtureKeys].map((k) => (k.includes(":") ? k.split(":")[0] : k)));
+  const gaps = [];
+  for (const [prefix, file] of wanted) {
+    if (!have.has(prefix)) gaps.push(`${prefix}:* is read by ${file} and absent from the warm fixture — the gate renders its empty branch and never sees the feature`);
+  }
+  return gaps.sort();
+}

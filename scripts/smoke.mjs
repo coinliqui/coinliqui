@@ -35,7 +35,7 @@
 import { spawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { readdirSync, readFileSync } from "node:fs";
-import { cssFor, undefinedClasses, undefinedVars, rawEnums, searchIndexGaps, unnamedUpstreams, formatterDrift, uncoveredRoutes, unreadableText, chartAgreement, requestedLeverageLabels, inlineScriptSyntax, flipTableColour, colourPalettes, colourLanguageDrift, colourLegend, publishesAPerson } from "./checks.mjs";
+import { cssFor, undefinedClasses, undefinedVars, rawEnums, searchIndexGaps, unnamedUpstreams, formatterDrift, uncoveredRoutes, unreadableText, chartAgreement, requestedLeverageLabels, inlineScriptSyntax, flipTableColour, colourPalettes, colourLanguageDrift, colourLegend, publishesAPerson, fixtureGaps } from "./checks.mjs";
 
 /* The SERVER side of each duplicated formatter, transcribed from the file that owns it and
    named here so the pairing is explicit. Transcription is the honest cost of having no bundler:
@@ -126,6 +126,31 @@ try {
      wrong on every page at once, so it is a source invariant rather than a per-route one. */
   const pdrift = colourLanguageDrift(PALETTE);
   if (pdrift.length) { failures++; console.log(`\n  FAIL  colour languages have collided:`); for (const d of pdrift) console.log(`          ${d}`); }
+
+  /* WARM ONLY, and a hard failure: a fixture that cannot render a feature makes every check
+     downstream of it meaningless for that feature, so it must not be a warning. */
+  if (warmDir) {
+    try {
+      const { DatabaseSync } = await import("node:sqlite");
+      const objDir = `${warmDir}/v3/kv/miniflare-KVNamespaceObject`;
+      let keys = [];
+      for (const f of readdirSync(objDir).filter((x) => x.endsWith(".sqlite"))) {
+        const db = new DatabaseSync(`${objDir}/${f}`);
+        try {
+          const rows = db.prepare("SELECT key FROM _mf_entries").all();
+          if (rows.some((r) => r.key === "snapshot")) keys = rows.map((r) => r.key);
+        } catch { /* not a KV store */ } finally { db.close(); }
+        if (keys.length) break;
+      }
+      const libs = readdirSync("src/lib").filter((f) => f.endsWith(".ts")).map((f) => [`src/lib/${f}`, readFileSync(`src/lib/${f}`, "utf8")]);
+      const gaps = fixtureGaps(libs, keys);
+      if (gaps.length) { failures++; console.log(`\n  FAIL  the warm fixture cannot render ${gaps.length} feature(s):`); for (const g of gaps) console.log(`          ${g}`); }
+      else console.log(`\n  ok    the warm fixture covers every KV series the code reads (${keys.length} keys)`);
+    } catch (e) {
+      failures++;
+      console.log(`\n  FAIL  fixture coverage could not be checked: ${e.message}`);
+    }
+  }
 
   const un = uncoveredRoutes(await readFile(`${dir}/${manifest}`, "utf8"), ROUTES);
   if (un.length) {
