@@ -37,7 +37,7 @@ const description =
   "no wallet connection, and it is not affiliated with Liqui or any other trading venue.";
 ---
 
-<Base title={title} description={description} fetchedAt={snap.fetchedAt}>
+<Base title={title} description={description} fetchedAt={snap.fetchedAt} namesFounder>
   <div class="page-head">
     <h1>About {SITE.name}</h1>
     <p>{IDENTITY.summary}</p>
@@ -160,9 +160,26 @@ const description =
       who is accountable and reachable, how the numbers are made, and what it structurally
       cannot do — with an entity rather than an individual. */}
   <h2 class="section">Who is accountable, and how to reach us</h2>
+  {/* THE NAME IS BACK, AND THE THING THAT CAUSED THE HARM IS STILL GONE.
+      What drew the spam was a personal address in machine-readable commit metadata, harvested
+      by everything that reads a public repository and unwithdrawable once out. A name on a page
+      is a different object entirely: it is the accountability an anonymous clone will not
+      offer, and it is the one claim here that a reader can hold someone to.
+      So the name is published and the personal address is not — not here, not in the JSON-LD,
+      not in git author fields. Both halves are enforced by a check rather than by memory. */}
   <p class="prose">
-    {SITE.name} is a project, not a company and not a person's blog: one independent publication
-    with one contact address, funded by nobody and selling nothing. It has been publishing since
+    {IDENTITY.founder ? (
+      <>
+        {SITE.name} is a project, not a company: one independent publication with one contact
+        address, funded by nobody and selling nothing, founded and run by
+        {" "}<strong>{IDENTITY.founder.name}</strong>. It has been publishing since
+      </>
+    ) : (
+      <>
+        {SITE.name} is a project, not a company and not a person's blog: one independent publication
+        with one contact address, funded by nobody and selling nothing. It has been publishing since
+      </>
+    )}
     {" "}{new Date(IDENTITY.launched).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" })}.
     Coverage grows deliberately slowly: a contract gets a page once it holds
     {" "}{usd(OI_NOTIONAL_FLOOR)} of open interest, and pages are added at a few a week rather

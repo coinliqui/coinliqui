@@ -12,6 +12,8 @@ interface Props {
   fetchedAt?: number;
   /** The visible trail this page already prints, so the markup can be built from it rather than beside it. */
   crumb?: { href: string; label: string; current: string };
+  /** Set by the ONE page that names the founder in its own prose. See the founder node below. */
+  namesFounder?: boolean;
   /**
    * Keep the page out of the index while still letting crawlers read and follow it.
    * Deliberately NOT robots.txt Disallow: a disallowed URL can still be indexed from
@@ -28,7 +30,7 @@ interface Props {
    */
   frozen?: boolean;
 }
-const { title, description, fetchedAt, noindex, frozen, crumb, titleMode = "suffix" } = Astro.props;
+const { title, description, fetchedAt, noindex, frozen, crumb, namesFounder, titleMode = "suffix" } = Astro.props;
 const fullTitle = titleMode === "exact" ? title : `${title} | ${SITE.name}`;
 const path = Astro.url.pathname;
 // Canonical origin comes from the build-time SITE_URL via Astro.site — never a literal,
@@ -115,6 +117,18 @@ const schema = {
       description: IDENTITY.summary,
       disambiguatingDescription: `${IDENTITY.notThis} It is not affiliated with ${IDENTITY.notAffiliated.join(", ")}.`,
       foundingDate: IDENTITY.launched,
+      /* A PERSON, NAMED, AND NOTHING ELSE ABOUT THEM. schema.org gives Organization.founder for
+         exactly this, and a name is the whole of it: no email, no sameAs, no personal account,
+         no jobTitle inflating a one-person project into a company. Omitted entirely when unset,
+         because an Organization carrying `founder: null` asserts something false.
+
+         EMITTED ONLY WHERE THE NAME IS ALSO VISIBLE. This block renders into every page, so the
+         first version put a founder into the markup of all 43 routes while exactly one of them
+         showed the name to a reader — a claim made only to machines, which is precisely the
+         posture this site is trying not to have. The gate caught it on the first run with a name
+         set. Google asks for organisation detail on the single page that best describes the
+         organisation in any case, so the narrower emission is also the recommended one. */
+      ...(IDENTITY.founder && namesFounder ? { founder: { "@type": "Person", name: IDENTITY.founder.name } } : {}),
       email: IDENTITY.contact,
       knowsAbout: [
         "perpetual futures funding rates",

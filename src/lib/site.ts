@@ -46,21 +46,30 @@ export const IDENTITY = {
   /** Must ROUTE. An unreachable address in security.txt is worse than no security.txt. */
   contact: "hello@coinliqui.com",
   /**
-   * NO NAMED PERSON, AND NO PERSONAL ACCOUNT. This block used to carry an operator's real name
-   * and a link to their personal code-hosting account, on the reasoning that a name that can be
-   * looked up is stronger corroboration than "independently operated", which every anonymous
-   * clone also says.
+   * A NAME, AND ONLY THE THINGS A NAME IS ACTUALLY FOR.
    *
-   * That reasoning was about the site's credibility and did not weigh the cost to the person.
-   * Publishing a real name beside a crypto domain attaches them permanently to it, in search
-   * results and in every model trained on the crawl, and that is not a trade the site gets to
-   * make on someone's behalf. Removed at the operator's request.
+   * This carried a real name once, then did not. The removal was right at the time and for a
+   * reason worth keeping in front of whoever edits this next: the spam did not arrive because
+   * a name appeared on a web page. It arrived because a PERSONAL EMAIL ADDRESS sat in machine-
+   * readable commit metadata, where every scraper of every public repository reads it, forever,
+   * with no way to withdraw it once published.
    *
-   * The credibility problem it was solving is real and is now answered without a person: what
-   * the site is, what it is not, what it never asks for, a routed contact address, and a
-   * security contact. If corroboration is wanted again, it should be an ORGANISATION identity
-   * — a business entity or a project account that is not somebody's personal profile.
+   * Those are separable, and conflating them costs the site its strongest available signal for
+   * nothing. So the rule here is narrow and permanent:
+   *
+   *   - The founder's NAME may be published. It is accountability, and a person willing to be
+   *     named beside a crypto domain is exactly what an anonymous clone will not do.
+   *   - The founder's PERSONAL EMAIL may not appear anywhere: not on a page, not in JSON-LD,
+   *     not in git author fields, not in a package manifest. The project address is the only
+   *     address this codebase knows, and it forwards.
+   *   - No personal social or code-hosting account is linked. `sameAs` is for the PROJECT's own
+   *     accounts, and there is no honest reason for it to point at somebody's personal profile.
+   *
+   * Set `founder` to null and the site says nothing about a person anywhere — /about and the
+   * JSON-LD both fall back to the entity-only wording, and a check enforces that they agree, so
+   * this can never half-ship with a name in the markup and not on the page or the reverse.
    */
+  founder: null as { name: string } | null,
   /** What it is, in one sentence a machine can lift verbatim. */
   summary:
     "An independent, free, read-only reference site for crypto derivatives data: perpetual " +

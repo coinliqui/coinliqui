@@ -602,28 +602,92 @@ export function colourLegend(html, p) {
  * SHAPE instead: no Person anywhere in the graph, no founder, no author, no personal profile
  * link. That is name-free, and it holds for any person rather than for one.
  */
-export function publishesAPerson(html) {
+/**
+ * A NAME IS ACCOUNTABILITY. A PERSONAL CONTACT ROUTE IS AN ATTACK SURFACE. THEY ARE NOT THE
+ * SAME OBJECT, AND THIS CHECK IS THE LINE BETWEEN THEM.
+ *
+ * The earlier version of this function forbade `founder` outright, because the policy then was
+ * that no person appears anywhere. That policy over-corrected. The harm that prompted it was
+ * specific and traceable: a PERSONAL EMAIL ADDRESS in machine-readable commit metadata, read by
+ * every scraper that walks a public repository, unwithdrawable once published. A name rendered
+ * on an about page is not that. It is the single strongest thing this site can say that an
+ * anonymous clone will not — and it costs nothing that can be harvested.
+ *
+ * So the rule is narrow. A Person may be named. A Person may carry NOTHING ELSE: no email, no
+ * url, no sameAs, no telephone, no address, no jobTitle. And no address other than the project
+ * contact may appear anywhere in the document, in any surface, whatever it is attached to.
+ *
+ * The personal-profile rule is unchanged and matched on the SHAPE of a profile URL rather than
+ * on any particular handle, so it keeps working for accounts nobody has created yet.
+ */
+export function publishesAPerson(html, allowedEmail = "hello@coinliqui.com") {
   const out = [];
+  const NAME_ONLY = new Set(["@type", "name"]);
+
   for (const m of html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)) {
     let data;
     try { data = JSON.parse(m[1]); } catch { out.push("JSON-LD does not parse, so it cannot be checked for a person"); continue; }
     const walk = (node, path) => {
       if (Array.isArray(node)) return node.forEach((v, i) => walk(v, `${path}[${i}]`));
       if (!node || typeof node !== "object") return;
-      if (node["@type"] === "Person") out.push(`JSON-LD ${path} is a Person${node.name ? ` named "${node.name}"` : ""}`);
-      for (const k of ["founder", "author", "creator", "employee", "owns"]) {
-        if (node[k]) out.push(`JSON-LD ${path} carries "${k}" — an individual attached to the site`);
+      if (node["@type"] === "Person") {
+        const extra = Object.keys(node).filter((k) => !NAME_ONLY.has(k));
+        if (!node.name) out.push(`JSON-LD ${path} is a Person with no name — an entry that identifies nobody has no reason to exist`);
+        if (extra.length) out.push(`JSON-LD ${path} is a Person carrying ${extra.map((k) => `"${k}"`).join(", ")} — a name is accountability, anything more is a contact route attached to an individual`);
+      }
+      /* An individual may be attached ONLY as a plain named founder. */
+      for (const k of ["author", "creator", "employee", "owns", "worksFor", "memberOf"]) {
+        if (node[k]) out.push(`JSON-LD ${path} carries "${k}" — only a named founder is permitted to attach an individual to this site`);
       }
       for (const [k, v] of Object.entries(node)) walk(v, `${path}.${k}`);
     };
     walk(data, "$");
   }
-  /* A personal profile link is the same exposure without the schema. Matched on the shape of a
-     user profile URL — host plus a single path segment — rather than on any particular handle. */
+
+  /* ANY address that is not the project's, anywhere in the document — prose, markup, JSON-LD,
+     an attribute, a comment. This is the rule the whole policy rests on, so it is matched on
+     the whole page rather than on the places an address is expected. */
+  for (const m of html.matchAll(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g)) {
+    const addr = m[0].toLowerCase();
+    if (addr !== allowedEmail.toLowerCase()) {
+      out.push(`the document publishes ${m[0]} — the project address is the only one this site may carry`);
+    }
+  }
+
   for (const m of html.matchAll(/https?:\/\/(?:www\.)?(?:github|gitlab|twitter|x|linkedin|instagram|t)\.(?:com|me|io)\/[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)?/g)) {
     out.push(`links a personal profile: ${m[0]}`);
   }
   return [...new Set(out)];
+}
+
+/**
+ * THE NAME ON THE PAGE AND THE NAME IN THE MARKUP MUST BE ONE NAME.
+ *
+ * Two independent renderings of the same fact, one visible and one not, is the exact shape
+ * that has produced every self-contradiction on this site so far. Here it would be worse than
+ * cosmetic: a founder in the JSON-LD who is named nowhere a reader can see is a claim made
+ * only to machines, which is the definition of the thing this site is trying not to look like.
+ */
+export function founderAgreement(html) {
+  const out = [];
+  let ld = null;
+  for (const m of html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)) {
+    let data;
+    try { data = JSON.parse(m[1]); } catch { continue; }
+    const walk = (n) => {
+      if (Array.isArray(n)) return n.forEach(walk);
+      if (!n || typeof n !== "object") return;
+      if (n.founder && n.founder.name) ld = n.founder.name;
+      Object.values(n).forEach(walk);
+    };
+    walk(data);
+  }
+  const vis = (html.match(/founded and run by\s*<strong[^>]*>([^<]+)<\/strong>/) || [])[1];
+  if (!ld && !vis) return out;
+  if (ld && !vis) out.push(`the markup names "${ld}" as founder but no reader can see that name on the page`);
+  if (vis && !ld) out.push(`the page names "${vis.trim()}" as founder but the markup does not, so the claim is invisible to anything reading the structured data`);
+  if (ld && vis && ld.trim() !== vis.trim()) out.push(`the page names "${vis.trim()}" and the markup names "${ld}"`);
+  return out;
 }
 
 /**

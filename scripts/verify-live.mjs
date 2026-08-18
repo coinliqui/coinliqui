@@ -597,6 +597,28 @@ console.log("\n13. the contact address survives Cloudflare's edge");
       ? ok(`${p.padEnd(28)} carries ${ADDR}`)
       : bad(`${p} no longer carries the contact address`);
   }
+
+  /* THE ONE ADDRESS ON THE SITE THAT IS DELIBERATELY UNPROTECTED.
+     Everything above proves the <!--email_off--> workaround is holding. It cannot prove whether
+     the feature it works around is switched on, and the Cloudflare grant this project has is
+     Workers-scoped: the zone settings endpoint returns 9109 Unauthorized, so the switch cannot
+     be read. /status carries the same address with no wrapper for exactly this reason. If it
+     comes back rewritten, obfuscation is ON and every other address on the site is reachable
+     only because of the opt-out — which makes that opt-out load-bearing, and worth saying out
+     loud rather than discovering again by having the contact route break. */
+  {
+    const r = await fetchAs("/status", "Mozilla/5.0");
+    const probe = (r.body.match(/id="contact-probe"[^>]*href="([^"]*)"/) || [])[1];
+    if (!probe) {
+      bad("/status no longer carries the unwrapped contact probe — the zone's obfuscation state is unmeasurable again");
+    } else if (/cdn-cgi\/l\/email-protection/.test(probe)) {
+      ok(`edge obfuscation is ON — the unwrapped probe came back as ${probe.slice(0, 44)}…, so <!--email_off--> is load-bearing on every other page`);
+    } else if (probe === `mailto:${ADDR}`) {
+      ok("edge obfuscation is OFF — the unwrapped probe survived verbatim, so the contact route does not depend on the opt-out");
+    } else {
+      bad(`/status probe came back as ${probe} — neither the address nor a known rewrite`);
+    }
+  }
 }
 
 /* 14. THE SOCIAL CARD MUST BE AN IMAGE A PLATFORM WILL ACTUALLY RENDER.

@@ -1,5 +1,6 @@
 ---
 import Base from "../layouts/Base.astro";
+import { IDENTITY } from "../lib/site.ts";
 import { getSnapshot } from "../lib/hyperliquid.ts";
 import { EXPECTED_WORKER_BUILD } from "../lib/version.ts";
 import { VENUE_LABEL, type Venue } from "../lib/funding.ts";
@@ -331,6 +332,36 @@ const utc = (ms: number) => new Date(ms).toISOString().slice(0, 16).replace("T",
       </table>
     </div>
   )}
+
+  {/* IS THE ONLY CONTACT ROUTE STILL MACHINE-READABLE?
+
+      Cloudflare's Email Address Obfuscation rewrites every mailto: it finds in HTML on the way
+      out of the edge, after this code has run and with no way for it to intervene. It did
+      exactly that once: the href became a /cdn-cgi/l/email-protection# URL that 404s and the
+      text became the literal string "[email protected]". Humans with JavaScript never notice.
+      Crawlers and answer engines see nonsense — and they are the audience the address exists
+      for, on the pages written to establish that this site is reachable.
+
+      <!--email_off--> is the documented opt-out and every other mailto on the site is wrapped
+      in it. That workaround is what is holding, and it is one deletion away from not holding,
+      because this project's Cloudflare grant cannot read zone settings to find out whether the
+      feature is even on. Verified by API on 18 August 2026: the token is Workers-scoped and
+      returns 9109 Unauthorized for zone settings, so the state of that switch is unknowable
+      from here.
+
+      So the state is measured instead of assumed. The address below is deliberately NOT wrapped.
+      If the edge is rewriting, this one link is mangled and everything else on the site still
+      works — and scripts/verify-live.mjs reads this page and says so. */}
+  <h2 class="section">Contact route</h2>
+  <p class="prose">
+    The published address is
+    {" "}<!--email_off--><a class="link" href={`mailto:${IDENTITY.contact}`}>{IDENTITY.contact}</a><!--email_on-->,
+    protected from edge rewriting. Directly below is the same address deliberately left
+    unprotected, as a live test of whether the rewriting is switched on at all:
+    {" "}<a class="link" id="contact-probe" href={`mailto:${IDENTITY.contact}`}>{IDENTITY.contact}</a>.
+    If those two differ, the edge is rewriting and the protection on every other page is what is
+    keeping the site reachable.
+  </p>
 
   <style>
     /* THE ONE PAGE ALLOWED A HEALTH COLOUR.
