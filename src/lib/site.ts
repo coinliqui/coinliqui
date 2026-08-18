@@ -83,7 +83,15 @@ export const IDENTITY = {
    * Base.astro already omits sameAs entirely when this is empty, so no empty property is
    * emitted into the structured data.
    */
-  sameAs: [] as string[],
+  sameAs: [
+    /* ONE LINE, WHEN THE PROJECT ORG EXISTS. Put the ORG repository here —
+       https://github.com/coinliqui/coinliqui — never a personal account. A public repository is
+       genuine third-party corroboration: it is the actual source of this site, independently
+       hosted, with a commit history that cannot be back-dated. That argument holds for a project
+       account and collapses into a privacy problem for a personal one, which is why this is
+       empty rather than pointing at the repo that exists today.
+       Base.astro omits sameAs entirely while this is empty, so no hollow property is emitted. */
+  ] as string[],
 } as const;
 
 /**

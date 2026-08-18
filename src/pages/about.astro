@@ -149,13 +149,43 @@ const description =
     </table>
   </div>
 
-  <h2 class="section">Who runs it, and how to reach us</h2>
+  {/* ACCOUNTABILITY AT THE LEVEL OF THE PROJECT, NOT A PERSON.
+      Google's own guidance asks "Is it self-evident to your visitors who authored your
+      content?" — it asks who is ACCOUNTABLE, and never requires that to be a named human. The
+      same guidance gives equal weight to "How": "It's helpful to readers to know how a piece of
+      content was produced." For a site whose every claim is checkable against a named upstream,
+      the How is the stronger half, and it is the half a personal byline cannot supply.
+
+      So this section answers the four questions an answer engine actually needs — what it is,
+      who is accountable and reachable, how the numbers are made, and what it structurally
+      cannot do — with an entity rather than an individual. */}
+  <h2 class="section">Who is accountable, and how to reach us</h2>
   <p class="prose">
-    {SITE.name} is independently built and operated, not by a company and not funded by anyone.
-    It has been publishing since {new Date(IDENTITY.launched).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" })}.
+    {SITE.name} is a project, not a company and not a person's blog: one independent publication
+    with one contact address, funded by nobody and selling nothing. It has been publishing since
+    {" "}{new Date(IDENTITY.launched).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" })}.
     Coverage grows deliberately slowly: a contract gets a page once it holds
     {" "}{usd(OI_NOTIONAL_FLOOR)} of open interest, and pages are added at a few a week rather
     than generated in bulk.
+  </p>
+  <p class="prose">
+    <strong>Every figure on this site names its source and its age.</strong> That is a stronger
+    guarantee than a byline, because you do not have to take it on trust — you can check it.
+    {" "}<a class="link" href="/data-sources">Data sources</a> lists every upstream endpoint
+    behind every number with its refresh cadence and what is deliberately absent;
+    {" "}<a class="link" href="/methodology">Methodology</a> shows the arithmetic, including the
+    normalisation that makes venues comparable at all;
+    {" "}<a class="link" href="/methodology/liquidations">why no liquidation totals are
+    published</a> is the clearest case of the site declining to print a number it cannot stand
+    behind; and <a class="link" href="/status">Status</a> reports the ingest's real success rate,
+    failures included, rendered from the run log rather than asserted.
+  </p>
+  <p class="prose">
+    <strong>The pages are generated, and that is stated rather than hidden.</strong> Numbers,
+    charts and tables are produced by scheduled code from the endpoints named on
+    {" "}<a class="link" href="/data-sources">Data sources</a>; the explanatory prose is written.
+    Nothing here is a model output, a forecast or a signal — where a figure is modelled rather
+    than measured, the page says so and lists the assumptions.
   </p>
   <p class="prose">
     Corrections are welcome and acted on — if a number here disagrees with the venue it came
