@@ -810,7 +810,7 @@ export function breadcrumbAgreement(html) {
      demand for it noise. /tools/liquidation-price is the live case: it serves 410 Gone and
      still prints its trail, which is right for the reader who followed an old link and wrong
      for a crawler being told to forget the URL. Caught by this check on its first run. */
-  if (/<meta name="robots" content="[^"]*noindex/.test(html)) return out;
+  const noindex = /<meta name="robots" content="[^"]*noindex/.test(html);
   const vis = html.match(/<p class="crumb"[^>]*><a href="([^"]+)"[^>]*>([^<]+)<\/a>\s*›\s*([^<]+)<\/p>/);
   const ld = [...html.matchAll(/<script type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/g)]
     .map((m) => { try { return JSON.parse(m[1]); } catch { return null; } })
@@ -818,6 +818,13 @@ export function breadcrumbAgreement(html) {
     .flatMap((j) => (j["@graph"] ?? [j]))
     .find((n) => n && n["@type"] === "BreadcrumbList");
 
+  /* Both halves of one rule. A noindex page is not required to carry markup — /tools/liquidation-price
+     rightly keeps its trail while serving 410 Gone — and it is equally not permitted to, which is
+     the half the first version of this check left unguarded. */
+  if (noindex) {
+    if (ld) out.push(`the page is noindex but carries a BreadcrumbList — it has no search result to shape, so the markup is bytes nothing will read`);
+    return out;
+  }
   if (!vis && !ld) return out;
   if (vis && !ld) { out.push(`the page prints the trail "${vis[2].trim()} › ${vis[3].trim()}" but carries no BreadcrumbList, so a search result shows the raw URL path instead`); return out; }
   if (!vis && ld) { out.push(`the page carries a BreadcrumbList but prints no trail — markup may not claim a position the reader cannot see`); return out; }

@@ -78,7 +78,12 @@ const age = (m: number) =>
    The gate checks the two against each other on every rendered page: this graph is built
    from a prop, the trail is printed by the template, and nothing but a check stops the pair
    drifting the moment someone edits one of them. */
-const crumbNode = crumb && {
+/* Not on a noindex page. The markup exists to shape a search result, and a page excluded
+   from the index has none to shape — /status/indexation was carrying 190 bytes of graph that
+   nothing would ever read. Found by verifying production rather than by the gate, which had
+   been told to ignore noindex pages entirely instead of holding them to the other half of
+   the same rule. */
+const crumbNode = crumb && !noindex && {
   "@type": "BreadcrumbList",
   "@id": `${Astro.url.pathname}#breadcrumb`,
   itemListElement: [
