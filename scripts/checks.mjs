@@ -936,3 +936,38 @@ export function readmeCounts(readme) {
   }
   return [...new Set(out)];
 }
+
+
+/**
+ * AN EXCLUSION NOBODY CAN EVALUATE IS AN EXCLUSION NOBODY WILL EVER REMOVE.
+ *
+ * robots.txt carried eight bare strings in a BLOCKED array, under a comment saying that
+ * blocking the wrong bot makes the site uncitable. Five of them were wrong on their own terms —
+ * Common Crawl among them, on a site whose only problem is that it exists nowhere but itself —
+ * and two more were dead tokens the operator had retired, so the site believed it was blocking
+ * a reseller it was in fact serving. None of that was discoverable from the file, because none
+ * of the entries said why it was there.
+ *
+ * So an entry now has to carry its reason, in the file, where the next person deciding whether
+ * to re-block something will read it.
+ */
+export function botPolicyReasons(src) {
+  const out = [];
+  const block = src.match(/const BLOCKED[^=]*=\s*\[([\s\S]*?)\];/);
+  const rate = src.match(/const RATE_LIMITED[^=]*=\s*\[([\s\S]*?)\];/);
+  if (!block) { out.push("robots.txt.ts has no BLOCKED list in the expected shape — the audit cannot see it"); return out; }
+  for (const [label, m] of [["blocked", block], ["rate-limited", rate]]) {
+    if (!m) continue;
+    for (const entry of m[1].split("},")) {
+      if (!/ua:/.test(entry)) continue;
+      const ua = (entry.match(/ua:\s*"([^"]+)"/) || [])[1] || "?";
+      const why = (entry.match(/why:\s*"([^"]*)"/) || [])[1];
+      if (!why || why.trim().length < 12) {
+        out.push(`${ua} is ${label} with no stated reason — every exclusion must say why, or be removed`);
+      }
+    }
+  }
+  /* A bare string list is the shape the audit replaced; catch a regression to it. */
+  if (/const BLOCKED\s*=\s*\[\s*"/.test(src)) out.push("BLOCKED has reverted to a bare string list, which is how eight unexamined exclusions survived");
+  return out;
+}

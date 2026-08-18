@@ -69,7 +69,7 @@ export const IDENTITY = {
    * JSON-LD both fall back to the entity-only wording, and a check enforces that they agree, so
    * this can never half-ship with a name in the markup and not on the page or the reverse.
    */
-  founder: null as { name: string } | null,
+  founder: { name: "Yury Fokin" } as { name: string } | null,
   /** What it is, in one sentence a machine can lift verbatim. */
   summary:
     "An independent, free, read-only reference site for crypto derivatives data: perpetual " +
