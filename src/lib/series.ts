@@ -56,6 +56,37 @@ export interface PriceChart {
 /** Candles or a close line. The line is a presentation of the same array, not a second series. */
 export type ChartMode = "candle" | "line";
 
+/**
+ * Mean funding APR for each DRAWN bar, keyed by that bar's own timestamp.
+ *
+ * Exported so it can be checked against an independently computed answer. It used to live
+ * inline inside buildPriceChart(), which meant the only way to test it was to re-implement it
+ * — and a test that re-implements the thing it is testing agrees with itself, not with the
+ * shipped code. scripts/chart-bucketing.mjs calls THIS.
+ *
+ * `end` is the NEXT candle's timestamp rather than start + barMs, so the short leading bar that
+ * aggregate() emits when the source does not divide evenly is closed correctly too.
+ */
+export function fundingByBar(
+  candles: Candle[],
+  funding: FundingPoint[],
+  barMs: number,
+  out: Map<number, number> = new Map(),
+): Map<number, number> {
+  const sorted = [...funding].sort((a, b) => a[0] - b[0]);
+  let i = 0;
+  for (let ci = 0; ci < candles.length; ci++) {
+    const start = candles[ci][T];
+    const end = ci + 1 < candles.length ? candles[ci + 1][T] : start + barMs;
+    while (i < sorted.length && sorted[i][0] < start) i++;
+    let sum = 0, cnt = 0, j = i;
+    while (j < sorted.length && sorted[j][0] < end) { sum += sorted[j][1] * 8760; cnt++; j++; }
+    if (cnt) out.set(start, sum / cnt);   // HL settles hourly: APR = rate x 8760
+    i = j;
+  }
+  return out;
+}
+
 export function buildPriceChart(
   candles: Candle[],
   funding: FundingPoint[] | null,
@@ -74,19 +105,28 @@ export function buildPriceChart(
      the panel is dropped and the page says so in words instead. */
   const barMs = tf.hours * 3_600_000;
   const aprAt = new Map<number, number>();
-  if (funding && funding.length > 4) {
-    const acc = new Map<number, { s: number; n: number }>();
-    for (const [t, r] of funding) {
-      const k = Math.floor(t / barMs) * barMs;
-      const a = acc.get(k) ?? { s: 0, n: 0 };
-      a.s += r * 8760; a.n++;            // HL settles hourly: APR = rate x 8760
-      acc.set(k, a);
-    }
-    for (const c of candles) {
-      const a = acc.get(Math.floor(c[T] / barMs) * barMs);
-      if (a?.n) aprAt.set(c[T], a.s / a.n);
-    }
-  }
+  /* FUNDING IS KEYED ON THE BAR THE CHART ACTUALLY DREW, not on an epoch grid.
+   *
+   * It used to bucket with `Math.floor(t / barMs) * barMs` and read back the same way. Writer
+   * and reader agreed on the key and still described different windows, because aggregate()
+   * above chunks BACKWARDS from the newest candle: 4H bars open at whatever hour the newest
+   * hourly candle implies — 07:00, 11:00, 15:00 on the day this was found — while the buckets
+   * sit at 00/04/08/12/16/20. A 4H bar therefore overlapped its own funding by one hour in
+   * four; a 1W bar by one day in seven.
+   *
+   * Measured from the JSON the page itself ships for /funding/btc: of the 4H bars with full
+   * hourly coverage, 15 carried the epoch bucket's mean rather than their own, and TWO of
+   * those had the opposite SIGN — drawn in the colour that says the other side pays. Red and
+   * green mean one thing on this site, so that is not a rounding complaint.
+   *
+   * 1H and 1D looked correct throughout, which is why this survived: those candles happen to
+   * be epoch-aligned already, so the wrong key returned the right window and the defect
+   * rendered as a plausible number on exactly the two timeframes nobody cross-checked.
+   *
+   * Walking the drawn candles is also correct for whatever offset aggregate() produces next,
+   * including the short leading bar it can emit, since each window is closed by the NEXT
+   * candle's timestamp rather than by arithmetic. */
+  if (funding && funding.length > 4) fundingByBar(candles, funding, barMs, aprAt);
   const coverage = aprAt.size / candles.length;
   const fundOn = coverage >= 0.06;
   const fundH = fundOn ? LY.fundH : 0;

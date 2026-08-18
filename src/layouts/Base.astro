@@ -81,7 +81,7 @@ const schema = {
       name: SITE.name,
       url: base,
       logo: `${base}/icon.svg`,
-      image: `${base}/og.svg`,
+      image: `${base}/og.png`,
       description: IDENTITY.summary,
       disambiguatingDescription: `${IDENTITY.notThis} It is not affiliated with ${IDENTITY.notAffiliated.join(", ")}.`,
       foundingDate: IDENTITY.launched,
@@ -134,20 +134,26 @@ const schema = {
     <meta name="description" content={description} />
     {noindex && <meta name="robots" content="noindex, follow" />}
     <link rel="canonical" href={new URL(path, base).href} />
-    {/* There was no favicon and no social card at all. Both are same-origin SVG served from
-        public/ — and a site with a blank tab icon and no card reads as abandoned to a person
-        and as unestablished to everything else. */}
+    {/* There was no favicon and no social card at all, and then the card was an SVG, which is
+        the same thing with extra steps: no social platform renders SVG — not Facebook, X,
+        LinkedIn, Slack, Discord or iMessage — so under twitter:card="summary_large_image" every
+        link ever shared came out bare, on all 78 URLs. Nothing errored: the tag was present, the
+        URL returned 200, and image/svg+xml is a valid content-type. og.png is rasterised from
+        og.svg by scripts/gen-og-png.mjs; the favicon stays SVG because browsers do render it. */}
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content={SITE.name} />
     <meta property="og:title" content={fullTitle} />
     <meta property="og:description" content={description} />
     <meta property="og:url" content={new URL(path, base).href} />
-    <meta property="og:image" content={`${base}/og.svg`} />
+    <meta property="og:image" content={`${base}/og.png`} />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content={fullTitle} />
     <meta name="twitter:description" content={description} />
-    <meta name="twitter:image" content={`${base}/og.svg`} />
+    <meta name="twitter:image" content={`${base}/og.png`} />
     <script type="application/ld+json" set:html={JSON.stringify(schema)} />
     <style is:global>
       /* ==========================================================================

@@ -541,7 +541,37 @@ console.log("\n13. the contact address survives Cloudflare's edge");
   }
 }
 
-console.log("\n14. data");
+/* 14. THE SOCIAL CARD MUST BE AN IMAGE A PLATFORM WILL ACTUALLY RENDER.
+      og:image and twitter:image pointed at an SVG on all 78 URLs, under
+      twitter:card="summary_large_image". No platform renders SVG, so the card never appeared
+      anywhere and every shared link came out bare — free distribution discarded silently, with
+      nothing to notice: the tag was present, the URL returned 200, and image/svg+xml is a
+      perfectly valid content-type. That is why this asserts the FORMAT and not merely that the
+      URL resolves, which was always true. */
+console.log("\n14. the social card renders where it is shared");
+{
+  const r = await fetchAs("/", "Mozilla/5.0");
+  const grab = (re) => re.exec(r.body)?.[1] ?? null;
+  const og = grab(/<meta property="og:image" content="([^"]+)"/);
+  const tw = grab(/<meta name="twitter:image" content="([^"]+)"/);
+  const card = grab(/<meta name="twitter:card" content="([^"]+)"/);
+
+  if (!og || !tw) { bad(`missing card image tags (og:image ${og}, twitter:image ${tw})`); }
+  else if (og !== tw) { bad(`og:image and twitter:image disagree: ${og} vs ${tw}`); }
+  else {
+    const img = await fetch(og, { headers: { "user-agent": "facebookexternalhit/1.1" } });
+    const type = img.headers.get("content-type") ?? "";
+    const bytes = (await img.arrayBuffer()).byteLength;
+    if (img.status !== 200) bad(`${og} returns ${img.status} to a social crawler`);
+    else if (/svg/i.test(type)) bad(`${og} is ${type} — no social platform renders SVG, so the "${card}" card never appears`);
+    else if (!/^image\/(png|jpeg|webp)/i.test(type)) bad(`${og} is ${type}, which is not a format social crawlers render`);
+    /* Facebook and X both drop images over 5 MB, and both want at least 200x200. */
+    else if (bytes > 5_000_000) bad(`${og} is ${bytes.toLocaleString()}b — over the 5MB most platforms accept`);
+    else ok(`${og.replace(ORIGIN, "")} ${type}, ${bytes.toLocaleString()}b, card "${card}"`);
+  }
+}
+
+console.log("\n15. data");
 {
   const r = await fetchAs("/status", "Mozilla/5.0");
   const grab = (re) => re.exec(r.body)?.[1]?.trim() ?? "?";
