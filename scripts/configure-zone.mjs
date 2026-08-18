@@ -25,7 +25,15 @@ const WWW = `www.${APEX}`;
 const PROJECT = "coinliqui";
 const BUCKET = "coinliqui-og";
 const IMG = `img.${APEX}`;
-const FORWARD_TO = process.env.EMAIL_TO || "REDACTED@example.invalid";
+/* NO DEFAULT. This carried a personal mailbox address as a fallback, in a PUBLIC repository —
+   a private address published as surely as if it had been printed on a page. The destination is
+   now required from the environment, and the script refuses to run without it rather than
+   quietly reaching for someone's inbox. */
+const FORWARD_TO = process.env.EMAIL_TO;
+if (!FORWARD_TO && !process.argv.includes("--dry")) {
+  console.error("EMAIL_TO is required — the address Email Routing should forward to. Not defaulted on purpose.");
+  process.exit(1);
+}
 const DRY = process.argv.includes("--dry");
 
 const zoneToken = process.env.CF_ZONE_TOKEN;

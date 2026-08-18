@@ -586,3 +586,42 @@ export function colourLegend(html, p) {
     out.push("shows BOTH colour languages and does not name both");
   return out;
 }
+
+/**
+ * NO INDIVIDUAL IS PUBLISHED BY THIS SITE.
+ *
+ * The identity block once carried an operator's real name and a link to their personal
+ * code-hosting account, and emitted `founder: { @type: "Person", name }` into the JSON-LD of
+ * every page — the most machine-readable way there is to bind a person to a domain, and the
+ * form that gets lifted into knowledge panels and training corpora. It was removed at the
+ * operator's request.
+ *
+ * THIS CHECK CONTAINS NO NAMES, DELIBERATELY. The obvious implementation is a denylist of the
+ * strings to look for — and this repository is public, so a denylist would republish exactly
+ * what it exists to keep out, in a file whose whole purpose is to be read. So it asserts the
+ * SHAPE instead: no Person anywhere in the graph, no founder, no author, no personal profile
+ * link. That is name-free, and it holds for any person rather than for one.
+ */
+export function publishesAPerson(html) {
+  const out = [];
+  for (const m of html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)) {
+    let data;
+    try { data = JSON.parse(m[1]); } catch { out.push("JSON-LD does not parse, so it cannot be checked for a person"); continue; }
+    const walk = (node, path) => {
+      if (Array.isArray(node)) return node.forEach((v, i) => walk(v, `${path}[${i}]`));
+      if (!node || typeof node !== "object") return;
+      if (node["@type"] === "Person") out.push(`JSON-LD ${path} is a Person${node.name ? ` named "${node.name}"` : ""}`);
+      for (const k of ["founder", "author", "creator", "employee", "owns"]) {
+        if (node[k]) out.push(`JSON-LD ${path} carries "${k}" — an individual attached to the site`);
+      }
+      for (const [k, v] of Object.entries(node)) walk(v, `${path}.${k}`);
+    };
+    walk(data, "$");
+  }
+  /* A personal profile link is the same exposure without the schema. Matched on the shape of a
+     user profile URL — host plus a single path segment — rather than on any particular handle. */
+  for (const m of html.matchAll(/https?:\/\/(?:www\.)?(?:github|gitlab|twitter|x|linkedin|instagram|t)\.(?:com|me|io)\/[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)?/g)) {
+    out.push(`links a personal profile: ${m[0]}`);
+  }
+  return [...new Set(out)];
+}

@@ -35,7 +35,7 @@
 import { spawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { readdirSync, readFileSync } from "node:fs";
-import { cssFor, undefinedClasses, undefinedVars, rawEnums, searchIndexGaps, unnamedUpstreams, formatterDrift, uncoveredRoutes, unreadableText, chartAgreement, requestedLeverageLabels, inlineScriptSyntax, flipTableColour, colourPalettes, colourLanguageDrift, colourLegend } from "./checks.mjs";
+import { cssFor, undefinedClasses, undefinedVars, rawEnums, searchIndexGaps, unnamedUpstreams, formatterDrift, uncoveredRoutes, unreadableText, chartAgreement, requestedLeverageLabels, inlineScriptSyntax, flipTableColour, colourPalettes, colourLanguageDrift, colourLegend, publishesAPerson } from "./checks.mjs";
 
 /* The SERVER side of each duplicated formatter, transcribed from the file that owns it and
    named here so the pairing is explicit. Transcription is the honest cost of having no bundler:
@@ -218,6 +218,9 @@ for (const path of ROUTES) {
     /* Two colour languages now exist. A page may speak either, and must name whichever it
        speaks — a rule that only means anything if it is asserted per page rather than once. */
     content.push(...colourLegend(body, PALETTE));
+    /* No individual may be published by this site — checked on EVERY page, because the
+       structured data is emitted by the shared layout and one page is every page. */
+    content.push(...publishesAPerson(body));
     if (c.length) content.push(`class defined nowhere: ${c.join(", ")}`);
     if (v.length) content.push(`custom property never declared: ${v.join(", ")}`);
     if (e.length) content.push(`internal enum rendered as text: ${e.join(", ")}`);
