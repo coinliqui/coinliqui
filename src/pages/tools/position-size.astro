@@ -62,7 +62,7 @@ const title = `Position size calculator with liquidation check`;
 const description = `Risk-based position sizing for ${perp.symbol} perpetuals that checks the stop against the tier-correct liquidation price — because a stop beyond liquidation is not a stop.`;
 ---
 
-<Base title={title} description={description} fetchedAt={snap.fetchedAt}>
+<Base title={title} description={description} fetchedAt={snap.fetchedAt} crumb={{ href: "/tools", label: "Tools", current: "Position size" }}>
   <div class="page-head">
     <p class="crumb"><a href="/tools">Tools</a> › Position size</p>
     <h1>Position size calculator</h1>

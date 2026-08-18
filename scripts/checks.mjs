@@ -789,3 +789,45 @@ export function sitemapLastmodHonesty(xmlBody, lastmodTable, liveRoutes) {
   }
   return out;
 }
+
+
+/**
+ * THE BREADCRUMB MARKUP AND THE BREADCRUMB A READER SEES MUST BE THE SAME BREADCRUMB.
+ *
+ * Structured data that overstates the page is the one kind of markup that can cost more than
+ * it earns - it is the basis of a manual action, and the failure is silent, since a graph is
+ * invisible to everyone except the crawler acting on it. The trail is printed by each template
+ * and the graph is built in the layout from a prop, so the two are one edit away from
+ * disagreeing at any time, and nothing in a browser would show it.
+ *
+ * So: every page that prints a trail must carry a BreadcrumbList saying exactly that trail,
+ * every page that carries one must print it, and the link target must match too - a crumb
+ * pointing at /funding while the markup names /coins would be worse than no markup.
+ */
+export function breadcrumbAgreement(html) {
+  const out = [];
+  /* A noindex page has no search result to shape, so the markup would be dead weight and the
+     demand for it noise. /tools/liquidation-price is the live case: it serves 410 Gone and
+     still prints its trail, which is right for the reader who followed an old link and wrong
+     for a crawler being told to forget the URL. Caught by this check on its first run. */
+  if (/<meta name="robots" content="[^"]*noindex/.test(html)) return out;
+  const vis = html.match(/<p class="crumb"[^>]*><a href="([^"]+)"[^>]*>([^<]+)<\/a>\s*›\s*([^<]+)<\/p>/);
+  const ld = [...html.matchAll(/<script type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/g)]
+    .map((m) => { try { return JSON.parse(m[1]); } catch { return null; } })
+    .filter(Boolean)
+    .flatMap((j) => (j["@graph"] ?? [j]))
+    .find((n) => n && n["@type"] === "BreadcrumbList");
+
+  if (!vis && !ld) return out;
+  if (vis && !ld) { out.push(`the page prints the trail "${vis[2].trim()} › ${vis[3].trim()}" but carries no BreadcrumbList, so a search result shows the raw URL path instead`); return out; }
+  if (!vis && ld) { out.push(`the page carries a BreadcrumbList but prints no trail — markup may not claim a position the reader cannot see`); return out; }
+
+  const items = ld.itemListElement ?? [];
+  const [parent, current] = [items[0] ?? {}, items[1] ?? {}];
+  const wantLabel = vis[2].trim(), wantCurrent = vis[3].trim(), wantHref = vis[1];
+  if (items.length !== 2) out.push(`the trail has 2 rungs but the BreadcrumbList has ${items.length}`);
+  if (parent.name !== wantLabel) out.push(`the trail reads "${wantLabel}" but the markup names "${parent.name}"`);
+  if (current.name !== wantCurrent) out.push(`the trail ends at "${wantCurrent}" but the markup ends at "${current.name}"`);
+  if (parent.item && !String(parent.item).endsWith(wantHref)) out.push(`the trail links to ${wantHref} but the markup points at ${parent.item}`);
+  return out;
+}

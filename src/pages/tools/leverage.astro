@@ -64,7 +64,7 @@ const description = tierCount > 1
   : `${perp.symbol} perpetuals have a single margin tier: the same maximum leverage and maintenance margin at every position size. This shows what that means for the margin you post and the liquidation price you get.`;
 ---
 
-<Base title={title} description={description} fetchedAt={snap.fetchedAt}>
+<Base title={title} description={description} fetchedAt={snap.fetchedAt} crumb={{ href: "/tools", label: "Tools", current: "Leverage" }}>
   <div class="page-head">
     <p class="crumb"><a href="/tools">Tools</a> › Leverage</p>
     <h1>Leverage calculator</h1>

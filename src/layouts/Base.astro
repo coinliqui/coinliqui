@@ -10,6 +10,8 @@ interface Props {
   titleMode?: "suffix" | "exact";
   description: string;
   fetchedAt?: number;
+  /** The visible trail this page already prints, so the markup can be built from it rather than beside it. */
+  crumb?: { href: string; label: string; current: string };
   /**
    * Keep the page out of the index while still letting crawlers read and follow it.
    * Deliberately NOT robots.txt Disallow: a disallowed URL can still be indexed from
@@ -26,7 +28,7 @@ interface Props {
    */
   frozen?: boolean;
 }
-const { title, description, fetchedAt, noindex, frozen, titleMode = "suffix" } = Astro.props;
+const { title, description, fetchedAt, noindex, frozen, crumb, titleMode = "suffix" } = Astro.props;
 const fullTitle = titleMode === "exact" ? title : `${title} | ${SITE.name}`;
 const path = Astro.url.pathname;
 // Canonical origin comes from the build-time SITE_URL via Astro.site — never a literal,
@@ -64,9 +66,31 @@ const age = (m: number) =>
  * that could be confused, and the sentence that separates them. It is machine-readable, it is
  * on every page, and it says the specific thing the mistaken answer needed and could not find.
  */
+/* TEN TEMPLATES PRINTED A TRAIL AND NOT ONE OF THEM SAID SO IN A MACHINE-READABLE WAY.
+   `Funding › BTC` sat above the h1 on fifty pages while search results showed the raw URL
+   path instead, because a BreadcrumbList is what replaces that line and there was none.
+
+   It mirrors the VISIBLE trail exactly - two items, no invented Home rung - because the
+   markup is only allowed to say what the page shows, and a breadcrumb claiming a level the
+   reader cannot see is the same defect as a pill claiming a freshness the numbers do not
+   have. Pages without a trail emit nothing at all rather than a fabricated one.
+
+   The gate checks the two against each other on every rendered page: this graph is built
+   from a prop, the trail is printed by the template, and nothing but a check stops the pair
+   drifting the moment someone edits one of them. */
+const crumbNode = crumb && {
+  "@type": "BreadcrumbList",
+  "@id": `${Astro.url.pathname}#breadcrumb`,
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: crumb.label, item: `${base}${crumb.href}` },
+    { "@type": "ListItem", position: 2, name: crumb.current },
+  ],
+};
+
 const schema = {
   "@context": "https://schema.org",
   "@graph": [
+    ...(crumbNode ? [crumbNode] : []),
     {
       "@type": "WebSite",
       "@id": `${base}#website`,

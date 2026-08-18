@@ -49,7 +49,7 @@ const title = `Funding arbitrage calculator — cross-venue spread`;
 const description = `What the funding spread between venues is actually worth on a delta-neutral position, with both legs annualised on their own settlement interval rather than assumed to match. Opens on the widest live spread.`;
 ---
 
-<Base title={title} description={description} fetchedAt={snap.fetchedAt}>
+<Base title={title} description={description} fetchedAt={snap.fetchedAt} crumb={{ href: "/tools", label: "Tools", current: "Funding arbitrage" }}>
   <div class="page-head">
     <p class="crumb"><a href="/tools">Tools</a> › Funding arbitrage</p>
     <h1>Funding arbitrage calculator</h1>

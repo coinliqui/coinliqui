@@ -174,7 +174,7 @@ const tfSpan = offered.length ? `${offered[0].label} to ${offered[offered.length
 const description = `What a ${p.symbol} perpetual costs to hold: ${venuePhrase}, the price chart from ${tfSpan} with funding on the same axis, ${usd(p.oiNotional)} of open interest and the published margin tiers.`;
 ---
 
-<Base title={title} description={description} fetchedAt={snap.fetchedAt}>
+<Base title={title} description={description} fetchedAt={snap.fetchedAt} crumb={{ href: "/funding", label: "Funding", current: p.symbol }}>
   <div class="page-head">
     <p class="crumb"><a href="/funding">Funding</a> › {p.symbol}</p>
     <h1>{p.symbol} perpetual</h1>

@@ -40,7 +40,7 @@ const title = `Funding cost calculator — what it costs to hold ${perp.symbol}`
 const description = `What holding a ${perp.symbol} perpetual actually costs in funding, using each venue's real settlement interval rather than treating the quoted rate as a daily number.`;
 ---
 
-<Base title={title} description={description} fetchedAt={snap.fetchedAt}>
+<Base title={title} description={description} fetchedAt={snap.fetchedAt} crumb={{ href: "/tools", label: "Tools", current: "Funding cost" }}>
   <div class="page-head">
     <p class="crumb"><a href="/tools">Tools</a> › Funding cost</p>
     <h1>Funding cost calculator</h1>

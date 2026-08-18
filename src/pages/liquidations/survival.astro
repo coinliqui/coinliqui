@@ -152,7 +152,7 @@ const title = `${perp.symbol} leverage backtest: liquidated or survived`;
 const description = `Which leveraged ${perp.symbol} positions were liquidated and which survived — every entry day, every leverage, held ${hold} days. Derived from real traded candles and the published margin tiers, nothing modelled.`;
 ---
 
-<Base title={title} description={description} fetchedAt={snap.fetchedAt}>
+<Base title={title} description={description} fetchedAt={snap.fetchedAt} crumb={{ href: "/liquidations", label: "Liquidations", current: "Survival" }}>
   <div class="page-head">
     <p class="crumb"><a href="/liquidations">Liquidations</a> › Survival</p>
     <h1>Leverage survival</h1>

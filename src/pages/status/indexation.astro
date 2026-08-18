@@ -75,8 +75,7 @@ const utc = (ms: number) => new Date(ms).toISOString().slice(0, 16).replace("T",
 <Base
   title="Indexation report"
   description="Per-template indexed share, search position and crawler fetches, produced weekly by the ingest worker."
-  noindex
->
+  noindex crumb={{ href: "/status", label: "Status", current: "Indexation" }}>
   <div class="page-head">
     <p class="crumb"><a href="/status">Status</a> › Indexation</p>
     <h1>Indexation report</h1>
