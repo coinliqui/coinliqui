@@ -5,14 +5,34 @@ import cloudflare from "@astrojs/cloudflare";
 // sitemaps, robots and JSON-LD all derive from Astro.site, so the domain is one
 // dashboard variable rather than a code change.
 //
-// Fail closed: a Cloudflare build without SITE_URL would silently emit canonicals and
-// a sitemap pointing at a placeholder while the site is reachable on *.pages.dev — the
-// exact way indexing starts on a hostname we intend to migrate away from.
-const SITE_URL = process.env.SITE_URL;
-if (process.env.CF_PAGES && !SITE_URL) {
+// THE FALLBACK IS THE CANONICAL ORIGIN, BECAUSE THERE IS NO CASE WHERE THIS SITE SHOULD
+// PUBLISH ANYTHING ELSE.
+//
+// This used to fall back to http://localhost:4321, guarded by `if (process.env.CF_PAGES &&
+// !SITE_URL) throw` — fail closed, but only on Cloudflare, which was the only build path when
+// it was written. Moving deployment to direct upload moved the build onto a laptop, where
+// CF_PAGES is unset, the guard is inert BY DESIGN, and the fallback is silent. The site then
+// served http://localhost:4321 as the canonical on every page for about eight hours, along
+// with og:url, the JSON-LD @id, every URL in /llms.txt, the Canonical line of security.txt and
+// — worst — sitemap-index.xml, which is how a crawler reaches all 78 URLs.
+//
+// A guard whose precondition is an ENVIRONMENT protects a hypothesis about where the build
+// runs. The artifact is what ships. So the failure mode is removed rather than guarded: the
+// default is the real origin, SITE_URL remains an override for anyone who needs one, and
+// scripts/no-localhost.mjs refuses to deploy a dist/ carrying a placeholder either way.
+//
+// Dev is unaffected in the way that matters — `astro dev` output is never indexed, and an
+// absolute URL pointing at production during local development is harmless and more honest
+// than one pointing at a port.
+const CANONICAL_ORIGIN = "https://coinliqui.com";
+const SITE_URL = process.env.SITE_URL || CANONICAL_ORIGIN;
+
+// A preview hostname in a canonical is how indexing starts on a host we intend to migrate away
+// from, so it is refused explicitly rather than trusted not to be passed.
+if (/\.pages\.dev$/.test(new URL(SITE_URL).host)) {
   throw new Error(
-    "SITE_URL is not set. Set it to the canonical origin (e.g. https://example.com) " +
-      "in the Pages project's environment variables before deploying.",
+    `SITE_URL is ${SITE_URL}. A *.pages.dev origin must never reach a canonical; ` +
+      `use the custom domain (${CANONICAL_ORIGIN}) or leave SITE_URL unset.`,
   );
 }
 
@@ -47,8 +67,6 @@ if (SITE_URL) {
 export default defineConfig({
   output: "server",
   adapter: cloudflare({ imageService: "passthrough" }),
-  // Local placeholder only. Never a *.pages.dev origin: a preview hostname in a
-  // canonical is how the wrong URL gets indexed.
-  site: SITE_URL || "http://localhost:4321",
+  site: SITE_URL,
   devToolbar: { enabled: false },
 });
