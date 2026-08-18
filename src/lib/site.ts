@@ -112,7 +112,7 @@ export const IDENTITY = {
  * value has. Loose enough to accept anything Google plausibly issues, strict enough to reject
  * an empty string or a leftover placeholder.
  */
-export const GA_MEASUREMENT_ID = "";
+export const GA_MEASUREMENT_ID = "G-5Y4ZENWMQJ";
 export const GA_ENABLED = /^G-[A-Z0-9]{6,15}$/.test(GA_MEASUREMENT_ID);
 
 /**
