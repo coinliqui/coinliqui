@@ -12,10 +12,16 @@ import { U, CH, INK, SANS, MONO, niceTicks, timeTicks, text, rect, line, fint, c
    ========================================================================================= */
 
 export interface Timeframe {
-  key: string; label: string; base: "hour" | "day";
+  key: string; label: string; base: "m15" | "hour" | "day";
   factor: number; bars: number; hours: number;
 }
 export const TIMEFRAMES: Timeframe[] = [
+  /* 15m AND 30m COME FROM A SERIES THAT ONLY EXISTS BECAUSE IT WAS VERIFIED FIRST. The store
+     holds 1,345 fifteen-minute bars per contract — fourteen days, exact 15-minute spacing,
+     every bar with volume — read back from KV before either of these rows was written. A
+     timeframe whose data has not been confirmed is a button that empties the page. */
+  { key: "15m", label: "15m", base: "m15", factor: 1, bars: 300, hours: 0.25 },
+  { key: "30m", label: "30m", base: "m15", factor: 2, bars: 300, hours: 0.5 },
   { key: "1h", label: "1H", base: "hour", factor: 1, bars: 300, hours: 1 },
   { key: "4h", label: "4H", base: "hour", factor: 4, bars: 180, hours: 4 },
   /* 12H AND 1M ARE SET BY WHAT THE STORE ACTUALLY HOLDS, not by what looks tidy in a bar.

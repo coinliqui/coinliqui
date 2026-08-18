@@ -593,7 +593,7 @@ async function fetchSpotCandles(product, granularity) {
 }
 
 // worker/build-stamp.ts
-var WORKER_BUILD = "cba0a0eac6f6";
+var WORKER_BUILD = "f8af6a7832ab";
 
 // worker/ingest.ts
 var RETAIN_HOURS = 72;
@@ -733,9 +733,13 @@ async function run(env) {
         const m = await env.SNAPSHOT.get(key, "json");
         const have = new Set(m?.h ?? []);
         const room = Math.max(1, CHUNK - extra);
+        let firstErr = "";
         const run2 = async (slice) => {
           const done2 = [];
-          const oks = await Promise.all(slice.map((s) => write(s).catch(() => false)));
+          const oks = await Promise.all(slice.map((s) => write(s).catch((e) => {
+            if (!firstErr) firstErr = `${s}: ${(e instanceof Error ? e.message : String(e)).slice(0, 90)}`;
+            return false;
+          })));
           oks.forEach((ok, i) => {
             if (ok) done2.push(slice[i]);
           });
@@ -757,7 +761,8 @@ async function run(env) {
               l: m?.l,
               h: [...have],
               f: done2.length ? 0 : Date.now(),
-              filled: done2.length
+              filled: done2.length,
+              e: done2.length ? void 0 : firstErr || void 0
             }));
             return done2.length;
           }
@@ -784,7 +789,8 @@ async function run(env) {
           i: wrapped ? 0 : next,
           l: wrapped ? void 0 : list,
           h: [...have],
-          written: done.length
+          written: done.length,
+          e: done.length ? void 0 : firstErr || void 0
         }));
         return done.length;
       };

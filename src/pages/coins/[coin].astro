@@ -93,7 +93,14 @@ const modeKey: ChartMode = qs.get("view") === "line" ? "line" : "candle";
 /* ONE PANEL, for the same reason as the contract page — and here it matters more, because this
    template multiplies: six timeframes times two chart styles is TWELVE renders of the same
    series to show one. Availability is a length check on the base series, not a built chart. */
-const baseFor = (tf: (typeof TIMEFRAMES)[number]) => (tf.base === "hour" ? hourly : daily);
+/* SPOT HAS NO 15-MINUTE SERIES, so the m15-based timeframes must resolve to NOTHING here
+   rather than falling through to the daily candles. A ternary with two arms and three bases
+   would have aggregated daily bars as if they were fifteen-minute ones and drawn a chart that
+   is wrong rather than absent — the failure this file's own button-bar comment warns about,
+   arriving through the back door. Returning undefined leaves 15m and 30m off the bar, which
+   is what "we do not collect that for spot" should look like. */
+const baseFor = (tf: (typeof TIMEFRAMES)[number]) =>
+  (tf.base === "m15" ? undefined : tf.base === "hour" ? hourly : daily);
 const tfsAvailable = TIMEFRAMES.filter((tf) => { const b = baseFor(tf); return Boolean(b && b.length >= 6); }).map((tf) => tf.key);
 const activeTf = TIMEFRAMES.find((tf) => tf.key === tfKey && tfsAvailable.includes(tf.key))
   ?? TIMEFRAMES.find((tf) => tfsAvailable.includes(tf.key));

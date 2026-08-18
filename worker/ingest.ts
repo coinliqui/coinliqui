@@ -400,9 +400,24 @@ async function run(env: Env): Promise<RunResult> {
         const have = new Set(m?.h ?? []);
         const room = Math.max(1, CHUNK - extra);
 
+        /* WHY A SWEEP FAILED USED TO BE UNKNOWABLE. `write(s).catch(() => false)` swallowed
+           every per-symbol error, so a sweep that failed on ALL of its symbols wrote nothing
+           and looked exactly like one that had not run yet: no error on /status, no note in
+           the run log, no key in KV. Found the hard way — a new sweep produced zero rows for
+           half an hour and the only way to tell "broken" from "not its turn" was to reason
+           about the scheduler.
+
+           The first error is kept and stored on the meta record. One message is enough to
+           name the cause and costs nothing; keeping all of them would just be the same string
+           twenty-four times. */
+        let firstErr = "";
         const run = async (slice: string[]) => {
           const done: string[] = [];
-          const oks = await Promise.all(slice.map((s) => write(s).catch(() => false)));
+          const oks = await Promise.all(slice.map((s) =>
+            write(s).catch((e) => {
+              if (!firstErr) firstErr = `${s}: ${(e instanceof Error ? e.message : String(e)).slice(0, 90)}`;
+              return false;
+            })));
           oks.forEach((ok, i) => { if (ok) done.push(slice[i]); });
           return done;
         };
@@ -436,6 +451,7 @@ async function run(env: Env): Promise<RunResult> {
               h: [...have],
               f: done.length ? 0 : Date.now(),
               filled: done.length,
+              e: done.length ? undefined : firstErr || undefined,
             }));
             return done.length;
           }
@@ -470,6 +486,7 @@ async function run(env: Env): Promise<RunResult> {
           l: wrapped ? undefined : list,
           h: [...have],
           written: done.length,
+          e: done.length ? undefined : firstErr || undefined,
         }));
         return done.length;
       };

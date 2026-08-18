@@ -3,7 +3,7 @@ import Base from "../../layouts/Base.astro";
 import { getSnapshot, coldStart, findPerp } from "../../lib/hyperliquid.ts";
 import { VENUE_LABEL, pct, usd, rawRate, carryCost, settlementsPerYear, nextSettlement, paysClass, paysLabel, type Venue } from "../../lib/funding.ts";
 import { liquidationPrice, type MarginTable } from "../../lib/margin.ts";
-import { getCandles, getHourly, getFunding } from "../../lib/candles.ts";
+import { getCandles, getM15, getHourly, getFunding } from "../../lib/candles.ts";
 import { TIMEFRAMES, DEFAULT_TF, aggregate, buildPriceChart, shortDate, CHART_H } from "../../lib/series.ts";
 import { CH } from "../../lib/chart.ts";
 import tables from "../../data/margin-tables.json";
@@ -62,9 +62,10 @@ const px = (v: number) => usd(v, dp);
    the pre-rendered panel swaps in instantly and the URL is cleaned.
    --------------------------------------------------------------------------------------- */
 const tfKey = TIMEFRAMES.some((t) => t.key === Astro.url.searchParams.get("tf")) ? Astro.url.searchParams.get("tf")! : DEFAULT_TF;
-const [dayset, hourset, funding, spotSet] = await Promise.all([
+const [dayset, hourset, m15set, funding, spotSet] = await Promise.all([
   getCandles(env?.SNAPSHOT, p.symbol, import.meta.env.DEV),
   getHourly(env?.SNAPSHOT, p.symbol, import.meta.env.DEV),
+  getM15(env?.SNAPSHOT, p.symbol, import.meta.env.DEV),
   getFunding(env?.SNAPSHOT, p.symbol, import.meta.env.DEV),
   getSpot(env?.SNAPSHOT, import.meta.env.DEV),
 ]);
@@ -96,7 +97,8 @@ const basisBp = spotQ && spotQ.last > 0 ? (p.markPx / spotQ.last - 1) * 10_000 :
  * it does not, and asking that question costs a length check rather than an SVG. That matters:
  * the button bar must still offer every timeframe that has data, and it would be a poor trade to
  * build six charts just to find out which six buttons to draw. */
-const baseFor = (tf: (typeof TIMEFRAMES)[number]) => (tf.base === "hour" ? hourset?.d : dayset?.d);
+const baseFor = (tf: (typeof TIMEFRAMES)[number]) =>
+  (tf.base === "m15" ? m15set?.d : tf.base === "hour" ? hourset?.d : dayset?.d);
 const offered = TIMEFRAMES.filter((tf) => { const b = baseFor(tf); return Boolean(b && b.length >= 6); });
 
 /* ONLY OFFER TIMEFRAMES THAT EXIST.
@@ -110,7 +112,9 @@ const offered = TIMEFRAMES.filter((tf) => { const b = baseFor(tf); return Boolea
 const activeTf = offered.find((tf) => tf.key === tfKey) ?? offered[0];
 /* The candle store stamps its own write time; the page can therefore say how old the period
    figures are instead of borrowing the snapshot's age, which is a different clock entirely. */
-const candleWrittenAt = activeTf ? (activeTf.base === "hour" ? hourset?.u : dayset?.u) ?? null : null;
+const candleWrittenAt = activeTf
+  ? ((activeTf.base === "m15" ? m15set?.u : activeTf.base === "hour" ? hourset?.u : dayset?.u) ?? null)
+  : null;
 const candleAge = candleWrittenAt ? Math.max(0, Math.round((Date.now() - candleWrittenAt) / 60000)) : null;
 const activeChart = activeTf
   ? buildPriceChart(aggregate(baseFor(activeTf)!, activeTf.factor).slice(-activeTf.bars), funding, activeTf)
@@ -196,7 +200,7 @@ const description = `What a ${p.symbol} perpetual costs to hold: ${venuePhrase},
     Mark price and funding update every minute. Open interest and 24-hour volume come from the
     snapshot taken <b><time data-fresh={snap.fetchedAt} data-clock="snapAt">{Math.max(0, Math.round((Date.now() - snap.fetchedAt) / 60000))} min ago</time></b>.
     The period high, low and volume are read from the candle series behind the chart, collected
-    {activeTf && activeTf.base === "hour" ? " every 2 hours" : " every 12 hours"}{candleAge !== null ? <> and last written <b>{candleAge} min ago</b></> : null};
+    {activeTf && activeTf.base !== "day" ? " every 2 hours" : " every 12 hours"}{candleAge !== null ? <> and last written <b>{candleAge} min ago</b></> : null};
     margin tiers are published by the venue and change only when it changes them.
   </p>
 

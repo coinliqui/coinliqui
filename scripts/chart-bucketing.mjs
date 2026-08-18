@@ -41,6 +41,16 @@ function hourlyCandles(startMs, n) {
   return out;
 }
 
+/** 15-minute candles, for the m15-based timeframes (15m, 30m). */
+function m15Candles(startMs, n) {
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const px = 60_000 + Math.sin(i / 5) * 400;
+    out.push([startMs + i * 900_000, px, px + 60, px - 60, px + Math.cos(i / 3) * 30, 40 + (i % 7)]);
+  }
+  return out;
+}
+
 /** Daily candles, for the day-based timeframes (1D, 1W, 1M). */
 function dailyCandles(startMs, n) {
   const out = [];
@@ -97,15 +107,18 @@ let bad = 0, checked = 0, mismatches = 0, signFlips = 0;
    whole set is the difference between an invariant and a spot check. */
 for (const tf of TIMEFRAMES.filter((t) => t.factor > 1)) {
   const barMs = tf.hours * HOUR;
-  const stepH = tf.base === "hour" ? 1 : 24;
+  const baseH = tf.base === "m15" ? 0.25 : tf.base === "hour" ? 1 : 24;
+  const stepH = baseH;
   /* Offsets are stepped in the BASE candle's units: a daily-based bar can only start on a day
      boundary, so sweeping hour-by-hour there would test positions the data cannot produce. */
   for (let offsetH = 0; offsetH < tf.hours; offsetH += stepH) {
     const start = Date.UTC(2026, 7, 1) + offsetH * HOUR;
     /* Enough base candles to produce a useful number of bars at every factor, including 30. */
     const n = Math.max(240, tf.factor * 40);
-    const src = tf.base === "hour" ? hourlyCandles(start, n) : dailyCandles(start, n);
-    const funding = hourlyFunding(start, tf.base === "hour" ? n : n * 24);
+    const src = tf.base === "m15" ? m15Candles(start, n) : tf.base === "hour" ? hourlyCandles(start, n) : dailyCandles(start, n);
+    /* Funding is hourly upstream whatever the candle base is, so the series must span the same
+       wall-clock window the candles do — a quarter of an hour per bar for the m15 base. */
+    const funding = hourlyFunding(start, Math.max(8, Math.ceil(n * baseH)));
     const candles = aggregate(src, tf.factor);
     const truth = truthFor(candles, funding, barMs);
 
