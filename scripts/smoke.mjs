@@ -63,7 +63,7 @@ const ROUTES = [
   "/open-interest", "/liquidations", "/liquidations/survival", "/liquidations/sweep",
   "/unlocks", "/tools", "/tools/position-size", "/tools/leverage", "/tools/funding-cost",
   "/tools/funding-arbitrage", "/tools/liquidation-price", "/methodology",
-  "/methodology/liquidations", "/data-sources", "/privacy", "/about", "/llms.txt",
+  "/methodology/liquidations", "/data-sources", "/privacy", "/about", "/terms", "/llms.txt",
   "/.well-known/security.txt", "/watchlist", "/status",
   "/status/indexation", "/404",
   /* THE OTHER BRANCH OF /404, which is the one real people reach.

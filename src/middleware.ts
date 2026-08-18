@@ -81,6 +81,22 @@ export const onRequest = defineMiddleware(async (ctx, next) => {
   res.headers.set("x-content-type-options", "nosniff");
   res.headers.set("referrer-policy", "strict-origin-when-cross-origin");
 
+  /* HSTS. Measured absent on 19 August: the site was already HTTPS-only in practice, with
+     always_use_https redirecting, but nothing told a browser to REFUSE http next time — so the
+     first request of every session was still a redirect a network could intercept.
+
+     Two years, subdomains included, and deliberately NOT `preload`. Preload is a one-way door:
+     it commits every present and future subdomain to HTTPS in a list baked into browsers, and
+     removal takes months. On a domain five days old, with img. already in use and no certainty
+     about what else this project will need, that commitment is not one to make casually. The
+     header delivers the security benefit; preload only removes the very first request's
+     exposure, at a cost that cannot be undone in a hurry. */
+  res.headers.set("strict-transport-security", "max-age=63072000; includeSubDomains");
+
+  /* Nothing here uses a camera, a microphone, geolocation or a payment handler, and a site
+     whose central claim is that it cannot take a payment should say so to the browser too. */
+  res.headers.set("permissions-policy", "camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()");
+
   /* THE CSP, WHICH NO LONGER DEFENDS A MARKETING CLAIM AND STILL EARNS ITS PLACE.
    *
    * It used to exist to make "no third-party scripts" true by force — script-src 'self',

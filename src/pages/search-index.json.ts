@@ -53,6 +53,7 @@ export const GET: APIRoute = async ({ locals }) => {
     { label: "Data sources", href: "/data-sources", kind: "reference" },
     { label: "About", alt: "who runs this", href: "/about", kind: "reference" },
     { label: "Privacy", href: "/privacy", kind: "reference" },
+    { label: "Terms and disclaimer", alt: "no financial service, no custody, no advice", href: "/terms", kind: "reference" },
   ];
   return new Response(JSON.stringify(rows), {
     headers: { "content-type": "application/json", "cache-control": "public, s-maxage=300" },

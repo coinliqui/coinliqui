@@ -1,0 +1,111 @@
+---
+import Base from "../layouts/Base.astro";
+import Related from "../components/Related.astro";
+import { SITE, IDENTITY } from "../lib/site.ts";
+
+/**
+ * TERMS AND A DISCLAIMER, ON ONE PAGE, BECAUSE THERE IS ALMOST NOTHING TO SAY.
+ *
+ * Added after a third-party assessment listed "Terms of Service, Privacy Policy and a
+ * Disclaimer stating the site provides no financial or custodial services" among the things
+ * that would raise trust. Two of the three were already here. The third is worth adding for a
+ * reason that has nothing to do with box-ticking: on this site the disclaimer is TRUE in a
+ * structural sense rather than a legal one. A site that cannot take a deposit is not promising
+ * not to; it is describing what it is.
+ *
+ * The same assessment recommended a legal entity and a registered address. That is refused, on
+ * the page, in writing — see below. There is no company, and inventing one would be the single
+ * most falsifiable claim this site could make. A stated absence is stronger than an invented
+ * presence, and it is checkable: there is no registration to find.
+ *
+ * Deliberately short. Terms that nobody reads are not a trust signal, and length here would be
+ * padding around three real sentences.
+ */
+const title = "Terms and disclaimer";
+const description =
+  `${SITE.name} provides no financial, custodial or advisory service. It holds nothing, ` +
+  `receives nothing and cannot execute anything. What the site is, in plain terms.`;
+---
+
+<Base title={title} description={description} crumb={{ href: "/about", label: "About", current: "Terms and disclaimer" }}>
+  <div class="page-head">
+    <p class="crumb"><a href="/about">About</a> › Terms and disclaimer</p>
+    <h1>Terms and disclaimer</h1>
+  </div>
+
+  <p class="prose">
+    This page is short because there is little to agree to. {SITE.name} publishes numbers as
+    ordinary web pages. It does not hold anything of yours, cannot receive anything from you,
+    and asks nothing of you.
+  </p>
+
+  <h2 class="section">No financial service, in the structural sense</h2>
+  <p class="prose">
+    {SITE.name} is <strong>not</strong> an exchange, broker, dealer, custodian, wallet, payment
+    processor or investment adviser, and provides no financial, custodial or advisory service of
+    any kind. It executes no orders, holds no funds or assets for anyone, and offers no
+    mechanism by which money or credentials could reach it — there is no account, no deposit
+    path, no wallet connection, no payment form and nothing to sign.
+  </p>
+  <p class="prose">
+    That is a description of how the site is built rather than a promise about how it behaves,
+    which means you do not have to believe it.
+    {" "}<a class="link" href="/about">About</a> lists the ways to check each part in your own
+    browser in under a minute.
+  </p>
+
+  <h2 class="section">Nothing here is advice</h2>
+  <p class="prose">
+    Everything published is market data and arithmetic on market data. None of it is investment,
+    financial, legal or tax advice, a recommendation, a solicitation, or an opinion about what
+    anyone should do. Figures described as <em>modelled</em> — liquidation levels in particular —
+    are the output of stated assumptions applied to public inputs, printed alongside those
+    assumptions, and are not predictions.
+    {" "}<a class="link" href="/methodology">Methodology</a> shows the arithmetic.
+  </p>
+
+  <h2 class="section">Accuracy, and its limits</h2>
+  <p class="prose">
+    The data comes from third-party endpoints named on
+    {" "}<a class="link" href="/data-sources">Data sources</a>, and is republished as received
+    apart from the normalisation described in the methodology. Upstreams fail, lag and revise;
+    {" "}<a class="link" href="/status">Status</a> publishes the real success rate of the ingest,
+    failures included. Every figure states its own age. No warranty of accuracy, completeness or
+    fitness for any purpose is offered, and decisions taken on the basis of anything here are
+    yours alone.
+  </p>
+  <p class="prose">
+    If a number here disagrees with the venue it came from, that is a bug and we want to know:
+    {" "}<!--email_off--><a class="link" href={`mailto:${IDENTITY.contact}`}>{IDENTITY.contact}</a><!--email_on-->.
+  </p>
+
+  <h2 class="section">There is no company, and that is stated rather than obscured</h2>
+  <p class="prose">
+    {SITE.name} is an independently operated project, not a registered company, and it has no
+    legal entity, no registered address and no corporate identity. It was suggested that
+    publishing one would raise trust. It would not: a company that does not exist is the most
+    easily falsified claim this site could make, and every other statement here is written to be
+    checkable. {IDENTITY.founder ? `The project is run by ${IDENTITY.founder.name}` : "The project is independently run"},
+    and the accountable contact is the address on this domain.
+  </p>
+
+  <h2 class="section">Use of the site</h2>
+  <p class="prose">
+    Read it, link to it, quote it with attribution. Automated access is welcome within reason —
+    {" "}<a class="link" href="/robots.txt">robots.txt</a> states which crawlers are asked to
+    stay away and why. Do not present the data as your own, and do not rely on it as a sole
+    source for anything that matters. The site may change or stop publishing at any time; where
+    a URL is withdrawn it is withdrawn honestly, with a 410 rather than a redirect.
+  </p>
+  <p class="prose">
+    No personal data is collected that could be returned or deleted; what is and is not
+    collected is set out on <a class="link" href="/privacy">Privacy</a>.
+  </p>
+
+  <Related items={[
+    { href: "/about", label: "About", note: "What the site is, what it structurally is not, and how to check both." },
+    { href: "/privacy", label: "Privacy", note: "What is collected, in specifics rather than assurances." },
+    { href: "/methodology", label: "Methodology", note: "The arithmetic behind every published figure." },
+    { href: "/data-sources", label: "Data sources", note: "Every upstream endpoint, its cadence, and what is deliberately absent." },
+  ]} />
+</Base>

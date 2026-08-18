@@ -165,6 +165,98 @@ const description =
       So this section answers the four questions an answer engine actually needs — what it is,
       who is accountable and reachable, how the numbers are made, and what it structurally
       cannot do — with an entity rather than an individual. */}
+  {/* A LIMITATION IS A STRONGER SIGNAL THAN AN ASSURANCE, because it is the one kind of
+      statement a site has no incentive to invent. Every row here was a real defect on this
+      site, found and fixed — the page called Hyperliquid's book "the market's" open interest,
+      and described three venues as if all three were read directly. A reader who checks these
+      finds them true and finds them inconvenient, which is the point. */}
+  <h2 class="section">What this site does not have, and will not claim</h2>
+  <div class="panel">
+    <table class="tbl">
+      <thead><tr><th>Limit</th><th>What that means, precisely</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>Two of the three venues are read second-hand</td>
+          <td class="reason">
+            Only Hyperliquid is queried directly. The Binance and Bybit funding rates arrive
+            because Hyperliquid republishes them in its <code>predictedFundings</code> feed, so
+            this site compares three venues' rates through one venue's endpoint. That is a
+            normalisation of a republished figure, not three independent connections.
+            {" "}<a class="link" href="/data-sources">Data sources</a> names the endpoint behind
+            every number, this one included.
+          </td>
+        </tr>
+        <tr>
+          <td>Open interest is one venue's book</td>
+          <td class="reason">
+            Every open-interest figure here is Hyperliquid's alone, and is labelled as such
+            wherever it appears. It is not the market's open interest and this site does not
+            know the market's open interest. Measured against the three venues named above,
+            Hyperliquid was about a fifth of their combined total.
+          </td>
+        </tr>
+        <tr>
+          <td>No liquidation totals</td>
+          <td class="reason">
+            The public feed throttles to one event per symbol per second, so any total computed
+            from it undercounts by an unknown amount during exactly the cascades that make the
+            number interesting. Other sites publish one anyway.
+            {" "}<a class="link" href="/methodology/liquidations">Why this one does not</a>.
+          </td>
+        </tr>
+        <tr>
+          <td>Coverage is deliberately narrow</td>
+          <td class="reason">
+            A contract gets a page only once it holds {usd(OI_NOTIONAL_FLOOR)} of open interest.
+            {" "}{snap.eligibleCount} of {snap.universeCount} clear that floor today and
+            {" "}{snap.perps.length} are published. Publishing the rest would mean hundreds of
+            pages with nothing behind them.
+          </td>
+        </tr>
+        <tr>
+          <td>The ingest fails, and says so</td>
+          <td class="reason">
+            No claim of perfection: <a class="link" href="/status">Status</a> renders the real
+            success rate from the run log, failures included, and the freshness indicator on
+            every page reports the age of the slowest store behind it rather than the newest.
+            A status page that has only ever been green is evidence of nothing.
+          </td>
+        </tr>
+        <tr>
+          <td>History starts at launch</td>
+          <td class="reason">
+            Funding history cannot be backfilled from these endpoints, so it accrues from
+            {" "}{new Date(IDENTITY.launched).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" })}
+            {" "}forward. Where a window is not yet covered the page says so instead of showing
+            a shorter window as if it were the one asked for.
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  {/* PROVENANCE IS THE ONE THING A FIVE-DAY-OLD DOMAIN CANNOT FAKE, and it is the answer to
+      the only reasonable objection a sceptical reader has left: that everything above is just
+      words on a page written by whoever owns the page. A commit history is not. */}
+  <h2 class="section">The site's own history, which you can read</h2>
+  <p class="prose">
+    Every claim above is a statement this site makes about itself, and there is no reason to
+    take any of them on trust. The source is public at
+    {" "}<a class="link" href={IDENTITY.sameAs[0]} rel="noopener">github.com/coinliqui/coinliqui</a>
+    {" "}— the same code that renders these pages, with the commit history behind it. It records
+    when each of the limitations above was found and what was changed, which is a different kind
+    of evidence from a page asserting that it is careful.
+  </p>
+  <p class="prose">
+    Publishing began on
+    {" "}<time datetime={IDENTITY.launched}>{new Date(IDENTITY.launched).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" })}</time>.
+    That is recent, and no amount of writing changes it — a site with a short history is exactly
+    what a short history looks like. What can be checked instead is whether the history that
+    exists is real and consistent: the commits, the dated figures on every page, and
+    {" "}<a class="link" href="/status/indexation">the indexation report</a>, which publishes how
+    much of this site search engines have actually accepted, including the parts they have not.
+  </p>
+
   <h2 class="section">Who is accountable, and how to reach us</h2>
   {/* THE NAME IS BACK, AND THE THING THAT CAUSED THE HARM IS STILL GONE.
       What drew the spam was a personal address in machine-readable commit metadata, harvested
