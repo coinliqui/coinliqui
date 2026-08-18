@@ -79,11 +79,25 @@ const [dayset, hourset, funding, spotSet] = await Promise.all([
 const spotQ = spotSet?.q[p.symbol] ?? null;
 const basisBp = spotQ && spotQ.last > 0 ? (p.markPx / spotQ.last - 1) * 10_000 : NaN;
 
-const charts = TIMEFRAMES.map((tf) => {
-  const base = tf.base === "hour" ? hourset?.d : dayset?.d;
-  if (!base || base.length < 6) return { tf, chart: null };
-  return { tf, chart: buildPriceChart(aggregate(base, tf.factor).slice(-tf.bars), funding, tf) };
-});
+/* ONE PANEL IS BUILT, NOT SIX.
+ *
+ * Every timeframe used to be rendered into the HTML so that switching was a CSS class toggle
+ * with no request. Measured, that cost 50,454 bytes on the wire of a 70,845-byte page — 71% of
+ * the document — on all fifty contract pages, which are the entire indexed surface.
+ *
+ * And it was not buying the no-JS path, which is the reason it looked untouchable. The buttons
+ * are form submits: without JavaScript they navigate to ?tf=4h and the server renders that
+ * timeframe, with the canonical still pointing at the bare URL. What the extra panels bought was
+ * INSTANT switching for a reader already on the page. Page weight is a ranking input; instant
+ * switching is a convenience. So the panels are fetched on demand now, and prefetched on hover
+ * so the convenience survives anyway.
+ *
+ * Availability is decided WITHOUT building a chart — a base series either has enough candles or
+ * it does not, and asking that question costs a length check rather than an SVG. That matters:
+ * the button bar must still offer every timeframe that has data, and it would be a poor trade to
+ * build six charts just to find out which six buttons to draw. */
+const baseFor = (tf: (typeof TIMEFRAMES)[number]) => (tf.base === "hour" ? hourset?.d : dayset?.d);
+const offered = TIMEFRAMES.filter((tf) => { const b = baseFor(tf); return Boolean(b && b.length >= 6); });
 
 /* ONLY OFFER TIMEFRAMES THAT EXIST.
    The two candle series are collected on separate cadences, so a contract that has just
@@ -93,16 +107,31 @@ const charts = TIMEFRAMES.map((tf) => {
    there is worse than its absence — so the bar lists what exists, an unavailable request
    falls back instead of emptying the page, and the gap is stated rather than left to be
    inferred from a missing button. */
-const available = charts.filter((c): c is { tf: (typeof charts)[number]["tf"]; chart: NonNullable<(typeof charts)[number]["chart"]> } => Boolean(c.chart));
-const active = available.find((c) => c.tf.key === tfKey) ?? available[0];
-const hasChart = available.length > 0;
-const missingTf = charts.filter((c) => !c.chart).map((c) => c.tf.label);
-const span = (k: string) => (k === "1h" ? "hourly bars" : k === "4h" ? "4-hour bars" : k === "1d" ? "daily bars" : "weekly bars");
+const activeTf = offered.find((tf) => tf.key === tfKey) ?? offered[0];
+const activeChart = activeTf
+  ? buildPriceChart(aggregate(baseFor(activeTf)!, activeTf.factor).slice(-activeTf.bars), funding, activeTf)
+  : null;
+const active = activeTf && activeChart ? { tf: activeTf, chart: activeChart } : null;
+const hasChart = Boolean(active);
+const missingTf = TIMEFRAMES.filter((tf) => !offered.some((o) => o.key === tf.key)).map((tf) => tf.label);
+/* A CHAIN OF TERNARIES ENDING IN "weekly bars" IS A DEFAULT THAT LIES. Adding 12H and 1M made
+   it say "over 90 weekly bars" on the 12-hour panel — rendered, on the live page, because a
+   fall-through default answers confidently for any key it has never heard of. A lookup with an
+   explicit fallback to the timeframe's own label cannot invent a unit it was not given. */
+const SPAN: Record<string, string> = {
+  "1h": "hourly bars", "4h": "4-hour bars", "12h": "12-hour bars",
+  "1d": "daily bars", "1w": "weekly bars", "1m": "monthly bars",
+};
+const span = (k: string) => SPAN[k] ?? `${(TIMEFRAMES.find((t) => t.key === k)?.label ?? k)} bars`;
 
 const arrow = (n: number) => (n >= 0 ? "▲" : "▼");
 const compact = (n: number) => (Math.abs(n) >= 1e9 ? (n / 1e9).toFixed(2) + "B" : Math.abs(n) >= 1e6 ? (n / 1e6).toFixed(2) + "M" : Math.abs(n) >= 1e3 ? (n / 1e3).toFixed(2) + "K" : n.toFixed(2));
-const stat = (fn: (c: (typeof charts)[number]) => string) =>
-  Object.fromEntries(charts.filter((c) => c.chart).map((c) => [`data-v${c.tf.key}`, fn(c)]));
+/* STATS NO LONGER TRAVEL AS PRE-COMPUTED ATTRIBUTES. They used to be emitted as data-v1h,
+   data-v4h … on every stat element, one value per timeframe, so a switch could rewrite them
+   without a request. With one panel in the page there is nothing to precompute from — the
+   fetched document carries its own stats, and interact.js lifts them from there. Keeping the
+   attributes would mean building all six charts again, which is the cost this change removes. */
+const stat = (_fn: (c: { tf: (typeof TIMEFRAMES)[number]; chart: NonNullable<typeof activeChart> }) => string) => ({});
 
 const rows = active ? active.chart.points.slice(-200) : [];
 const title = `${p.symbol} funding rate, perpetual price and margin tiers`;
@@ -150,7 +179,7 @@ const description = `What a ${p.symbol} perpetual costs to hold: funding across 
     <>
       <form method="GET" class="tfbar" data-tfgroup="px">
         <div class="tf" role="group" aria-label="Chart timeframe">
-          {available.map(({ tf }) => (
+          {offered.map((tf) => (
             <button type="submit" name="tf" value={tf.key} data-tf={tf.key} aria-pressed={tf.key === active!.tf.key}>{tf.label}</button>
           ))}
         </div>
@@ -163,8 +192,8 @@ const description = `What a ${p.symbol} perpetual costs to hold: funding across 
         </span>
       </form>
 
-      {available.map(({ tf, chart }) => (
-        <div data-tfpanel={tf.key} data-group="px" data-on={tf.key === active!.tf.key ? "" : undefined} class="chart chart--price"
+      {[active!].map(({ tf, chart }) => (
+        <div data-tfpanel={tf.key} data-group="px" data-on="" class="chart chart--price"
              style={`--chartRatio: ${CH.w} / ${CHART_H}`}>
           <Fragment set:html={chart.svg.replace("<svg ",
             `<svg data-xhair="pts-${tf.key}" data-feed="mark" data-plot="${chart.plot.join(",")}" data-prange="${chart.range[0]},${chart.range[1]}" ` +

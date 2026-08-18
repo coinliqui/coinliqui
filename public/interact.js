@@ -319,7 +319,7 @@
      silently reset the timeframe to the default. */
   document.querySelectorAll("[data-tfgroup]").forEach((group) => {
     const id = group.dataset.tfgroup;
-    const panels = document.querySelectorAll(`[data-tfpanel][data-group="${id}"]`);
+    let panels = document.querySelectorAll(`[data-tfpanel][data-group="${id}"]`);
     const stats = document.querySelectorAll(`[data-tfstat][data-group="${id}"]`);
     const table = document.querySelector(`[data-tftable][data-group="${id}"]`);
     const pressed = (sel) => group.querySelector(`[${sel}][aria-pressed="true"]`);
@@ -353,8 +353,49 @@
       table.querySelector("[data-tfcount]").textContent = String(pts.length);
     };
 
+    /* PANELS ARE FETCHED, NOT PRE-RENDERED.
+       Only the active timeframe is in the document; the rest are pulled from the same page with
+       ?tf= — the identical server render the no-JS path uses, so there is one source of truth
+       and no second endpoint to drift. Fetched panels are cached in the DOM after first use, so
+       a timeframe is fetched at most once per page view, and prefetched on hover/focus so the
+       request is usually finished before the click lands. */
+    const inflight = new Map();
+    const panelUrl = (t, m) => {
+      const u = new URL(location.pathname, location.origin);
+      u.searchParams.set("tf", t);
+      if (hasModes && m) u.searchParams.set("view", m);
+      return u.toString();
+    };
+    const have = (key) => document.querySelector(`[data-tfpanel="${key}"][data-group="${id}"]`);
+    const fetchPanel = (t, m) => {
+      const key = hasModes && m ? `${t}.${m}` : t;
+      if (have(key)) return Promise.resolve(key);
+      if (inflight.has(key)) return inflight.get(key);
+      const job = fetch(panelUrl(t, m), { headers: { accept: "text/html" } })
+        .then((r) => (r.ok ? r.text() : Promise.reject(new Error(String(r.status)))))
+        .then((html) => {
+          const doc = new DOMParser().parseFromString(html, "text/html");
+          const incoming = doc.querySelector(`[data-tfpanel][data-group="${id}"]`);
+          if (!incoming) throw new Error("no panel in response");
+          /* The pts-* JSON rides inside the panel, so the table rebuild finds it once injected. */
+          const host = document.querySelector(`[data-tfpanel][data-group="${id}"]`).parentNode;
+          incoming.removeAttribute("data-on");
+          host.appendChild(document.importNode(incoming, true));
+          /* Stats come from the fetched document rather than from precomputed attributes. */
+          const from = doc.querySelectorAll(`[data-tfstat][data-group="${id}"]`);
+          document.querySelectorAll(`[data-tfstat][data-group="${id}"]`).forEach((el, i) => {
+            if (from[i]) el.dataset["v" + String(t).replace(/\W/g, "")] = from[i].textContent;
+          });
+          return key;
+        })
+        .catch((e) => { inflight.delete(key); throw e; });
+      inflight.set(key, job);
+      return job;
+    };
+
     const apply = (label) => {
       const key = hasModes && mode ? `${tf}.${mode}` : tf;
+      panels = document.querySelectorAll(`[data-tfpanel][data-group="${id}"]`);
       panels.forEach((p) => p.toggleAttribute("data-on", p.dataset.tfpanel === key));
       group.querySelectorAll("[data-tf]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.tf === tf)));
       group.querySelectorAll("[data-mode]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.mode === mode)));
@@ -374,10 +415,29 @@
     };
 
     group.querySelectorAll("[data-tf], [data-mode]").forEach((btn) => {
+      /* PREFETCH ON INTENT. A pointer landing on a button, or a keyboard focusing it, is a
+         reliable signal the click is coming — and it arrives tens to hundreds of milliseconds
+         early, which is the whole budget a fetch needs. Failures are swallowed on purpose: a
+         prefetch that does not arrive must never surface, because the click will fetch again
+         and the form submit is still there underneath as the honest fallback. */
+      const warm = () => {
+        const t = btn.dataset.tf || tf, m = btn.dataset.mode || mode;
+        if (t) fetchPanel(t, m).catch(() => {});
+      };
+      btn.addEventListener("pointerenter", warm);
+      btn.addEventListener("focus", warm);
+
       btn.addEventListener("click", (e) => {
         e.preventDefault();
         if (btn.dataset.tf) tf = btn.dataset.tf; else mode = btn.dataset.mode;
-        apply(btn.dataset.tf ? btn.textContent.trim() : null);
+        const label = btn.dataset.tf ? btn.textContent.trim() : null;
+        /* If the panel is already here — prefetched, or seen before — this resolves in the same
+           task and the switch is indistinguishable from the old class toggle. */
+        fetchPanel(tf, mode).then(() => apply(label)).catch(() => {
+          /* The server render is the fallback that always works: navigate the way the form
+             would have, so a failed fetch degrades to the no-JS path rather than to nothing. */
+          location.href = panelUrl(tf, mode);
+        });
       });
     });
   });

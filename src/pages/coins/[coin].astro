@@ -90,19 +90,32 @@ const qs = Astro.url.searchParams;
 const tfKey = TIMEFRAMES.some((t) => t.key === qs.get("tf")) ? qs.get("tf")! : DEFAULT_TF;
 const modeKey: ChartMode = qs.get("view") === "line" ? "line" : "candle";
 
-const panels = TIMEFRAMES.flatMap((tf) => {
-  const base = tf.base === "hour" ? hourly : daily;
-  if (!base || base.length < 6) return [];
-  const src = aggregate(base, tf.factor).slice(-tf.bars);
-  return MODES.map((m) => ({ tf, mode: m, chart: buildPriceChart(src, null, tf, m.key) })).filter((p) => p.chart);
-});
-const tfsAvailable = [...new Set(panels.map((p) => p.tf.key))];
-const active = panels.find((p) => p.tf.key === tfKey && p.mode.key === modeKey) ?? panels[0];
-const hasChart = panels.length > 0;
-const span = (k: string) => (k === "1h" ? "hourly bars" : k === "4h" ? "4-hour bars" : k === "1d" ? "daily bars" : "weekly bars");
+/* ONE PANEL, for the same reason as the contract page — and here it matters more, because this
+   template multiplies: six timeframes times two chart styles is TWELVE renders of the same
+   series to show one. Availability is a length check on the base series, not a built chart. */
+const baseFor = (tf: (typeof TIMEFRAMES)[number]) => (tf.base === "hour" ? hourly : daily);
+const tfsAvailable = TIMEFRAMES.filter((tf) => { const b = baseFor(tf); return Boolean(b && b.length >= 6); }).map((tf) => tf.key);
+const activeTf = TIMEFRAMES.find((tf) => tf.key === tfKey && tfsAvailable.includes(tf.key))
+  ?? TIMEFRAMES.find((tf) => tfsAvailable.includes(tf.key));
+const activeMode = MODES.find((m) => m.key === modeKey) ?? MODES[0];
+const activeChart = activeTf
+  ? buildPriceChart(aggregate(baseFor(activeTf)!, activeTf.factor).slice(-activeTf.bars), null, activeTf, activeMode.key)
+  : null;
+const active = activeTf && activeChart ? { tf: activeTf, mode: activeMode, chart: activeChart } : null;
+const panels = active ? [active] : [];
+const hasChart = Boolean(active);
+/* A CHAIN OF TERNARIES ENDING IN "weekly bars" IS A DEFAULT THAT LIES. Adding 12H and 1M made
+   it say "over 90 weekly bars" on the 12-hour panel — rendered, on the live page, because a
+   fall-through default answers confidently for any key it has never heard of. A lookup with an
+   explicit fallback to the timeframe's own label cannot invent a unit it was not given. */
+const SPAN: Record<string, string> = {
+  "1h": "hourly bars", "4h": "4-hour bars", "12h": "12-hour bars",
+  "1d": "daily bars", "1w": "weekly bars", "1m": "monthly bars",
+};
+const span = (k: string) => SPAN[k] ?? `${(TIMEFRAMES.find((t) => t.key === k)?.label ?? k)} bars`;
 const arrow = (n: number) => (n >= 0 ? "▲" : "▼");
-const stat = (fn: (p: (typeof panels)[number]) => string) =>
-  Object.fromEntries(panels.filter((p) => p.mode.key === modeKey).map((p) => [`data-v${p.tf.key}`, fn(p)]));
+/* Stats are lifted from the fetched document now, not precomputed per panel. */
+const stat = (_fn: (p: NonNullable<typeof active>) => string) => ({});
 
 const others = liveCoins().filter((c) => c.slug !== coin.slug);
 const title = `${coin.name} price — ${coin.symbol} spot, and what leverage costs`;
@@ -156,7 +169,7 @@ const description = `Live ${coin.name} (${coin.symbol}) spot price from ${SPOT_S
         <span class="tfbar__note">{SPOT_SOURCE} spot candles — a traded price, not an index.</span>
       </form>
 
-      {panels.map(({ tf, mode, chart }) => (
+      {[active!].map(({ tf, mode, chart }) => (
         <div data-tfpanel={`${tf.key}.${mode.key}`} data-group="cx"
              data-on={tf.key === active!.tf.key && mode.key === active!.mode.key ? "" : undefined}
              class="chart chart--price" style={`--chartRatio: ${CH.w} / ${CHART_H}`}>
@@ -165,10 +178,13 @@ const description = `Live ${coin.name} (${coin.symbol}) spot price from ${SPOT_S
             `data-axx="${chart!.axisX}" data-slot="${chart!.slot.toFixed(2)}" data-taxisy="${CHART_H - 27}" data-unit="${coin.symbol}" data-dp="${chart!.dp}" data-intraday="${tf.hours < 24 ? 1 : 0}" `)} />
         </div>
       ))}
-      {TIMEFRAMES.filter((t) => tfsAvailable.includes(t.key)).map((tf) => (
-        <script type="application/json" id={`cpts-${tf.key}`}
-                set:html={JSON.stringify(panels.find((p) => p.tf.key === tf.key)!.chart!.points)} />
-      ))}
+      {/* ONLY THE ACTIVE TIMEFRAME'S POINTS. This looped over every available timeframe and read
+          panels.find(...) — which was safe while `panels` held them all and threw the moment it
+          held one, taking the whole page down with a mid-stream TypeError. Caught by the gate,
+          on the cold run, before it reached anything. A fetched panel carries its own cpts-*
+          block, so the crosshair and the table find one when it arrives. */}
+      <script type="application/json" id={`cpts-${active!.tf.key}`}
+              set:html={JSON.stringify(active!.chart!.points)} />
 
       <p class="legend">
         Period high <b data-tfstat data-group="cx" {...stat((p) => px(p.chart!.high))}>{px(active!.chart!.high)}</b>,
