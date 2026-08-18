@@ -185,7 +185,7 @@ const description = `What a ${p.symbol} perpetual costs to hold: ${venuePhrase},
     {Number.isFinite(basisBp) && (
       <div>Basis<b data-spot="basis" data-unit=" bps" data-sym={p.symbol}>{basisBp >= 0 ? "+" : ""}{basisBp.toFixed(1)} bps</b></div>
     )}
-    <div>Open interest<b>{usd(p.oiNotional)}</b></div>
+    <div>Open interest <span class="scope">Hyperliquid</span><b>{usd(p.oiNotional)}</b></div>
     <div>Max leverage<b>{p.maxLeverage}×</b></div>
   </div>
   {/* THREE CLOCKS, NOT TWO. This sentence put "open interest, volume and the period figures"

@@ -8,11 +8,29 @@ if (!snap.available) return coldStart();
 const rows = [...snap.perps].sort((a, b) => b.oiNotional - a.oiNotional);
 const total = rows.reduce((s, p) => s + p.oiNotional, 0);
 ---
-<Base title="Crypto perpetual open interest" description="Open interest and 24-hour volume for BTC, ETH, SOL and every other perpetual covered here, with turnover — volume as a multiple of open interest — which says how fast positioning is churning." fetchedAt={snap.fetchedAt}>
-  <div class="page-head"><h1>Open interest</h1></div>
+<Base title="Hyperliquid perpetual open interest" description="Hyperliquid open interest and 24-hour volume for BTC, ETH, SOL and every other perpetual covered here, with turnover — volume as a multiple of open interest — which says how fast positioning is churning." fetchedAt={snap.fetchedAt}>
+  <div class="page-head">
+    <h1>Hyperliquid open interest</h1>
+    {/* THE SCOPE WAS THE WHOLE STORY AND THE PAGE NEVER SAID IT. This is one venue's book,
+        and it was titled "Open interest" — the market's. Measured on 2026-08-18 against the
+        two other venues this site already names on every funding page: Hyperliquid held
+        $2.68B of BTC open interest, Binance $6.83B, Bybit $3.91B. The unqualified figure was
+        20% of what a reader cross-checking against an aggregator would expect, which reads as
+        a broken number rather than a narrower one. Naming the venue costs a word and turns a
+        wrong-looking figure into a precise one. */}
+    <p>
+      Every figure here is <strong>Hyperliquid's book alone</strong>, not the market's. It is
+      the venue this site collects from directly, and it is a minority of total perpetual open
+      interest — on 18 August 2026, Hyperliquid held $2.68B of BTC against $6.83B on Binance
+      and $3.91B on Bybit, so roughly a fifth of those three. Binance and Bybit publish funding
+      rates that Hyperliquid redistributes, which is why
+      {" "}<a class="link" href="/funding">funding</a> compares three venues and this page
+      cannot. <a class="link" href="/data-sources">What is collected, and what is not →</a>
+    </p>
+  </div>
   <p style="margin:0 0 20px;max-width:74ch"><strong class="num">{usd(total)}</strong> across {rows.length} coins. The turnover column is 24h volume divided by open interest: a high number means the position base is churning rather than accumulating.</p>
   <div class="panel"><table class="tbl">
-    <thead><tr><th>Coin</th><th class="num">Open interest</th><th class="num">24h volume</th><th class="num">Turnover (24h volume ÷ OI)</th><th class="num">Max leverage</th></tr></thead>
+    <thead><tr><th>Coin</th><th class="num">Open interest <span class="thscope">Hyperliquid</span></th><th class="num">24h volume <span class="thscope">Hyperliquid</span></th><th class="num">Turnover (24h volume ÷ OI)</th><th class="num">Max leverage</th></tr></thead>
     <tbody>
       {rows.map((p) => (
         <tr>

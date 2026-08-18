@@ -270,6 +270,14 @@ const schema = {
       /* Monospace appears ONLY inside numeric cells, for figure alignment — never as a
          design language. Widths are reserved so live updates cannot shift layout. */
       .num { font-family: var(--mono); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+      /* SCOPE LABELS. Open interest is HYPERLIQUID'S BOOK, and every page printed it as
+         "Open interest" — the market's. Measured against the two venues this site already
+         names: Hyperliquid held $2.68B of BTC against Binance's $6.83B and Bybit's $3.91B, so
+         the unqualified figure was 20% of the number a reader arrives believing they are
+         reading. The site already scopes funding this way ("Most expensive funding ·
+         Hyperliquid"); open interest simply never got the same treatment. */
+      .thscope, .scope { font-weight: 400; color: var(--text-faint); font-size: 11px; letter-spacing: .01em; }
+      .scope { margin-left: 4px; }
       .pays-l { color: var(--pays-l); }
       .pays-s { color: var(--pays-s); }
       .dim { color: var(--text-dim); }

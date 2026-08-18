@@ -32,7 +32,7 @@ const stamp = new Date(snap.fetchedAt).toISOString().slice(0, 16).replace("T", "
 // text colour at medium weight; the prose around them is dim — so it reads as a sentence,
 // not as a wall of bold.
 const parts: [string, boolean][] = [
-  ["Open interest across ", false], [String(snap.perps.length), true],
+  ["Hyperliquid open interest across ", false], [String(snap.perps.length), true],
   [" coins is ", false], [usd(totalOi), true],
   [", on ", false], [usd(totalVol), true],
   /* "MOST EXPENSIVE" NEEDS A VENUE, because it is computed over one. hlApr is Hyperliquid's
@@ -82,7 +82,7 @@ const description =
         <div class="card__meta">{cheapest?.symbol ?? "—"} · {cheapest ? paysLabel(cheapest.hlApr) : ""}</div>
       </a>
       <a class="card" href="/open-interest">
-        <div class="card__label">Open interest</div>
+        <div class="card__label">Open interest <span class="card__scope">Hyperliquid</span></div>
         <div class="card__value">{usd(totalOi)}</div>
         <div class="card__meta">{snap.perps.length} coins{btc ? ` · BTC ${usd(btc.markPx, 0)}` : ""}</div>
       </a>

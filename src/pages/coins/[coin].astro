@@ -149,7 +149,7 @@ const description = `Live ${coin.name} (${coin.symbol}) spot price from ${SPOT_S
     <div>24h low<b>{q ? px(q.low24h) : "—"}</b></div>
     <div>24h spot volume<b>{Number.isFinite(spotNtl) ? usd(spotNtl) : "—"}</b></div>
     <div>Perpetual mark<b data-spot="mark" data-sym={coin.symbol} data-dp={dp}>{Number.isFinite(markNow) ? px(markNow) : "—"}</b></div>
-    <div>Open interest<b>{perp ? usd(perp.oiNotional) : "—"}</b></div>
+    <div>Open interest <span class="scope">Hyperliquid</span><b>{perp ? usd(perp.oiNotional) : "—"}</b></div>
   </div>
   <p class="clock">
     Spot, the perpetual mark, the basis and funding update every minute. The 24-hour figures and
@@ -236,7 +236,7 @@ const description = `Live ${coin.name} (${coin.symbol}) spot price from ${SPOT_S
       <div class="card__meta">{hl ? `per week · ${hl.apr >= 0 ? "you pay" : "you receive"}` : "—"}</div>
     </div>
     <div class="card">
-      <div class="card__label">Open interest ÷ spot volume</div>
+      <div class="card__label">Open interest ÷ spot volume <span class="card__scope">HL ÷ Coinbase</span></div>
       <div class="card__value">{Number.isFinite(oiToSpot) ? `${oiToSpot.toFixed(2)}×` : "—"}</div>
       <div class="card__meta">derivatives against the cash market</div>
     </div>
