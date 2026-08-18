@@ -57,6 +57,19 @@ async function fetchAs(path, ua = "Mozilla/5.0", accept = ACCEPT) {
  * same shape as the HEAD-versus-GET lesson recorded elsewhere in this file: the convenient API
  * answered a different question than the one being asked, confidently.
  */
+/** Same as wireSize but asks for no compression — the control the self-test compares against. */
+async function wireSizeIdentity(path) {
+  const https = await import("node:https");
+  return new Promise((resolve, reject) => {
+    const u = new URL(ORIGIN + path);
+    https.get({ hostname: u.hostname, path: u.pathname + u.search,
+      headers: { "user-agent": "Mozilla/5.0", accept: ACCEPT, "accept-encoding": "identity" } },
+      (res) => { let wire = 0; res.on("data", (c) => { wire += c.length; });
+        res.on("end", () => resolve({ wire, enc: res.headers["content-encoding"] ?? "none" })); },
+    ).on("error", reject);
+  });
+}
+
 async function wireSize(path) {
   const https = await import("node:https");
   return new Promise((resolve, reject) => {
@@ -74,6 +87,51 @@ async function wireSize(path) {
 }
 
 console.log(`\n=== ${ORIGIN} ===\n`);
+
+/* 0. THE INSTRUMENTS, BEFORE ANY READING TAKEN WITH THEM.
+ *
+ * Two measurements in this project produced confident, plausible, wrong numbers, and both were
+ * caught only because a human found the value implausible — not by any check:
+ *
+ *   - a switch-latency harness polled with setTimeout and reported ~4000 ms for every case,
+ *     including one that could not have taken longer than a DOM toggle;
+ *   - a page-weight harness measured `(await r.arrayBuffer()).byteLength` while the response
+ *     carried `content-encoding: br`, so it reported DECODED bytes as wire bytes — off by 5x,
+ *     with the header sitting there appearing to confirm it.
+ *
+ * A check that cannot fail is a placebo; a MEASUREMENT that cannot be wrong-detected is the
+ * same thing wearing a number. So the instruments are tested against a case where a broken one
+ * would give a specific wrong answer, and the run stops if any of them fails — because every
+ * figure printed below is taken with them and none of it would mean anything.
+ */
+console.log("0. the instruments");
+{
+  /* wireBytes must count TRANSFERRED bytes. If it ever auto-decodes, the compressed and
+     identity readings converge — so requiring a large gap is exactly the blind case. */
+  const [comp, ident] = await Promise.all([wireSize("/funding/btc"), wireSizeIdentity("/funding/btc")]);
+  const ratio = ident.wire / Math.max(1, comp.wire);
+  if (comp.enc === "none") {
+    bad(`wireBytes: the compressed request came back unencoded (${comp.wire}b) — cannot tell a working instrument from a broken one`);
+  } else if (ratio < 2) {
+    bad(`wireBytes is measuring DECODED bytes: compressed ${comp.wire.toLocaleString()}b vs identity ${ident.wire.toLocaleString()}b is a ratio of ${ratio.toFixed(2)}, and this page compresses ~5x. Every weight figure below would be wrong.`);
+  } else {
+    ok(`wireBytes counts transferred bytes (${comp.enc} ${comp.wire.toLocaleString()}b vs identity ${ident.wire.toLocaleString()}b, ${ratio.toFixed(1)}x)`);
+  }
+
+  /* The completeness test must distinguish a finished document from a truncated one. Feed it
+     both and require it to disagree with itself. */
+  const done = "<!doctype html><html><body>x</body></html>";
+  const cut = "<!doctype html><html><body>x";
+  const complete = (b) => /^\s*<!doctype html/i.test(b) && /<\/html>\s*$/i.test(b);
+  complete(done) && !complete(cut)
+    ? ok("completeness test separates a finished document from a truncated one")
+    : bad("the completeness test cannot tell a truncated document from a whole one — section 7 is meaningless");
+
+  if (failures) {
+    console.log(`\n  INSTRUMENTS FAILED — stopping rather than reporting numbers taken with them.\n`);
+    process.exit(1);
+  }
+}
 
 /* 1. Crawler access. The whole project's visibility rests on this, and it cannot be
       confirmed from the dashboard. */
