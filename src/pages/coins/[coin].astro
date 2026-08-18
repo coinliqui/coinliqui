@@ -1,6 +1,6 @@
 ---
 import Base from "../../layouts/Base.astro";
-import { getSnapshot, coldStart, findPerp, getLive } from "../../lib/hyperliquid.ts";
+import { getSnapshot, coldStart, findPerp, getLive, oldestStamp } from "../../lib/hyperliquid.ts";
 import { usd, pct, VENUE_LABEL, paysClass, paysLabel, carryCost, type Venue } from "../../lib/funding.ts";
 import { findCoin, isLive, liveCoins, getSpot, getSpotCandles, basisBps, SPOT_SOURCE } from "../../lib/coins.ts";
 import { TIMEFRAMES, DEFAULT_TF, aggregate, buildPriceChart, CHART_H, type ChartMode } from "../../lib/series.ts";
@@ -129,7 +129,7 @@ const title = `${coin.name} price — ${coin.symbol} spot, and what leverage cos
 const description = `Live ${coin.name} (${coin.symbol}) spot price from ${SPOT_SOURCE}, with the perpetual basis, the funding rate across three venues and what holding a leveraged position actually costs per week.`;
 ---
 
-<Base title={title} description={description} fetchedAt={spotSet?.at ?? snap.fetchedAt}>
+<Base title={title} description={description} fetchedAt={oldestStamp(snap.fetchedAt, spotSet?.at, live?.at)}>
   <div class="page-head">
     <p class="crumb"><a href="/coins">Coins</a> › {coin.name}</p>
     <h1>{coin.name} price</h1>

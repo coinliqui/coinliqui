@@ -269,6 +269,27 @@ export async function fetchLive(symbols: string[]): Promise<LiveSet> {
   return out;
 }
 
+/**
+ * THE FRESHNESS PILL IS A PROMISE ABOUT THE WHOLE PAGE, so it has to be made by the slowest
+ * store on it, not the fastest.
+ *
+ * The coin templates passed `spotSet?.at ?? snap.fetchedAt` - the newest of the stores they
+ * read. Spot is written every minute and the snapshot every five, so the pill said "Updated 0
+ * min ago" directly above open interest and funding rates that could be five minutes old.
+ * Sampled against production the two clocks ran 180-240s apart, and the gap peaks at the full
+ * 300s just before a rotation. Nothing on the page was wrong; the sentence describing all of
+ * it was.
+ *
+ * Taking the oldest understates freshness on the fast figures instead, which is the error to
+ * prefer: a reader who trusts the pill is never told a number is newer than it is. Zeroes and
+ * nullish stamps are dropped rather than treated as the epoch, or one missing store would
+ * date the page to 1970.
+ */
+export function oldestStamp(...stamps: (number | null | undefined)[]): number | undefined {
+  const real = stamps.filter((s): s is number => typeof s === "number" && Number.isFinite(s) && s > 0);
+  return real.length ? Math.min(...real) : undefined;
+}
+
 export async function getLive(kv: KVNamespace | undefined): Promise<LiveSet | null> {
   try {
     const v = (await kv?.get("live", "json")) as LiveSet | null;

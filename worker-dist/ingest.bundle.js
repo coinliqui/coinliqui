@@ -664,7 +664,7 @@ async function fetchSpotCandles(product, granularity) {
 }
 
 // worker/build-stamp.ts
-var WORKER_BUILD = "1f98da6f577c";
+var WORKER_BUILD = "75faada96aa6";
 
 // worker/ingest.ts
 var RETAIN_HOURS = 72;

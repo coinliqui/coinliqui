@@ -749,3 +749,43 @@ export function basisSelfConsistent(html) {
   }
   return out;
 }
+
+
+/**
+ * A URL MAY ONLY CLAIM A COMMIT DATE IF A COMMIT IS THE ONLY THING THAT CHANGES IT.
+ *
+ * Companion to scripts/sitemap-honesty.mjs, which carries the full account and the blind
+ * cases. The discrimination is exact and needs no parsing of the generators: a git date is
+ * byte-for-byte the string committed in lastmod.json, while a data stamp is truncated to the
+ * hour, so a URL carrying the former is one making a claim about its own source control.
+ * If the page behind it reads a live store, that claim is false - the page moves between
+ * commits, and a crawler scheduling on the date will not come back for it.
+ */
+/**
+ * READING A LIVE STORE IS A PROXY, AND ONE ROUTE IS THE EXCEPTION THAT PROVES IT COARSE.
+ *
+ * /data-sources calls getSnapshot, but only for coverage counts - how many contracts clear the
+ * floor, how many exist. Those move when a coin crosses the floor, not when the market ticks.
+ * Measured the same way the tools were: captured under one snapshot, polled until the store
+ * rotated 260s later, diffed with every freshness element stripped. /methodology changed in
+ * that window and is now a data route; /data-sources did not. A git date is the honest stamp
+ * for it, and an hourly one would waste crawl budget claiming a change that had not happened.
+ *
+ * An entry here is a claim backed by that measurement, not a way to quiet the check. Anything
+ * added without one is the defect this file exists to catch, wearing a different hat.
+ */
+const LASTMOD_MEASURED_STABLE = new Set(["/data-sources"]);
+
+export function sitemapLastmodHonesty(xmlBody, lastmodTable, liveRoutes) {
+  const out = [];
+  /* The origin is consumed explicitly. Written as a lazy prefix, the path group captured
+     "//coinliqui.com/tools" — the first slash of "https://" — and matched nothing in the table. */
+  for (const m of xmlBody.matchAll(/<loc>(?:https?:\/\/[^/<]+)?([^<]*)<\/loc><lastmod>([^<]+)<\/lastmod>/g)) {
+    const [, path, stamp] = m;
+    if (lastmodTable[path] !== stamp) continue;
+    if (liveRoutes.has(path) && !LASTMOD_MEASURED_STABLE.has(path)) {
+      out.push(`${path} carries its git date (${stamp}) but the page reads a live store — it changes without a commit, so the date is a claim the site cannot keep`);
+    }
+  }
+  return out;
+}

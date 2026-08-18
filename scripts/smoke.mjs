@@ -35,7 +35,7 @@
 import { spawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { readdirSync, readFileSync } from "node:fs";
-import { cssFor, undefinedClasses, undefinedVars, rawEnums, searchIndexGaps, unnamedUpstreams, formatterDrift, uncoveredRoutes, unreadableText, chartAgreement, requestedLeverageLabels, inlineScriptSyntax, flipTableColour, colourPalettes, colourLanguageDrift, colourLegend, publishesAPerson, fixtureGaps, staleDerivedCells, basisSelfConsistent } from "./checks.mjs";
+import { cssFor, undefinedClasses, undefinedVars, rawEnums, searchIndexGaps, unnamedUpstreams, formatterDrift, uncoveredRoutes, unreadableText, chartAgreement, requestedLeverageLabels, inlineScriptSyntax, flipTableColour, colourPalettes, colourLanguageDrift, colourLegend, publishesAPerson, fixtureGaps, staleDerivedCells, basisSelfConsistent, sitemapLastmodHonesty } from "./checks.mjs";
 
 /* The SERVER side of each duplicated formatter, transcribed from the file that owns it and
    named here so the pairing is explicit. Transcription is the honest cost of having no bundler:
@@ -328,6 +328,32 @@ for (const path of ROUTES) {
     } catch (e) {
       bad++;
       console.log(`  FAIL          formatter comparison failed: ${e.message}`);
+    }
+    try {
+      /* Every URL that claims a COMMIT date must be a URL only a commit changes. Read off the
+         rendered XML rather than the generators: a git date is byte-for-byte the string in
+         lastmod.json and a data stamp is truncated to the hour, so the two never collide.
+         Five tool URLs shipped for days claiming 14 August while the market moved under them. */
+      const table = JSON.parse(await readFile("src/data/lastmod.json", "utf8"));
+      const { pagesReadingLiveStores } = await import("./sitemap-honesty.mjs");
+      const lies = [];
+      for (const path of ROUTES.filter((r) => r.startsWith("/sitemaps/"))) {
+        const body = await (await fetch(`http://127.0.0.1:${PORT}${path}`)).text();
+        /* The origin is consumed explicitly. As a lazy prefix this captured "//127.0.0.1:8788/tools"
+           — the first slash of the scheme — so every lookup missed and the audit passed while blind. */
+        const routes = [...body.matchAll(/<loc>(?:https?:\/\/[^/<]+)?([^<]*)<\/loc>/g)].map((m) => m[1]);
+        for (const l of sitemapLastmodHonesty(body, table, pagesReadingLiveStores(routes))) lies.push(`${path}: ${l}`);
+      }
+      if (lies.length) {
+        bad++;
+        console.log(`  FAIL  ${String(lies.length).padStart(4)}         URLs claim a commit date they cannot keep`);
+        for (const l of lies) console.log(`          ${l}`);
+      } else {
+        console.log(`  ok            every commit-dated URL is one only a commit changes`);
+      }
+    } catch (e) {
+      bad++;
+      console.log(`  FAIL          sitemap lastmod audit failed: ${e.message}`);
     }
     try {
       const gaps = await searchIndexGaps(`http://127.0.0.1:${PORT}`);

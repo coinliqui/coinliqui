@@ -1,6 +1,6 @@
 ---
 import Base from "../../layouts/Base.astro";
-import { getSnapshot, coldStart, findPerp, getLive } from "../../lib/hyperliquid.ts";
+import { getSnapshot, coldStart, findPerp, getLive, oldestStamp } from "../../lib/hyperliquid.ts";
 import { usd, pct, paysClass } from "../../lib/funding.ts";
 import { COINS, isLive, getSpot, basisBps, SPOT_SOURCE } from "../../lib/coins.ts";
 
@@ -53,7 +53,7 @@ const title = "Crypto coin prices, and what leverage costs on each";
 const description = `Spot prices for the major coins from ${SPOT_SOURCE}, each next to its perpetual basis, funding rate and open interest — the cost of the position beside the price of the asset.`;
 ---
 
-<Base title={title} description={description} fetchedAt={spotSet?.at ?? snap.fetchedAt}>
+<Base title={title} description={description} fetchedAt={oldestStamp(snap.fetchedAt, spotSet?.at, live?.at)}>
   <div class="page-head">
     <h1>Coin prices</h1>
     <p>
