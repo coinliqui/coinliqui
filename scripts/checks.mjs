@@ -707,30 +707,44 @@ export function staleDerivedCells(sources) {
  * half did not blur it, it inverted it. Nothing caught this, because every value on the page
  * was individually plausible and the client overlay repaired it ~300ms after paint.
  *
- * The invariant that does catch it needs no second source: whatever mark and spot a page
- * PRINTS, the basis it prints beside them must be the difference between those two. If the
- * numerator comes off a different clock, the printed numbers stop reconciling and this fails.
- * Tolerance is display rounding only - the prices are shown to `dp` places, which at the worst
- * price magnitude on the site is under 0.01 bps of slack; 0.2 leaves room and still catches a
- * one-minute drift, the smallest mismatch the architecture can produce.
+ * The invariant that catches it needs no second source: whatever mark and spot a page PRINTS,
+ * the basis printed beside them must be the difference between those two.
+ *
+ * THE TOLERANCE IS NOT A CONSTANT, and the first version of this check got that wrong. Prices
+ * are printed to a decimal count chosen from their magnitude, so the half-ulp a reader cannot
+ * see is worth a different number of basis points on every coin: 0.005 in $64,000 is 0.0008
+ * bps, but 0.0005 in $6.31 is 0.79 bps. A flat threshold tight enough for BTC fires on every
+ * cheap coin on a page that is entirely correct - and a check that cries wolf is a check that
+ * gets ignored. So the tolerance is derived from the printed precision itself and the real
+ * defect still clears it by 4x.
  */
 export function basisSelfConsistent(html) {
   const out = [];
-  const num = (re) => {
+  const grab = (re) => {
     const m = html.match(re);
     if (!m) return null;
-    const v = Number(m[1].replace(/[$,\s]/g, ""));
-    return Number.isFinite(v) ? v : null;
+    const raw = m[1].replace(/[$,\s]/g, "");
+    const v = Number(raw);
+    if (!Number.isFinite(v)) return null;
+    return { v, dp: (raw.split(".")[1] || "").length };
   };
-  const mark = num(/data-spot="mark"[^>]*>\s*\$?([\d,]+\.?\d*)/);
-  const spot = num(/data-spot="last"[^>]*>\s*\$?([\d,]+\.?\d*)/);
-  const basis = num(/data-spot="basis"[^>]*>\s*([+-]?[\d.]+)/);
-  if (mark == null || spot == null || basis == null || spot <= 0) return out;
-  const derived = (mark / spot - 1) * 10_000;
-  if (Math.abs(derived - basis) > 0.2) {
+  const mark = grab(/data-spot="mark"[^>]*>\s*\$?([\d,]+\.?\d*)/);
+  const spot = grab(/data-spot="last"[^>]*>\s*\$?([\d,]+\.?\d*)/);
+  const basis = grab(/data-spot="basis"[^>]*>\s*([+-]?[\d.]+)/);
+  if (!mark || !spot || !basis || spot.v <= 0 || mark.v <= 0) return out;
+
+  const derived = (mark.v / spot.v - 1) * 10_000;
+  /* Half of the last printed place on each price, carried into bps, plus half of the basis's
+     own last place. Nothing here is a fudge factor - every term is a digit the page withheld. */
+  const tol =
+    (0.5 * Math.pow(10, -mark.dp)) / mark.v * 10_000 +
+    (0.5 * Math.pow(10, -spot.dp)) / spot.v * 10_000 +
+    0.5 * Math.pow(10, -basis.dp);
+
+  if (Math.abs(derived - basis.v) > tol) {
     out.push(
-      `the basis printed (${basis.toFixed(1)} bps) is not the difference between the mark (${mark}) and the spot (${spot}) printed beside it, which is ${derived.toFixed(1)} bps - one of the three is read off a different clock` +
-        ((derived >= 0) !== (basis >= 0) ? ", and they disagree on the SIGN" : "")
+      `the basis printed (${basis.v.toFixed(1)} bps) is not the difference between the mark (${mark.v}) and the spot (${spot.v}) printed beside it, which is ${derived.toFixed(1)} bps - a gap of ${Math.abs(derived - basis.v).toFixed(1)} against ${tol.toFixed(2)} bps of display rounding, so one of the three is read off a different clock` +
+        ((derived >= 0) !== (basis.v >= 0) ? ", and they disagree on the SIGN" : "")
     );
   }
   return out;

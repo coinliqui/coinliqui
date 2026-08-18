@@ -98,8 +98,7 @@ const description =
         else. Both clocks are now stated where the numbers are. */}
     <p class="clock">
       The on-chain amounts were read at <strong>block {reg.verifiedBlock.toLocaleString("en-US")}</strong>,
-      {" "}<b><time datetime={reg.verifiedAt}>{new Date(reg.verifiedAt).toISOString().slice(0, 16).replace("T", " ")} UTC</time></b>
-      {" "}— they change only when this register is re-read, not every minute. The USD values
+      {" "}<b><time datetime={reg.verifiedAt}>{new Date(reg.verifiedAt).toISOString().slice(0, 16).replace("T", " ")} UTC</time></b> — they change only when this register is re-read, not every minute. The USD values
       beside them are struck at the current mark, which is why the freshness pill above moves
       while these figures do not.
     </p>
