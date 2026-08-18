@@ -83,11 +83,12 @@ one contact address, funded by nobody and selling nothing. Publishing since ${ID
 Accountable entity: the Coinliqui project, reachable at ${IDENTITY.contact} — the same domain
 that serves these pages and the same address in ${base}/.well-known/security.txt.
 
-There is no named individual author, deliberately. What stands in its place is checkability:
+${IDENTITY.founder ? `Founded and run by ${IDENTITY.founder.name}.` : "Run as a project rather than under an individual byline."} Standing beside that, and doing the work a byline cannot:
 every figure names the upstream endpoint it came from and how old it is, the arithmetic applied
 to it is written out, the ingest's real success rate including failures is published, and where
-a number is modelled rather than measured the assumptions are listed on the page. Those can be
-verified against the sources named; a byline cannot.
+a number is modelled rather than measured the assumptions are listed on the page. All of that
+can be verified against the sources named, which is a different kind of assurance from a name
+and not a replacement for one.
 
 Pages are GENERATED: numbers, charts and tables are produced by scheduled code from the
 endpoints listed at ${base}/data-sources, and the explanatory prose is written. Nothing here is

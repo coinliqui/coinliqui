@@ -988,7 +988,20 @@ const schema = {
                     site's own legend reserves for "shorts pay longs" — so it was making a
                     semantic claim it did not mean. */}
                 <svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="10" cy="10" r="7.25" /><path d="M10 6v4.2l2.6 1.8" /></svg>
-                <span class="freshness__on"><span class="freshness__word">Updated </span><time datetime={new Date(fetchedAt!).toISOString()} data-fresh={fetchedAt} data-clock="at">{age(ageMin)}</time></span><span class="freshness__off">Not updating</span>
+                {/* THE TEXT "Not updating" IS NOT WRITTEN HERE, AND IT USED TO BE.
+                    Both states were rendered into every page and one was hidden with CSS. A
+                    browser showed the right one; every text extraction took BOTH, so the first
+                    lines of the extracted text of /, /about, /unlocks, /funding/btc and
+                    /coins/bitcoin read "Updated 4 min ago Not updating" — and two independent
+                    agents fetching this site to assess it duly reported it as not updating. On
+                    the pages written to establish that the data is live.
+
+                    It was also a claim the server is not in a position to make. "Not updating"
+                    describes the READER's connection to this site having dropped, which is
+                    knowable only in the reader's browser. So the span is empty in the HTML and
+                    interact.js writes the words when it observes the failure. The server states
+                    the age it knows; the client states the failure it sees. */}
+                <span class="freshness__on"><span class="freshness__word">Updated </span><time datetime={new Date(fetchedAt!).toISOString()} data-fresh={fetchedAt} data-clock="at">{age(ageMin)}</time></span><span class="freshness__off"></span>
               </div>
             )}
             <a class="btn btn--primary cta" href="/watchlist" aria-current={path === "/watchlist" ? "page" : undefined}>

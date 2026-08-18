@@ -971,3 +971,33 @@ export function botPolicyReasons(src) {
   if (/const BLOCKED\s*=\s*\[\s*"/.test(src)) out.push("BLOCKED has reverted to a bare string list, which is how eight unexamined exclusions survived");
   return out;
 }
+
+
+/**
+ * A PAGE MUST NOT STATE TWO CONTRADICTORY THINGS AND HIDE ONE WITH CSS.
+ *
+ * The freshness pill rendered both of its states into every page — "Updated 4 min ago" and
+ * "Not updating" — and hid one with a display rule. A browser showed the right one. Every text
+ * extraction took both, so the first lines of the extracted text of /, /about, /unlocks,
+ * /funding/btc and /coins/bitcoin read "Updated 4 min ago Not updating", and two independent
+ * agents fetching this site to assess whether it was live reported that it was not. On the
+ * pages that exist to establish that the data is live.
+ *
+ * CSS is a rendering instruction, not a redaction. Anything that reads the text layer — a
+ * crawler, an answer engine, a screen reader, a reader-mode view — sees through it. So a
+ * mutually exclusive pair may not both be present in the markup; whichever is true is the one
+ * that gets written, by whichever party is in a position to know.
+ */
+export function contradictoryStates(html) {
+  const out = [];
+  const text = html.replace(/<script[\s\S]*?<\/script>/g, " ").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+  const PAIRS = [
+    [/\bUpdated\b[^.]{0,40}\bago\b/i, /\bNot updating\b/i, "the age of the data and a claim that it is not updating"],
+  ];
+  for (const [a, b, what] of PAIRS) {
+    if (a.test(text) && b.test(text)) {
+      out.push(`the text layer carries both ${what} — one is hidden with CSS, which redacts it from a browser and from nothing else`);
+    }
+  }
+  return out;
+}

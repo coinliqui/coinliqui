@@ -609,6 +609,11 @@
     const setLost = (on) => {
       if (!pill) return;
       pill.toggleAttribute("data-lost", on);
+      /* The words live here, not in the HTML. Rendered server-side they appeared in every
+         page's extracted text alongside the age, so a machine reading this site was told both
+         that it had updated four minutes ago and that it was not updating. */
+      const off = pill.querySelector(".freshness__off");
+      if (off) off.textContent = on ? "Not updating" : "";
       pill.setAttribute("title", on
         ? "The connection to this site dropped. The figures below are the last ones received — the timestamp is when."
         : "");
