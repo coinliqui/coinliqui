@@ -73,7 +73,7 @@ const ROUTES = [
      threw. Route coverage could not help: both branches live in one template, and the template
      was covered. A gate that asks for one URL per template sees one path through it. */
   "/funding/notacoin", "/coins/notacoin",
-  "/api/live.json", "/robots.txt", "/sitemap-index.xml",
+  "/api/live.json", "/robots.txt", "/sitemap-index.xml", "/sitemap.xml",
   "/search-index.json", "/rail",
   /* EVERY sitemap, not a sample. Six of these were never requested by anything until the
      coverage check below started comparing this list against the build manifest — so a 500 in
@@ -87,7 +87,7 @@ const ROUTES = [
  *  flash — so a GET is correctly 404. That proves the route exists and does not crash on an
  *  unexpected method; it does NOT exercise the POST handler, and this comment says so rather
  *  than letting a green line imply otherwise. */
-const EXPECT = { "/tools/liquidation-price": 410, "/404": 404, "/rail": 404,
+const EXPECT = { "/tools/liquidation-price": 410, "/404": 404, "/rail": 404, "/sitemap.xml": 301,
   "/funding/notacoin": 404, "/coins/notacoin": 404 };
 
 const warmDir = process.argv.includes("--warm") ? process.argv[process.argv.indexOf("--warm") + 1] : null;
@@ -220,7 +220,11 @@ for (const path of ROUTES) {
   }
   // 503 is the cold-start guard rendering correctly — a pass cold, a failure warm.
   const okStatus = status === want || (name === "cold" && status === 503);
-  const empty = body.length === 0;
+  /* A REDIRECT HAS NO BODY, AND THAT IS THE POINT OF ONE.
+     This rule exists because a 200 with nothing in it shipped once and looked fine in the
+     status column. A 3xx is the opposite case: RFC 9110 makes the body optional and every
+     client follows the Location header instead, so demanding one would be demanding padding. */
+  const empty = body.length === 0 && !(status >= 300 && status < 400);
   const crashed = /ReferenceError|is not defined|Cannot read propert|Internal Server Error/i.test(body);
 
   /* DID THE DOCUMENT FINISH?

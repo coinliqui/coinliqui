@@ -362,3 +362,31 @@ for.
   read-through, so with a KV binding present an upstream outage can make the timestamp
   older and nothing else.
 - No accounts, no notification channel, no secrets to provision.
+
+## Weekly report credentials
+
+Both sections of the weekly report degrade to "not available" without these, and the site is
+unaffected either way — nothing a reader sees depends on them.
+
+These steps used to be printed by the report itself, which meant `/status/indexation` published
+the console path, the required permission level and the exact `wrangler secret put` commands on
+the open web. That page is `noindex`, but noindex is not access control: it is fetchable by
+anyone who asks. No credential was ever exposed, but a map of which credentials exist and how
+they are installed was. It lives here now.
+
+**B. Search Console — `GSC_SA_KEY`**
+
+1. Google Cloud console: create a project, enable the **Google Search Console API**, create a
+   **service account**, download a **JSON key**.
+2. Search Console → the `coinliqui.com` Domain property → Settings → Users and permissions →
+   Add user: the service account's `client_email`, permission **Owner**.
+3. `npx wrangler secret put GSC_SA_KEY`, paste the whole JSON key file.
+
+Owner, not Full. Search Analytics works for any verified user, but the URL Inspection API used
+for the per-template indexed share is owner-only and returns `PERMISSION_DENIED` for a Full
+user. A service account added as a delegated owner is the supported arrangement.
+
+**C. Crawler fetches — `CF_ANALYTICS_TOKEN`, `CF_ZONE_ID`**
+
+A Cloudflare token scoped to this zone with **Analytics → Read**, then
+`npx wrangler secret put CF_ANALYTICS_TOKEN` and `npx wrangler secret put CF_ZONE_ID`.

@@ -191,12 +191,15 @@ export async function stepReport(env: ReportEnv, force = false): Promise<string 
       if (!env.GSC_SA_KEY) {
         say("Not available: GSC_SA_KEY is not set.\n");
         say("To enable, in order:\n");
-        say("1. Google Cloud console: create a project, enable the **Google Search Console API**,");
-        say("   create a **service account**, and download a **JSON key**.");
-        say("2. Search Console -> the `coinliqui.com` Domain property -> Settings -> Users and");
-        say("   permissions -> Add user: paste the service account's `client_email`, permission");
-        say("   **Owner**.");
-        say("3. `npx wrangler secret put GSC_SA_KEY` and paste the whole JSON key file.\n");
+        /* THE RUNBOOK CAME OUT OF THE PUBLISHED REPORT. This block printed the console
+           steps, the property name, the required permission level and the exact
+           `wrangler secret put` command — and /status/indexation renders this report on the
+           open web. It is noindex, but noindex is not access control, and the page is
+           fetchable by anyone who asks for it. None of it is a credential; all of it is a
+           map of which credentials exist and how they are installed, written for an
+           operator and published to everyone. Setup lives in DEPLOY.md, which is where
+           whoever needs it is already looking. */
+        say("Setup for this section is in DEPLOY.md.\n");
         say("Owner, not Full. Search Analytics (section B2) works for any verified user, but the");
         say("URL Inspection API used for the per-template indexed share is owner-only and returns");
         say("PERMISSION_DENIED for a Full user. Adding a service account as a delegated owner is");
@@ -360,8 +363,7 @@ export async function stepReport(env: ReportEnv, force = false): Promise<string 
     if (!any) say("\nNo named crawler seen yet. Normal in the first fortnight; past week 3, re-run verify-live before assuming it is a ranking problem.");
   } catch (e) {
     say(`Not available: ${e instanceof Error ? e.message : String(e)}.\n`);
-    say("To enable: a Cloudflare token scoped to this zone with **Analytics → Read**, then");
-    say("`npx wrangler secret put CF_ANALYTICS_TOKEN` and `npx wrangler secret put CF_ZONE_ID`.");
+    say("Setup for this section is in DEPLOY.md.");
   }
 
   say("\n## What to read first\n");

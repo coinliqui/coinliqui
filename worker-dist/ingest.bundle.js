@@ -319,12 +319,7 @@ ${origin} \xB7 started ${now.toISOString().slice(0, 16).replace("T", " ")} UTC
       if (!env.GSC_SA_KEY) {
         say("Not available: GSC_SA_KEY is not set.\n");
         say("To enable, in order:\n");
-        say("1. Google Cloud console: create a project, enable the **Google Search Console API**,");
-        say("   create a **service account**, and download a **JSON key**.");
-        say("2. Search Console -> the `coinliqui.com` Domain property -> Settings -> Users and");
-        say("   permissions -> Add user: paste the service account's `client_email`, permission");
-        say("   **Owner**.");
-        say("3. `npx wrangler secret put GSC_SA_KEY` and paste the whole JSON key file.\n");
+        say("Setup for this section is in DEPLOY.md.\n");
         say("Owner, not Full. Search Analytics (section B2) works for any verified user, but the");
         say("URL Inspection API used for the per-template indexed share is owner-only and returns");
         say("PERMISSION_DENIED for a Full user. Adding a service account as a delegated owner is");
@@ -485,8 +480,7 @@ Search performance not available: ${e instanceof Error ? e.message : String(e)}`
   } catch (e) {
     say(`Not available: ${e instanceof Error ? e.message : String(e)}.
 `);
-    say("To enable: a Cloudflare token scoped to this zone with **Analytics \u2192 Read**, then");
-    say("`npx wrangler secret put CF_ANALYTICS_TOKEN` and `npx wrangler secret put CF_ZONE_ID`.");
+    say("Setup for this section is in DEPLOY.md.");
   }
   say("\n## What to read first\n");
   say("1. **Section A must be all green.** A URL a crawler cannot fetch is not an indexing problem.");
@@ -664,7 +658,7 @@ async function fetchSpotCandles(product, granularity) {
 }
 
 // worker/build-stamp.ts
-var WORKER_BUILD = "75faada96aa6";
+var WORKER_BUILD = "7619c56f34ea";
 
 // worker/ingest.ts
 var RETAIN_HOURS = 72;
