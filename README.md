@@ -46,7 +46,9 @@ carries the account of what it missed; most also carry a *blind case* — the sa
 against a deliberately reintroduced fault, so a check that has stopped seeing anything fails
 instead of passing quietly.
 
-Deployment runbook: **[DEPLOY.md](DEPLOY.md)** — dashboard only.
+Deployment: `npm run deploy:site` — direct upload, gated by `npm run check`. There is no git
+integration and its absence is deliberate; the reasoning, and the API calls behind it, are in
+**[DEPLOY.md](DEPLOY.md)** §7a. Credentials: `npm run preflight`.
 
 **Brand lives in one constant.** `SITE.name` in `src/lib/site.ts` feeds the rail wordmark,
 the JSON-LD and every `<title>` — pages pass a bare title and `Base.astro` appends the

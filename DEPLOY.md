@@ -137,6 +137,58 @@ continue until it is true — a deployed site with an empty KV serves 503s by de
 
 ---
 
+## 7a. Deployment is DIRECT UPLOAD, deliberately — do not reconnect git without reading this
+
+Decided 18 August 2026, after measuring. `npm run deploy:site` builds, gates and uploads; there
+is no git integration and the absence is intentional.
+
+**What happened.** The project began git-connected. Transferring the repository to the
+`coinliqui` organisation broke the connection: the Pages project stayed bound to the old owner
+path, one build failed at `clone_repo`, and pushes stopped producing deployments. Disconnecting
+the source in the dashboard to reconnect it cleanly turned out to be a ONE-WAY DOOR.
+
+**What was measured, and what each call returned:**
+
+| Call | Result |
+|---|---|
+| `PATCH /pages/projects/coinliqui` with a `source` object | `8000069` — *"You cannot update the `source` object in a Direct Uploads project."* |
+| `POST /pages/projects` with git source, owner `coinliqui` | `8000011` — Pages Git installation issue |
+| the same, owner `yuryuryury-dsgnr` | `8000011` — **identical**, so this was never about the organisation |
+| `GET /pages/connections`, `/connections/github`, `/connections/github/installations` | `[]`, `[]`, `[]` |
+| `GET orgs/coinliqui/installations` (GitHub) | `{"total_count": 0}` |
+| `POST /user/installations`, `POST /app/installations` (GitHub) | `404` — the endpoints do not exist |
+
+Cloudflare and GitHub agree independently that the account has zero Pages GitHub App
+installations. **No credential fixes this**: installing a GitHub App is not an API operation on
+any scope, it is an interactive consent flow, and Cloudflare's own creation endpoints return
+`8000000`. The Cloudflare token was confirmed valid with `pages:write` in scope before any of
+this was concluded, so none of it is a permission artefact.
+
+**Why it is being left this way rather than rebuilt.** Once a project is Direct Uploads it
+cannot be given a source, so restoring git deploys means DELETING AND RECREATING the project —
+which unbinds `coinliqui.com` and `coinliqui.pages.dev` and discards the deployment history.
+Doing that to a live custom domain on a site whose entire current problem is that it is barely
+indexed is the wrong risk, and it buys very little: `npm run check` already gates every deploy
+identically, and the only capability actually lost is a build triggered by someone else's push,
+on a project with one contributor.
+
+**If you still want git deploys**, the order is: install the app at
+`github.com/apps/cloudflare-pages` → Configure → the `coinliqui` org → grant it the repository;
+THEN check whether the dashboard offers "Connect to Git" on the existing project. If it does
+not, it is a delete-and-recreate, and the custom-domain move should be done deliberately rather
+than in passing.
+
+## 7b. Credentials expire, and that has cost this project three investigations
+
+`npm run preflight` prints the state of every credential at once. `deploy:worker` and
+`deploy:site` run it with `--strict` first.
+
+Three times a supposed permission problem turned out to be an expired token, and each time the
+diagnosis went a long way down the wrong road — scopes, org membership, API semantics — while
+the answer sat in a timestamp on disk. On the third, the wrangler token had 248 seconds left at
+the start of a multi-call investigation and lapsed during it. Run the pre-flight before drawing
+any conclusion from an API error.
+
 ## 8. The Pages project
 
 1. Dashboard → **Compute (Workers) → Pages → Connect to Git**.
