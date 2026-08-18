@@ -620,7 +620,7 @@ export function colourLegend(html, p) {
  * The personal-profile rule is unchanged and matched on the SHAPE of a profile URL rather than
  * on any particular handle, so it keeps working for accounts nobody has created yet.
  */
-export function publishesAPerson(html, allowedEmail = "hello@coinliqui.com") {
+export function publishesAPerson(html, allowedEmail = "hello@coinliqui.com", projectNamespace = "coinliqui") {
   const out = [];
   const NAME_ONLY = new Set(["@type", "name"]);
 
@@ -654,8 +654,15 @@ export function publishesAPerson(html, allowedEmail = "hello@coinliqui.com") {
     }
   }
 
-  for (const m of html.matchAll(/https?:\/\/(?:www\.)?(?:github|gitlab|twitter|x|linkedin|instagram|t)\.(?:com|me|io)\/[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)?/g)) {
-    out.push(`links a personal profile: ${m[0]}`);
+  /* A PROFILE LINK IS JUDGED BY WHOSE NAMESPACE IT IS IN, NOT BY ITS SHAPE.
+     The first version matched host + one or two path segments, which is the shape of a personal
+     profile AND the shape of the project's own repository. It fired on
+     https://github.com/coinliqui/coinliqui the moment that became sameAs — a true positive for
+     the pattern and a false one for the policy, which has never been "no code-hosting links" but
+     "nothing belonging to a person". The namespace is the thing that distinguishes them. */
+  for (const m of html.matchAll(/https?:\/\/(?:www\.)?(?:github|gitlab|twitter|x|linkedin|instagram|t)\.(?:com|me|io)\/([A-Za-z0-9_.-]+)(?:\/[A-Za-z0-9_.-]+)?/g)) {
+    if (m[1].toLowerCase() === projectNamespace.toLowerCase()) continue;
+    out.push(`links an account outside the project namespace: ${m[0]} — sameAs and every other outbound identity link may only point at ${projectNamespace}, never at a person's account`);
   }
   return [...new Set(out)];
 }

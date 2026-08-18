@@ -118,13 +118,23 @@ export const IDENTITY = {
    * emitted into the structured data.
    */
   sameAs: [
-    /* ONE LINE, WHEN THE PROJECT ORG EXISTS. Put the ORG repository here —
-       https://github.com/coinliqui/coinliqui — never a personal account. A public repository is
-       genuine third-party corroboration: it is the actual source of this site, independently
-       hosted, with a commit history that cannot be back-dated. That argument holds for a project
-       account and collapses into a privacy problem for a personal one, which is why this is
-       empty rather than pointing at the repo that exists today.
-       Base.astro omits sameAs entirely while this is empty, so no hollow property is emitted. */
+    /* THE FIRST AND ONLY EXTERNAL REFERENCE THIS SITE HAS.
+     *
+     * The source of this site, independently hosted, with a commit history that cannot be
+     * back-dated — which is the whole reason it is worth anything here. Until 18 August 2026
+     * this was deliberately empty: the repository existed but sat under a personal account, and
+     * pointing at it would have traded the operator's separation from the domain for the
+     * corroboration. It now lives in a project organisation, so the trade is gone and the
+     * argument that always applied to a project account finally applies to this one.
+     *
+     * The transfer left a 301 from the old personal path to the new one, which would have
+     * preserved exactly the association the move was meant to end. Measured, not assumed:
+     * anonymous GET returned 301 with the org URL in Location. A private repository now occupies
+     * the old path and it returns 404 to anonymous requests.
+     *
+     * Base.astro omits sameAs entirely while this is empty, so no hollow property is emitted —
+     * and a check refuses any entry here that looks like somebody's personal profile. */
+    "https://github.com/coinliqui/coinliqui",
   ] as string[],
 } as const;
 
