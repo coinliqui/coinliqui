@@ -77,6 +77,25 @@ const sources = [
 
   <h2>Coverage</h2>
   <p class="prose">A coin is published once its perpetual holds {usd(OI_NOTIONAL_FLOOR)} of open interest, and keeps its page until that falls below $3.5M. {snap.eligibleCount} of {snap.universeCount} perpetuals clear that floor today; {snap.perps.length} are published.</p>
+  {/* NAMED HERE BECAUSE THE PROMISE IS "EVERY HOST WE TALK TO", NOT "EVERY HOST BEHIND A
+      NUMBER". The gate refused the push that added it until it appeared on this page, which is
+      the check doing its job — but putting it in the table above would have been the wrong fix,
+      because that table answers "where did this figure come from" and no figure comes from
+      here. It gets its own heading instead. */}
+  <h2>Outbound, and behind no figure</h2>
+  <p class="prose">
+    One host is contacted that supplies nothing you see. When a contract crosses the coverage
+    floor or a coin reaches its publication date, a URL exists that did not exist before, and
+    the ingest worker announces that one URL to
+    {" "}<a href="https://www.indexnow.org/" rel="noopener" target="_blank">IndexNow</a>
+    {" "}(<code>api.indexnow.org</code>), which forwards it to the search engines that
+    implement the protocol. It is a server-to-server call: nothing about you is sent, because
+    nothing about you is known — see <a class="link" href="/privacy">Privacy</a>.
+    <strong>It fires on new URLs only</strong>, never on the prices moving. Every page here
+    changes every five minutes; announcing that would be announcing nothing, twelve times an
+    hour, which is the behaviour the protocol exists to be distinguished from.
+  </p>
+
   <h2>What is deliberately absent</h2>
   <ul class="prose">
     <li><strong>Liquidation totals.</strong> Exchange feeds are throttled and any total would be understated — <a href="/methodology/liquidations">the full explanation</a>.</li>

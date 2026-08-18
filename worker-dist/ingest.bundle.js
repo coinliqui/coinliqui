@@ -211,6 +211,56 @@ function orderSweeps(states, now, backoffMs) {
   });
 }
 
+// worker/indexnow.ts
+var INDEXNOW_KEY = "a7f3c19e84b24d6fa0e5b17c93d82f46";
+var ENDPOINT = "https://api.indexnow.org/indexnow";
+var MAX_URLS = 200;
+var STATE_KEY = "indexnow:submitted";
+function publishedUrls(origin, symbols, coinSlugs) {
+  return [
+    `${origin}/`,
+    `${origin}/funding`,
+    `${origin}/coins`,
+    `${origin}/open-interest`,
+    `${origin}/liquidations`,
+    `${origin}/unlocks`,
+    `${origin}/tools`,
+    ...symbols.map((s) => `${origin}/funding/${s.toLowerCase()}`),
+    ...coinSlugs.map((c) => `${origin}/coins/${c}`)
+  ];
+}
+async function stepIndexNow(env, current) {
+  const origin = env.SITE_ORIGIN || "https://coinliqui.com";
+  const host = new URL(origin).host;
+  let seen = [];
+  try {
+    seen = await env.SNAPSHOT.get(STATE_KEY, "json") ?? [];
+  } catch {
+    return "indexnow: state unreadable, skipped";
+  }
+  const known = new Set(seen);
+  const fresh = current.filter((u) => !known.has(u)).slice(0, MAX_URLS);
+  if (!fresh.length) return `indexnow: nothing new (${current.length} URLs published, all previously submitted)`;
+  if (!seen.length) {
+    await env.SNAPSHOT.put(STATE_KEY, JSON.stringify(current));
+    return `indexnow: first run, recorded ${current.length} URLs as the baseline without submitting`;
+  }
+  try {
+    const res = await fetch(ENDPOINT, {
+      method: "POST",
+      headers: { "content-type": "application/json; charset=utf-8" },
+      body: JSON.stringify({ host, key: INDEXNOW_KEY, keyLocation: `${origin}/${INDEXNOW_KEY}.txt`, urlList: fresh })
+    });
+    if (res.ok) {
+      await env.SNAPSHOT.put(STATE_KEY, JSON.stringify(current));
+      return `indexnow: submitted ${fresh.length} new URL(s), HTTP ${res.status} \u2014 ${fresh.slice(0, 3).join(", ")}${fresh.length > 3 ? " \u2026" : ""}`;
+    }
+    return `indexnow: endpoint returned HTTP ${res.status}, state left unchanged so the same URLs retry next pass`;
+  } catch (e) {
+    return `indexnow: submission failed (${e instanceof Error ? e.message : String(e)}), state left unchanged`;
+  }
+}
+
 // worker/report.ts
 var UA = "GPTBot/1.1";
 var SLICE = 20;
@@ -658,7 +708,7 @@ async function fetchSpotCandles(product, granularity) {
 }
 
 // worker/build-stamp.ts
-var WORKER_BUILD = "7619c56f34ea";
+var WORKER_BUILD = "ba838ee32fe1";
 
 // worker/ingest.ts
 var RETAIN_HOURS = 72;
@@ -793,6 +843,11 @@ async function run(env) {
       if (step) {
         result.report = step;
         throw SKIP_SWEEPS;
+      }
+      try {
+        result.indexnow = await stepIndexNow(env, publishedUrls(env.SITE_ORIGIN || "https://coinliqui.com", nowPublished, []));
+      } catch (e) {
+        result.indexnow = `indexnow: threw (${e instanceof Error ? e.message : String(e)})`;
       }
       const syms = nowPublished;
       const sweep = async (key, hours, write, extra = 0, over = syms, preloaded = void 0) => {

@@ -1,6 +1,7 @@
 import { fetchSnapshot, fetchLive } from "../src/lib/hyperliquid.ts";
 import { fetchCandles, fetchHourly, fetchM15, fetchFundingHistory, mergeFunding, type FundingPoint } from "../src/lib/candles.ts";
 import { orderSweeps } from "../src/lib/sweep-order.ts";
+import { stepIndexNow, publishedUrls } from "./indexnow.ts";
 import { stepReport, stepProbe } from "./report.ts";
 import { COINS, fetchSpot, fetchSpotCandles } from "../src/lib/coins.ts";
 
@@ -151,6 +152,9 @@ interface RunResult {
   hourly?: number;
   m15?: number;
   probe?: string;
+  /** What the IndexNow step did, including when it did nothing — a silent step is one nobody
+   *  notices has stopped working. */
+  indexnow?: string;
   funding?: number;
   candleError?: string;
   /** Minutes since each bulk sweep last completed a full cycle — the only way a 2h/6h/12h
@@ -376,6 +380,16 @@ async function run(env: Env): Promise<RunResult> {
 
       const step = await stepReport(env);
       if (step) { result.report = step; throw SKIP_SWEEPS; }
+
+      /* ANNOUNCED ONLY WHEN THE SET OF PUBLISHED URLS CHANGES — see worker/indexnow.ts for
+         why that, and not "the page changed". Placed after the report and before the sweeps
+         so a submission can never delay data collection, and so a failure here is a logged
+         line rather than a lost pass: nothing a reader sees depends on it. */
+      try {
+        result.indexnow = await stepIndexNow(env, publishedUrls(env.SITE_ORIGIN || "https://coinliqui.com", nowPublished, []));
+      } catch (e) {
+        result.indexnow = `indexnow: threw (${e instanceof Error ? e.message : String(e)})`;
+      }
 
       const syms = nowPublished;
 
