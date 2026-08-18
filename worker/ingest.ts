@@ -1,7 +1,7 @@
 import { fetchSnapshot, fetchLive } from "../src/lib/hyperliquid.ts";
 import { fetchCandles, fetchHourly, fetchM15, fetchFundingHistory, mergeFunding, type FundingPoint } from "../src/lib/candles.ts";
 import { orderSweeps } from "../src/lib/sweep-order.ts";
-import { stepReport } from "./report.ts";
+import { stepReport, stepProbe } from "./report.ts";
 import { COINS, fetchSpot, fetchSpotCandles } from "../src/lib/coins.ts";
 
 /**
@@ -150,6 +150,7 @@ interface RunResult {
   candles?: number;
   hourly?: number;
   m15?: number;
+  probe?: string;
   funding?: number;
   candleError?: string;
   /** Minutes since each bulk sweep last completed a full cycle — the only way a 2h/6h/12h
@@ -367,6 +368,12 @@ async function run(env: Env): Promise<RunResult> {
       /* THE WEEKLY REPORT COMES FIRST, and takes the tick. It is roughly 140 subrequests
          against a 50-per-invocation ceiling, so it walks itself across consecutive ticks and
          the sweeps stand aside while it does — about twenty minutes, once a week. */
+      /* A pending one-shot inspection runs before the sweeps and never competes with them:
+         it is a single subrequest, it clears its own request key, and it happens at most once
+         per probe written. Placed here so a diagnostic can never starve the ingest. */
+      const probe = await stepProbe(env);
+      if (probe) result.probe = probe;
+
       const step = await stepReport(env);
       if (step) { result.report = step; throw SKIP_SWEEPS; }
 

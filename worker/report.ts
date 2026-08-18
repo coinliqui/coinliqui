@@ -82,7 +82,7 @@ const pct = (a: number, b: number) => (b ? `${((a / b) * 100).toFixed(0)}%` : "�
  * WebCrypto: the PEM is unwrapped to DER, imported as PKCS#8, and signed with
  * RSASSA-PKCS1-v1_5. Same JWT, same exchange, no dependency.
  */
-async function gscToken(rawKey: string): Promise<string> {
+export async function gscToken(rawKey: string): Promise<string> {
   const key = JSON.parse(rawKey) as { client_email: string; private_key: string };
   const pem = key.private_key.replace(/-----[^-]+-----/g, "").replace(/\s+/g, "");
   const der = Uint8Array.from(atob(pem), (c) => c.charCodeAt(0));
@@ -378,4 +378,64 @@ export async function stepReport(env: ReportEnv, force = false): Promise<string 
   await env.SNAPSHOT.put("report:latest", JSON.stringify(doc));
   await env.SNAPSHOT.delete("report:state");
   return `report: complete (${st.week})`;
+}
+
+
+/**
+ * ONE URL INSPECTION, ON DEMAND, THROUGH THE WORKER'S OWN CREDENTIAL.
+ *
+ * Search Console questions keep arriving without a local key — deliberately, because the key
+ * lives in a secret and a second copy on a laptop is a second thing to leak. But a single
+ * unrepeatable reading is not evidence, and twice now a diagnosis has stalled on being unable
+ * to ask Google the same question twice.
+ *
+ * Driven by KV rather than by an HTTP route: writing `probe:inspect` asks for one inspection,
+ * the answer lands in `probe:result`, and the request key is DELETED whether the call succeeds
+ * or fails. No public surface, no way to queue work by hitting a URL, and no way for a
+ * forgotten probe to keep spending quota — it is one call, once, per request written.
+ */
+export async function stepProbe(env: ReportEnv): Promise<string | null> {
+  if (!env.GSC_SA_KEY) return null;
+  /* The request is JSON — {"url": "..."} — rather than a bare string, because the binding's
+     read signature is typed for it and a probe is not worth widening an interface for. */
+  let url: string | null = null;
+  try {
+    const req = (await env.SNAPSHOT.get("probe:inspect", "json")) as { url?: string } | null;
+    url = typeof req?.url === "string" ? req.url : null;
+  } catch { return null; }
+  if (!url) return null;
+
+  /* Cleared FIRST. If the inspection throws, the probe must not retry on every tick for ever —
+     that is how a diagnostic becomes a quota leak. */
+  try { await env.SNAPSHOT.delete("probe:inspect"); } catch { /* best effort */ }
+
+  const out: Record<string, unknown> = { url, at: Date.now() };
+  try {
+    const token = await gscToken(env.GSC_SA_KEY);
+    const r = await fetch("https://searchconsole.googleapis.com/v1/urlInspection/index:inspect", {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify({ inspectionUrl: url.trim(), siteUrl: "sc-domain:coinliqui.com" }),
+    });
+    const j = (await r.json()) as any;
+    out.status = r.status;
+    if (j?.error) out.error = `${j.error.code} ${j.error.message}`;
+    else {
+      const i = j?.inspectionResult?.indexStatusResult ?? {};
+      out.verdict = i.verdict;
+      out.coverageState = i.coverageState;
+      out.robotsTxtState = i.robotsTxtState;
+      out.indexingState = i.indexingState;
+      out.lastCrawlTime = i.lastCrawlTime ?? null;
+      out.googleCanonical = i.googleCanonical ?? null;
+      out.userCanonical = i.userCanonical ?? null;
+      out.pageFetchState = i.pageFetchState ?? null;
+      out.referringUrls = i.referringUrls ?? null;
+      out.sitemap = i.sitemap ?? null;
+    }
+  } catch (e) {
+    out.error = e instanceof Error ? e.message.slice(0, 160) : String(e).slice(0, 160);
+  }
+  try { await env.SNAPSHOT.put("probe:result", JSON.stringify(out)); } catch { /* best effort */ }
+  return String(out.coverageState ?? out.error ?? "done");
 }

@@ -502,6 +502,53 @@ Search performance not available: ${e instanceof Error ? e.message : String(e)}`
   await env.SNAPSHOT.delete("report:state");
   return `report: complete (${st.week})`;
 }
+async function stepProbe(env) {
+  if (!env.GSC_SA_KEY) return null;
+  let url = null;
+  try {
+    const req = await env.SNAPSHOT.get("probe:inspect", "json");
+    url = typeof req?.url === "string" ? req.url : null;
+  } catch {
+    return null;
+  }
+  if (!url) return null;
+  try {
+    await env.SNAPSHOT.delete("probe:inspect");
+  } catch {
+  }
+  const out = { url, at: Date.now() };
+  try {
+    const token = await gscToken(env.GSC_SA_KEY);
+    const r = await fetch("https://searchconsole.googleapis.com/v1/urlInspection/index:inspect", {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify({ inspectionUrl: url.trim(), siteUrl: "sc-domain:coinliqui.com" })
+    });
+    const j = await r.json();
+    out.status = r.status;
+    if (j?.error) out.error = `${j.error.code} ${j.error.message}`;
+    else {
+      const i = j?.inspectionResult?.indexStatusResult ?? {};
+      out.verdict = i.verdict;
+      out.coverageState = i.coverageState;
+      out.robotsTxtState = i.robotsTxtState;
+      out.indexingState = i.indexingState;
+      out.lastCrawlTime = i.lastCrawlTime ?? null;
+      out.googleCanonical = i.googleCanonical ?? null;
+      out.userCanonical = i.userCanonical ?? null;
+      out.pageFetchState = i.pageFetchState ?? null;
+      out.referringUrls = i.referringUrls ?? null;
+      out.sitemap = i.sitemap ?? null;
+    }
+  } catch (e) {
+    out.error = e instanceof Error ? e.message.slice(0, 160) : String(e).slice(0, 160);
+  }
+  try {
+    await env.SNAPSHOT.put("probe:result", JSON.stringify(out));
+  } catch {
+  }
+  return String(out.coverageState ?? out.error ?? "done");
+}
 
 // src/lib/coins.ts
 var CB = "https://api.exchange.coinbase.com";
@@ -617,7 +664,7 @@ async function fetchSpotCandles(product, granularity) {
 }
 
 // worker/build-stamp.ts
-var WORKER_BUILD = "cd6c878fa96b";
+var WORKER_BUILD = "1f98da6f577c";
 
 // worker/ingest.ts
 var RETAIN_HOURS = 72;
@@ -746,6 +793,8 @@ async function run(env) {
     result.ok = !collapsed && rows.length > 0;
     if (!result.ok && !result.error) result.error = "upstream returned no usable funding rows";
     try {
+      const probe = await stepProbe(env);
+      if (probe) result.probe = probe;
       const step = await stepReport(env);
       if (step) {
         result.report = step;
