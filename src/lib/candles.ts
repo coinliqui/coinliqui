@@ -33,6 +33,11 @@ export const CANDLE_DAYS = 800;
     the model needs a further 14 days of warm-up before it, so column zero already holds a
     full position-life window of positions instead of filling up in view. */
 export const CANDLE_HOURS = 1080;
+/* FOURTEEN DAYS OF 15-MINUTE BARS = 1,344, which is the same order as the hourly record and
+   comfortably inside one candleSnapshot call. Sized from what the timeframes can show rather
+   than from what the endpoint will give: 15m at 300 bars covers 3.1 days and 30m covers 6.25,
+   so retaining a fortnight leaves headroom without paying to store months nobody can plot. */
+export const CANDLE_M15_MINUTES = 14 * 24 * 60;
 
 export async function fetchCandles(symbol: string, days = CANDLE_DAYS): Promise<CandleSet> {
   const end = Date.now();
@@ -69,6 +74,26 @@ export async function fetchHourly(symbol: string, hours = CANDLE_HOURS): Promise
   });
   if (!r.ok) throw new Error(`hourly ${symbol} ${r.status}`);
   const raw = (await r.json()) as { t: number; o: string; h: string; l: string; c: string; v: string }[];
+  const d: HourCandle[] = raw
+    .filter((c) => Number(c.v) > 0)
+    .map((c) => [c.t, Number(c.o), Number(c.h), Number(c.l), Number(c.c), Number(c.v)]);
+  return { u: Date.now(), d };
+}
+
+/** 15-minute candles — the shortest series this site collects, and the base for 15m and 30m. */
+export async function fetchM15(symbol: string, minutes = CANDLE_M15_MINUTES): Promise<{ u: number; d: HourCandle[] }> {
+  const end = Date.now();
+  const start = end - minutes * 60_000;
+  const r = await fetch(INFO, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ type: "candleSnapshot", req: { coin: symbol, interval: "15m", startTime: start, endTime: end } }),
+  });
+  if (!r.ok) throw new Error(`m15 ${symbol} ${r.status}`);
+  const raw = (await r.json()) as { t: number; o: string; h: string; l: string; c: string; v: string }[];
+  /* Zero-volume bars are dropped for the same reason the hourly series drops them: Hyperliquid
+     backfills pre-launch candles with no trades, and a chart drawn over them shows a flat line
+     that never happened. */
   const d: HourCandle[] = raw
     .filter((c) => Number(c.v) > 0)
     .map((c) => [c.t, Number(c.o), Number(c.h), Number(c.l), Number(c.c), Number(c.v)]);
@@ -189,6 +214,25 @@ export function survivalGrid(opts: {
     from: entries.length ? entries[0][0] : 0,
     to: entries.length ? entries[entries.length - 1][0] : 0,
   };
+}
+
+/** Reads the 15-minute series. Same contract as getHourly: production reads KV and nothing
+ *  else, so an upstream outage can only make the data older, never absent-then-wrong.
+ *  The `> 24` floor is deliberately the same shape — a handful of bars is not a chart. */
+export async function getM15(kv: KVLike | undefined, symbol: string, devReadThrough = false): Promise<{ u: number; d: HourCandle[] } | null> {
+  if (!kv && !devReadThrough) return null;
+  if (kv) {
+    try {
+      const v = (await kv.get(`m15:${symbol}`, "json")) as { u: number; d: HourCandle[] } | null;
+      if (v && Array.isArray(v.d) && v.d.length > 24) return v;
+    } catch { /* fall through */ }
+    if (!devReadThrough) return null;
+  }
+  try {
+    return await fetchM15(symbol);
+  } catch {
+    return null;
+  }
 }
 
 export async function getHourly(kv: KVLike | undefined, symbol: string, devReadThrough = false): Promise<{ u: number; d: HourCandle[] } | null> {

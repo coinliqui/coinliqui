@@ -1,5 +1,5 @@
 import { fetchSnapshot, fetchLive } from "../src/lib/hyperliquid.ts";
-import { fetchCandles, fetchHourly, fetchFundingHistory, mergeFunding, type FundingPoint } from "../src/lib/candles.ts";
+import { fetchCandles, fetchHourly, fetchM15, fetchFundingHistory, mergeFunding, type FundingPoint } from "../src/lib/candles.ts";
 import { stepReport } from "./report.ts";
 import { COINS, fetchSpot, fetchSpotCandles } from "../src/lib/coins.ts";
 
@@ -68,6 +68,10 @@ const CANDLE_REFRESH_HOURS = 12;
    minutes old. Daily, hourly and funding are on SEPARATE cadences, and each sweep is chunked,
    so a single invocation never approaches the 50-subrequest ceiling. */
 const HOURLY_REFRESH_HOURS = 2;
+/* The 15-minute series refreshes on the same 2-hour gate as the hourly one. It is the shortest
+   data this site holds, so a slower gate would leave the newest bars of the shortest chart the
+   stalest thing on the page — the opposite of what a reader opening 15m is asking for. */
+const M15_REFRESH_HOURS = 2;
 /** HL's own funding history, 500 rows a call, merged into what is stored so depth grows. */
 const FUNDING_REFRESH_HOURS = 6;
 /** Canary rows are small but unbounded, so they are pruned on the same schedule. */
@@ -144,6 +148,7 @@ interface RunResult {
   error?: string;
   candles?: number;
   hourly?: number;
+  m15?: number;
   funding?: number;
   candleError?: string;
   /** Minutes since each bulk sweep last completed a full cycle — the only way a 2h/6h/12h
@@ -333,7 +338,7 @@ async function run(env: Env): Promise<RunResult> {
        /data-sources declares is to read fifty KV keys by hand. */
     try {
       const ages: Record<string, number> = {};
-      for (const [name, key] of [["hourly", "hourly:meta"], ["funding", "funding:meta"], ["candles", "candles:meta"]] as const) {
+      for (const [name, key] of [["hourly", "hourly:meta"], ["funding", "funding:meta"], ["candles", "candles:meta"], ["m15", "m15:meta"]] as const) {
         const m = (await env.SNAPSHOT.get(key, "json")) as { u?: number } | null;
         if (m?.u) ages[name] = Math.round((Date.now() - m.u) / 60000);
       }
@@ -518,6 +523,20 @@ async function run(env: Env): Promise<RunResult> {
               return true;
             }, 10, COINS.map((c) => c.symbol));
             if (cb !== undefined) result.spot = cb;
+            else {
+              /* LAST IN THE CHAIN ON PURPOSE. Each sweep claims a tick only when it is due and
+                 no earlier one took it, so position sets priority. 15m is newest-data-first by
+                 nature and could argue for the front, but putting it there would starve the
+                 hourly series that four timeframes and the whole liquidation model depend on.
+                 At 288 ticks a day against four sweeps that each need two or three, there is
+                 ample idle for the tail of the chain to run. */
+              const m15 = await sweep("m15:meta", M15_REFRESH_HOURS, async (s) => {
+                const c = await fetchM15(s);
+                await env.SNAPSHOT.put(`m15:${s}`, JSON.stringify(c));
+                return true;
+              });
+              if (m15 !== undefined) result.m15 = m15;
+            }
           }
         }
       }

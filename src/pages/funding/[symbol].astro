@@ -108,6 +108,10 @@ const offered = TIMEFRAMES.filter((tf) => { const b = baseFor(tf); return Boolea
    falls back instead of emptying the page, and the gap is stated rather than left to be
    inferred from a missing button. */
 const activeTf = offered.find((tf) => tf.key === tfKey) ?? offered[0];
+/* The candle store stamps its own write time; the page can therefore say how old the period
+   figures are instead of borrowing the snapshot's age, which is a different clock entirely. */
+const candleWrittenAt = activeTf ? (activeTf.base === "hour" ? hourset?.u : dayset?.u) ?? null : null;
+const candleAge = candleWrittenAt ? Math.max(0, Math.round((Date.now() - candleWrittenAt) / 60000)) : null;
 const activeChart = activeTf
   ? buildPriceChart(aggregate(baseFor(activeTf)!, activeTf.factor).slice(-activeTf.bars), funding, activeTf)
   : null;
@@ -135,7 +139,18 @@ const stat = (_fn: (c: { tf: (typeof TIMEFRAMES)[number]; chart: NonNullable<typ
 
 const rows = active ? active.chart.points.slice(-200) : [];
 const title = `${p.symbol} funding rate, perpetual price and margin tiers`;
-const description = `What a ${p.symbol} perpetual costs to hold: funding across Hyperliquid, Binance and Bybit annualised side by side, the price chart from 1H to 1W with funding on the same axis, ${usd(p.oiNotional)} of open interest and the published margin tiers.`;
+/* THE DESCRIPTION NAMED THREE VENUES ON PAGES THAT RENDER ONE. HYPE and PURR trade on
+   Hyperliquid alone, PUMP and CASHCAT on two — and all four told a search result they compared
+   "Hyperliquid, Binance and Bybit annualised side by side". A meta description is the one piece
+   of copy quoted without the page beside it to correct it, so it now names the venues this
+   contract actually has. The timeframe range is derived too: it said "1H to 1W" while the bar
+   offers 1H to 1M. */
+const venueNames = p.venues.filter((v) => Number.isFinite(v.apr)).map((v) => VENUE_LABEL[v.venue as Venue] ?? v.venue);
+const venuePhrase = venueNames.length > 1
+  ? `funding across ${venueNames.slice(0, -1).join(", ")} and ${venueNames[venueNames.length - 1]} annualised side by side`
+  : `funding on ${venueNames[0] ?? "its venue"}, annualised`;
+const tfSpan = offered.length ? `${offered[0].label} to ${offered[offered.length - 1].label}` : "several timeframes";
+const description = `What a ${p.symbol} perpetual costs to hold: ${venuePhrase}, the price chart from ${tfSpan} with funding on the same axis, ${usd(p.oiNotional)} of open interest and the published margin tiers.`;
 ---
 
 <Base title={title} description={description} fetchedAt={snap.fetchedAt}>
@@ -169,9 +184,19 @@ const description = `What a ${p.symbol} perpetual costs to hold: funding across 
     <div>Open interest<b>{usd(p.oiNotional)}</b></div>
     <div>Max leverage<b>{p.maxLeverage}×</b></div>
   </div>
+  {/* THREE CLOCKS, NOT TWO. This sentence put "open interest, volume and the period figures"
+      on one clock — the five-minute snapshot. Open interest and 24-hour volume do come from
+      there. The PERIOD figures do not: Period high, low and volume are read off active.chart,
+      which is built from the candle store, and that store is swept every 2 hours for the
+      hourly series and every 12 for the daily one. So a page could say "taken 2 min ago" over
+      a period high that was hours old. The figures were right; the sentence explaining where
+      they came from was not, on the template whose whole argument is that it names its
+      sources. Each clock now states its own cadence. */}
   <p class="clock">
-    Mark price and funding update every minute. Open interest, volume and the period figures come
-    from the snapshot taken <b><time data-fresh={snap.fetchedAt} data-clock="snapAt">{Math.max(0, Math.round((Date.now() - snap.fetchedAt) / 60000))} min ago</time></b>;
+    Mark price and funding update every minute. Open interest and 24-hour volume come from the
+    snapshot taken <b><time data-fresh={snap.fetchedAt} data-clock="snapAt">{Math.max(0, Math.round((Date.now() - snap.fetchedAt) / 60000))} min ago</time></b>.
+    The period high, low and volume are read from the candle series behind the chart, collected
+    {activeTf && activeTf.base === "hour" ? " every 2 hours" : " every 12 hours"}{candleAge !== null ? <> and last written <b>{candleAge} min ago</b></> : null};
     margin tiers are published by the venue and change only when it changes them.
   </p>
 

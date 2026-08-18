@@ -141,6 +141,7 @@ async function fetchLive(symbols) {
 var INFO2 = "https://api.hyperliquid.xyz/info";
 var CANDLE_DAYS = 800;
 var CANDLE_HOURS = 1080;
+var CANDLE_M15_MINUTES = 14 * 24 * 60;
 async function fetchCandles(symbol, days = CANDLE_DAYS) {
   const end = Date.now();
   const start = end - days * 864e5;
@@ -163,6 +164,19 @@ async function fetchHourly(symbol, hours = CANDLE_HOURS) {
     body: JSON.stringify({ type: "candleSnapshot", req: { coin: symbol, interval: "1h", startTime: start, endTime: end } })
   });
   if (!r.ok) throw new Error(`hourly ${symbol} ${r.status}`);
+  const raw = await r.json();
+  const d = raw.filter((c) => Number(c.v) > 0).map((c) => [c.t, Number(c.o), Number(c.h), Number(c.l), Number(c.c), Number(c.v)]);
+  return { u: Date.now(), d };
+}
+async function fetchM15(symbol, minutes = CANDLE_M15_MINUTES) {
+  const end = Date.now();
+  const start = end - minutes * 6e4;
+  const r = await fetch(INFO2, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ type: "candleSnapshot", req: { coin: symbol, interval: "15m", startTime: start, endTime: end } })
+  });
+  if (!r.ok) throw new Error(`m15 ${symbol} ${r.status}`);
   const raw = await r.json();
   const d = raw.filter((c) => Number(c.v) > 0).map((c) => [c.t, Number(c.o), Number(c.h), Number(c.l), Number(c.c), Number(c.v)]);
   return { u: Date.now(), d };
@@ -579,12 +593,13 @@ async function fetchSpotCandles(product, granularity) {
 }
 
 // worker/build-stamp.ts
-var WORKER_BUILD = "9249e414fb10";
+var WORKER_BUILD = "cba0a0eac6f6";
 
 // worker/ingest.ts
 var RETAIN_HOURS = 72;
 var CANDLE_REFRESH_HOURS = 12;
 var HOURLY_REFRESH_HOURS = 2;
+var M15_REFRESH_HOURS = 2;
 var FUNDING_REFRESH_HOURS = 6;
 var CANARY_RETAIN_HOURS = 168;
 var CHUNK = 24;
@@ -697,7 +712,7 @@ async function run(env) {
     }
     try {
       const ages = {};
-      for (const [name, key] of [["hourly", "hourly:meta"], ["funding", "funding:meta"], ["candles", "candles:meta"]]) {
+      for (const [name, key] of [["hourly", "hourly:meta"], ["funding", "funding:meta"], ["candles", "candles:meta"], ["m15", "m15:meta"]]) {
         const m = await env.SNAPSHOT.get(key, "json");
         if (m?.u) ages[name] = Math.round((Date.now() - m.u) / 6e4);
       }
@@ -818,6 +833,14 @@ async function run(env) {
               return true;
             }, 10, COINS.map((c) => c.symbol));
             if (cb !== void 0) result.spot = cb;
+            else {
+              const m15 = await sweep("m15:meta", M15_REFRESH_HOURS, async (s) => {
+                const c = await fetchM15(s);
+                await env.SNAPSHOT.put(`m15:${s}`, JSON.stringify(c));
+                return true;
+              });
+              if (m15 !== void 0) result.m15 = m15;
+            }
           }
         }
       }
