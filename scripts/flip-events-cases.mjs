@@ -16,10 +16,12 @@
  *
  *   node --experimental-strip-types scripts/flip-events-cases.mjs
  */
-import { detectFlips, mergeEvents, feedFromEvents, sampleFrom } from "../src/lib/flip-events.ts";
+import { detectFlips, mergeEvents, feedFromEvents, carryForward } from "../src/lib/flip-events.ts";
 
 const T = 1_760_000_000_000;
-const S = (at, aprs) => ({ at, aprs });
+/* A carried record: every pair's last known value and when it was seen. */
+const S = (at, aprs) => ({ at, aprs: Object.fromEntries(Object.entries(aprs).map(([k, v]) => [k, { apr: v, at }])) });
+const R = (apr) => [["X", "V", apr, 0]];
 let bad = 0;
 const ok = (cond, name, detail = "") => {
   if (!cond) bad++;
@@ -27,7 +29,7 @@ const ok = (cond, name, detail = "") => {
 };
 
 /* ---- the sign boundary, which is the whole risk ------------------------------------- */
-const one = (prev, curr) => detectFlips(S(T, { "X|V": prev }), S(T + 300_000, { "X|V": curr }));
+const one = (prev, curr) => detectFlips(S(T, { "X|V": prev }), [["X", "V", curr, T + 300_000]], T + 300_000);
 ok(one(-0.01, 0.01).length === 1, "negative to positive is a flip");
 ok(one(0.01, -0.01).length === 1, "positive to negative is a flip");
 ok(one(-0.01, 0).length === 1, "negative to EXACTLY ZERO is a flip (zero is non-negative)");
@@ -39,24 +41,24 @@ ok(one(-0.02, -0.01).length === 0, "negative to less negative is not a flip");
 ok(one(0.02, 0.01).length === 0, "positive to less positive is not a flip");
 
 /* ---- samples that are absent, unusable, or out of order ------------------------------ */
-ok(detectFlips(null, S(T, { "X|V": 1 })).length === 0, "no previous sample yields no flips");
+ok(detectFlips(null, [["X", "V", 1, T]], T).length === 0, "no previous sample yields no flips");
 ok(one(NaN, 0.01).length === 0, "a NaN previous value cannot be compared");
 ok(one(-0.01, NaN).length === 0, "a NaN current value cannot be compared");
-ok(detectFlips(S(T + 1, { "X|V": -1 }), S(T, { "X|V": 1 })).length === 0, "a previous sample newer than the current one is refused");
-ok(detectFlips(S(T, { "X|V": -1 }), S(T, { "X|V": 1 })).length === 0, "two samples at the same instant give no gap to report");
-ok(detectFlips(S(T, {}), S(T + 300_000, { "NEW|V": 1 })).length === 0, "a pair appearing for the first time is not a flip");
-ok(detectFlips(S(T, { "GONE|V": -1 }), S(T + 300_000, {})).length === 0, "a pair that disappeared is not a flip");
+ok(detectFlips(S(T + 1, { "X|V": -1 }), [["X", "V", 1, T]], T).length === 0, "a previous sample newer than the current one is refused");
+ok(detectFlips(S(T, { "X|V": -1 }), [["X", "V", 1, T]], T).length === 0, "two samples at the same instant give no gap to report");
+ok(detectFlips(S(T, {}), [["NEW", "V", 1, T + 300_000]], T + 300_000).length === 0, "a pair appearing for the first time is not a flip");
+ok(detectFlips(S(T, { "GONE|V": -1 }), [], T + 300_000).length === 0, "a pair that disappeared is not a flip");
 
 /* ---- symbols containing the separator ----------------------------------------------- */
 {
-  const f = detectFlips(S(T, { "k|PEPE|HlPerp": -1 }), S(T + 300_000, { "k|PEPE|HlPerp": 1 }));
+  const f = detectFlips(S(T, { "k|PEPE|HlPerp": -1 }), [["k|PEPE", "HlPerp", 1, T + 300_000]], T + 300_000);
   ok(f.length === 1 && f[0].symbol === "k|PEPE" && f[0].venue === "HlPerp",
     "a symbol containing the separator splits on the LAST one", f[0] ? `${f[0].symbol} / ${f[0].venue}` : "none");
 }
 
 /* ---- gapMin reports the sampling interval, not the event ---------------------------- */
 {
-  const f = detectFlips(S(T, { "X|V": -1 }), S(T + 890 * 60_000, { "X|V": 1 }));
+  const f = detectFlips(S(T, { "X|V": -1 }), [["X", "V", 1, T + 890 * 60_000]], T + 890 * 60_000);
   ok(f[0]?.gapMin === 890, "gapMin is the distance between samples", `${f[0]?.gapMin}`);
 }
 
@@ -87,9 +89,37 @@ ok(detectFlips(S(T, { "GONE|V": -1 }), S(T + 300_000, {})).length === 0, "a pair
 }
 
 /* ---- sampleFrom builds the key the detector expects --------------------------------- */
+/* ---- the carry-forward, which is what makes gap-spanning comparisons work ------------ */
 {
-  const s = sampleFrom([["BTC", "HlPerp", 0.5, T], ["ETH", "BinPerp", -0.5, T]], T);
-  ok(s.aprs["BTC|HlPerp"] === 0.5 && s.aprs["ETH|BinPerp"] === -0.5, "sampleFrom keys by symbol|venue");
+  const p1 = carryForward(null, [["BTC", "HlPerp", 0.5, T], ["ETH", "BinPerp", -0.5, T]], T);
+  ok(p1.aprs["BTC|HlPerp"].apr === 0.5 && p1.aprs["ETH|BinPerp"].apr === -0.5, "carryForward keys by symbol|venue");
+
+  /* ETH is absent from this pass — its last known value must survive. */
+  const p2 = carryForward(p1, [["BTC", "HlPerp", 0.6, T + 300_000]], T + 300_000);
+  ok(p2.aprs["ETH|BinPerp"].apr === -0.5 && p2.aprs["ETH|BinPerp"].at === T,
+    "a pair missing from a pass keeps its last known value AND its timestamp");
+
+  /* ETH returns two passes later having crossed zero. The SQL's LAG would catch this across
+     the gap, and so must this — with a gapMin of 10 minutes, not 5. */
+  const f = detectFlips(p2, [["ETH", "BinPerp", 0.25, T + 600_000]], T + 600_000);
+  ok(f.length === 1 && f[0].prevApr === -0.5 && f[0].gapMin === 10,
+    "a flip spanning a missing sample IS detected, with the true gap",
+    f[0] ? `prevApr ${f[0].prevApr}, gapMin ${f[0].gapMin}` : "missed");
+}
+
+/* ---- the tie-break, which parity caught as two transposed rows ----------------------- */
+{
+  const now = T + 24 * 3600_000;
+  const same = now - 60_000;
+  const evs = [
+    { symbol: "LTC", venue: "BybitPerp", prevApr: 1, apr: -1, at: same, gapMin: 5 },
+    { symbol: "kBONK", venue: "HlPerp", prevApr: -1, apr: 1, at: same, gapMin: 5 },
+    { symbol: "AAVE", venue: "HlPerp", prevApr: -1, apr: 1, at: same, gapMin: 5 },
+  ];
+  const a = feedFromEvents(evs, T, now, 24).rows.map((r) => r.symbol).join(",");
+  const b = feedFromEvents([...evs].reverse(), T, now, 24).rows.map((r) => r.symbol).join(",");
+  ok(a === b && a === "AAVE,LTC,kBONK",
+    "simultaneous flips order deterministically by symbol regardless of input order", `${a} / ${b}`);
 }
 
 console.log(bad ? `\n  ${bad} case(s) wrong` : "\n  the incremental detector matches the SQL's definition of a flip, zero included");

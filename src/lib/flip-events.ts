@@ -25,10 +25,26 @@
  */
 import type { Flip, FlipsResult } from "./flips.ts";
 
-/** APRs from one pass, keyed `SYMBOL|VENUE`. Small: about 150 numbers. */
+/**
+ * THE LAST KNOWN APR FOR EVERY PAIR, WHICH IS NOT THE SAME AS THE LAST PASS'S APRS.
+ *
+ * The first version stored one pass's values and compared the next pass against them. Parity
+ * against the SQL failed on real production data and the reason is exact: `LAG(apr) OVER
+ * (PARTITION BY symbol, venue ORDER BY at)` steps to the previous EXISTING ROW for that pair.
+ * A pair whose APR arrives non-finite is filtered out of the insert, so it has no row for that
+ * pass — and the SQL then compares across the gap while a last-pass snapshot has already
+ * forgotten the value. Flips spanning a missing sample were silently invisible, which is also
+ * why gapMin legitimately reaches into the hundreds of minutes.
+ *
+ * So the record carries forward: a pair keeps its last known value and the instant it was seen,
+ * updated only when a new finite value arrives. That makes the comparison span gaps exactly as
+ * LAG does, and makes gapMin the true distance between the two samples compared rather than the
+ * distance between two passes.
+ */
 export interface AprSample {
+  /** When this record was last updated, for observability only — comparisons use per-pair `at`. */
   at: number;
-  aprs: Record<string, number>;
+  aprs: Record<string, { apr: number; at: number }>;
 }
 
 export const LAST_KEY = "flips:last";
@@ -38,11 +54,14 @@ export const EVENTS_KEY = "flips:events";
  *  a backstop against a bug appending without bound, not a design parameter. */
 export const MAX_EVENTS = 5000;
 
-export const sampleFrom = (rows: [string, string, number, number][], at: number): AprSample => {
-  const aprs: Record<string, number> = {};
-  for (const [symbol, venue, apr] of rows) aprs[`${symbol}|${venue}`] = apr;
+/** Fold this pass's rows into the carried record, leaving absent pairs untouched. */
+export function carryForward(prev: AprSample | null, rows: [string, string, number, number][], at: number): AprSample {
+  const aprs: Record<string, { apr: number; at: number }> = { ...(prev?.aprs ?? {}) };
+  for (const [symbol, venue, apr] of rows) {
+    if (Number.isFinite(apr)) aprs[`${symbol}|${venue}`] = { apr, at };
+  }
   return { at, aprs };
-};
+}
 
 /**
  * Sign changes between two consecutive samples.
@@ -57,17 +76,18 @@ export const sampleFrom = (rows: [string, string, number, number][], at: number)
  * somewhere inside that interval and the page says so rather than implying a precision the
  * sampling never had.
  */
-export function detectFlips(prev: AprSample | null, curr: AprSample): Flip[] {
-  if (!prev || !Number.isFinite(prev.at) || prev.at >= curr.at) return [];
-  const gapMin = Math.round((curr.at - prev.at) / 60000);
+export function detectFlips(prev: AprSample | null, rows: [string, string, number, number][], at: number): Flip[] {
+  if (!prev) return [];
   const out: Flip[] = [];
-  for (const [key, apr] of Object.entries(curr.aprs)) {
-    const prevApr = prev.aprs[key];
-    if (!Number.isFinite(prevApr) || !Number.isFinite(apr)) continue;
-    const flipped = (prevApr < 0 && apr >= 0) || (prevApr >= 0 && apr < 0);
+  for (const [symbol, venue, apr] of rows) {
+    if (!Number.isFinite(apr)) continue;
+    const was = prev.aprs[`${symbol}|${venue}`];
+    if (!was || !Number.isFinite(was.apr) || was.at >= at) continue;
+    const flipped = (was.apr < 0 && apr >= 0) || (was.apr >= 0 && apr < 0);
     if (!flipped) continue;
-    const i = key.lastIndexOf("|");
-    out.push({ symbol: key.slice(0, i), venue: key.slice(i + 1), prevApr, apr, at: curr.at, gapMin });
+    /* The gap is between the two SAMPLES compared, which for a pair that went missing is
+       wider than the pass interval — the same number the SQL derives from prev_at. */
+    out.push({ symbol, venue, prevApr: was.apr, apr, at, gapMin: Math.round((at - was.at) / 60000) });
   }
   return out;
 }
@@ -98,6 +118,17 @@ export function feedFromEvents(events: Flip[], since: number, now: number, hours
     const prev = latest.get(k);
     if (!prev || f.at > prev.at) latest.set(k, f);
   }
-  const rows = [...latest.values()].sort((a, b) => b.at - a.at);
+  /* TIME DESCENDING, THEN SYMBOL, THEN VENUE. Parity failed on two rows that had the SAME
+     timestamp and came back in opposite orders: the SQL's ORDER BY at DESC leaves ties
+     arbitrary, and so did this. Simultaneous flips are common — one snapshot stamps every pair
+     with the same `at` — so the tie-break is specified on both sides rather than left to
+     whichever engine happens to be sorting. */
+  /* CODEPOINT ORDER, NOT LOCALE ORDER. localeCompare put kBONK before LTC; SQLite's default
+     BINARY collation puts LTC first, because uppercase letters precede lowercase in codepoint
+     order and this site has symbols of both cases — kPEPE, kBONK against BTC, LTC. Two engines
+     sorting "the same" column differently is exactly the divergence the parity harness caught,
+     and the fix is to say which order is meant rather than to trust either default. */
+  const cmp = (x: string, y: string) => (x < y ? -1 : x > y ? 1 : 0);
+  const rows = [...latest.values()].sort((a, b) => b.at - a.at || cmp(a.symbol, b.symbol) || cmp(a.venue, b.venue));
   return { status: "ready", rows: rows.slice(0, 25), since, total: rows.length };
 }

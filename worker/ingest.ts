@@ -3,7 +3,7 @@ import { fetchCandles, fetchHourly, fetchM15, fetchFundingHistory, mergeFunding,
 import { orderSweeps } from "../src/lib/sweep-order.ts";
 import { stepIndexNow, publishedUrls } from "./indexnow.ts";
 import { readFlips, readFlipEvents, writeCachedFlips, type D1Like } from "../src/lib/flips.ts";
-import { detectFlips, mergeEvents, feedFromEvents, sampleFrom, LAST_KEY, EVENTS_KEY, type AprSample } from "../src/lib/flip-events.ts";
+import { detectFlips, mergeEvents, feedFromEvents, carryForward, LAST_KEY, EVENTS_KEY, type AprSample } from "../src/lib/flip-events.ts";
 import type { Flip } from "../src/lib/flips.ts";
 import { stepReport, stepProbe } from "./report.ts";
 import { COINS, fetchSpot, fetchSpotCandles } from "../src/lib/coins.ts";
@@ -395,9 +395,11 @@ async function run(env: Env): Promise<RunResult> {
          it replaced. See src/lib/flip-events.ts; readFlips remains the reference implementation
          and scripts/flips-parity.mjs proves this agrees with it against production. */
       try {
-        const sample: AprSample = sampleFrom(rows, at);
         const prev = (await env.SNAPSHOT.get(LAST_KEY, "json")) as AprSample | null;
-        const fresh = detectFlips(prev, sample);
+        const fresh = detectFlips(prev, rows, at);
+        /* Carried forward, not replaced: a pair whose APR arrived non-finite keeps its last
+           known value so the next comparison spans the gap, exactly as the SQL's LAG does. */
+        const sample: AprSample = carryForward(prev, rows, at);
         /* BOOTSTRAP ONCE. With no event list the detector would under-report for 24 hours,
            showing what it had witnessed rather than what happened, so the first pass seeds the
            list from the history that already exists. Expensive by design, once. */

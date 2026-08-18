@@ -294,22 +294,23 @@ async function writeCachedFlips(kv, result, now) {
 var LAST_KEY = "flips:last";
 var EVENTS_KEY = "flips:events";
 var MAX_EVENTS = 5e3;
-var sampleFrom = (rows, at) => {
-  const aprs = {};
-  for (const [symbol, venue, apr] of rows) aprs[`${symbol}|${venue}`] = apr;
+function carryForward(prev, rows, at) {
+  const aprs = { ...prev?.aprs ?? {} };
+  for (const [symbol, venue, apr] of rows) {
+    if (Number.isFinite(apr)) aprs[`${symbol}|${venue}`] = { apr, at };
+  }
   return { at, aprs };
-};
-function detectFlips(prev, curr) {
-  if (!prev || !Number.isFinite(prev.at) || prev.at >= curr.at) return [];
-  const gapMin = Math.round((curr.at - prev.at) / 6e4);
+}
+function detectFlips(prev, rows, at) {
+  if (!prev) return [];
   const out = [];
-  for (const [key, apr] of Object.entries(curr.aprs)) {
-    const prevApr = prev.aprs[key];
-    if (!Number.isFinite(prevApr) || !Number.isFinite(apr)) continue;
-    const flipped = prevApr < 0 && apr >= 0 || prevApr >= 0 && apr < 0;
+  for (const [symbol, venue, apr] of rows) {
+    if (!Number.isFinite(apr)) continue;
+    const was = prev.aprs[`${symbol}|${venue}`];
+    if (!was || !Number.isFinite(was.apr) || was.at >= at) continue;
+    const flipped = was.apr < 0 && apr >= 0 || was.apr >= 0 && apr < 0;
     if (!flipped) continue;
-    const i = key.lastIndexOf("|");
-    out.push({ symbol: key.slice(0, i), venue: key.slice(i + 1), prevApr, apr, at: curr.at, gapMin });
+    out.push({ symbol, venue, prevApr: was.apr, apr, at, gapMin: Math.round((at - was.at) / 6e4) });
   }
   return out;
 }
@@ -328,7 +329,8 @@ function feedFromEvents(events, since, now, hours) {
     const prev = latest.get(k);
     if (!prev || f.at > prev.at) latest.set(k, f);
   }
-  const rows = [...latest.values()].sort((a, b) => b.at - a.at);
+  const cmp = (x, y) => x < y ? -1 : x > y ? 1 : 0;
+  const rows = [...latest.values()].sort((a, b) => b.at - a.at || cmp(a.symbol, b.symbol) || cmp(a.venue, b.venue));
   return { status: "ready", rows: rows.slice(0, 25), since, total: rows.length };
 }
 
@@ -779,7 +781,7 @@ async function fetchSpotCandles(product, granularity) {
 }
 
 // worker/build-stamp.ts
-var WORKER_BUILD = "49f42885b554";
+var WORKER_BUILD = "27911019aeeb";
 
 // worker/ingest.ts
 var RETAIN_HOURS = 72;
@@ -916,9 +918,9 @@ async function run(env) {
         throw SKIP_SWEEPS;
       }
       try {
-        const sample = sampleFrom(rows, at);
         const prev = await env.SNAPSHOT.get(LAST_KEY, "json");
-        const fresh = detectFlips(prev, sample);
+        const fresh = detectFlips(prev, rows, at);
+        const sample = carryForward(prev, rows, at);
         let existing = await env.SNAPSHOT.get(EVENTS_KEY, "json");
         let seeded = false;
         if (existing === null) {

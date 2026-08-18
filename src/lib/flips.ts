@@ -102,7 +102,13 @@ export async function readFlips(db: D1Like | undefined, hours = 24, now = Date.n
          SELECT symbol, venue, prevApr, apr, at, gapMin,
                 (SELECT count(*) FROM latest) AS total
          FROM latest
-         ORDER BY at DESC
+         /* Tie-break specified, not inherited. One snapshot stamps every pair with the same
+            at, so simultaneous flips are the common case and ORDER BY at DESC alone left their
+            order to the engine — which is how the incremental feed and this query came back
+            with two rows transposed under identical timestamps. Note the collation: this is
+            BINARY by default, so LTC precedes kBONK, and flip-events.ts compares by codepoint
+            to match rather than using localeCompare, which orders them the other way. */
+         ORDER BY at DESC, symbol ASC, venue ASC
          LIMIT 25`,
       )
       .bind(cutoff)
