@@ -89,6 +89,20 @@ const description =
       an announcement, and not a projection. The unit here is a <strong>contract and the state it
       is in</strong>, which is a different thing from a calendar of events.
     </p>
+    {/* TWO CLOCKS, AND ONLY ONE OF THEM WAS VISIBLE. This page passed the FUNDING snapshot's
+        timestamp to the layout, so the freshness pill read "Updated 4 min ago" over on-chain
+        figures captured at a fixed block days earlier. The pill was not lying about nothing —
+        the USD valuations here really are struck at live prices — but the amounts it sat above
+        were not, and the file's own verifiedAt was never rendered anywhere on the page, so a
+        reader had a block number that means nothing and a freshness that belongs to something
+        else. Both clocks are now stated where the numbers are. */}
+    <p class="clock">
+      The on-chain amounts were read at <strong>block {reg.verifiedBlock.toLocaleString("en-US")}</strong>,
+      {" "}<b><time datetime={reg.verifiedAt}>{new Date(reg.verifiedAt).toISOString().slice(0, 16).replace("T", " ")} UTC</time></b>
+      {" "}— they change only when this register is re-read, not every minute. The USD values
+      beside them are struck at the current mark, which is why the freshness pill above moves
+      while these figures do not.
+    </p>
   </div>
 
   <div class="verdict verdict--warn">

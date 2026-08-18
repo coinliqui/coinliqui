@@ -695,3 +695,43 @@ export function staleDerivedCells(sources) {
   }
   return [...new Set(out)];
 }
+
+
+/**
+ * A PAGE MUST BE ABLE TO EXPLAIN ITS OWN ARITHMETIC.
+ *
+ * Basis is a subtraction, so both halves have to be read at one instant. The funding template
+ * divided a five-minute snapshot mark by a one-minute spot: measured median error 0.4 bps,
+ * worst 6.2 bps, and on AVAX it printed +6.0 bps - "perpetual richer than spot" - where the
+ * matched-clock value was -0.2 bps. The sign is the entire meaning of the number, so the stale
+ * half did not blur it, it inverted it. Nothing caught this, because every value on the page
+ * was individually plausible and the client overlay repaired it ~300ms after paint.
+ *
+ * The invariant that does catch it needs no second source: whatever mark and spot a page
+ * PRINTS, the basis it prints beside them must be the difference between those two. If the
+ * numerator comes off a different clock, the printed numbers stop reconciling and this fails.
+ * Tolerance is display rounding only - the prices are shown to `dp` places, which at the worst
+ * price magnitude on the site is under 0.01 bps of slack; 0.2 leaves room and still catches a
+ * one-minute drift, the smallest mismatch the architecture can produce.
+ */
+export function basisSelfConsistent(html) {
+  const out = [];
+  const num = (re) => {
+    const m = html.match(re);
+    if (!m) return null;
+    const v = Number(m[1].replace(/[$,\s]/g, ""));
+    return Number.isFinite(v) ? v : null;
+  };
+  const mark = num(/data-spot="mark"[^>]*>\s*\$?([\d,]+\.?\d*)/);
+  const spot = num(/data-spot="last"[^>]*>\s*\$?([\d,]+\.?\d*)/);
+  const basis = num(/data-spot="basis"[^>]*>\s*([+-]?[\d.]+)/);
+  if (mark == null || spot == null || basis == null || spot <= 0) return out;
+  const derived = (mark / spot - 1) * 10_000;
+  if (Math.abs(derived - basis) > 0.2) {
+    out.push(
+      `the basis printed (${basis.toFixed(1)} bps) is not the difference between the mark (${mark}) and the spot (${spot}) printed beside it, which is ${derived.toFixed(1)} bps - one of the three is read off a different clock` +
+        ((derived >= 0) !== (basis >= 0) ? ", and they disagree on the SIGN" : "")
+    );
+  }
+  return out;
+}

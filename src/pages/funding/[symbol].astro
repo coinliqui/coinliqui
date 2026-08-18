@@ -1,6 +1,6 @@
 ---
 import Base from "../../layouts/Base.astro";
-import { getSnapshot, coldStart, findPerp } from "../../lib/hyperliquid.ts";
+import { getSnapshot, coldStart, findPerp, getLive } from "../../lib/hyperliquid.ts";
 import { VENUE_LABEL, pct, usd, rawRate, carryCost, settlementsPerYear, nextSettlement, paysClass, paysLabel, type Venue } from "../../lib/funding.ts";
 import { liquidationPrice, type MarginTable } from "../../lib/margin.ts";
 import { getCandles, getM15, getHourly, getFunding } from "../../lib/candles.ts";
@@ -78,7 +78,24 @@ const [dayset, hourset, m15set, funding, spotSet] = await Promise.all([
    page's number too, labelled, with the gap between them — the mirror image of what the coin
    page already does. */
 const spotQ = spotSet?.q[p.symbol] ?? null;
-const basisBp = spotQ && spotQ.last > 0 ? (p.markPx / spotQ.last - 1) * 10_000 : NaN;
+
+/* THE MATCHED-CLOCK FIX LANDED ON THE COIN PAGE AND STOPPED THERE — on the ten-page template,
+   not this fifty-page one. Basis is a SUBTRACTION, so both halves have to be read at the same
+   instant or the answer carries the market's drift between them. `p.markPx` comes off the
+   five-minute snapshot sweep; `spotQ.last` is written by the one-minute pass. Measured across
+   every symbol that has spot coverage, at a moment when the snapshot was 60s behind: median
+   gap 0.4 bps, worst 6.2 bps, and AVAX rendered +6.0 bps — "perpetual richer than spot" —
+   where the matched-clock value was -0.2 bps, the other way round. The sign IS the meaning
+   of this number, so a stale numerator does not blur it, it inverts it.
+
+   interact.js already recomputed this correctly from /api/live.json ~300ms after paint, which
+   is why it never looked wrong to a person. It looked wrong only to whoever reads the HTML —
+   a crawler, an AI summariser, anyone on the first byte. `live` and `spot` are written by the
+   same minute() pass (worker/ingest.ts:208,214), so preferring live.mark puts the subtraction
+   back on one clock; the fallback keeps a just-deployed page working, one clock slower. */
+const live = await getLive(env?.SNAPSHOT);
+const markNow = live?.mark?.[p.symbol] ?? p.markPx;
+const basisBp = spotQ && spotQ.last > 0 ? (markNow / spotQ.last - 1) * 10_000 : NaN;
 
 /* ONE PANEL IS BUILT, NOT SIX.
  *
@@ -164,7 +181,7 @@ const description = `What a ${p.symbol} perpetual costs to hold: ${venuePhrase},
   </div>
 
   <div class="hero">
-    <span class="hero__price" data-spot="mark" data-sym={p.symbol} data-dp={dp}>{px(p.markPx)}</span>
+    <span class="hero__price" data-spot="mark" data-sym={p.symbol} data-dp={dp}>{px(markNow)}</span>
     <span class="hero__chg" data-tfstat data-group="px" {...stat((c) => `${arrow(c.chart!.change)} ${(Math.abs(c.chart!.change) * 100).toFixed(2)}%`)}>
       {active ? `${arrow(active.chart.change)} ${(Math.abs(active.chart.change) * 100).toFixed(2)}%` : `${arrow(p.change24h)} ${(Math.abs(p.change24h) * 100).toFixed(2)}%`}
     </span>
