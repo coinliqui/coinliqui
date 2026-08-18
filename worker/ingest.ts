@@ -2,7 +2,9 @@ import { fetchSnapshot, fetchLive } from "../src/lib/hyperliquid.ts";
 import { fetchCandles, fetchHourly, fetchM15, fetchFundingHistory, mergeFunding, type FundingPoint } from "../src/lib/candles.ts";
 import { orderSweeps } from "../src/lib/sweep-order.ts";
 import { stepIndexNow, publishedUrls } from "./indexnow.ts";
-import { readFlips, writeCachedFlips, type D1Like } from "../src/lib/flips.ts";
+import { readFlips, readFlipEvents, writeCachedFlips, type D1Like } from "../src/lib/flips.ts";
+import { detectFlips, mergeEvents, feedFromEvents, sampleFrom, LAST_KEY, EVENTS_KEY, type AprSample } from "../src/lib/flip-events.ts";
+import type { Flip } from "../src/lib/flips.ts";
 import { stepReport, stepProbe } from "./report.ts";
 import { COINS, fetchSpot, fetchSpotCandles } from "../src/lib/coins.ts";
 
@@ -384,24 +386,50 @@ async function run(env: Env): Promise<RunResult> {
       const step = await stepReport(env);
       if (step) { result.report = step; throw SKIP_SWEEPS; }
 
-      /* THE FLIP FEED IS COMPUTED HERE, ONCE, INSTEAD OF ON EVERY HOMEPAGE RENDER.
-         Same function, same SQL, same rows — only the caller moved. It ran per reader before,
-         which the meter showed as 64.5M D1 rows read per day against a 83,808-row table: the
-         one cost line on this project that scaled with traffic, on a project whose entire
-         current work is to increase traffic. A failure here leaves the previous value in place
-         until it ages out, at which point the page says "warming" rather than showing a stale
-         feed as current. */
+      /* THE FLIP FEED IS MAINTAINED INCREMENTALLY. Nothing here reads 24 hours of history.
+         A flip is a sign change between two consecutive samples and this pass holds both: the
+         APRs just fetched, and the previous pass's in one small KV record. Re-deriving the
+         window from D1 to answer "did anything change in the last five minutes" read 43,200
+         rows to learn something computable from 150 numbers — measured at ~2.6M D1 rows an
+         hour, flat, which was traffic-independent but no smaller than the per-render version
+         it replaced. See src/lib/flip-events.ts; readFlips remains the reference implementation
+         and scripts/flips-parity.mjs proves this agrees with it against production. */
       try {
-        /* D1Like is the structural subset flips.ts needs; the worker's D1Database is wider and
-             the compiler will not narrow it implicitly. Asserting to the interface the callee
-             declares is honest — it is exactly the shape being used. */
-        const flips = await readFlips(env.DB as unknown as D1Like, 24);
-        if (flips.status !== "no-store") {
-          await writeCachedFlips(env.SNAPSHOT, flips, Date.now());
-          result.flips = flips.status === "ready" ? `${flips.total} flip(s), ${flips.rows.length} shown` : flips.status;
-        } else {
-          result.flips = "no-store";
+        const sample: AprSample = sampleFrom(rows, at);
+        const prev = (await env.SNAPSHOT.get(LAST_KEY, "json")) as AprSample | null;
+        const fresh = detectFlips(prev, sample);
+        /* BOOTSTRAP ONCE. With no event list the detector would under-report for 24 hours,
+           showing what it had witnessed rather than what happened, so the first pass seeds the
+           list from the history that already exists. Expensive by design, once. */
+        let existing = (await env.SNAPSHOT.get(EVENTS_KEY, "json")) as Flip[] | null;
+        let seeded = false;
+        if (existing === null) {
+          existing = await readFlipEvents(env.DB as unknown as D1Like, 24, at);
+          seeded = true;
         }
+        const events = mergeEvents(existing, fresh, at, 24);
+
+        /* `since` is the oldest sample retained, which is what decides whether the window is
+           answerable at all. One indexed MIN() — a single seek, not a scan — and it has to come
+           from D1 because retention prunes there, not here. */
+        /* Through D1Like for the same reason readFlips is: the worker's D1PreparedStatement
+           type in this tsconfig does not declare first(), and D1Like is exactly the shape used. */
+        const oldest = await (env.DB as unknown as D1Like)
+          .prepare("SELECT MIN(at) AS a FROM funding_snapshot")
+          .first<{ a: number | null }>();
+        const since = oldest?.a ?? at;
+
+        await env.SNAPSHOT.put(LAST_KEY, JSON.stringify(sample));
+        await env.SNAPSHOT.put(EVENTS_KEY, JSON.stringify(events));
+
+        const covered = (at - since) / 3_600_000;
+        const feed = covered < 24
+          ? { status: "warming" as const, since, hours: covered }
+          : feedFromEvents(events, since, at, 24);
+        await writeCachedFlips(env.SNAPSHOT, feed, at);
+        result.flips = feed.status === "ready"
+          ? `${seeded ? "seeded from D1, " : ""}${fresh.length} new, ${feed.total} in window, ${feed.rows.length} shown`
+          : `${feed.status} (${covered.toFixed(1)}h of history)`;
       } catch (e) {
         result.flips = `threw (${e instanceof Error ? e.message : String(e)})`;
       }

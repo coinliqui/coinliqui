@@ -115,6 +115,43 @@ export async function readFlips(db: D1Like | undefined, hours = 24, now = Date.n
   }
 }
 
+/**
+ * EVERY flip event in the window — not deduped, not truncated.
+ *
+ * The incremental detector accumulates events from the pass it starts on, so on a cold start it
+ * would under-report for 24 hours: the feed would show what it had seen rather than what
+ * happened. This is the one-time bootstrap that makes the handover exact, and it is the same
+ * `flips` CTE the feed query uses, without the rn = 1 dedupe and without the LIMIT, because the
+ * event list holds events and the dedupe belongs to the presentation.
+ *
+ * Run once, when the event list is absent. Expensive by design and cheap by frequency.
+ */
+export async function readFlipEvents(db: D1Like | undefined, hours = 24, now = Date.now()): Promise<Flip[]> {
+  if (!db) return [];
+  try {
+    const { results } = await db
+      .prepare(
+        `WITH ordered AS (
+           SELECT symbol, venue, apr, at,
+                  LAG(apr) OVER (PARTITION BY symbol, venue ORDER BY at) AS prev_apr,
+                  LAG(at)  OVER (PARTITION BY symbol, venue ORDER BY at) AS prev_at
+           FROM funding_snapshot
+           WHERE at >= ?1
+         )
+         SELECT symbol, venue, prev_apr AS prevApr, apr, at, (at - prev_at) / 60000 AS gapMin
+         FROM ordered
+         WHERE prev_apr IS NOT NULL
+           AND ((prev_apr < 0 AND apr >= 0) OR (prev_apr >= 0 AND apr < 0))
+         ORDER BY at ASC`,
+      )
+      .bind(now - hours * 3_600_000)
+      .all<Flip>();
+    return results ?? [];
+  } catch {
+    return [];
+  }
+}
+
 /* =========================================================================================
    THE SAME ANSWER, COMPUTED ONCE PER SNAPSHOT INSTEAD OF ONCE PER READER.
 

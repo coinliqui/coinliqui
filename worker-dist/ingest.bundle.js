@@ -262,15 +262,9 @@ async function stepIndexNow(env, current) {
 }
 
 // src/lib/flips.ts
-async function readFlips(db, hours = 24, now = Date.now()) {
-  if (!db) return { status: "no-store" };
+async function readFlipEvents(db, hours = 24, now = Date.now()) {
+  if (!db) return [];
   try {
-    const oldest = await db.prepare("SELECT MIN(at) AS a FROM funding_snapshot").first();
-    const since = oldest?.a ?? 0;
-    if (!since) return { status: "warming", since: 0, hours: 0 };
-    const covered = (now - since) / 36e5;
-    if (covered < hours) return { status: "warming", since, hours: covered };
-    const cutoff = now - hours * 36e5;
     const { results } = await db.prepare(
       `WITH ordered AS (
            SELECT symbol, venue, apr, at,
@@ -279,40 +273,63 @@ async function readFlips(db, hours = 24, now = Date.now()) {
            FROM funding_snapshot
            WHERE at >= ?1
          )
-         , flips AS (
-           SELECT symbol, venue, prev_apr AS prevApr, apr, at,
-                  (at - prev_at) / 60000 AS gapMin,
-                  ROW_NUMBER() OVER (PARTITION BY symbol, venue ORDER BY at DESC) AS rn
-           FROM ordered
-           WHERE prev_apr IS NOT NULL
-             AND ((prev_apr < 0 AND apr >= 0) OR (prev_apr >= 0 AND apr < 0))
-         )
-         /* ONE ROW PER CONTRACT \u2014 the LATEST flip.
-            Without this, every flip event in the window was listed, so LTC on Bybit appeared
-            four times and ENA on Bybit four times, each with a different value under a column
-            headed "Now (APR)". Four mutually exclusive "now"s for one contract in one document.
-            A contract that oscillates around zero is not four separate pieces of news. */
-         , latest AS (
-           SELECT symbol, venue, prevApr, apr, at, gapMin FROM flips WHERE rn = 1
-         )
-         /* The count comes from the same CTE the rows come from, so the number the page prints
-            and the rows it shows can never describe different sets. */
-         SELECT symbol, venue, prevApr, apr, at, gapMin,
-                (SELECT count(*) FROM latest) AS total
-         FROM latest
-         ORDER BY at DESC
-         LIMIT 25`
-    ).bind(cutoff).all();
-    const rows = results ?? [];
-    return { status: "ready", rows, since, total: Number(rows[0]?.total ?? rows.length) };
+         SELECT symbol, venue, prev_apr AS prevApr, apr, at, (at - prev_at) / 60000 AS gapMin
+         FROM ordered
+         WHERE prev_apr IS NOT NULL
+           AND ((prev_apr < 0 AND apr >= 0) OR (prev_apr >= 0 AND apr < 0))
+         ORDER BY at ASC`
+    ).bind(now - hours * 36e5).all();
+    return results ?? [];
   } catch {
-    return { status: "no-store" };
+    return [];
   }
 }
 var FLIPS_KEY = "flips:24h";
 var FLIPS_MAX_AGE_MS = 20 * 60 * 1e3;
 async function writeCachedFlips(kv, result, now) {
   await kv.put(FLIPS_KEY, JSON.stringify({ computedAt: now, result }));
+}
+
+// src/lib/flip-events.ts
+var LAST_KEY = "flips:last";
+var EVENTS_KEY = "flips:events";
+var MAX_EVENTS = 5e3;
+var sampleFrom = (rows, at) => {
+  const aprs = {};
+  for (const [symbol, venue, apr] of rows) aprs[`${symbol}|${venue}`] = apr;
+  return { at, aprs };
+};
+function detectFlips(prev, curr) {
+  if (!prev || !Number.isFinite(prev.at) || prev.at >= curr.at) return [];
+  const gapMin = Math.round((curr.at - prev.at) / 6e4);
+  const out = [];
+  for (const [key, apr] of Object.entries(curr.aprs)) {
+    const prevApr = prev.aprs[key];
+    if (!Number.isFinite(prevApr) || !Number.isFinite(apr)) continue;
+    const flipped = prevApr < 0 && apr >= 0 || prevApr >= 0 && apr < 0;
+    if (!flipped) continue;
+    const i = key.lastIndexOf("|");
+    out.push({ symbol: key.slice(0, i), venue: key.slice(i + 1), prevApr, apr, at: curr.at, gapMin });
+  }
+  return out;
+}
+function mergeEvents(existing, fresh, now, hours) {
+  const cutoff = now - hours * 36e5;
+  const kept = [...existing, ...fresh].filter((f) => f.at >= cutoff);
+  kept.sort((a, b) => a.at - b.at);
+  return kept.length > MAX_EVENTS ? kept.slice(kept.length - MAX_EVENTS) : kept;
+}
+function feedFromEvents(events, since, now, hours) {
+  const cutoff = now - hours * 36e5;
+  const latest = /* @__PURE__ */ new Map();
+  for (const f of events) {
+    if (f.at < cutoff) continue;
+    const k = `${f.symbol}|${f.venue}`;
+    const prev = latest.get(k);
+    if (!prev || f.at > prev.at) latest.set(k, f);
+  }
+  const rows = [...latest.values()].sort((a, b) => b.at - a.at);
+  return { status: "ready", rows: rows.slice(0, 25), since, total: rows.length };
 }
 
 // worker/report.ts
@@ -762,7 +779,7 @@ async function fetchSpotCandles(product, granularity) {
 }
 
 // worker/build-stamp.ts
-var WORKER_BUILD = "c2fe1e472f4e";
+var WORKER_BUILD = "49f42885b554";
 
 // worker/ingest.ts
 var RETAIN_HOURS = 72;
@@ -899,13 +916,24 @@ async function run(env) {
         throw SKIP_SWEEPS;
       }
       try {
-        const flips = await readFlips(env.DB, 24);
-        if (flips.status !== "no-store") {
-          await writeCachedFlips(env.SNAPSHOT, flips, Date.now());
-          result.flips = flips.status === "ready" ? `${flips.total} flip(s), ${flips.rows.length} shown` : flips.status;
-        } else {
-          result.flips = "no-store";
+        const sample = sampleFrom(rows, at);
+        const prev = await env.SNAPSHOT.get(LAST_KEY, "json");
+        const fresh = detectFlips(prev, sample);
+        let existing = await env.SNAPSHOT.get(EVENTS_KEY, "json");
+        let seeded = false;
+        if (existing === null) {
+          existing = await readFlipEvents(env.DB, 24, at);
+          seeded = true;
         }
+        const events = mergeEvents(existing, fresh, at, 24);
+        const oldest = await env.DB.prepare("SELECT MIN(at) AS a FROM funding_snapshot").first();
+        const since2 = oldest?.a ?? at;
+        await env.SNAPSHOT.put(LAST_KEY, JSON.stringify(sample));
+        await env.SNAPSHOT.put(EVENTS_KEY, JSON.stringify(events));
+        const covered = (at - since2) / 36e5;
+        const feed = covered < 24 ? { status: "warming", since: since2, hours: covered } : feedFromEvents(events, since2, at, 24);
+        await writeCachedFlips(env.SNAPSHOT, feed, at);
+        result.flips = feed.status === "ready" ? `${seeded ? "seeded from D1, " : ""}${fresh.length} new, ${feed.total} in window, ${feed.rows.length} shown` : `${feed.status} (${covered.toFixed(1)}h of history)`;
       } catch (e) {
         result.flips = `threw (${e instanceof Error ? e.message : String(e)})`;
       }
