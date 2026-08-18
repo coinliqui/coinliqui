@@ -1001,3 +1001,101 @@ export function contradictoryStates(html) {
   }
   return out;
 }
+
+
+/**
+ * WHERE THE RENDERED TEXT AND THE EXTRACTED TEXT DIVERGE.
+ *
+ * The freshness pill shipped both of its states into every page and hid one with CSS. A browser
+ * showed the right one; every text extractor took both, so all 43 routes told a machine the data
+ * was dead, and two agents assessing the site duly reported it. That was found by accident. This
+ * finds the rest of the class on purpose.
+ *
+ * THE DISTINCTION THAT MATTERS, and it is not "is it hidden". Measured in a real browser against
+ * production, computing styles element by element:
+ *
+ *   display:none, visibility:hidden, and the `hidden` attribute
+ *       Hidden from sighted readers AND from assistive technology. Nobody is meant to receive
+ *       this. It reaches a naive extractor anyway. THIS is the divergence — text present for
+ *       machines and for nobody else, which is the definition of the defect.
+ *
+ *   clip-path: inset(50%), 1px boxes, off-screen positioning
+ *       Hidden from sighted readers and ANNOUNCED BY SCREEN READERS. `.vh`, `.freshness__word`
+ *       and `.cta__label` are all this pattern, and they are correct: "Search", "Updated",
+ *       "Pin coins" are labels a blind reader needs and a sighted one gets from context. An
+ *       extractor taking them is receiving what assistive tech receives. NOT a defect, and a
+ *       check that flagged these would push someone to delete real accessibility work.
+ *
+ * So the rule is narrow: text that no human of any kind is meant to receive may not sit in the
+ * markup. If a state is conditional, the party that knows the condition writes it.
+ *
+ * Script and style bodies are excluded — they are data, not text, and every serious extractor
+ * strips them. Their SIZE is reported separately by extractionRatio below, because that is a
+ * different question with a different answer.
+ */
+export function hiddenFromEveryone(html) {
+  const out = [];
+
+  /* CSS RULES COME FROM <style> BLOCKS, AND THE FIRST VERSION READ THE WHOLE DOCUMENT.
+     Scanning every `{...}` in the page meant every JSON data island was parsed as a stylesheet.
+     The gate went red on precisely the four routes with the largest islands — /funding,
+     /funding/kpepe, /liquidations/survival, /unlocks — reported as "fetch failed", which is
+     what this harness prints when a body check throws or hangs rather than when a fetch does.
+     It looked like a server problem and was mine. Restricting the scan to <style> is both the
+     correct reading of what a stylesheet is and the fix. */
+  const css = [...html.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style>/gi)].map((m) => m[1]).join("\n");
+
+  const hidingClasses = new Set();
+  for (const m of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    if (!/(^|;)\s*(display\s*:\s*none|visibility\s*:\s*hidden)\s*(;|$)/i.test(m[2])) continue;
+    for (const sel of m[1].split(",")) {
+      const classes = [...sel.matchAll(/\.([a-zA-Z][\w-]*)/g)].map((c) => c[1]);
+      if (classes.length) hidingClasses.add(classes[classes.length - 1]);
+    }
+  }
+
+  const body = html.replace(/<(script|style)\b[\s\S]*?<\/\1>/gi, "");
+
+  /* OPENING TAGS ONLY, and the text taken by slicing forward rather than by matching a pair.
+     Matching `<tag ...>...</tag>` looked equivalent and was not: matchAll yields NON-OVERLAPPING
+     matches, so an enclosing <div> swallowed everything inside it and every nested element went
+     untested. The real defect — a hidden <button> inside a page-head <div> — was invisible to
+     the check while the standalone cases passed, because in those the hidden element was never
+     nested. Fault injection through the gate is what caught it; the unit cases could not. */
+  for (const m of body.matchAll(/<(\w+)([^>]*)>/g)) {
+    const [, tag, attrs] = m;
+    const from = m.index + m[0].length;
+    const after = body.slice(from, from + 600);
+    const close = after.indexOf(`</${tag}>`);
+    const inner = close >= 0 ? after.slice(0, close) : after;
+    const isHidden = /\bhidden(?=[\s>=])|\bhidden$/.test(attrs);
+    const cls = (attrs.match(/\bclass="([^"]*)"/) || [])[1] || "";
+    const hidingClass = cls.split(/\s+/).find((c) => hidingClasses.has(c));
+    if (!isHidden && !hidingClass) continue;
+    const text = inner.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+    if (!text) continue;
+    out.push(
+      isHidden
+        ? `<${tag} hidden> carries the text "${text.slice(0, 60)}" — hidden from sighted readers and from assistive technology alike, so it exists only for whatever reads the markup naively`
+        : `.${hidingClass} is hidden by a display/visibility rule but carries the text "${text.slice(0, 60)}" — nobody receives this except a naive extractor`
+    );
+  }
+  return [...new Set(out)];
+}
+
+/**
+ * HOW MUCH OF THE DOCUMENT IS PROSE, AND HOW MUCH IS EMBEDDED DATA.
+ *
+ * /funding/btc carries a 15,878-character JSON data island against 3,547 characters of visible
+ * prose — four and a half times more machine payload than reading matter. Every serious
+ * extractor strips <script>, including the one in this file, so this is NOT counted as hidden
+ * text above. But the ratio is worth watching rather than assuming: a page that is mostly
+ * embedded numbers is one careless extractor away from reading as a numeric dump, and the
+ * number moves whenever a timeframe or a series is added. Reported, not enforced — there is no
+ * defensible threshold, and inventing one would be worse than looking at it.
+ */
+export function extractionRatio(html) {
+  const scripts = [...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)].reduce((a, m) => a + m[1].length, 0);
+  const prose = html.replace(/<(script|style)\b[\s\S]*?<\/\1>/gi, "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().length;
+  return { scripts, prose, ratio: prose ? +(scripts / prose).toFixed(1) : Infinity };
+}

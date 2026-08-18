@@ -35,7 +35,14 @@ const maxOi = Math.max(...snap.perps.map((p) => p.oiNotional || 0), 1);
 
   <div class="wl-bar">
     <p class="legend" style="margin:0">{LEGEND} — {LEGEND_PAYS}. No other figure is tinted.</p>
-    <button class="btn wl-clear" type="button" id="wl-clear" hidden>Clear pinned coins</button>
+    {/* THE LABEL IS NOT WRITTEN HERE. `hidden` is display:none from the UA stylesheet, so a
+        sighted reader does not see this control and a screen reader does not announce it — but
+        the words sat in the markup regardless, and anything reading the text layer naively took
+        "Clear pinned coins" from a page where nothing is pinned. The same shape as the freshness
+        pill telling every extractor the site was not updating. Whoever knows the condition
+        writes the words: this control only exists once something is pinned, and only the client
+        can know that, because the pins live in localStorage and the server has never seen them. */}
+    <button class="btn wl-clear" type="button" id="wl-clear" hidden></button>
   </div>
   <p class="section-note wl-off" id="wl-offcoverage" hidden></p>
 
@@ -175,7 +182,11 @@ const maxOi = Math.max(...snap.perps.map((p) => p.oiNotional || 0), 1);
            rule the rest of the site follows about things it cannot show. */
         var present = pinned.filter(function (s) { return byId[s]; }).length;
         var offCoverage = pinned.length - present;
-        if (clear) clear.hidden = present === 0 && offCoverage === 0;
+        if (clear) {
+          clear.hidden = present === 0 && offCoverage === 0;
+          /* Written, not revealed — see the markup above. */
+          clear.textContent = clear.hidden ? "" : "Clear pinned coins";
+        }
         if (note) {
           note.hidden = offCoverage === 0;
           note.textContent = offCoverage === 0 ? "" :

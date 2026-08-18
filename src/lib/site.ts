@@ -6,6 +6,31 @@
  * appends the suffix, so renaming again is one line rather than twenty-four.
  * The site is in ENGLISH; every target query is English.
  */
+/* THE RENAME WAS PROPOSED WITH EVIDENCE, CONSIDERED, AND DECLINED. Recorded here so it is
+ * not relitigated every time someone rediscovers the collision — which they will, because the
+ * collision is real and the argument for moving is genuinely strong.
+ *
+ * THE CASE FOR RENAMING, stated fairly: coinliq.com is an operating crypto site at edit
+ * distance 2 with years of index priority; a Brave search for "coinliqui" returns it, coinli.net,
+ * coinlib.io and CoinMarketCap's page for Liqui — the exchange that collapsed in 2018 and shares
+ * the root morpheme — and returns nothing for this domain. Bing does not recognise the token at
+ * all and spell-corrects it to "clinique". The name collision is a first-order cause of this
+ * site being described as "most likely a typo, or a malicious or fraudulent platform", not a
+ * footnote to it. And at four days old the sunk brand equity is as close to zero as it will ever
+ * be, so this is the cheapest moment a rename will ever cost.
+ *
+ * WHY IT WAS DECLINED ANYWAY (owner's decision, 18 August 2026): the asset is not the name. It
+ * is positions 8 and 10 on tail queries, ~35 indexed URLs, the Search Console history that makes
+ * indexation measurable per template, and a funding series accumulating since 14 August that
+ * cannot be reconstructed after the fact. A rename resets every one of those to buy a name that
+ * will not be recognised for months either way — because the replacement domain is also zero days
+ * old, and inherits the same registration-cohort penalty that is doing most of the damage today.
+ * The collision gets out-earned rather than fled.
+ *
+ * WHAT FOLLOWS FROM THAT, and is binding: the bare string "coinliqui" must never travel alone
+ * externally. Every profile name, byline, directory entry and external description pairs it with
+ * a disambiguator, because unaccompanied it resolves to somebody else's site. That is the price
+ * of this decision and it is paid on every external surface, not here. */
 export const SITE = {
   name: "Coinliqui",
   tagline: "Perpetual funding, normalised.",

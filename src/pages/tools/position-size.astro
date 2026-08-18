@@ -44,6 +44,25 @@ const { tier } = tierFor(table, notional);
 const mmf = maintenanceMarginFraction(tier.maxLeverage);
 const liquidatedFirst = side === "long" ? r.liquidationPrice > stop : r.liquidationPrice < stop;
 
+/* THE BRANCH THAT IS NOT TRUE IS NOT IN THE DOCUMENT.
+ *
+ * Both verdicts used to be rendered as divs, with `hidden` on the false one. The note here
+ * argued that `hidden` was the honest form — "a text extractor that applies no stylesheet,
+ * which is what an AI crawler is, would otherwise read BOTH sentences and take the first".
+ * That reasoning was right about the danger and wrong about the remedy: `hidden` is
+ * display:none from the UA stylesheet, and display has no bearing on textContent. Anything
+ * extracting text naively still took "The stop never executes" from a page whose stop executes
+ * perfectly well. The gate found it only after the check was fixed to see nested elements.
+ *
+ * <template> is the element whose content is genuinely not in the document: inert, unrendered,
+ * and absent from textContent, while remaining right there in the markup for the interaction
+ * layer to promote when the reader changes a parameter. The house rule — every number
+ * server-rendered at first byte — is about the TRUE state, and the true state is still a plain
+ * div. The counterfactual was never owed a first-byte rendering; it is only reachable through
+ * an interaction that requires script anyway. */
+const LiqTag = liquidatedFirst ? "div" : "template";
+const StopTag = liquidatedFirst ? "template" : "div";
+
 // Largest leverage that still leaves liquidation beyond the stop. Solved from
 // liq = entry(1 ∓ 1/L)/(1 ∓ mmf), set equal to the stop.
 const ratio = stop / entry;
@@ -143,7 +162,7 @@ const description = `Risk-based position sizing for ${perp.symbol} perpetuals th
       and the interaction layer only reveals what is already there. Every live figure inside the
       prose carries an id so the same set() that updates the cards updates the sentence. */}
   <div class:list={["verdict", liquidatedFirst ? "verdict--warn" : "verdict--ok"]} id="out-verdict" data-state={liquidatedFirst ? "liq" : "stop"}>
-    <div data-when="liq" hidden={!liquidatedFirst}>
+    <LiqTag data-when="liq">
         <b>The stop never executes.</b> At {r.effectiveLeverage}×{r.leverageClamped ? " — this contract's tier maximum, so the leverage you asked for cannot be opened —" : ""} the exchange closes this position at
         {" "}<b id="v-liq1">{px(r.liquidationPrice)}</b> — a <b id="v-move1">{pct(liqMove)}</b> move — while your stop sits
         {" "}<span id="v-stopmove1">{pct(stopMove)}</span> away at <span id="v-stop1">{px(stop)}</span>. The trade gets <b>{pct(liqMove)}</b> of room
@@ -152,13 +171,13 @@ const description = `Risk-based position sizing for ${perp.symbol} perpetuals th
         That the margin happens to be {marginAtRisk < riskUsd ? "smaller" : "larger"} than your
         {" "}{usd(riskUsd, 2)} budget is beside the point: the position never got to be wrong slowly.
         Drop to <b id="v-safe2">{safeLeverage}×</b> or move the stop closer.
-    </div>
-    <div data-when="stop" hidden={liquidatedFirst}>
+    </LiqTag>
+    <StopTag data-when="stop">
         <b>The stop is reachable.</b> Liquidation sits at <b id="v-liq2">{px(r.liquidationPrice)}</b>
         (<span id="v-move2">{pct(liqMove)}</span> away), past your stop at <span id="v-stopmove2">{pct(stopMove)}</span>, so the stop executes first and the
         loss is bounded by the <b>{usd(riskUsd, 2)}</b> you budgeted. Leverage up to
         {" "}<b id="v-safe1">{safeLeverage}×</b> keeps that true.
-    </div>
+    </StopTag>
   </div>
 
   <h2 class="section">Why sizing alone is not enough</h2>
@@ -236,7 +255,20 @@ const description = `Risk-based position sizing for ${perp.symbol} perpetuals th
              so a page in the "stop" state would read as "The stop never executes". The CSS rule
              stays for the visual case; this is what makes the DOM itself honest. */
           verdictEl.className = "verdict " + (first ? "verdict--warn" : "verdict--ok");
-          verdictEl.querySelectorAll("[data-when]").forEach((d) => { d.hidden = d.dataset.when !== verdictEl.dataset.state; });
+          /* Promote the branch that is now true into the document, demote the other into a
+             template. Done BEFORE the figures are set below, so the ids being written are the
+             ones now live — a template's contents are unreachable to getElementById. */
+          verdictEl.querySelectorAll("[data-when]").forEach(function (el) {
+            var live = el.dataset.when === verdictEl.dataset.state;
+            var isTpl = el.tagName === "TEMPLATE";
+            if (live !== isTpl) return;
+            var repl = document.createElement(live ? "div" : "template");
+            repl.dataset.when = el.dataset.when;
+            var sink = live ? repl : repl.content;
+            var src = isTpl ? el.content : el;
+            while (src.firstChild) sink.appendChild(src.firstChild);
+            el.replaceWith(repl);
+          });
         }
         const setAll = (ids, val) => ids.forEach((i) => set(i, val));
         setAll(["v-liq1", "v-liq2"], price(liq));
