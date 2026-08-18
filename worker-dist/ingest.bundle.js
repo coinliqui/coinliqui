@@ -63,24 +63,38 @@ async function fetchSnapshot(published = []) {
       premium: n(c.premium),
       maxLeverage: u.maxLeverage,
       marginTableId: u.marginTableId,
-      /* TWO HYPERLIQUID FUNDING NUMBERS EXIST ON THIS SITE, DELIBERATELY, AND THIS IS ONE.
-               `hlApr` is metaAndAssetCtxs.funding — the rate for the interval NOW IN PROGRESS. The
-               `venues` rows below come from predictedFundings, which is each venue's published rate
-               for the NEXT interval, and that is the right source there because it is the only one
-               that exists for Binance and Bybit, so it is the only basis on which venues can be
-               compared at all.
+      /* ONE HYPERLIQUID FUNDING NUMBER. There used to be two, on purpose, and the measurement
+              that justified it expired.
       
-               They are different quantities and both are labelled "funding", which is exactly the
-               drifted-pair shape this codebase keeps finding. So it was measured rather than assumed,
-               against the upstream API across all 232 contracts: 188 identical, worst disagreement
-               0.31 percentage points (ZK, -17.24% against -16.93%), none exceeding 1pp, and NO sign
-               flips. On annualised rates that run to ±85% that is noise, and the alternative — making
-               the hero cards quote a next-interval rate, or the venue table quote a current-interval
-               one it cannot have for two of three venues — would make a correct number wrong.
+              The note this replaces said: `hlApr` is metaAndAssetCtxs.funding, the rate for the
+              interval NOW IN PROGRESS, while `venues` comes from predictedFundings, each venue's
+              published rate for the NEXT interval — the only source that exists for Binance and
+              Bybit and therefore the only basis on which venues can be compared. Both were labelled
+              "funding". That was checked rather than assumed, across all 232 contracts: 188
+              identical, worst disagreement 0.31pp, "none exceeding 1pp, and NO sign flips". On
+              rates running to ±85% that was noise, so the two were left alone, and the note asked
+              the next person not to unify them and call it a fix.
       
-               Left as it is on purpose. Recorded here so the next person to notice the two fields
-               does not unify them and call it a fix. */
-      hlApr: toApr(n(c.funding), 1),
+              Both bounds are now false. Measured live at one snapshot instant (2026-08-18T07:02:11Z,
+              a single <time> stamp shared by /, /watchlist and /funding): 21 of 49 published coins
+              disagreed, worst 12.0pp — PENDLE at -6.10% against +5.90% — and THREE contracts
+              disagreed in SIGN. MON, JUP and PENDLE were painted green on /watchlist and red on
+              /funding at the same second: the site told one reader shorts pay longs and another
+              longs pay shorts, about the same contract on the same venue, in the one visual language
+              reserved for that single meaning.
+      
+              There was a second contradiction inside a single row, independent of any drift.
+              `aprSpread` below is max-min over `venues`, and /watchlist printed it in the column
+              beside `hlApr`, which is not a member of that array. PENDLE: venues 5.90 / 2.48 / 10.95
+              gives the 8.47% that was printed — but with -6.10% in the Hyperliquid column the spread
+              would be 17.05%. Two adjacent cells of one row could not both be true.
+      
+              So `hlApr` is now Hyperliquid's entry in the same array the spread is computed from,
+              and every page quotes one number. Nothing computed on the current-interval meaning —
+              all six consumers were display — so this changes what is shown and not what is derived.
+              The next-interval rate is also the honest one to colour: it is the payment that has not
+              happened yet, which is what a reader deciding whether to hold is asking about. */
+      hlApr: venues.find((v) => v.venue === "HlPerp")?.apr ?? NaN,
       venues,
       aprSpread: aprs.length >= 2 ? Math.max(...aprs) - Math.min(...aprs) : null
     };
@@ -565,7 +579,7 @@ async function fetchSpotCandles(product, granularity) {
 }
 
 // worker/build-stamp.ts
-var WORKER_BUILD = "8bb19a3c307b";
+var WORKER_BUILD = "8d3b6a2cef03";
 
 // worker/ingest.ts
 var RETAIN_HOURS = 72;

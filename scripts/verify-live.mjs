@@ -449,7 +449,61 @@ console.log("\n11. page weight on the wire");
   }
 }
 
-console.log("\n12. data");
+/* 12. THE SAME QUANTITY, ON DIFFERENT PAGES, AT ONE SNAPSHOT INSTANT.
+      Hyperliquid's funding APR is rendered on /, /watchlist, /funding, every contract page and
+      every coin page. Two of those read a different upstream field than the rest: `hlApr` was
+      metaAndAssetCtxs.funding (the interval in progress) while the venue rows come from
+      predictedFundings (the next interval). Both were labelled "Hyperliquid funding APR".
+
+      That was deliberate and documented, on a measurement — worst disagreement 0.31pp, no sign
+      flips — and the measurement expired. At 2026-08-18T07:02:11Z: 21 of 49 coins disagreed,
+      worst 12.0pp, and THREE flipped sign, so the same contract was painted green on one page
+      and red on another in the one visual language reserved for payment direction.
+
+      This is the check that decides the question, and it has to hold the snapshot still to ask
+      it: three pages fetched concurrently, and the comparison is only valid if all three carry
+      the SAME <time datetime>. Different stamps mean different snapshots, and a drift measured
+      across two snapshots is not a defect — so a stamp mismatch fails loudly rather than
+      reporting a false one, and finding zero coins fails too, because a comparison of nothing
+      passes trivially. */
+console.log("\n12. one funding number, across every page that prints it");
+{
+  const [w, f, h] = await Promise.all([fetchAs("/watchlist"), fetchAs("/funding"), fetchAs("/")]);
+  const stamps = [...new Set([w, f, h].map((r) => /datetime="([^"]+)"/.exec(r.body)?.[1]))];
+  if (stamps.length !== 1 || !stamps[0]) {
+    bad(`cannot compare — the three pages carry ${stamps.length} different snapshot stamps (${stamps.join(", ")}); rerun`);
+  } else {
+    const wl = new Map();
+    for (const m of w.body.matchAll(/<tr data-sym="([A-Z0-9]+)"[^>]*>([\s\S]*?)<\/tr>/g)) {
+      const c = /<td class="num (pays-[ls])"[^>]*>([^<]*)<\/td>/.exec(m[2]);
+      if (c) wl.set(m[1], { cls: c[1], txt: c[2].replace(/[^0-9.\-]/g, "") });
+    }
+    const fv = new Map();
+    for (const m of f.body.matchAll(/<span class="(pays-[ls])"[^>]*data-sym="([A-Z0-9]+)"[^>]*data-venue="HlPerp"[^>]*>([^<]*)<\/span>/g)) {
+      fv.set(m[2], { cls: m[1], txt: m[3].replace(/[^0-9.\-]/g, "") });
+    }
+    const shared = [...wl.keys()].filter((k) => fv.has(k));
+    if (shared.length < 10) {
+      bad(`only ${shared.length} coins matched between /watchlist and /funding — the extraction is broken, not the site`);
+    } else {
+      const drift = [], flip = [];
+      for (const sym of shared) {
+        const a = wl.get(sym), b = fv.get(sym);
+        const d = Math.abs(Number(a.txt) - Number(b.txt));
+        if (d > 0.02) drift.push(`${sym} ${a.txt}% vs ${b.txt}% (${d.toFixed(2)}pp)`);
+        if (a.cls !== b.cls) flip.push(`${sym}: /watchlist ${a.cls} ${a.txt}% vs /funding ${b.cls} ${b.txt}%`);
+      }
+      flip.length
+        ? bad(`${flip.length} contract(s) painted OPPOSITE payment directions on different pages at ${stamps[0]}: ${flip.join("; ")}`)
+        : ok(`colour agrees on all ${shared.length} coins at ${stamps[0]}`);
+      drift.length
+        ? bad(`${drift.length}/${shared.length} coins disagree on Hyperliquid APR: ${drift.slice(0, 6).join("; ")}${drift.length > 6 ? " …" : ""}`)
+        : ok(`Hyperliquid APR agrees on all ${shared.length} coins`);
+    }
+  }
+}
+
+console.log("\n13. data");
 {
   const r = await fetchAs("/status", "Mozilla/5.0");
   const grab = (re) => re.exec(r.body)?.[1]?.trim() ?? "?";
