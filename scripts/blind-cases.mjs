@@ -104,4 +104,34 @@ for(const [name,val,shouldPass] of csps){
   }
 }
 
+/* THE INLINE-SCRIPT PARSER, whose coverage used to depend on attribute ORDER.
+   A SyntaxError in an is:inline island kills every handler in it while the server render
+   stays perfect — nothing else in this repository can see that. The regex required
+   `is:inline` to be the first attribute, so the same broken script was caught or missed
+   depending on how someone happened to type the tag. These fix the shape of the hole and
+   pin down what must NOT be parsed either: external src has no body, and application/json
+   blocks are data that would fail as code. */
+{
+  const { inlineScriptSyntax } = await import("./checks.mjs");
+  const parseCases = [
+    ["is:inline first, valid",             `<script is:inline>var a = 1;</script>`,                          false],
+    ["is:inline first, broken",            `<script is:inline>var a = ;</script>`,                           true ],
+    ["is:inline LAST, valid",              `<script define:vars={{x: 1}} is:inline>var a = x;</script>`,      false],
+    ["is:inline LAST, broken — the gap",   `<script define:vars={{x: 1}} is:inline>var a = ;</script>`,       true ],
+    ["is:inline mid-attrs, broken",        `<script async is:inline data-k="v">var a = ;</script>`,           true ],
+    ["the const collision that shipped",   `<script is:inline>const v=1; const v=2;</script>`,               true ],
+    ["external src has no body to parse",  `<script async is:inline src="https://x/y.js"></script>`,          false],
+    ["application/json is data",           `<script type="application/json" id="pts-1">{"a":[1,2]}</script>`, false],
+    ["ld+json is data",                    `<script type="application/ld+json">{"@type":"X"}</script>`,       false],
+    ["a bundled module is Astro's job",    `<script>var a = ;</script>`,                                      false],
+    ["define:vars names are predeclared",  `<script is:inline define:vars={{ KEY: "k", N: 2 }}>f(KEY,N);</script>`, false],
+  ];
+  for (const [name, html, shouldFlag] of parseCases) {
+    const flagged = inlineScriptSyntax(html, "t").length > 0;
+    const correct = flagged === shouldFlag;
+    if (!correct) bad++;
+    console.log(`  ${correct ? "ok  " : "BLIND"}  ${flagged ? "FLAGGED" : "clean  "}  inline parser: ${name}`);
+  }
+}
+
 console.log(bad?`\n  ${bad} BLIND SPOT(S)`:"\n  no blind spots in these cases");

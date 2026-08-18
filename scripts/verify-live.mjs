@@ -334,8 +334,51 @@ for (const p of ["/", "/funding/btc"]) {
     : ok(`${p.padEnd(14)} no Vary: Cookie (vary: ${vary || "none"})`);
 }
 
+/* 10. WHAT THE SOURCE DECLARES vs WHAT A CLIENT RECEIVES.
+      /robots.txt set `public, max-age=300` and was served `public, max-age=14400` on every
+      request for as long as it existed — a 48x drift between a number in this repository and
+      the number anyone actually got. Nothing was broken; the source was simply describing a
+      response that is not the one sent.
+
+      The endpoints and their expected values are READ OUT OF THE SOURCE, not listed here. A
+      table of expected values in this file would be a third copy to drift, and the whole point
+      is that a second copy already drifted. If someone edits the header in the route, this
+      check follows them; if the edge overrides it, this check says so.
+
+      Deliberately compared as the CACHE DIRECTIVES ONLY, order-insensitive: `max-age=300,
+      public` and `public, max-age=300` are the same policy, and flagging that as drift would
+      train everyone to ignore the check. */
+console.log("\n10. the cache headers this repo declares are the ones served");
+{
+  const { readFileSync } = await import("node:fs");
+  const ROUTES = [
+    ["/robots.txt", "src/pages/robots.txt.ts"],
+    ["/sitemap-index.xml", "src/pages/sitemap-index.xml.ts"],
+    ["/search-index.json", "src/pages/search-index.json.ts"],
+    ["/llms.txt", "src/pages/llms.txt.ts"],
+  ];
+  const directives = (v) =>
+    (v ?? "").toLowerCase().split(",").map((x) => x.trim()).filter(Boolean).sort().join(", ");
+
+  for (const [path, file] of ROUTES) {
+    let declared = null;
+    try {
+      /* The LAST cache-control literal in the file: these routes have one response, and taking
+         the last avoids matching a value quoted inside an explanatory comment above it. */
+      const all = [...readFileSync(file, "utf8").matchAll(/"cache-control":\s*"([^"]+)"/g)];
+      declared = all.length ? all[all.length - 1][1] : null;
+    } catch { /* reported below */ }
+
+    if (!declared) { bad(`${path} — no cache-control literal found in ${file}; this check is not looking at anything`); continue; }
+    const served = (await fetchAs(path, "Mozilla/5.0")).headers.get("cache-control");
+    directives(declared) === directives(served)
+      ? ok(`${path.padEnd(20)} ${served}`)
+      : bad(`${path} declares "${declared}" and serves "${served}" — the source describes a response nobody receives`);
+  }
+}
+
 /* 10. Data freshness, as served. */
-console.log("\n10. data");
+console.log("\n11. data");
 {
   const r = await fetchAs("/status", "Mozilla/5.0");
   const grab = (re) => re.exec(r.body)?.[1]?.trim() ?? "?";

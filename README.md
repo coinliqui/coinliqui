@@ -9,8 +9,9 @@ Deployment runbook: **[DEPLOY.md](DEPLOY.md)** — dashboard only.
 **Brand lives in one constant.** `SITE.name` in `src/lib/site.ts` feeds the rail wordmark,
 the JSON-LD and every `<title>` — pages pass a bare title and `Base.astro` appends the
 suffix, so a rename is one line rather than twenty-four. `STORE_NS` does the same for the
-one key this site writes to a visitor's browser, which is why `/privacy` can print the
-exact key instead of a copy that drifts.
+one key this site's own code writes to a visitor's browser, which is why `/privacy` can print
+the exact key instead of a copy that drifts. Analytics cookies are set by Google's tag and are
+not in that constant.
 
 ## Routes
 
@@ -30,7 +31,7 @@ exact key instead of a copy that drifts.
 | `/watchlist` | utility | All contracts server-rendered; pinning is `localStorage`. `noindex, follow` in its own head — crawlable so the directive is seen |
 | `/methodology`, `/methodology/liquidations` | reference | Why quoted rates are not comparable; why no liquidation totals are published |
 | `/data-sources` | reference | Every endpoint, cadence, and what is deliberately absent |
-| `/privacy` | reference | No accounts, no identity, no tracking — the whole of it |
+| `/privacy` | reference | What is collected: no accounts, no payment or personal data, GA4 |
 | `/status` | operational | Snapshot age, per-venue coverage, canary history. `Disallow`ed |
 | `/robots.txt`, `/sitemap-index.xml`, `/sitemaps/*.xml` | — | One sitemap per template. 42 URLs across 7 |
 
@@ -134,7 +135,8 @@ curl -s $URL/ | grep -c SearchAction   # must be 0
 
 **Accounts, and any notification channel.** No sign-up, no identity, no email, no wallet
 connection, no bot. The watchlist is `localStorage`, the calculators compute in-page, and
-`/privacy` states the whole of it.
+`/privacy` says what is collected. Analytics is a separate question and the answer is yes —
+GA4 runs; it is operational tooling, not a claim the site makes about itself.
 
 The `funding_snapshot` cron and its D1 writes stay regardless: they exist for the on-site
 flip feed, and that history cannot be backfilled, which is why ingest runs from day one.

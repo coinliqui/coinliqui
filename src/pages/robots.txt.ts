@@ -47,6 +47,23 @@ export const GET: APIRoute = ({ site, url }) => {
       ...BLOCKED.map((b) => `User-agent: ${b}\nDisallow: /\n`),
       `Sitemap: ${canonical}/sitemap-index.xml\n`,
     ].join("\n"),
-    { headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "public, max-age=300" } },
+/* 14400, NOT 300, BECAUSE 300 WAS NEVER WHAT ANYONE RECEIVED.
+       Measured on the wire: this file declared `public, max-age=300` and was served
+       `public, max-age=14400` — a 48x drift, every request, for as long as it has existed.
+       The mechanism is Cloudflare's, not ours: this is the only endpoint here that comes back
+       `cf-cache-status: HIT`, and every response that comes back DYNAMIC (the sitemaps, the
+       search index, /api/live.json, every HTML page) has its header passed through untouched.
+       So whatever rewrites it only rewrites what the edge actually caches.
+
+       WHAT I COULD NOT ESTABLISH, stated rather than guessed: which setting does it. Reading
+       zone settings needs a scope this project's OAuth grant does not carry — `zone (read)`
+       covers listing zones, and /zones/:id/settings/browser_cache_ttl answers
+       "Authentication error". So the cause is inferred from the wire, not confirmed at source.
+
+       Four hours is a fine cache for a file that changes a few times a year, so the number is
+       adopted rather than fought. What was not fine was source code stating a figure no client
+       was ever sent. scripts/verify-live.mjs now compares declared against served for every
+       endpoint that sets this header, so the next drift is caught instead of discovered. */
+      { headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "public, max-age=14400" } },
   );
 };

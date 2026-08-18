@@ -452,14 +452,26 @@ export function requestedLeverageLabels(files, read) {
  */
 export function inlineScriptSyntax(src, file) {
   const out = [];
-  for (const m of src.matchAll(/<script\s+is:inline[^>]*>([\s\S]*?)<\/script>/g)) {
-    const tag = m[0].slice(0, m[0].indexOf(">"));
+  /* ATTRIBUTE ORDER IS ARBITRARY, and this regex used to require `is:inline` to come FIRST.
+     `<script is:inline define:vars={{x}}>` was parsed; `<script define:vars={{x}} is:inline>`
+     was silently skipped — same script, same risk, invisible to the gate depending on how
+     someone happened to type it. Nothing in the codebase triggers it today (checked: every
+     executable inline script matches either form, and the only tags that do not are
+     `type="application/json"` data blocks, which are data and must not be parsed as code).
+     A gate whose coverage depends on attribute order is one edit from a blind spot, and the
+     defect this whole function exists for — a SyntaxError killing an entire island while the
+     server render stays perfect — is exactly the kind nothing else can see. */
+  for (const m of src.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/g)) {
+    const tag = m[1];
+    if (!/\bis:inline\b/.test(tag)) continue;                      // Astro bundles and checks the rest
+    if (/\bsrc\s*=/.test(tag)) continue;                           // no body to parse
+    if (/type\s*=\s*"application\/(ld\+)?json"/.test(tag)) continue; // data, not code
     const vars = (tag.match(/define:vars=\{\{([^}]*)\}\}/) ?? [, ""])[1]
       .split(",").map((v) => v.split(":")[0].trim()).filter(Boolean);
     const preamble = vars.length ? `let ${vars.join(", ")};` : "";
     try {
       // eslint-disable-next-line no-new-func
-      new Function(preamble + m[1]);
+      new Function(preamble + m[2]);
     } catch (e) {
       out.push(`${file}: inline script does not parse — ${e.message}`);
     }

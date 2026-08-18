@@ -5,10 +5,13 @@ import { getSnapshot, getLive } from "../../lib/hyperliquid.ts";
 /**
  * The live layer, and the only network call any page makes after it has loaded.
  *
- * SAME ORIGIN, deliberately. Hyperliquid and Coinbase both publish WebSocket feeds a browser
- * could subscribe to directly, and either would be a request to another domain on every page
- * view — which /privacy says does not happen. So the browser talks only to this site, and this
- * site reads what the cron already wrote to KV.
+ * SAME ORIGIN, deliberately — and the reason changed while the design stayed right. It used
+ * to be that /privacy promised no off-origin request on page read; that claim is retired and
+ * analytics now runs. The engineering reasons are the ones that survive it: subscribing a
+ * browser straight to Hyperliquid or Coinbase would put a third-party dependency in the render
+ * path of every page, expose their rate limits to our traffic shape, and hand a vendor the
+ * timing of every reader. So the browser talks only to this site, and this site reads what the
+ * cron already wrote to KV — one request, one origin, one failure mode we control.
  *
  * It is a LAYER, never a source. Every figure on every page is server-rendered at first byte;
  * this exists to move the two that move fast enough to matter. If it 404s, times out or is
