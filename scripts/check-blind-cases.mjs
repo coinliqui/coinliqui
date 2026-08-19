@@ -28,7 +28,7 @@ import {
   contradictoryStates, rawEnums, founderAgreement, readmeCounts,
   basisSelfConsistent, uncoveredRoutes, staleDerivedCells, botPolicyReasons,
   undefinedClasses, undefinedVars, unreadableText, colourLegend, colourLanguageDrift,
-  chartAgreement, formatterDrift, fixtureGaps, requestedLeverageLabels, phantomInlineElements, malformedAttributes,
+  chartAgreement, formatterDrift, fixtureGaps, requestedLeverageLabels, phantomInlineElements, malformedAttributes, uncitedPermissionClaims,
 } from "./checks.mjs";
 
 /* Enough page for a check to have something to read. Deliberately minimal: a fixture that is
@@ -55,6 +55,23 @@ const cases = [
     why: "a page carrying both an age and a claim it is not updating tells two stories at once",
     fire: () => contradictoryStates(doc(`<p>Updated 3 min ago</p><p>Not updating</p>`)),
     quiet: () => contradictoryStates(doc(`<p>Updated 3 min ago</p>`)),
+  },
+  {
+    check: "uncitedPermissionClaims",
+    why: "a legal conclusion about a third party, in our own voice, with nothing a reader can check",
+    /* The fire fixture is the sentence that actually shipped, twice, from a root in src/lib.
+       The quiet fixture carries all three legitimate forms side by side, because each is a way
+       the check could over-reach and make itself unusable: a cited claim, an openly unverified
+       one, and a conditional that asserts nothing. It also carries an infrastructure sentence
+       about our own CSP — the false-positive class that took the first version of this check
+       from 4 real hits to 23. */
+    fire: () => uncitedPermissionClaims([["f.astro",
+      `Coinbase Exchange is free, without a key, and permits display with attribution.`]]),
+    quiet: () => uncitedPermissionClaims([["f.astro",
+      `Coinbase permits display with attribution — https://www.coinbase.com/legal/market_data says so. ` +
+      `What OKX's API agreement permits is unverified and uncited here. ` +
+      `If Hyperliquid's terms turn out to permit redistribution, the feature comes back. ` +
+      `script-src permitted one named Google host while the analytics ran.`]]),
   },
   {
     check: "malformedAttributes",

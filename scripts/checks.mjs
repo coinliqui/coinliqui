@@ -118,6 +118,77 @@ export function undefinedClasses(html, css) {
  *
  * Deliberately narrow. This is not an SVG validator; it is the two shapes actually observed.
  */
+/**
+ * A CLAIM ABOUT WHAT SOMEBODY ELSE PERMITS, WITH NOTHING BEHIND IT.
+ *
+ * /data-sources said "Coinbase Exchange ... permits display with attribution" — a legal
+ * conclusion about a third party, in this site's own voice, on the one page whose entire
+ * purpose is that every claim can be checked against a primary source. It was deleted. It came
+ * straight back, because it had never been ONE sentence: the same assertion was also rendered
+ * on /coins, and the root copy sat in the header comment of src/lib/coins.ts, which is the
+ * decision record every future edit to the spot layer reads first. Deleting instances of a
+ * sentence that has a root is how you get it twice.
+ *
+ * So this reads SOURCE, not rendered HTML. A claim in a comment has not reached a reader yet
+ * and is exactly where the next rendered copy comes from.
+ *
+ * THE RULE, and it is deliberately easy to satisfy: a sentence that says what a named third
+ * party permits, forbids or licenses must either
+ *   (a) carry a URL in the same breath — the primary document, so a reader can check it; or
+ *   (b) say out loud that we have not verified it — "unknown", "unverified", "uncited", "never
+ *       cited", "could not read", "403". An honest admission of ignorance is a complete answer
+ *       and costs nothing; what is banned is the confident uncited assertion.
+ * There is no allowlist and no marker to add. Both escapes are things you would want written
+ * anyway, which is the property that keeps a check from being routed around.
+ *
+ * It fires on restrictive claims as well as permissive ones, and that is not an oversight.
+ * A restrictive claim is still an assertion about a document we may not have read, it is still
+ * unfalsifiable to a reader, and this project got one of them wrong in the other direction:
+ * the same file asserted OKX was an "internal fallback" when no OKX request has ever existed
+ * in the codebase.
+ */
+const VENDORS = ["coinbase", "okx", "coingecko", "binance", "bybit", "hyperliquid", "defillama",
+                 "publicnode", "drpc", "1rpc", "kraken", "bitfinex"];
+/* A PERMISSION VERB IS NOT ENOUGH ON ITS OWN, and the first version of this check proved it:
+   23 hits, 19 of them false. "the Cloudflare grant carries browser (write)" is about our OAuth
+   token; "verify-live permitted one named Google host" is about our own CSP; "every crawler's
+   action must be Allow" is a robots.txt directive. All three are permissions and none is a claim
+   about somebody else's LICENCE. So a hit needs a permission verb AND a licence-context noun in
+   the same sentence — the noun is what makes it a statement about a legal instrument rather than
+   about a config file. Cloudflare and Google left the vendor list for the same reason: we publish
+   no figure from either, so a sentence naming them is about infrastructure, not about data we
+   display. Precision matters more than reach here: a check that cries wolf nineteen times out of
+   twenty-three is a check somebody turns off. */
+const PERMISSION = /\b(permits?|permitted|permission|forbids?|forbidden|prohibits?|prohibited|licen[cs]e[ds]?|licensing|non-commercial|noncommercial|free to use|may be used|grants? (?:us|the right|permission))\b/i;
+const LICENCE_CONTEXT = /\b(terms|agreement|licen[cs]e|licensing|copyright|attribution|non-commercial|noncommercial|redistribut\w*|republish\w*|display\w*|publish\w*)\b/i;
+const CITED = /https?:\/\/\S+/;
+/* Two complete escapes, both of them things worth writing anyway.
+   DISCLAIMED: saying out loud that we have not verified it. An admission of ignorance is a full
+   answer — what this check bans is the confident uncited assertion, not the honest unknown.
+   CONDITIONAL: "if their terms turn out to permit it" asserts nothing about what they say. The
+   reversal note in api/live.json.ts is exactly that shape and must not be flagged; it is the
+   model the rest of the repo is being held to. */
+const DISCLAIMED = /\b(unknown|unverified|uncited|not cited|never cited|could not read|unreadable|unread|403|no confirmed right|makes? no claim|we make no claim|still open|have not read|did not read)\b/i;
+const CONDITIONAL = /\b(if|whether|turns? out|would|may well|should they|assuming)\b/i;
+
+export function uncitedPermissionClaims(sources) {
+  const out = [];
+  for (const [file, src] of sources) {
+    /* Sentence-ish windows. Splitting on hard stops keeps a citation two paragraphs away from
+       rescuing a claim it has nothing to do with, which is the failure mode of a whole-file
+       search — and a whole-file search would have passed src/lib/coins.ts, because that file is
+       full of URLs elsewhere. */
+    for (const sentence of src.split(/(?<=[.!?])\s+|\n\s*\n/)) {
+      if (!PERMISSION.test(sentence) || !LICENCE_CONTEXT.test(sentence)) continue;
+      const named = VENDORS.filter((v) => new RegExp(`\\b${v}\\b`, "i").test(sentence));
+      if (!named.length) continue;
+      if (CITED.test(sentence) || DISCLAIMED.test(sentence) || CONDITIONAL.test(sentence)) continue;
+      out.push(`${file}: says what ${named.join("/")} permits or forbids, with no URL and no admission that it is unverified — "${sentence.trim().replace(/\s+/g, " ").slice(0, 120)}…"`);
+    }
+  }
+  return out;
+}
+
 const GEOMETRY_ATTRS = ["x", "y", "rx", "ry", "cx", "cy", "r", "width", "height", "x1", "y1", "x2", "y2", "stroke-width", "offset"];
 
 export function malformedAttributes(html) {

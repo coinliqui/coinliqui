@@ -104,9 +104,14 @@ clears the floor moves daily and is rendered live on / and /data-sources — thi
 deliberately names the constants rather than a count, because the count goes stale here
 and nothing notices.
 
-**OKX is not a source.** Its API Agreement §9.4 (2026-07-28) forbids publishing or
-displaying its market data, explicitly including public endpoints and non-commercial use.
-It may only be used internally to compute derived values, never displayed or attributed.
+**OKX is not a source, and is not called at all.** There is no OKX request anywhere in this
+codebase — checkable by grep, and the operative fact. It was ruled out on an **uncited and unverified**
+reading of OKX's API Agreement §9.4, recorded on 2026-07-28 and understood at the time to forbid
+publishing or displaying its market data including from public endpoints and for non-commercial
+use — no URL was kept and the document has not been re-read, so that is the reason for a
+decision rather than a statement about what OKX's terms say.
+An earlier version of this line also said OKX "may only be used internally to compute derived
+values". That was false — no OKX request has ever existed here — and it is removed.
 
 ## Architecture
 

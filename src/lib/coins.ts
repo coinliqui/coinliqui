@@ -21,14 +21,27 @@ import type { Candle } from "./candles.ts";
 
      Binance / Bybit         Unreachable from Cloudflare's egress. Not a licensing question.
 
-     OKX                     Reachable, but its API agreement forbids displaying the data.
-                             Internal fallback only, never attributed, never rendered.
+     OKX                     NOT CALLED. Not "internal fallback only", which is what this line
+                             said and which was false — there is no OKX request anywhere in
+                             this codebase, and /data-sources had already corrected the same
+                             fiction on the page while it survived here. It was ruled out on a
+                             reading of its API agreement that this file never cited; that
+                             reading may well be right, but it is recorded as unverified.
 
-     CoinGecko free tier     Non-commercial use only.
+     CoinGecko free tier     NOT CALLED. Ruled out on an uncited reading of its free-tier
+                             licence. Same status as OKX: no request exists, and the reason
+                             is recorded as unverified rather than as fact.
 
-     Coinbase Exchange       CHOSEN. A real USD order book with a real bid and ask, free, no
-                             key, no rate-limit tier to buy, display permitted with
-                             attribution, and reachable from Workers. 397 online USD pairs
+     Coinbase Exchange       CHOSEN, ON ENGINEERING GROUNDS ONLY. This line used to end
+                             "display permitted with attribution", asserted as settled and
+                             cited to nothing — and it is the root the same sentence on /coins
+                             and /data-sources grew from, which is why deleting the rendered
+                             copies without deleting this one would only have regrown them.
+                             What is true and checkable: a real USD order book with a real bid
+                             and ask, no key, no rate-limit tier to buy, reachable from
+                             Workers. What its Market Data Terms of Use permit is UNKNOWN to
+                             this project — three attempts to read that document across two
+                             audits returned HTTP 403. 397 online USD pairs
                              cover 40 of the 50 contracts this site already carries. One call
                              to /products/stats returns 24-hour open/high/low/last/volume for
                              every product at once, which is a single subrequest per tick.

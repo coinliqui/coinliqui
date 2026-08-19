@@ -28,7 +28,7 @@ const spotSet = await getSpot(env?.SNAPSHOT, import.meta.env.DEV);
 
    AND SINCE 19 AUGUST THE CLIENT NO LONGER RECOMPUTES IT AT ALL. /api/live.json stopped
    carrying Coinbase spot — a licensing question resolved toward removal rather than waiting to
-   be closed, see the note in that file — so the basis a reader sees is the server-rendered one
+   be closed — the governing document is still unread after three HTTP 403s — see the note in that file — so the basis a reader sees is the server-rendered one
    for the life of the page, which is the value this comment argued for in the first place. The
    overlay freezes the mark alongside it rather than moving one half of a subtraction whose
    other half is pinned. */
@@ -129,11 +129,12 @@ const description = `Spot prices for the major coins from ${SPOT_SOURCE}, each n
     about $60M a day in total, so a price from there would not be Bitcoin's.
   </p>
   <p class="prose">
-    Binance and Bybit are unreachable from this site's servers. OKX is reachable but its API
-    agreement forbids displaying the data, so it is never shown or credited here. CoinGecko's free
-    tier is non-commercial. <strong>{SPOT_SOURCE}</strong> is a real USD order book, free, without
-    a key, permits display with attribution, and covers every coin listed above — so that is what
-    these prices are, and they are labelled as such everywhere they appear.
+    Binance and Bybit are unreachable from this site's servers. OKX and CoinGecko are not called
+    at all — no request to either exists anywhere in this codebase.
+    <strong>{SPOT_SOURCE}</strong> is a real USD order book, reachable without a key, and covers
+    every coin listed above, so that is where these prices are read from and they are labelled as
+    such everywhere they appear. What its terms permit is a question for its terms, not for this
+    page: we make no claim about them here.
   </p>
   <p class="prose">
     Hyperliquid also publishes an <strong>oracle price</strong>, a median across major spot venues.
