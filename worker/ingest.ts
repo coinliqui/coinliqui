@@ -90,11 +90,20 @@ const CHUNK = 24;
 const FILL_BACKOFF_MS = 10 * 60_000;
 
 /**
- * BUILD STAMP. `worker-dist/ingest.bundle.js` is pasted into the dashboard by hand, so the
- * deployed worker can silently be older than the site that reads its output — and the
- * symptom (a chart panel that never fills, a timestamp that drifts) looks nothing like a
- * stale paste. The worker writes this on every run and /status compares it with the value
- * the site was built with.
+ * BUILD STAMP. The deployed worker can silently be older than the site that reads its output,
+ * and the symptom — a chart panel that never fills, a timestamp that drifts — looks nothing
+ * like a stale deploy. The worker writes this on every run and /status compares it with the
+ * value the site was built with.
+ *
+ * THIS COMMENT USED TO SAY the bundle "is pasted into the dashboard by hand", which stopped
+ * being true when deployment moved to `wrangler deploy`. wrangler builds from source —
+ * `main = "worker/ingest.ts"` — so `worker-dist/ingest.bundle.js` is now written by
+ * `npm run build:worker` and read by nothing. It is gitignored and harmless, and the stamp
+ * still covers the right thing because it hashes the SOURCE closure, which is what wrangler
+ * compiles. Recorded rather than deleted because it is the same shape as the defect that cost
+ * this project eight hours of localhost canonicals: a description, or a guard, or an artifact
+ * left pointing at a path that has since changed. That one was load-bearing. This one is not,
+ * and knowing which is which is the whole skill.
  *
  * NO LONGER TYPED BY HAND. It used to be a string here and a matching string in
  * src/lib/version.ts, with a comment saying to bump both "when you change this file" — and
