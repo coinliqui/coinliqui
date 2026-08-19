@@ -147,6 +147,56 @@ export function undefinedClasses(html, css) {
  * the same file asserted OKX was an "internal fallback" when no OKX request has ever existed
  * in the codebase.
  */
+/**
+ * A CADENCE THIS PAGE PROMISES AND NOTHING CHECKS.
+ *
+ * Three page families printed "The mark and the funding update every minute", "Funding updates
+ * every minute", "Mark price and funding update every minute" — server-rendered, unconditional,
+ * next to an honest timestamp. The timestamp said what happened; the sentence made a promise
+ * about what keeps happening, and nothing verified it. When the one-minute cron stops, those
+ * pages assert a cadence beside a figure that last moved hours ago, in the extracted text an AI
+ * crawler lifts verbatim.
+ *
+ * THE SITE HAD ALREADY FIXED THE MIRROR IMAGE. The client-side "Not updating" note was moved out
+ * of server-rendered HTML precisely because a machine reading the page was told both that it had
+ * updated four minutes ago and that it was not updating. Same contradiction, other direction.
+ *
+ * WHY IT IS A CHECK AND NOT JUST A FIX. Since 19 August 2026 the site has ONE upstream. Every way
+ * Hyperliquid can fail — outage, rate limit, a response shape that will not parse, an IP block on
+ * Cloudflare egress — reaches the reader identically: KV keeps the last good value and the pages
+ * go quietly stale, with no second source whose disagreement would reveal it. The age is the only
+ * signal there is, so a sentence that contradicts the age is the whole failure.
+ *
+ * THE RULE: a present-tense claim that data "updates every X" must come from an expression, not
+ * from literal template text. src/lib/freshness.ts supplies it and stops making it when the
+ * clocks say otherwise. Deliberately narrow — it matches the promise form only, so the
+ * explanatory "refreshed every two hours" in an empty-state panel, and prose describing how the
+ * pipeline works, are left alone.
+ */
+export function unconditionalCadenceClaims(sources) {
+  const out = [];
+  const CADENCE = /\b(updates?|refreshes?)\s+every\s+(minute|second|hour|day|\d+\s*(?:s|m|h|min|minutes?|hours?)|two hours|five minutes|ten minutes|fifteen minutes)\b/gi;
+  for (const [file, src] of sources) {
+    /* Template body only. A claim inside a JS/JSX comment has not reached a reader, and the
+       comments in this repo quote the defect they fixed — flagging those would make the check
+       fire on its own documentation, which is how a check gets switched off. */
+    const body = src
+      .replace(/^---[\s\S]*?^---/m, "")            // Astro frontmatter
+      .replace(/\{\/\*[\s\S]*?\*\/\}/g, "")      // {/* ... */}
+      .replace(/\/\*[\s\S]*?\*\//g, "")           // /* ... */
+      .replace(/^\s*\/\/.*$/gm, "");               // // ...
+    for (const m of body.matchAll(CADENCE)) {
+      /* Inside an interpolation the sentence is a value, which is the whole point — freshness()
+         decides whether to say it. Walk back to the nearest unbalanced brace to tell. */
+      const before = body.slice(Math.max(0, m.index - 600), m.index);
+      const opens = (before.match(/\{/g) ?? []).length, closes = (before.match(/\}/g) ?? []).length;
+      if (opens > closes) continue;
+      out.push(`${file}: promises that data "${m[0]}" as literal text — a cadence claim must come from freshness() so it stops when the clocks do`);
+    }
+  }
+  return out;
+}
+
 const VENDORS = ["coinbase", "okx", "coingecko", "binance", "bybit", "hyperliquid", "defillama",
                  "publicnode", "drpc", "1rpc", "kraken", "bitfinex"];
 /* A PERMISSION VERB IS NOT ENOUGH ON ITS OWN, and the first version of this check proved it:

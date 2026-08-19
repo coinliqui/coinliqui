@@ -35,7 +35,7 @@
 import { spawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { readdirSync, readFileSync } from "node:fs";
-import { cssFor, undefinedClasses, undefinedVars, rawEnums, searchIndexGaps, unnamedUpstreams, formatterDrift, uncoveredRoutes, unreadableText, chartAgreement, requestedLeverageLabels, inlineScriptSyntax, flipTableColour, colourPalettes, colourLanguageDrift, colourLegend, publishesAPerson, fixtureGaps, staleDerivedCells, basisSelfConsistent, sitemapLastmodHonesty, breadcrumbAgreement, founderAgreement, readmeCounts, botPolicyReasons, contradictoryStates, hiddenFromEveryone, pageWeight, weightFaults, dateModifiedAgreement, phantomInlineElements, malformedAttributes, uncitedPermissionClaims } from "./checks.mjs";
+import { cssFor, undefinedClasses, undefinedVars, rawEnums, searchIndexGaps, unnamedUpstreams, formatterDrift, uncoveredRoutes, unreadableText, chartAgreement, requestedLeverageLabels, inlineScriptSyntax, flipTableColour, colourPalettes, colourLanguageDrift, colourLegend, publishesAPerson, fixtureGaps, staleDerivedCells, basisSelfConsistent, sitemapLastmodHonesty, breadcrumbAgreement, founderAgreement, readmeCounts, botPolicyReasons, contradictoryStates, hiddenFromEveryone, pageWeight, weightFaults, dateModifiedAgreement, phantomInlineElements, malformedAttributes, uncitedPermissionClaims, unconditionalCadenceClaims } from "./checks.mjs";
 
 /* The SERVER side of each duplicated formatter, transcribed from the file that owns it and
    named here so the pairing is explicit. Transcription is the honest cost of having no bundler:
@@ -180,6 +180,13 @@ try {
     [...walkAstro("src/pages"), ...walkTs("src/lib"), ...walkTs("worker"), "README.md", "DEPLOY.md"]
       .map((f) => [f, readFileSync(f, "utf8")]));
   if (perm.length) { failures++; console.log(`\n  FAIL  ${perm.length} uncited claim(s) about what a third party permits:`); for (const l of perm) console.log(`          ${l}`); }
+
+  /* Source invariant, and it exists because the site is single-sourced: every way Hyperliquid can
+     fail reaches the reader as quietly stale data, so a sentence promising a cadence is the one
+     thing on the page that can be flatly false while everything around it is honest. */
+  const cad = unconditionalCadenceClaims(
+    [...walkAstro("src/pages"), "src/layouts/Base.astro"].map((f) => [f, readFileSync(f, "utf8")]));
+  if (cad.length) { failures++; console.log(`\n  FAIL  ${cad.length} unconditional cadence claim(s):`); for (const l of cad) console.log(`          ${l}`); }
 
   const un = uncoveredRoutes(await readFile(`${dir}/${manifest}`, "utf8"), ROUTES);
   if (un.length) {

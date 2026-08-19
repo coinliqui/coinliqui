@@ -1,9 +1,16 @@
 ---
 import Base from "../../layouts/Base.astro";
-import { getSnapshot, coldStart } from "../../lib/hyperliquid.ts";
+import { getSnapshot, coldStart, getLive } from "../../lib/hyperliquid.ts";
 import { VENUE_LABEL, pct, usd, rawRate, paysClass, paysArrow, LEGEND, LEGEND_PAYS, type Venue } from "../../lib/funding.ts";
 
-const snap = await getSnapshot((Astro.locals as any)?.runtime?.env?.SNAPSHOT, import.meta.env.DEV);
+import { freshness, ageWords, minutesSince } from "../../lib/freshness.ts";
+const env = (Astro.locals as any)?.runtime?.env;
+const snap = await getSnapshot(env?.SNAPSHOT, import.meta.env.DEV);
+const live = await getLive(env?.SNAPSHOT);
+/* The claim is conditional — see src/lib/freshness.ts. This hub prints the funding cadence, so
+   the clock it must be judged against is the one-minute tick, not the five-minute snapshot the
+   sentence goes on to cite for open interest. */
+const fresh = freshness(live?.at, snap.fetchedAt, "Funding updates every minute.", "Funding rates");
 // Cold store: 503 + Retry-After rather than a page rendered from nothing.
 if (!snap.available) return coldStart();
 const ORDER: Venue[] = ["HlPerp", "BinPerp", "BybitPerp"];
@@ -33,8 +40,8 @@ const description =
   <p class="legend">{LEGEND} — {LEGEND_PAYS}. Every other figure is neutral.</p>
 
   <p class="clock" style="margin:0 0 12px">
-    Funding updates every minute. Open interest and 24-hour volume come from the snapshot taken
-    <b><time data-fresh={snap.fetchedAt} data-clock="snapAt">{Math.max(0, Math.round((Date.now() - snap.fetchedAt) / 60000))} min ago</time></b>.
+    {fresh.note} Open interest and 24-hour volume come from the snapshot taken
+    <b><time data-fresh={snap.fetchedAt} data-clock="snapAt">{ageWords(minutesSince(snap.fetchedAt))}</time></b>.
   </p>
   <div class="panel">
     <table class="tbl">

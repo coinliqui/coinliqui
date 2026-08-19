@@ -8,6 +8,7 @@ import { TIMEFRAMES, DEFAULT_TF, aggregate, buildPriceChart, shortDate, CHART_H 
 import { CH } from "../../lib/chart.ts";
 import tables from "../../data/margin-tables.json";
 import { COINS, isLive } from "../../lib/coins.ts";
+import { freshness, ageWords, minutesSince } from "../../lib/freshness.ts";
 
 const env = (Astro.locals as any)?.runtime?.env;
 const snap = await getSnapshot(env?.SNAPSHOT, import.meta.env.DEV);
@@ -90,6 +91,8 @@ const [dayset, hourset, m15set, funding] = await Promise.all([
    one tick. */
 const live = await getLive(env?.SNAPSHOT);
 const markNow = live?.mark?.[p.symbol] ?? p.markPx;
+const fresh = freshness(live?.at, snap.fetchedAt,
+  "Mark price and funding update every minute.", "Mark price and funding");
 
 /* ONE PANEL IS BUILT, NOT SIX.
  *
@@ -203,8 +206,8 @@ const description = `What a ${p.symbol} perpetual costs to hold: ${venuePhrase},
       they came from was not, on the template whose whole argument is that it names its
       sources. Each clock now states its own cadence. */}
   <p class="clock">
-    Mark price and funding update every minute. Open interest and 24-hour volume come from the
-    snapshot taken <b><time data-fresh={snap.fetchedAt} data-clock="snapAt">{Math.max(0, Math.round((Date.now() - snap.fetchedAt) / 60000))} min ago</time></b>.
+    {fresh.note} Open interest and 24-hour volume come from the
+    snapshot taken <b><time data-fresh={snap.fetchedAt} data-clock="snapAt">{ageWords(minutesSince(snap.fetchedAt))}</time></b>.
     The period high, low and volume are read from the candle series behind the chart, collected
     {activeTf && activeTf.base !== "day" ? " every 2 hours" : " every 12 hours"}{candleAge !== null ? <> and last written <b>{candleAge} min ago</b></> : null};
     margin tiers are published by the venue and change only when it changes them.

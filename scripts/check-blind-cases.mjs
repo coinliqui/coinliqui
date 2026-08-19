@@ -28,7 +28,7 @@ import {
   contradictoryStates, rawEnums, founderAgreement, readmeCounts,
   basisSelfConsistent, uncoveredRoutes, staleDerivedCells, botPolicyReasons,
   undefinedClasses, undefinedVars, unreadableText, colourLegend, colourLanguageDrift,
-  chartAgreement, formatterDrift, fixtureGaps, requestedLeverageLabels, phantomInlineElements, malformedAttributes, uncitedPermissionClaims,
+  chartAgreement, formatterDrift, fixtureGaps, requestedLeverageLabels, phantomInlineElements, malformedAttributes, uncitedPermissionClaims, unconditionalCadenceClaims,
 } from "./checks.mjs";
 
 /* Enough page for a check to have something to read. Deliberately minimal: a fixture that is
@@ -55,6 +55,21 @@ const cases = [
     why: "a page carrying both an age and a claim it is not updating tells two stories at once",
     fire: () => contradictoryStates(doc(`<p>Updated 3 min ago</p><p>Not updating</p>`)),
     quiet: () => contradictoryStates(doc(`<p>Updated 3 min ago</p>`)),
+  },
+  {
+    check: "unconditionalCadenceClaims",
+    why: "a page that promises a refresh cadence keeps promising it after the cadence stops",
+    /* The fire fixture is the sentence that actually shipped on three page families. The quiet
+       fixture carries the three shapes that must NOT trip it, because each is a way this check
+       could become unusable: the claim supplied by freshness() through an expression, the same
+       words inside a comment documenting the defect, and an explanatory cadence in prose that is
+       not a promise about the figures on the page. */
+    fire: () => unconditionalCadenceClaims([["f.astro",
+      `<p class="clock">Mark price and funding update every minute. Open interest comes from the snapshot.</p>`]]),
+    quiet: () => unconditionalCadenceClaims([["f.astro",
+      `<p class="clock">{fresh.note} Open interest comes from the snapshot.</p>` +
+      `{/* it used to say "funding updates every minute" unconditionally */}` +
+      `<p>The candle series behind the chart is collected every 2 hours; each panel prints its own age.</p>`]]),
   },
   {
     check: "uncitedPermissionClaims",

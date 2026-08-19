@@ -1,5 +1,6 @@
 ---
 import { SITE, NAV, FOOTER_LINKS, IDENTITY, origin } from "../lib/site.ts";
+import { ageWords } from "../lib/freshness.ts";
 import ASSETS from "../data/assets.json";
 
 interface Props {
@@ -50,8 +51,9 @@ const ageMin = fetchedAt && !frozen ? Math.max(0, Math.round((Date.now() - fetch
 /* "361 min ago" is arithmetic homework, not a reading. Minutes up to an hour, then hours,
    then days — the unit changes so the number stays small enough to mean something at a
    glance, which is the only reason the pill is there. */
-const age = (m: number) =>
-  m === 0 ? "just now" : m < 60 ? `${m} min ago` : m < 48 * 60 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} d ago`;
+/* The ladder moved to src/lib/freshness.ts. It was duplicated here, in interact.js, and not
+   applied at all by three templates that printed raw minutes — see the note on ageWords(). */
+const age = ageWords;
 
 /**
  * SearchAction is deliberately absent — Google removed the sitelinks searchbox on 2024-11-21

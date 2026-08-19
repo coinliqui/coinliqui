@@ -4,6 +4,7 @@ import { getSnapshot, coldStart, findPerp, getLive, oldestStamp } from "../../li
 import { usd, pct, VENUE_LABEL, paysClass, paysLabel, carryCost, type Venue } from "../../lib/funding.ts";
 import { findCoin, isLive, liveCoins } from "../../lib/coins.ts";
 import { getCandles, getHourly, getM15 } from "../../lib/candles.ts";
+import { freshness, ageWords, minutesSince } from "../../lib/freshness.ts";
 import { TIMEFRAMES, DEFAULT_TF, aggregate, buildPriceChart, CHART_H, type ChartMode } from "../../lib/series.ts";
 import { CH } from "../../lib/chart.ts";
 
@@ -143,6 +144,12 @@ const arrow = (n: number) => (n >= 0 ? "▲" : "▼");
 /* Stats are lifted from the fetched document now, not precomputed per panel. */
 const stat = (_fn: (p: NonNullable<typeof active>) => string) => ({});
 
+/* THE SENTENCE IS CONDITIONAL NOW — see src/lib/freshness.ts. It used to assert "update every
+   minute" whatever the clocks said, which is a promise a single-sourced site cannot keep on its
+   own word. */
+const fresh = freshness(live?.at, snap.fetchedAt,
+  "The mark and the funding update every minute.", "The mark and the funding");
+
 const others = liveCoins().filter((c) => c.slug !== coin.slug);
 const title = `${coin.name} price — ${coin.symbol} perpetual, and what leverage costs`;
 const description = `Live ${coin.name} (${coin.symbol}) perpetual price from Hyperliquid, with the funding rate across three venues, open interest, and what holding a leveraged position actually costs per week.`;
@@ -171,9 +178,9 @@ const description = `Live ${coin.name} (${coin.symbol}) perpetual price from Hyp
     <div>Open interest <span class="scope">Hyperliquid</span><b>{perp ? usd(perp.oiNotional) : "—"}</b></div>
   </div>
   <p class="clock">
-    The mark and the funding update every minute. The 24-hour figures and open interest come from
+    {fresh.note} The 24-hour figures and open interest come from
     the snapshot taken
-    <b><time data-fresh={snap.fetchedAt} data-clock="snapAt">{Math.max(0, Math.round((Date.now() - snap.fetchedAt) / 60000))} min ago</time></b>;
+    <b><time data-fresh={snap.fetchedAt} data-clock="snapAt">{ageWords(minutesSince(snap.fetchedAt))}</time></b>;
     the candles are Hyperliquid's closed bars, refreshed every two hours.
   </p>
 
