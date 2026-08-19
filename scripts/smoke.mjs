@@ -35,7 +35,7 @@
 import { spawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { readdirSync, readFileSync } from "node:fs";
-import { cssFor, undefinedClasses, undefinedVars, rawEnums, searchIndexGaps, unnamedUpstreams, formatterDrift, uncoveredRoutes, unreadableText, chartAgreement, requestedLeverageLabels, inlineScriptSyntax, flipTableColour, colourPalettes, colourLanguageDrift, colourLegend, publishesAPerson, fixtureGaps, staleDerivedCells, basisSelfConsistent, sitemapLastmodHonesty, breadcrumbAgreement, founderAgreement, readmeCounts, botPolicyReasons, contradictoryStates, hiddenFromEveryone, dateModifiedAgreement } from "./checks.mjs";
+import { cssFor, undefinedClasses, undefinedVars, rawEnums, searchIndexGaps, unnamedUpstreams, formatterDrift, uncoveredRoutes, unreadableText, chartAgreement, requestedLeverageLabels, inlineScriptSyntax, flipTableColour, colourPalettes, colourLanguageDrift, colourLegend, publishesAPerson, fixtureGaps, staleDerivedCells, basisSelfConsistent, sitemapLastmodHonesty, breadcrumbAgreement, founderAgreement, readmeCounts, botPolicyReasons, contradictoryStates, hiddenFromEveryone, pageWeight, weightFaults, dateModifiedAgreement } from "./checks.mjs";
 
 /* The SERVER side of each duplicated formatter, transcribed from the file that owns it and
    named here so the pairing is explicit. Transcription is the honest cost of having no bundler:
@@ -392,6 +392,36 @@ for (const path of ROUTES) {
     } catch (e) {
       bad++;
       console.log(`  FAIL          sitemap lastmod audit failed: ${e.message}`);
+    }
+    try {
+      /* PAGE WEIGHT, REPORTED EVERY RUN AND GATED ONLY ON BREAKAGE.
+         checks.mjs exported extractionRatio, the comment above it called it the authority on
+         payload size, and nothing in this repository ever invoked it — so the number it produced
+         had never been seen. It was also counting <script> on a site whose weight is <svg>:
+         /liquidations/survival is 91% inline svg and 0.8% script. pageWeight counts every kind
+         and names the dominant one; the ratio is printed because there is no defensible
+         threshold for it, and only two conditions fail — see WEIGHT_LIMITS. */
+      const weights = [];
+      for (const path of ROUTES.filter((r) => !/\.(xml|json|txt|ico)$/.test(r) && !EXPECT[r])) {
+        const body = await (await fetch(`http://127.0.0.1:${PORT}${path}`)).text();
+        weights.push([path, pageWeight(body)]);
+      }
+      const faults = weights.flatMap(([path, w]) => weightFaults(w).map((f) => `${path}: ${f}`));
+      const heaviest = [...weights].sort((a, b) => b[1].bytesPerWord - a[1].bytesPerWord).slice(0, 4);
+      if (faults.length) {
+        bad++;
+        console.log(`  FAIL  ${String(faults.length).padStart(4)}         page weight breaches a limit`);
+        for (const f of faults) console.log(`          ${f}`);
+      } else {
+        console.log(`  ok            page weight within limits across ${weights.length} routes`);
+      }
+      /* The distribution, not a verdict on it — a 2x drift in this list is the thing to notice. */
+      for (const [path, w] of heaviest) {
+        console.log(`                ${String(w.bytesPerWord).padStart(4)} bytes/word  ${path}  (${w.total.toLocaleString()}B, ${w.words}w, ${w.dominant.kind} ${w.dominant.pct}%)`);
+      }
+    } catch (e) {
+      bad++;
+      console.log(`  FAIL          page weight audit failed: ${e.message}`);
     }
     try {
       /* EVERY URL IN A SITEMAP MUST BE A URL WE ANNOUNCE, AND VICE VERSA.

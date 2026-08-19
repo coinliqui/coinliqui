@@ -1045,7 +1045,7 @@ export function contradictoryStates(html) {
  * markup. If a state is conditional, the party that knows the condition writes it.
  *
  * Script and style bodies are excluded — they are data, not text, and every serious extractor
- * strips them. Their SIZE is reported separately by extractionRatio below, because that is a
+ * strips them. Their SIZE is reported separately by pageWeight below, because that is a
  * different question with a different answer.
  */
 export function hiddenFromEveryone(html) {
@@ -1104,17 +1104,80 @@ export function hiddenFromEveryone(html) {
  * /funding/btc carries a 15,878-character JSON data island against 3,547 characters of visible
  * prose — four and a half times more machine payload than reading matter. Every serious
  * extractor strips <script>, including the one in this file, so this is NOT counted as hidden
- * text above. But the ratio is worth watching rather than assuming: a page that is mostly
- * embedded numbers is one careless extractor away from reading as a numeric dump, and the
- * number moves whenever a timeframe or a series is added. Reported, not enforced — there is no
- * defensible threshold, and inventing one would be worse than looking at it.
+ * text above.
+ *
+ * AND IT WAS MEASURING THE WRONG THING, IN A FILE THAT NEVER CALLED IT.
+ *
+ * Two faults, found together. The function existed, was exported, was cited by the comment
+ * above as the authority on payload size — and was invoked from nowhere. A grep across the
+ * repository returns the definition and that one comment. It had never run.
+ *
+ * It would also have been blind if it had. It counted <script> against prose, and scripts are
+ * not where this site's weight is. Measured live across all 79 URLs: /liquidations/survival is
+ * 524,790 bytes of which 479,013 — 91% — is inline <svg>, while its scripts are 4,133 bytes,
+ * 0.8%. The old ratio on that page reports about 0.7 and passes, with nine tenths of the page
+ * outside its view. /liquidations is 90% svg, and every coin page is about 60%.
+ *
+ * So it counts ALL non-prose bytes by kind and names the dominant one. The useful unit turned
+ * out to be bytes of HTML per word of prose — what a crawler or an answer engine must download
+ * to obtain one word it can cite. That distribution across the site is bimodal and tight:
+ *
+ *   min 18 · p25 82 · median 83 · p75 85 · p90 183 · p95 186 · max 495
+ *
+ * 83 for the funding and prose pages, ~183 for the coin pages (60% svg), and two outliers:
+ * /liquidations 290 and /liquidations/survival 495. Both are heatmaps — a vector graphic IS
+ * what those pages are for, and failing them would be demanding they stop being heatmaps. Both
+ * also carry a real text table beside the picture (110 rows on survival, 38 on the hub), so
+ * they remain citable. The ratio is reported, not gated, for exactly the reason the old comment
+ * gave: there is no defensible threshold for it, and inventing one would be worse.
+ *
+ * WHAT IS GATED IS BREAKAGE, NOT TASTE, and both limits sit roughly 2× from today's extreme in
+ * the direction that means a bug rather than a decision:
+ *
+ *   total > 1 MB          the largest page is 525 KB. A data page reaching a megabyte has a
+ *                         runaway series or a duplicated graphic, not a design.
+ *   prose < 150 words     the thinnest page is /tools at 224. Falling under 150 means a section
+ *                         rendered empty, which is how a page silently loses its content while
+ *                         still returning 200.
  */
-export function extractionRatio(html) {
-  const scripts = [...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)].reduce((a, m) => a + m[1].length, 0);
-  const prose = html.replace(/<(script|style)\b[\s\S]*?<\/\1>/gi, "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().length;
-  return { scripts, prose, ratio: prose ? +(scripts / prose).toFixed(1) : Infinity };
+export function pageWeight(html) {
+  const chunk = (re) => [...html.matchAll(re)].reduce((a, m) => a + m[0].length, 0);
+  const svg = chunk(/<svg[\s\S]*?<\/svg>/gi);
+  const script = chunk(/<script\b[\s\S]*?<\/script>/gi);
+  const style = chunk(/<style\b[\s\S]*?<\/style>/gi);
+  const template = chunk(/<template\b[\s\S]*?<\/template>/gi);
+  const prose = html
+    .replace(/<(script|style|svg|template)\b[\s\S]*?<\/\1>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&[a-z#0-9]+;/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const words = prose ? prose.split(" ").filter(Boolean).length : 0;
+  const nonProse = svg + script + style + template;
+  const kinds = { svg, script, style, template };
+  const dominant = Object.entries(kinds).sort((a, b) => b[1] - a[1])[0];
+  return {
+    total: html.length,
+    words,
+    nonProse,
+    kinds,
+    /** Which kind carries the most bytes, and what share of the page it is. */
+    dominant: { kind: dominant[0], bytes: dominant[1], pct: html.length ? +(dominant[1] / html.length * 100).toFixed(1) : 0 },
+    /** Bytes a fetcher downloads per word of citable text. Reported, never gated. */
+    bytesPerWord: words ? Math.round(html.length / words) : Infinity,
+  };
 }
 
+/** The two conditions that mean breakage rather than a design choice. See pageWeight above. */
+export const WEIGHT_LIMITS = { maxTotalBytes: 1_000_000, minWords: 150 };
+
+/** Returns the reasons this page breaches a limit — empty when it does not. */
+export function weightFaults(w, limits = WEIGHT_LIMITS) {
+  const out = [];
+  if (w.total > limits.maxTotalBytes) out.push(`${w.total.toLocaleString()} bytes exceeds ${limits.maxTotalBytes.toLocaleString()} — ${w.dominant.kind} is ${w.dominant.pct}% of it`);
+  if (w.words < limits.minWords) out.push(`${w.words} words of prose is under ${limits.minWords} — a section probably rendered empty`);
+  return out;
+}
 
 /**
  * THE DATE THE MACHINE LAYER STATES MUST BE THE DATE THE PAGE STATES.
