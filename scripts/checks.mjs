@@ -62,6 +62,70 @@ export function undefinedClasses(html, css) {
  * says so. A `--fs-xl` deleted from :root while one rule still reads it would render that
  * rule at the inherited size with no error and no console warning.
  */
+/**
+ * AN INLINE ELEMENT THE COMPILER INVENTED, AND THE HALF-PAGE IT PUTS IN THE WRONG TYPEFACE.
+ *
+ * Found by looking at /privacy on a phone: everything from the cookie table down was rendering
+ * in monospace. Not a paint artefact — computed `font-family: ui-monospace` on eight elements,
+ * on desktop and mobile alike, on the live site. Half of two pages had been wrong since the
+ * markup was written and no check could see it, because every check asked about the markup we
+ * wrote and this markup was not ours.
+ *
+ * WHAT THE COMPILER DOES. Given an `{expression}` as the only child of an inline element inside
+ * a table cell — `<td><code>{PINNED_KEY}</code></td>` — @astrojs/compiler loses track of the
+ * open `<code>` and emits two more: one wrapping the next whitespace text node, and one left
+ * OPEN after the enclosing `</div>`. Tag counts stay balanced, so a balance check passes. The
+ * browser closes the stray one at the end of its container, and every element in between
+ * inherits the monospace. Reproduced from the compiler alone in three scoped-style modes, and
+ * narrowed to a nine-line fixture:
+ *
+ *     <table><tbody><tr><td><code>{K}</code></td></tr></tbody></table>
+ *     <p>after</p>                          <-- monospace
+ *
+ * `<code set:text={K} />` compiles clean and renders identically, which is the fix. But the fix
+ * is not the point: the point is that this class is invisible to every assertion about markup
+ * we authored, so it has to be asserted about markup we RECEIVE. Hence a check on the rendered
+ * HTML rather than a lint on the templates.
+ *
+ * TWO SIGNATURES, because the bug has two halves and either can appear alone:
+ *   - an inline formatting element whose entire content is whitespace. Nobody writes that.
+ *   - an inline formatting element still open when a block-level element starts inside it.
+ *
+ * Deliberately NOT a general well-formedness check. Parsing HTML with regular expressions to
+ * prove it is well formed is a worse idea than the bug; these are two narrow signatures of one
+ * observed defect, and both were confirmed against the two real pages before being written.
+ */
+const INLINE_INVENTED = ["code", "b", "i", "em", "strong", "kbd", "samp", "small"];
+const BLOCK_AFTER = ["p", "div", "table", "tbody", "thead", "tr", "td", "th", "h1", "h2", "h3", "section", "ul", "ol", "li"];
+
+export function phantomInlineElements(html) {
+  const out = [];
+  for (const tag of INLINE_INVENTED) {
+    /* Empty or whitespace-only. `\s*` rather than `\s+`: the compiler emits the phantom with a
+       newline inside it, and the deploy pipeline collapses that to nothing, so the same defect
+       arrives as `<code></code>` in production and `<code>\n  </code>` from the compiler. The
+       first version of this required at least one whitespace character and therefore missed the
+       live pages entirely while matching the compiler output — a check that fires on the fixture
+       and not on the site. */
+    for (const m of html.matchAll(new RegExp(`<${tag}(?:\\s[^>]*)?>(\\s*)</${tag}>`, "g"))) {
+      const at = html.slice(Math.max(0, m.index - 60), m.index).replace(/\s+/g, " ").slice(-58);
+      out.push(`<${tag}> wrapping ${m[1].length ? "nothing but whitespace" : "nothing at all"}, after "…${at}"`);
+    }
+    /* Still open when a block element starts. Scan from each opening tag to its own close and
+       fail if a block tag arrives first — that is the stray, not a nesting style choice. */
+    for (const m of html.matchAll(new RegExp(`<${tag}(?:\\s[^>]*)?>`, "g"))) {
+      const rest = html.slice(m.index + m[0].length);
+      const close = rest.search(new RegExp(`</${tag}>`));
+      const block = rest.search(new RegExp(`<(?:${BLOCK_AFTER.join("|")})(?:\\s|>)`, "i"));
+      if (block !== -1 && (close === -1 || block < close)) {
+        const what = rest.slice(block, block + 24).replace(/\s+/g, " ");
+        out.push(`<${tag}> is still open when "${what}" begins — the rest of its container inherits its styling`);
+      }
+    }
+  }
+  return [...new Set(out)];
+}
+
 export function undefinedVars(html, css) {
   const all = css + "\n" + [...html.matchAll(/\sstyle="([^"]*)"/g)].map((m) => m[1]).join(";");
   const declared = new Set([...all.matchAll(/(--[\w-]+)\s*:/g)].map((m) => m[1]));

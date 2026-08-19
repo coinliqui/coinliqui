@@ -81,7 +81,13 @@ const updated = "19 August 2026";
           <td>1 year</td>
         </tr>
         <tr>
-          <td><code>{PINNED_KEY}</code></td>
+          {/* `set:text` RATHER THAN `<code>{PINNED_KEY}</code>`, and it is not a style choice.
+              An expression as the only child of an inline element inside a table cell makes
+              @astrojs/compiler emit two phantom `<code>` elements, one of them left open after
+              the enclosing `</div>` — which put every element from here to the end of this page
+              in monospace, on the live site, until 19 August. scripts/checks.mjs
+              phantomInlineElements now fails the build on it. Renders identically. */}
+          <td><code set:text={PINNED_KEY} /></td>
           <td>Local storage</td>
           <td>The coins you pinned on <a href="/watchlist">your watchlist</a>. Never sent anywhere</td>
           <td>Until you clear it</td>

@@ -28,7 +28,7 @@ import {
   contradictoryStates, rawEnums, founderAgreement, readmeCounts,
   basisSelfConsistent, uncoveredRoutes, staleDerivedCells, botPolicyReasons,
   undefinedClasses, undefinedVars, unreadableText, colourLegend, colourLanguageDrift,
-  chartAgreement, formatterDrift, fixtureGaps, requestedLeverageLabels,
+  chartAgreement, formatterDrift, fixtureGaps, requestedLeverageLabels, phantomInlineElements,
 } from "./checks.mjs";
 
 /* Enough page for a check to have something to read. Deliberately minimal: a fixture that is
@@ -55,6 +55,19 @@ const cases = [
     why: "a page carrying both an age and a claim it is not updating tells two stories at once",
     fire: () => contradictoryStates(doc(`<p>Updated 3 min ago</p><p>Not updating</p>`)),
     quiet: () => contradictoryStates(doc(`<p>Updated 3 min ago</p>`)),
+  },
+  {
+    check: "phantomInlineElements",
+    why: "an inline element the compiler invented, left open, puts the rest of a page in the wrong typeface",
+    /* BOTH SIGNATURES IN THE FIRE FIXTURE, and both taken verbatim from the shape @astrojs/compiler
+       actually emitted for /privacy: an empty <code> after </table>, and a second one left open
+       before the following <p>. The quiet fixture is the same markup with real content in the
+       <code>, because "an inline element containing a short string" is the overwhelmingly common
+       legitimate case and a check that flags it is unusable. */
+    fire: () => phantomInlineElements(doc(
+      `<table><tbody><tr><td><code>rail</code></td></tr></tbody></table><code></code></div><code> <p>after</p>`)),
+    quiet: () => phantomInlineElements(doc(
+      `<table><tbody><tr><td><code>rail</code></td></tr></tbody></table><p>after, in <code>the right</code> typeface</p>`)),
   },
   {
     check: "rawEnums",

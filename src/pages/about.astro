@@ -83,7 +83,7 @@ const description =
         </tr>
         <tr>
           <td><strong>No accounts</strong></td>
-          <td class="reason">No sign-up, no login, no password, no email capture. The one thing stored on your device is a cookie named <code>rail</code> recording whether you collapsed the sidebar, plus a <code>{STORE_NS}.pinned</code> list of coins you pinned, held in your own browser and never sent anywhere.</td>
+          <td class="reason">No sign-up, no login, no password, no email capture. The one thing stored on your device is a cookie named <code>rail</code> recording whether you collapsed the sidebar, plus a <code set:text={`${STORE_NS}.pinned`} /> list of coins you pinned, held in your own browser and never sent anywhere.</td>
         </tr>
         <tr>
           <td><strong>No financial advice</strong></td>
