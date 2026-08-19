@@ -438,6 +438,31 @@ Owner, not Full. Search Analytics works for any verified user, but the URL Inspe
 for the per-template indexed share is owner-only and returns `PERMISSION_DENIED` for a Full
 user. A service account added as a delegated owner is the supported arrangement.
 
+### IndexNow: two of the five endpoints refuse the Worker
+
+Not a misconfiguration, and not worth re-diagnosing. The ingest Worker announces new URLs to
+five IndexNow endpoints. `yandex.com`, `search.seznam.cz` and `searchadvisor.naver.com` accept.
+`api.indexnow.org` and `www.bing.com` return **429 to the Worker and 200 to a laptop** — same
+host, same key, same URL list, same minute, on payloads of both one URL and twenty-two. The only
+variable is the source address: both are Microsoft-run and they throttle Cloudflare's shared
+Workers egress.
+
+Third instance of that ceiling here: Binance 403s from it, and the ingest cron is phase-shifted
+off `:00` and `:30` because failure rates doubled at exactly the minutes every other scheduler
+on the platform fires.
+
+The Worker records what each endpoint is owed and decays its retry rate (5, 10, 20, 40 minutes …
+capped at 12 hours) rather than re-offering the same payload 288 times a day. To deliver the
+backlog from an address that is not Cloudflare's:
+
+```
+npm run indexnow:drain          # --dry to see what would be sent
+```
+
+It sends only what the Worker says is owed and clears only what an endpoint accepted. The
+durable fix is **Bing Webmaster Tools**, which needs an account only the owner can create —
+Bing is the index behind DuckDuckGo, Yahoo and Ecosia, so this is the one worth doing.
+
 **C. Crawler fetches — `CF_ANALYTICS_TOKEN`, `CF_ZONE_ID`**
 
 `CF_ZONE_ID` is already set. Only the token is outstanding, and it is the one credential on this
