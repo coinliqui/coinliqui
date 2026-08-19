@@ -57,7 +57,15 @@ const run = async (name, seen, current, expect) => {
   return ok;
 };
 
-const base = publishedUrls(O, ["BTC", "ETH"], ["bitcoin"]);
+/* THE CLOCK IS PINNED, AND THE COIN CASES NOW USE IT RATHER THAN A HAND-PASSED LIST.
+   publishedUrls took a coinSlugs argument and the one real caller passed `[]`, so all ten coin
+   pages went unannounced from the day the template shipped. The argument is gone: which coins
+   are published is a pure function of the coin table and the clock. These two instants straddle
+   a real publication date in that table — four coins are live on the 15th, all ten by the 17th —
+   so the case exercises the mechanism that actually publishes a coin URL. */
+const T1 = Date.parse("2026-08-15T00:00:00Z");
+const T2 = Date.parse("2026-08-17T12:00:00Z");
+const base = publishedUrls(O, ["BTC", "ETH"], T1);
 let bad = 0;
 const check = async (...a) => { if (!(await run(...a))) bad++; };
 
@@ -66,14 +74,17 @@ await check("prices moved, URL set identical", base, base, (s) => s.length === 0
 await check("same set, ten passes in a row", base, base, (s) => s.length === 0);
 
 /* A contract crossing the floor is a URL that did not exist. Must submit exactly it. */
-const withNew = publishedUrls(O, ["BTC", "ETH", "SOL"], ["bitcoin"]);
+const withNew = publishedUrls(O, ["BTC", "ETH", "SOL"], T1);
 await check("a contract crosses the floor", base, withNew,
   (s) => s.length === 1 && s[0] === `${O}/funding/sol`);
 
-/* A coin reaching its publication date, same shape. */
-const withCoin = publishedUrls(O, ["BTC", "ETH"], ["bitcoin", "ethereum"]);
-await check("a coin reaches its publication date", base, withCoin,
-  (s) => s.length === 1 && s[0] === `${O}/coins/ethereum`);
+/* The clock crossing a coin's publishAt, which is how a coin URL really comes into existence.
+   Six coins share the later date, and all six must be announced — a version that announced only
+   the first would pass a one-URL assertion. */
+const withCoins = publishedUrls(O, ["BTC", "ETH"], T2);
+await check("the clock crosses six coins' publication date", base, withCoins,
+  (s) => s.length === 6 && s.every((u) => u.startsWith(`${O}/coins/`)) &&
+         s.includes(`${O}/coins/litecoin`) && s.includes(`${O}/coins/bnb`));
 
 /* First run must NOT announce everything — that is the bulk dump the design refuses. */
 await check("first run, no state at all", undefined, base,
@@ -81,7 +92,7 @@ await check("first run, no state at all", undefined, base,
 
 /* A contract dropping below the floor removes a URL. Nothing to announce, and the state must
    follow so that its return later counts as new again. */
-const fewer = publishedUrls(O, ["BTC"], ["bitcoin"]);
+const fewer = publishedUrls(O, ["BTC"], T1);
 await check("a contract retires below the floor", base, fewer, (s) => s.length === 0);
 
 /* A failed submission must not record the URLs as sent, or they are lost forever. */

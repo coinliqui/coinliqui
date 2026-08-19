@@ -394,6 +394,47 @@ for (const path of ROUTES) {
       console.log(`  FAIL          sitemap lastmod audit failed: ${e.message}`);
     }
     try {
+      /* EVERY URL IN A SITEMAP MUST BE A URL WE ANNOUNCE, AND VICE VERSA.
+         worker/indexnow.ts built its own list of static routes, independent of the four lists
+         the sitemap generators carried. Measured against the live site on 19 August, 22 of 79
+         URLs were in the sitemaps and outside the announced set: every prose page, every
+         calculator, both /liquidations sub-pages, and all ten coin pages — the last because the
+         call site passed a literal `[]` where the live coin slugs belonged. IndexNow is the only
+         account-free route into the indexes that are not Google, so for 28% of the site it had
+         never fired and never could.
+         COMPARED AGAINST THE RENDERED XML, not against src/lib/routes.ts. Both sides now read
+         that module, so a check that read it too would agree with itself and prove nothing. And
+         BOTH directions: a URL announced but absent from every sitemap is the same defect
+         mirrored — /watchlist carries noindex and must never be announced. */
+      const { publishedUrls } = await import("../worker/indexnow.ts");
+      const listed = new Set();
+      for (const path of ROUTES.filter((r) => r.startsWith("/sitemaps/"))) {
+        const body = await (await fetch(`http://127.0.0.1:${PORT}${path}`)).text();
+        for (const m of body.matchAll(/<loc>(?:https?:\/\/[^/<]+)?([^<]*)<\/loc>/g)) listed.add(m[1] || "/");
+      }
+      /* The symbols come from what the sitemap itself published, so this tests the STATIC half
+         and the wiring rather than re-deriving the contract set from the same snapshot twice. */
+      const symbols = [...listed].filter((u) => u.startsWith("/funding/")).map((u) => u.slice("/funding/".length));
+      /* Called exactly as the worker calls it — two arguments, no third to get wrong. The
+         first version of this check passed the coin slugs itself, so it validated the function
+         while the CALL SITE stayed broken, and fault-injecting the original `[]` did not fail
+         it. The parameter is gone now; this line and the worker's are the same line. */
+      const announced = new Set(publishedUrls("", symbols).map((u) => u || "/"));
+      const unannounced = [...listed].filter((u) => !announced.has(u)).sort();
+      const unlisted = [...announced].filter((u) => !listed.has(u)).sort();
+      if (unannounced.length || unlisted.length) {
+        bad++;
+        console.log(`  FAIL  ${String(unannounced.length + unlisted.length).padStart(4)}         the sitemaps and IndexNow disagree about what is published`);
+        for (const u of unannounced) console.log(`          in a sitemap, never announced: ${u}`);
+        for (const u of unlisted) console.log(`          announced, in no sitemap:      ${u}`);
+      } else {
+        console.log(`  ok            every sitemap URL is announced, and nothing else is`);
+      }
+    } catch (e) {
+      bad++;
+      console.log(`  FAIL          sitemap/IndexNow agreement check failed: ${e.message}`);
+    }
+    try {
       const gaps = await searchIndexGaps(`http://127.0.0.1:${PORT}`);
       if (gaps.length) {
         bad++;

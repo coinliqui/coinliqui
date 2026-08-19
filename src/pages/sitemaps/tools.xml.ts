@@ -1,6 +1,7 @@
 import type { APIRoute } from "astro";
 import { xml, dataStamp } from "../../lib/sitemap.ts";
 import { origin } from "../../lib/site.ts";
+import { TOOLS } from "../../lib/routes.ts";
 import { getSnapshot } from "../../lib/hyperliquid.ts";
 
 /* THESE WERE FILED AS CODE ROUTES ON A PREMISE THAT TURNED OUT TO BE FALSE.
@@ -19,8 +20,7 @@ export const GET: APIRoute = async ({ locals, site }) => {
   const snap = await getSnapshot((locals as any)?.runtime?.env?.SNAPSHOT, import.meta.env.DEV);
   const at = dataStamp(snap.fetchedAt);
   return xml(
-    ["/tools", "/tools/position-size", "/tools/leverage", "/tools/funding-cost", "/tools/funding-arbitrage"]
-      .map((path) => ({ path, lastmod: at })),
+    TOOLS.map((path) => ({ path, lastmod: at })),
     origin(site),
   );
 };

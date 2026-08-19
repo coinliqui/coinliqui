@@ -1,6 +1,7 @@
 import type { APIRoute } from "astro";
 import { xml, dataStamp, codeStamp } from "../../lib/sitemap.ts";
 import { origin } from "../../lib/site.ts";
+import { PAGES_DATA, PAGES_CODE } from "../../lib/routes.ts";
 import { getSnapshot } from "../../lib/hyperliquid.ts";
 
 /* Mixed: the homepage is a market page, the rest are prose. Each takes the stamp that is
@@ -20,9 +21,8 @@ export const GET: APIRoute = async ({ locals, site }) => {
   const snap = await getSnapshot((locals as any)?.runtime?.env?.SNAPSHOT, import.meta.env.DEV);
   return xml(
     [
-      { path: "/", lastmod: dataStamp(snap.fetchedAt) },
-      { path: "/methodology", lastmod: dataStamp(snap.fetchedAt) },
-      ...["/about", "/methodology/liquidations", "/data-sources", "/privacy", "/terms"].map((p) => ({ path: p, lastmod: codeStamp(p) })),
+      ...PAGES_DATA.map((p) => ({ path: p, lastmod: dataStamp(snap.fetchedAt) })),
+      ...PAGES_CODE.map((p) => ({ path: p, lastmod: codeStamp(p) })),
     ],
     origin(site),
   );

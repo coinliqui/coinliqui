@@ -211,6 +211,141 @@ function orderSweeps(states, now, backoffMs) {
   });
 }
 
+// src/lib/routes.ts
+var PAGES_DATA = ["/", "/methodology"];
+var PAGES_CODE = ["/about", "/methodology/liquidations", "/data-sources", "/privacy", "/terms"];
+var TOOLS = ["/tools", "/tools/position-size", "/tools/leverage", "/tools/funding-cost", "/tools/funding-arbitrage"];
+var LIQUIDATIONS = ["/liquidations", "/liquidations/sweep", "/liquidations/survival"];
+var FUNDING_HUB = ["/funding"];
+var OPEN_INTEREST = ["/open-interest"];
+var UNLOCKS = ["/unlocks"];
+var COINS_HUB = ["/coins"];
+var STATIC_ROUTES = [
+  ...PAGES_DATA,
+  ...PAGES_CODE,
+  ...COINS_HUB,
+  ...FUNDING_HUB,
+  ...OPEN_INTEREST,
+  ...TOOLS,
+  ...LIQUIDATIONS,
+  ...UNLOCKS
+];
+
+// src/lib/coins.ts
+var CB = "https://api.exchange.coinbase.com";
+var COINS = [
+  {
+    slug: "bitcoin",
+    name: "Bitcoin",
+    symbol: "BTC",
+    product: "BTC-USD",
+    publishAt: "2026-08-14",
+    blurb: "The first and largest cryptocurrency, and the one whose derivatives market sets the tone for every other."
+  },
+  {
+    slug: "ethereum",
+    name: "Ethereum",
+    symbol: "ETH",
+    product: "ETH-USD",
+    publishAt: "2026-08-14",
+    blurb: "The largest smart-contract platform, and the second-largest perpetual market by open interest."
+  },
+  {
+    slug: "solana",
+    name: "Solana",
+    symbol: "SOL",
+    product: "SOL-USD",
+    publishAt: "2026-08-14",
+    blurb: "A high-throughput layer-1 whose perpetual funding is among the most volatile of the majors."
+  },
+  {
+    slug: "xrp",
+    name: "XRP",
+    symbol: "XRP",
+    product: "XRP-USD",
+    publishAt: "2026-08-14",
+    blurb: "A payment-focused asset with a large retail spot base and comparatively small open interest."
+  },
+  {
+    slug: "bnb",
+    name: "BNB",
+    symbol: "BNB",
+    product: "BNB-USD",
+    publishAt: "2026-08-17",
+    blurb: "The BNB Chain asset, listed here because its perpetual funding rarely matches its spot demand."
+  },
+  {
+    slug: "dogecoin",
+    name: "Dogecoin",
+    symbol: "DOGE",
+    product: "DOGE-USD",
+    publishAt: "2026-08-17",
+    blurb: "The original memecoin, and a reliable example of funding running far ahead of spot."
+  },
+  {
+    slug: "cardano",
+    name: "Cardano",
+    symbol: "ADA",
+    product: "ADA-USD",
+    publishAt: "2026-08-17",
+    blurb: "A research-led layer-1 with deep spot liquidity relative to its open interest."
+  },
+  {
+    slug: "avalanche",
+    name: "Avalanche",
+    symbol: "AVAX",
+    product: "AVAX-USD",
+    publishAt: "2026-08-17",
+    blurb: "A layer-1 with a subnet architecture, and one of the smaller major perpetual markets by open interest."
+  },
+  {
+    slug: "chainlink",
+    name: "Chainlink",
+    symbol: "LINK",
+    product: "LINK-USD",
+    publishAt: "2026-08-17",
+    blurb: "The dominant oracle network, whose token trades with unusually persistent positive funding."
+  },
+  {
+    slug: "litecoin",
+    name: "Litecoin",
+    symbol: "LTC",
+    product: "LTC-USD",
+    publishAt: "2026-08-17",
+    blurb: "One of the oldest altcoins, with a long, clean price history and a modest derivatives market."
+  }
+];
+var isLive = (c, now = Date.now()) => Date.parse(c.publishAt + "T00:00:00Z") <= now;
+var liveCoins = (now = Date.now()) => COINS.filter((c) => isLive(c, now));
+var num = (x) => typeof x === "string" || typeof x === "number" ? Number(x) : NaN;
+async function fetchSpot() {
+  const send = () => fetch(`${CB}/products/stats`, { headers: { "user-agent": "coinliqui.com" } });
+  let r = await send();
+  if (r.status === 429 || r.status === 502) {
+    await new Promise((res) => setTimeout(res, 1200));
+    r = await send();
+  }
+  if (!r.ok) throw new Error(`coinbase ${r.status}`);
+  const all = await r.json();
+  const q = {};
+  for (const c of COINS) {
+    const s = all[c.product]?.stats_24hour;
+    if (!s) continue;
+    const last = num(s.last);
+    if (!Number.isFinite(last)) continue;
+    q[c.symbol] = { last, open24h: num(s.open), high24h: num(s.high), low24h: num(s.low), volume24h: num(s.volume) };
+  }
+  return { at: Date.now(), q };
+}
+async function fetchSpotCandles(product, granularity) {
+  const r = await fetch(`${CB}/products/${product}/candles?granularity=${granularity}`, {
+    headers: { "user-agent": "coinliqui.com" }
+  });
+  if (!r.ok) throw new Error(`coinbase candles ${r.status}`);
+  const rows = await r.json();
+  return rows.map((x) => [x[0] * 1e3, x[3], x[2], x[1], x[4], x[5]]).filter((c) => c.every(Number.isFinite)).sort((a, b) => a[0] - b[0]);
+}
+
 // worker/indexnow.ts
 var INDEXNOW_KEY = "a7f3c19e84b24d6fa0e5b17c93d82f46";
 var ENDPOINTS = [
@@ -222,17 +357,11 @@ var ENDPOINTS = [
 ];
 var MAX_URLS = 200;
 var STATE_KEY = "indexnow:submitted";
-function publishedUrls(origin, symbols, coinSlugs) {
+function publishedUrls(origin, symbols, now = Date.now()) {
   return [
-    `${origin}/`,
-    `${origin}/funding`,
-    `${origin}/coins`,
-    `${origin}/open-interest`,
-    `${origin}/liquidations`,
-    `${origin}/unlocks`,
-    `${origin}/tools`,
+    ...STATIC_ROUTES.map((r) => `${origin}${r === "/" ? "/" : r}`),
     ...symbols.map((s) => `${origin}/funding/${s.toLowerCase()}`),
-    ...coinSlugs.map((c) => `${origin}/coins/${c}`)
+    ...liveCoins(now).map((c) => `${origin}/coins/${c.slug}`)
   ];
 }
 async function stepIndexNow(env, current) {
@@ -756,121 +885,8 @@ async function stepProbe(env) {
   return String(out.coverageState ?? out.error ?? "done");
 }
 
-// src/lib/coins.ts
-var CB = "https://api.exchange.coinbase.com";
-var COINS = [
-  {
-    slug: "bitcoin",
-    name: "Bitcoin",
-    symbol: "BTC",
-    product: "BTC-USD",
-    publishAt: "2026-08-14",
-    blurb: "The first and largest cryptocurrency, and the one whose derivatives market sets the tone for every other."
-  },
-  {
-    slug: "ethereum",
-    name: "Ethereum",
-    symbol: "ETH",
-    product: "ETH-USD",
-    publishAt: "2026-08-14",
-    blurb: "The largest smart-contract platform, and the second-largest perpetual market by open interest."
-  },
-  {
-    slug: "solana",
-    name: "Solana",
-    symbol: "SOL",
-    product: "SOL-USD",
-    publishAt: "2026-08-14",
-    blurb: "A high-throughput layer-1 whose perpetual funding is among the most volatile of the majors."
-  },
-  {
-    slug: "xrp",
-    name: "XRP",
-    symbol: "XRP",
-    product: "XRP-USD",
-    publishAt: "2026-08-14",
-    blurb: "A payment-focused asset with a large retail spot base and comparatively small open interest."
-  },
-  {
-    slug: "bnb",
-    name: "BNB",
-    symbol: "BNB",
-    product: "BNB-USD",
-    publishAt: "2026-08-17",
-    blurb: "The BNB Chain asset, listed here because its perpetual funding rarely matches its spot demand."
-  },
-  {
-    slug: "dogecoin",
-    name: "Dogecoin",
-    symbol: "DOGE",
-    product: "DOGE-USD",
-    publishAt: "2026-08-17",
-    blurb: "The original memecoin, and a reliable example of funding running far ahead of spot."
-  },
-  {
-    slug: "cardano",
-    name: "Cardano",
-    symbol: "ADA",
-    product: "ADA-USD",
-    publishAt: "2026-08-17",
-    blurb: "A research-led layer-1 with deep spot liquidity relative to its open interest."
-  },
-  {
-    slug: "avalanche",
-    name: "Avalanche",
-    symbol: "AVAX",
-    product: "AVAX-USD",
-    publishAt: "2026-08-17",
-    blurb: "A layer-1 with a subnet architecture, and one of the smaller major perpetual markets by open interest."
-  },
-  {
-    slug: "chainlink",
-    name: "Chainlink",
-    symbol: "LINK",
-    product: "LINK-USD",
-    publishAt: "2026-08-17",
-    blurb: "The dominant oracle network, whose token trades with unusually persistent positive funding."
-  },
-  {
-    slug: "litecoin",
-    name: "Litecoin",
-    symbol: "LTC",
-    product: "LTC-USD",
-    publishAt: "2026-08-17",
-    blurb: "One of the oldest altcoins, with a long, clean price history and a modest derivatives market."
-  }
-];
-var num = (x) => typeof x === "string" || typeof x === "number" ? Number(x) : NaN;
-async function fetchSpot() {
-  const send = () => fetch(`${CB}/products/stats`, { headers: { "user-agent": "coinliqui.com" } });
-  let r = await send();
-  if (r.status === 429 || r.status === 502) {
-    await new Promise((res) => setTimeout(res, 1200));
-    r = await send();
-  }
-  if (!r.ok) throw new Error(`coinbase ${r.status}`);
-  const all = await r.json();
-  const q = {};
-  for (const c of COINS) {
-    const s = all[c.product]?.stats_24hour;
-    if (!s) continue;
-    const last = num(s.last);
-    if (!Number.isFinite(last)) continue;
-    q[c.symbol] = { last, open24h: num(s.open), high24h: num(s.high), low24h: num(s.low), volume24h: num(s.volume) };
-  }
-  return { at: Date.now(), q };
-}
-async function fetchSpotCandles(product, granularity) {
-  const r = await fetch(`${CB}/products/${product}/candles?granularity=${granularity}`, {
-    headers: { "user-agent": "coinliqui.com" }
-  });
-  if (!r.ok) throw new Error(`coinbase candles ${r.status}`);
-  const rows = await r.json();
-  return rows.map((x) => [x[0] * 1e3, x[3], x[2], x[1], x[4], x[5]]).filter((c) => c.every(Number.isFinite)).sort((a, b) => a[0] - b[0]);
-}
-
 // worker/build-stamp.ts
-var WORKER_BUILD = "559486d023f0";
+var WORKER_BUILD = "48ca5a783ca6";
 
 // worker/ingest.ts
 var RETAIN_HOURS = 72;
@@ -1060,7 +1076,7 @@ async function run(env) {
         result.flips = `threw (${e instanceof Error ? e.message : String(e)})`;
       }
       try {
-        result.indexnow = await stepIndexNow(env, publishedUrls(env.SITE_ORIGIN || "https://coinliqui.com", nowPublished, []));
+        result.indexnow = await stepIndexNow(env, publishedUrls(env.SITE_ORIGIN || "https://coinliqui.com", nowPublished));
       } catch (e) {
         result.indexnow = `indexnow: threw (${e instanceof Error ? e.message : String(e)})`;
       }

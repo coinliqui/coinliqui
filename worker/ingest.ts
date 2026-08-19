@@ -496,7 +496,10 @@ async function run(env: Env): Promise<RunResult> {
          so a submission can never delay data collection, and so a failure here is a logged
          line rather than a lost pass: nothing a reader sees depends on it. */
       try {
-        result.indexnow = await stepIndexNow(env, publishedUrls(env.SITE_ORIGIN || "https://coinliqui.com", nowPublished, []));
+        /* Two arguments, and neither can be got wrong by this caller: the static routes come
+           from src/lib/routes.ts and the coin slugs from liveCoins(). A third argument used to
+           sit here carrying `[]`, which is why all ten coin pages were never announced. */
+        result.indexnow = await stepIndexNow(env, publishedUrls(env.SITE_ORIGIN || "https://coinliqui.com", nowPublished));
       } catch (e) {
         result.indexnow = `indexnow: threw (${e instanceof Error ? e.message : String(e)})`;
       }

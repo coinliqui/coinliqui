@@ -28,6 +28,9 @@
  * comment saying otherwise would mislead whoever reads this next.
  */
 
+import { STATIC_ROUTES } from "../src/lib/routes.ts";
+import { liveCoins } from "../src/lib/coins.ts";
+
 export const INDEXNOW_KEY = "a7f3c19e84b24d6fa0e5b17c93d82f46";
 
 /**
@@ -69,17 +72,31 @@ export interface IndexNowEnv {
 }
 
 /** Every URL the site currently publishes that is worth announcing. */
-export function publishedUrls(origin: string, symbols: string[], coinSlugs: string[]): string[] {
+/**
+ * THE COIN SLUGS ARE NO LONGER A PARAMETER, AND THAT IS THE FIX.
+ *
+ * They were, and the single call site passed a literal `[]`, so all ten coin pages sat outside
+ * the announced set from the day the template shipped. Adding the argument back correctly would
+ * have left the same defect one typo away, and the check written to catch it could not see it:
+ * the check calls this function, not the call site, so it agreed with a caller that was wrong.
+ *
+ * Which coins are published is not something a caller knows better than liveCoins() does — it is
+ * a pure function of the coin table and the clock, exactly as the coins sitemap computes it. So
+ * the parameter is removed rather than validated, and there is nothing left to pass wrongly.
+ * `symbols` stays a parameter because it genuinely comes from the live snapshot.
+ *
+ * `now` is injectable so a test can pin the publication cutoff.
+ */
+export function publishedUrls(origin: string, symbols: string[], now = Date.now()): string[] {
+  /* THE STATIC HALF WAS A SECOND, INDEPENDENT LIST and it had drifted 22 URLs behind the
+     sitemaps — see src/lib/routes.ts for what that cost. It now reads the same module the
+     sitemap routes read, and scripts/../smoke compares the result against the RENDERED
+     sitemaps in both directions, so a new route cannot ship announced-but-unlisted or
+     listed-but-unannounced. */
   return [
-    `${origin}/`,
-    `${origin}/funding`,
-    `${origin}/coins`,
-    `${origin}/open-interest`,
-    `${origin}/liquidations`,
-    `${origin}/unlocks`,
-    `${origin}/tools`,
+    ...STATIC_ROUTES.map((r) => `${origin}${r === "/" ? "/" : r}`),
     ...symbols.map((s) => `${origin}/funding/${s.toLowerCase()}`),
-    ...coinSlugs.map((c) => `${origin}/coins/${c}`),
+    ...liveCoins(now).map((c) => `${origin}/coins/${c.slug}`),
   ];
 }
 
