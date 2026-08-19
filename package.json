@@ -20,7 +20,7 @@
     "check": "npm run typecheck && npm run build && npm run suites && npm run seed:smoke && node scripts/smoke.mjs --warm .wrangler/smoke",
     "apply": "node scripts/apply-edits.mjs",
     "stamp:worker": "node scripts/stamp-worker.mjs",
-    "deploy:worker": "node scripts/credentials.mjs --strict && node scripts/stamp-worker.mjs && wrangler deploy",
+    "deploy:worker": "node scripts/credentials.mjs --strict && node scripts/stamp-worker.mjs && wrangler deploy && node scripts/stamp-skew.mjs",
     "preflight": "node scripts/credentials.mjs",
     "verify": "node scripts/verify-live.mjs && node --experimental-strip-types --disable-warning=ExperimentalWarning scripts/flips-parity.mjs",
     "indexnow:drain": "node --experimental-strip-types --disable-warning=ExperimentalWarning scripts/indexnow-drain.mjs",

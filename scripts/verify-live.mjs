@@ -528,7 +528,17 @@ console.log("\n11. page weight on the wire");
   const BUDGET = [
     ["/", 8_000], ["/funding", 9_500], ["/funding/btc", 92_000], ["/coins/bitcoin", 72_000],
     ["/open-interest", 6_500], ["/liquidations", 60_000], ["/liquidations/survival", 30_000],
-    ["/unlocks", 14_000], ["/watchlist", 12_000], ["/tools/leverage", 8_000], ["/about", 8_000],
+    ["/unlocks", 14_000], ["/watchlist", 12_000], ["/tools/leverage", 8_000],
+    /* RAISED 8,000 -> 10,600 ON 19 AUGUST, on purpose, in a diff, with the reason — which is what
+       the paragraph above demands of anyone who touches these numbers. The ratchet did its job: it
+       failed at 8,489b the first time it was run after /about gained the material that makes it a
+       trust artefact rather than an introduction — a six-row table of the limits the site will not
+       claim past, a provenance section pointing at the public source, and the paragraph explaining
+       the coinliq.com spelling-corrector hijack to a reader who arrived through it. That growth is
+       the page's purpose, so the budget moves rather than the content. 10,600 is the observed
+       8,489 plus the quarter of headroom this list is specified to carry, not a round number
+       chosen to stop the alarm. */
+    ["/about", 10_600],
   ];
   for (const [path, budget] of BUDGET) {
     const { wire, enc } = await wireSize(path);
