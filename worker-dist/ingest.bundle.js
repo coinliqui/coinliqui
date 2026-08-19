@@ -925,7 +925,7 @@ async function stepProbe(env) {
 }
 
 // worker/build-stamp.ts
-var WORKER_BUILD = "b86c17b6ffe9";
+var WORKER_BUILD = "400c8455c6fc";
 
 // worker/ingest.ts
 var RETAIN_HOURS = 72;
