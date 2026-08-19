@@ -127,7 +127,35 @@ export interface IndexNowState {
   known: string[];
   /** Per endpoint hostname, URLs offered and not yet accepted. */
   pending?: Record<string, string[]>;
+  /**
+   * Per endpoint hostname, how many consecutive refusals and the earliest instant to try again.
+   *
+   * THIS EXISTS BECAUSE THE BACKLOG WITHOUT IT WAS ABUSE. The per-endpoint backlog fixed a real
+   * defect — an endpoint that refused never saw those URLs again — and introduced a worse one:
+   * an endpoint that refuses PERMANENTLY got the same 22-URL payload every five minutes, 288
+   * times a day, for ever. That is exactly the re-announce-on-every-pass pattern the baseline
+   * rule exists to prevent, aimed at somebody else's endpoint instead of our own state.
+   *
+   * And the refusal here IS permanent-ish, which measurement established rather than guesswork:
+   * api.indexnow.org and www.bing.com returned 429 to the Worker three times over ninety
+   * minutes, while the BYTE-IDENTICAL 22-URL payload returned 200 from a laptop. Same host,
+   * same key, same URL list, same minute — only the source IP differed. Both are Microsoft-run,
+   * and they are throttling Cloudflare's shared Workers egress, not this site. Yandex, Seznam
+   * and Naver accept the same payload from the same Worker.
+   *
+   * Third time this project has hit that class: Binance 403s from CF egress, and the ingest
+   * cron had to be phase-shifted off :00 and :30 because failure rates doubled there — same
+   * shared address, same contention. It is worth treating as a known property of the platform
+   * rather than rediscovering.
+   *
+   * So the endpoints stay in the list — the shared IP's load varies and a window may open — but
+   * the retry rate decays: 5 minutes, then 10, 20, 40 … capped at 12 hours.
+   */
+  backoff?: Record<string, { fails: number; nextAt: number }>;
 }
+
+/** 5 minutes doubling per consecutive refusal, capped at 12 hours. */
+export const retryDelayMs = (fails: number) => Math.min(5 * 60_000 * 2 ** Math.max(0, fails - 1), 12 * 3_600_000);
 
 /** Old state was a bare array of URLs. Read either shape; write only the new one. */
 const readState = (raw: unknown): IndexNowState | null =>
@@ -158,22 +186,33 @@ export async function stepIndexNow(env: IndexNowEnv, current: string[]): Promise
   const known = new Set(st.known);
   const fresh = current.filter((u) => !known.has(u));
   const pending = { ...(st.pending ?? {}) };
+  const backoff = { ...(st.backoff ?? {}) };
   const label = (endpoint: string) => new URL(endpoint).hostname.replace(/^www\./, "");
+  const now = Date.now();
 
   /* What each endpoint is owed: whatever it never accepted, plus whatever is new. Capped per
      endpoint, and the cap drops the OLDEST of a backlog rather than the newest — a URL that has
      been waiting is the one at risk of never being announced at all. */
   const owed = new Map<string, string[]>();
+  const held: string[] = [];
   for (const e of ENDPOINTS) {
-    const back = (pending[label(e)] ?? []).filter((u) => current.includes(u));
+    const name = label(e);
+    const back = (pending[name] ?? []).filter((u) => current.includes(u));
     const list = [...new Set([...back, ...fresh])].slice(-MAX_URLS);
-    if (list.length) owed.set(e, list);
+    if (!list.length) continue;
+    /* IN BACKOFF, AND SKIPPED EVEN IF SOMETHING NEW ARRIVED. Bundling a new URL in as an
+       excuse to retry early is how a decaying rate becomes no rate at all — the new URL will
+       still be owed when the window opens, because the backlog is what carries it. */
+    const b = backoff[name];
+    if (b && b.nextAt > now) { held.push(`${name} in backoff for ${Math.round((b.nextAt - now) / 60_000)}m`); continue; }
+    owed.set(e, list);
   }
 
   if (!owed.size) {
     /* `known` still advances: a URL that appeared and vanished between passes must not be
        treated as new when it returns without having been announced. */
-    if (fresh.length) await env.SNAPSHOT.put(STATE_KEY, JSON.stringify({ known: current, pending } satisfies IndexNowState));
+    if (fresh.length) await env.SNAPSHOT.put(STATE_KEY, JSON.stringify({ known: current, pending, backoff } satisfies IndexNowState));
+    if (held.length) return `indexnow: nothing sent — ${held.join(", ")}`;
     return `indexnow: nothing new (${current.length} URLs published, all previously submitted and accepted)`;
   }
 
@@ -190,18 +229,30 @@ export async function stepIndexNow(env: IndexNowEnv, current: string[]): Promise
       /* 200 and 202 both mean received. Anything else is worth seeing in the log rather than
          swallowing — but never worth failing the run for, since nothing a reader sees depends
          on it. */
-      if (res.ok) { accepted++; delete pending[name]; } else pending[name] = list;
-      results.push(`${name} ${res.status}${res.ok ? "" : `+${list.length} owed`}`);
+      if (res.ok) {
+        accepted++;
+        delete pending[name];
+        delete backoff[name];
+        results.push(`${name} ${res.status}`);
+      } else {
+        pending[name] = list;
+        const fails = (backoff[name]?.fails ?? 0) + 1;
+        backoff[name] = { fails, nextAt: now + retryDelayMs(fails) };
+        results.push(`${name} ${res.status}+${list.length} owed, next in ${Math.round(retryDelayMs(fails) / 60_000)}m`);
+      }
     } catch (e) {
       pending[name] = list;
-      results.push(`${name} ${e instanceof Error ? e.message.slice(0, 32) : "failed"}+${list.length} owed`);
+      const fails = (backoff[name]?.fails ?? 0) + 1;
+      backoff[name] = { fails, nextAt: now + retryDelayMs(fails) };
+      results.push(`${name} ${e instanceof Error ? e.message.slice(0, 32) : "failed"}+${list.length} owed, next in ${Math.round(retryDelayMs(fails) / 60_000)}m`);
     }
   }
 
-  await env.SNAPSHOT.put(STATE_KEY, JSON.stringify({ known: current, pending } satisfies IndexNowState));
+  await env.SNAPSHOT.put(STATE_KEY, JSON.stringify({ known: current, pending, backoff } satisfies IndexNowState));
   const owedTotal = Object.keys(pending).length;
   const head = fresh.length ? `submitted ${fresh.length} new URL(s)` : `retried a backlog`;
   return `indexnow: ${head} to ${accepted}/${owed.size} endpoints [${results.join(", ")}]` +
-    (owedTotal ? `, ${owedTotal} endpoint(s) still owed and will retry` : "") +
+    (held.length ? `, skipped: ${held.join(", ")}` : "") +
+    (owedTotal ? `, ${owedTotal} endpoint(s) still owed` : "") +
     (fresh.length ? ` — ${fresh.slice(0, 3).join(", ")}${fresh.length > 3 ? " …" : ""}` : "");
 }

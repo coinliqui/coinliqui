@@ -364,6 +364,7 @@ function publishedUrls(origin, symbols, now = Date.now()) {
     ...liveCoins(now).map((c) => `${origin}/coins/${c.slug}`)
   ];
 }
+var retryDelayMs = (fails) => Math.min(5 * 6e4 * 2 ** Math.max(0, fails - 1), 12 * 36e5);
 var readState = (raw) => Array.isArray(raw) ? { known: raw } : raw && typeof raw === "object" && Array.isArray(raw.known) ? raw : null;
 async function stepIndexNow(env, current) {
   const origin = env.SITE_ORIGIN || "https://coinliqui.com";
@@ -381,15 +382,26 @@ async function stepIndexNow(env, current) {
   const known = new Set(st.known);
   const fresh = current.filter((u) => !known.has(u));
   const pending = { ...st.pending ?? {} };
+  const backoff = { ...st.backoff ?? {} };
   const label = (endpoint) => new URL(endpoint).hostname.replace(/^www\./, "");
+  const now = Date.now();
   const owed = /* @__PURE__ */ new Map();
+  const held = [];
   for (const e of ENDPOINTS) {
-    const back = (pending[label(e)] ?? []).filter((u) => current.includes(u));
+    const name = label(e);
+    const back = (pending[name] ?? []).filter((u) => current.includes(u));
     const list = [.../* @__PURE__ */ new Set([...back, ...fresh])].slice(-MAX_URLS);
-    if (list.length) owed.set(e, list);
+    if (!list.length) continue;
+    const b = backoff[name];
+    if (b && b.nextAt > now) {
+      held.push(`${name} in backoff for ${Math.round((b.nextAt - now) / 6e4)}m`);
+      continue;
+    }
+    owed.set(e, list);
   }
   if (!owed.size) {
-    if (fresh.length) await env.SNAPSHOT.put(STATE_KEY, JSON.stringify({ known: current, pending }));
+    if (fresh.length) await env.SNAPSHOT.put(STATE_KEY, JSON.stringify({ known: current, pending, backoff }));
+    if (held.length) return `indexnow: nothing sent \u2014 ${held.join(", ")}`;
     return `indexnow: nothing new (${current.length} URLs published, all previously submitted and accepted)`;
   }
   const results = [];
@@ -405,17 +417,25 @@ async function stepIndexNow(env, current) {
       if (res.ok) {
         accepted++;
         delete pending[name];
-      } else pending[name] = list;
-      results.push(`${name} ${res.status}${res.ok ? "" : `+${list.length} owed`}`);
+        delete backoff[name];
+        results.push(`${name} ${res.status}`);
+      } else {
+        pending[name] = list;
+        const fails = (backoff[name]?.fails ?? 0) + 1;
+        backoff[name] = { fails, nextAt: now + retryDelayMs(fails) };
+        results.push(`${name} ${res.status}+${list.length} owed, next in ${Math.round(retryDelayMs(fails) / 6e4)}m`);
+      }
     } catch (e) {
       pending[name] = list;
-      results.push(`${name} ${e instanceof Error ? e.message.slice(0, 32) : "failed"}+${list.length} owed`);
+      const fails = (backoff[name]?.fails ?? 0) + 1;
+      backoff[name] = { fails, nextAt: now + retryDelayMs(fails) };
+      results.push(`${name} ${e instanceof Error ? e.message.slice(0, 32) : "failed"}+${list.length} owed, next in ${Math.round(retryDelayMs(fails) / 6e4)}m`);
     }
   }
-  await env.SNAPSHOT.put(STATE_KEY, JSON.stringify({ known: current, pending }));
+  await env.SNAPSHOT.put(STATE_KEY, JSON.stringify({ known: current, pending, backoff }));
   const owedTotal = Object.keys(pending).length;
   const head = fresh.length ? `submitted ${fresh.length} new URL(s)` : `retried a backlog`;
-  return `indexnow: ${head} to ${accepted}/${owed.size} endpoints [${results.join(", ")}]` + (owedTotal ? `, ${owedTotal} endpoint(s) still owed and will retry` : "") + (fresh.length ? ` \u2014 ${fresh.slice(0, 3).join(", ")}${fresh.length > 3 ? " \u2026" : ""}` : "");
+  return `indexnow: ${head} to ${accepted}/${owed.size} endpoints [${results.join(", ")}]` + (held.length ? `, skipped: ${held.join(", ")}` : "") + (owedTotal ? `, ${owedTotal} endpoint(s) still owed` : "") + (fresh.length ? ` \u2014 ${fresh.slice(0, 3).join(", ")}${fresh.length > 3 ? " \u2026" : ""}` : "");
 }
 
 // src/lib/flips.ts
@@ -904,7 +924,7 @@ async function stepProbe(env) {
 }
 
 // worker/build-stamp.ts
-var WORKER_BUILD = "4ca57da6467f";
+var WORKER_BUILD = "8a4aebe588b1";
 
 // worker/ingest.ts
 var RETAIN_HOURS = 72;

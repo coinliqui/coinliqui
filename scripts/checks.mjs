@@ -328,7 +328,10 @@ export function unreadableText(css) {
   const out = [];
   for (const t of TEXTS) {
     for (const s of SURFACES) {
-      if (!tok[t] || !tok[s]) { out.push(`${t} or ${s} is not a hex token in the built CSS`); continue; }
+      /* It knows WHICH of the two is absent, so it says which. "t or s is not a hex token"
+         sends a reader to check both, and the one that is fine looks equally suspect. */
+      const undefinedToks = [!tok[t] && t, !tok[s] && s].filter(Boolean);
+      if (undefinedToks.length) { out.push(`${undefinedToks.join(" and ")} ${undefinedToks.length > 1 ? "are" : "is"} not a hex token in the built CSS`); continue; }
       for (const tv of tok[t]) {
         for (const sv of tok[s]) {
           const r = contrast(tv, sv);

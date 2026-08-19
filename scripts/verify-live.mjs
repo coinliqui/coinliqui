@@ -176,7 +176,17 @@ console.log("\n2. robots.txt in full");
   console.log("   ----- begin -----");
   console.log(r.body.split("\n").map((l) => "   " + l).join("\n").trimEnd());
   console.log("   ----- end -----");
-  r.body.includes(`Sitemap: ${ORIGIN}/sitemap-index.xml`) ? ok("sitemap line present, on the canonical origin") : bad("sitemap line missing or wrong origin");
+  /* "MISSING OR WRONG ORIGIN" WAS TWO DIAGNOSES SHARING ONE MESSAGE, and they want opposite
+     responses: an absent line means add one, while a present line on the wrong origin is the
+     canonical-host family that already cost this project eight hours of http://localhost:4321
+     in every sitemap. Read the line back and name which it is. */
+  {
+    const lines = r.body.split("\n").map((l) => l.trim()).filter((l) => /^sitemap:/i.test(l));
+    const want = `Sitemap: ${ORIGIN}/sitemap-index.xml`;
+    if (lines.includes(want)) ok("sitemap line present, on the canonical origin");
+    else if (!lines.length) bad("robots.txt has no Sitemap: line at all");
+    else bad(`robots.txt advertises the wrong sitemap URL: ${lines.join(" | ")} — expected ${want}`);
+  }
   /^user-agent:\s*\*\s*\ndisallow:\s*\/\s*$/im.test(r.body.trim()) && bad("blanket Disallow: / is present");
   for (const b of ["GPTBot", "ClaudeBot", "PerplexityBot", "Googlebot"]) {
     const seg = r.body.split(/\n\s*\n/).find((s) => new RegExp(`user-agent:\\s*${b}`, "i").test(s)) ?? "";

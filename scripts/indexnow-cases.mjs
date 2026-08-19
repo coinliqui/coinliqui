@@ -9,7 +9,7 @@
  *
  *   node scripts/indexnow-cases.mjs
  */
-import { stepIndexNow, publishedUrls } from "../worker/indexnow.ts";
+import { stepIndexNow, publishedUrls, retryDelayMs } from "../worker/indexnow.ts";
 
 const O = "https://coinliqui.com";
 const kv = (initial) => {
@@ -113,32 +113,97 @@ await check("a contract retires below the floor", base, fewer, (s) => s.length =
 /* THE CASE THE LIVE RUN TAUGHT. Announcing the twenty-two previously-unannounced URLs returned
    429 from the aggregator AND from Bing while three others accepted. Under a single shared state
    that advanced on any acceptance, those URLs would never have been offered to Bing again —
-   losing the one index this project has no other account-free route into. */
+   losing the one index this project has no other account-free route into.
+
+   The assertion moved once, deliberately. It used to require Bing be retried on the very NEXT
+   pass; that was the behaviour before backoff existed, and it is the behaviour that turned into
+   288 identical payloads a day against an endpoint refusing on IP grounds. What must hold now:
+   Bing keeps the URL, the four that accepted are not resent, and nothing goes to Bing until its
+   window opens. The retry itself is asserted by the expired-backoff case below. */
 {
   let round = 0;
   const seenBy = [];
   globalThis.fetch = async (url, opts) => {
     const h = new URL(url).hostname.replace(/^www\./, "");
     seenBy.push(`${round}:${h}:${JSON.parse(opts.body).urlList.join("|")}`);
-    /* Bing 429s on the first pass and accepts on the second; everyone else accepts at once. */
-    const ok = !(h === "bing.com" && round === 0);
+    const ok = h !== "bing.com";
     return { ok, status: ok ? 200 : 429 };
   };
   const store = kv(base);
   await stepIndexNow({ SNAPSHOT: store, SITE_ORIGIN: O }, withNew);
-  const afterFirst = store.read().pending ?? {};
+  const afterFirst = store.read();
   round = 1;
   const line2 = await stepIndexNow({ SNAPSHOT: store, SITE_ORIGIN: O }, withNew);
-  const afterSecond = store.read().pending ?? {};
+  const afterSecond = store.read();
 
-  const bingOwedFirst = (afterFirst["bing.com"] ?? []).includes(`${O}/funding/sol`);
-  const bingRetried = seenBy.includes(`1:bing.com:${O}/funding/sol`);
-  const othersNotRetried = !seenBy.some((e) => e.startsWith("1:") && !e.startsWith("1:bing.com"));
-  const clearedAfter = !Object.keys(afterSecond).length;
-  const ok = bingOwedFirst && bingRetried && othersNotRetried && clearedAfter;
-  console.log(`  ${ok ? "ok  " : "FAIL"}  ${"bing 429s, is retried alone next pass, then cleared".padEnd(52)} ${bingRetried ? "retried" : "NOT RETRIED"}, ${othersNotRetried ? "others untouched" : "OTHERS RESENT"}`);
-  if (!ok) { bad++; console.log(`        after first: ${JSON.stringify(afterFirst)}\n        calls: ${seenBy.join(" ")}\n        line: ${line2}`); }
+  const bingOwed = (afterFirst.pending?.["bing.com"] ?? []).includes(`${O}/funding/sol`);
+  const bingThrottled = (afterFirst.backoff?.["bing.com"]?.fails ?? 0) === 1;
+  const othersCleared = Object.keys(afterFirst.pending ?? {}).length === 1;
+  const secondPassSilent = !seenBy.some((e) => e.startsWith("1:"));
+  const stillOwed = (afterSecond.pending?.["bing.com"] ?? []).includes(`${O}/funding/sol`);
+  const named = /bing\.com in backoff/.test(line2);
+  const ok = bingOwed && bingThrottled && othersCleared && secondPassSilent && stillOwed && named;
+  console.log(`  ${ok ? "ok  " : "FAIL"}  ${"bing 429s: it alone stays owed, and nothing is resent".padEnd(52)} ${secondPassSilent ? "second pass silent" : "SECOND PASS SENT"}`);
+  if (!ok) { bad++; console.log(`        after first: ${JSON.stringify(afterFirst.pending)} ${JSON.stringify(afterFirst.backoff)}\n        calls: ${seenBy.join(" ")}\n        line: ${line2}`); }
 }
 
-console.log(bad ? `\n  ${bad} case(s) wrong` : "\n  submits only on a URL that did not exist before, never on a price tick, and never forgets an endpoint that refused");
+/* THE BACKLOG WITHOUT BACKOFF WAS THE ABUSE THE BASELINE RULE EXISTS TO PREVENT, aimed at
+   somebody else's endpoint instead of our own state: an endpoint refusing permanently got the
+   same 22-URL payload every five minutes, 288 times a day. And the refusal IS permanent-ish —
+   measured, not assumed: api.indexnow.org and www.bing.com returned 429 to the Worker three
+   times over ninety minutes while the byte-identical payload returned 200 from a laptop. Same
+   host, key, URL list and minute; only the source IP differed. Both are Microsoft-run and they
+   throttle Cloudflare's shared Workers egress. */
+{
+  const delays = [1, 2, 3, 4, 8, 12, 20].map((f) => [f, Math.round(retryDelayMs(f) / 60_000)]);
+  const want = [[1, 5], [2, 10], [3, 20], [4, 40], [8, 640], [12, 720], [20, 720]];
+  const ok = JSON.stringify(delays) === JSON.stringify(want);
+  console.log(`  ${ok ? "ok  " : "FAIL"}  ${"the retry delay doubles and caps at 12 hours".padEnd(52)} ${delays.map(([f, m]) => `${f}:${m}m`).join(" ")}`);
+  if (!ok) bad++;
+}
+
+{
+  /* An endpoint whose nextAt is in the future must be skipped entirely — and a NEW url arriving
+     must not be an excuse to retry it early, because the backlog is what carries the new url
+     until the window opens. */
+  posted = [];
+  globalThis.fetch = async (url, opts) => { posted.push({ host: new URL(url).hostname.replace(/^www\./, ""), body: JSON.parse(opts.body) }); return { ok: true, status: 200 }; };
+  const far = Date.now() + 6 * 3_600_000;
+  const store = kv({
+    known: base,
+    pending: { "bing.com": [`${O}/terms`], "api.indexnow.org": [`${O}/terms`] },
+    backoff: { "bing.com": { fails: 7, nextAt: far }, "api.indexnow.org": { fails: 7, nextAt: far } },
+  });
+  const line = await stepIndexNow({ SNAPSHOT: store, SITE_ORIGIN: O }, withNew);
+  const hosts = posted.map((p) => p.host);
+  const skippedBoth = !hosts.includes("bing.com") && !hosts.includes("api.indexnow.org");
+  const othersSent = hosts.includes("yandex.com") && hosts.includes("search.seznam.cz") && hosts.includes("searchadvisor.naver.com");
+  const st = store.read();
+  const stillOwed = (st.pending?.["bing.com"] ?? []).length > 0 && (st.backoff?.["bing.com"]?.nextAt ?? 0) === far;
+  const named = /backoff/.test(line);
+  const ok = skippedBoth && othersSent && stillOwed && named;
+  console.log(`  ${ok ? "ok  " : "FAIL"}  ${"two endpoints in backoff are skipped, three still sent".padEnd(52)} sent to ${hosts.join(",") || "nobody"}`);
+  if (!ok) { bad++; console.log(`        line: ${line}\n        state: ${JSON.stringify(st.backoff)}`); }
+}
+
+{
+  /* Success clears both the backlog and the backoff, so a recovered endpoint returns to the
+     ordinary five-minute cadence instead of staying throttled for ever. */
+  posted = [];
+  globalThis.fetch = async (url, opts) => { posted.push({ host: new URL(url).hostname.replace(/^www\./, ""), body: JSON.parse(opts.body) }); return { ok: true, status: 200 }; };
+  const store = kv({
+    known: base,
+    pending: { "bing.com": [`${O}/terms`] },
+    backoff: { "bing.com": { fails: 3, nextAt: Date.now() - 1000 } },
+  });
+  const line = await stepIndexNow({ SNAPSHOT: store, SITE_ORIGIN: O }, withNew);
+  const st = store.read();
+  const cleared = !(st.backoff ?? {})["bing.com"] && !(st.pending ?? {})["bing.com"];
+  const retried = posted.some((p) => p.host === "bing.com" && p.body.urlList.includes(`${O}/terms`));
+  const ok = cleared && retried;
+  console.log(`  ${ok ? "ok  " : "FAIL"}  ${"an expired backoff retries, and success clears both".padEnd(52)} ${retried ? "retried" : "NOT RETRIED"}, ${cleared ? "cleared" : "STILL SET"}`);
+  if (!ok) { bad++; console.log(`        line: ${line}\n        state: ${JSON.stringify(st)}`); }
+}
+
+console.log(bad ? `\n  ${bad} case(s) wrong` : "\n  submits only on a URL that did not exist before, never on a price tick, never forgets an endpoint that refused, and never hammers one that keeps refusing");
 process.exit(bad ? 1 : 0);
