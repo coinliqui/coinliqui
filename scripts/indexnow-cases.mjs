@@ -22,18 +22,37 @@ const kv = (initial) => {
 };
 
 let posted = [];
-globalThis.fetch = async (_url, opts) => {
-  posted.push(JSON.parse(opts.body));
+globalThis.fetch = async (url, opts) => {
+  posted.push({ host: new URL(url).hostname, body: JSON.parse(opts.body) });
   return { ok: true, status: 200 };
 };
 
+/**
+ * ONE URL SET, POSTED TO EVERY ENDPOINT.
+ *
+ * This used to flatten `urlList` across every POST and call the result "submitted", which was
+ * the same number while there was exactly one endpoint. Fanning out to five turned "submitted 1"
+ * into "submitted 5" for one URL and failed two cases that were entirely correct — the harness
+ * was counting REQUESTS and reporting URLS.
+ *
+ * So the count is now distinct URLs, and the fan-out gets its own assertion: every endpoint must
+ * receive an identical list. A bug that sent Bing a different set from Yandex would have been
+ * invisible to a flattened array, and is exactly the kind of thing a fan-out introduces.
+ */
 const run = async (name, seen, current, expect) => {
   posted = [];
   const store = kv(seen);
   const line = await stepIndexNow({ SNAPSHOT: store, SITE_ORIGIN: O }, current);
-  const submitted = posted.flatMap((p) => p.urlList);
-  const ok = expect(submitted, line, store.read());
-  console.log(`  ${ok ? "ok  " : "FAIL"}  ${name.padEnd(52)} submitted ${submitted.length}`);
+  const submitted = [...new Set(posted.flatMap((p) => p.body.urlList))];
+  let ok = expect(submitted, line, store.read());
+  if (posted.length) {
+    const first = JSON.stringify(posted[0].body.urlList);
+    const divergent = posted.filter((p) => JSON.stringify(p.body.urlList) !== first);
+    const hosts = new Set(posted.map((p) => p.host));
+    if (divergent.length) { console.log(`        endpoints disagreed about the URL list: ${divergent.map((d) => d.host).join(", ")}`); ok = false; }
+    if (hosts.size !== posted.length) { console.log(`        an endpoint was posted to twice: ${posted.map((p) => p.host).join(", ")}`); ok = false; }
+  }
+  console.log(`  ${ok ? "ok  " : "FAIL"}  ${name.padEnd(52)} submitted ${submitted.length} to ${posted.length} endpoint(s)`);
   if (!ok) console.log(`        line: ${line}`);
   return ok;
 };
@@ -71,8 +90,24 @@ await check("a contract retires below the floor", base, fewer, (s) => s.length =
   const store = kv(base);
   const line = await stepIndexNow({ SNAPSHOT: store, SITE_ORIGIN: O }, withNew);
   const held = JSON.stringify(store.read()) === JSON.stringify(base);
-  console.log(`  ${held ? "ok  " : "FAIL"}  ${"endpoint 500 — state must NOT advance".padEnd(52)} retries next pass`);
+  console.log(`  ${held ? "ok  " : "FAIL"}  ${"every endpoint 500 — state must NOT advance".padEnd(52)} retries next pass`);
   if (!held) { bad++; console.log(`        line: ${line}`); }
+}
+
+/* PARTIAL ACCEPTANCE, WHICH IS THE STATE THE FAN-OUT INTRODUCED AND THE ONLY NEW ONE.
+   One index having received the URLs is the whole objective; holding the state back because a
+   second index was down would re-announce the same set to the first one on every pass until it
+   recovered, which is the submission pattern the baseline rule exists to avoid. So: any single
+   acceptance advances, and the log has to say which ones failed. */
+{
+  globalThis.fetch = async (url) => ({ ok: new URL(url).hostname === "yandex.com", status: new URL(url).hostname === "yandex.com" ? 202 : 503 });
+  const store = kv(base);
+  const line = await stepIndexNow({ SNAPSHOT: store, SITE_ORIGIN: O }, withNew);
+  const advanced = JSON.stringify(store.read()) === JSON.stringify(withNew);
+  const named = line.includes("yandex.com 202") && line.includes("503");
+  const ok = advanced && named;
+  console.log(`  ${ok ? "ok  " : "FAIL"}  ${"one endpoint accepts, four fail — state advances".padEnd(52)} ${advanced ? "advanced" : "HELD"}, log names both`);
+  if (!ok) { bad++; console.log(`        line: ${line}`); }
 }
 
 console.log(bad ? `\n  ${bad} case(s) wrong` : "\n  submits only on a URL that did not exist before, and never on a price tick");

@@ -213,7 +213,13 @@ function orderSweeps(states, now, backoffMs) {
 
 // worker/indexnow.ts
 var INDEXNOW_KEY = "a7f3c19e84b24d6fa0e5b17c93d82f46";
-var ENDPOINT = "https://api.indexnow.org/indexnow";
+var ENDPOINTS = [
+  "https://api.indexnow.org/indexnow",
+  "https://www.bing.com/indexnow",
+  "https://yandex.com/indexnow",
+  "https://search.seznam.cz/indexnow",
+  "https://searchadvisor.naver.com/indexnow"
+];
 var MAX_URLS = 200;
 var STATE_KEY = "indexnow:submitted";
 function publishedUrls(origin, symbols, coinSlugs) {
@@ -245,20 +251,28 @@ async function stepIndexNow(env, current) {
     await env.SNAPSHOT.put(STATE_KEY, JSON.stringify(current));
     return `indexnow: first run, recorded ${current.length} URLs as the baseline without submitting`;
   }
-  try {
-    const res = await fetch(ENDPOINT, {
-      method: "POST",
-      headers: { "content-type": "application/json; charset=utf-8" },
-      body: JSON.stringify({ host, key: INDEXNOW_KEY, keyLocation: `${origin}/${INDEXNOW_KEY}.txt`, urlList: fresh })
-    });
-    if (res.ok) {
-      await env.SNAPSHOT.put(STATE_KEY, JSON.stringify(current));
-      return `indexnow: submitted ${fresh.length} new URL(s), HTTP ${res.status} \u2014 ${fresh.slice(0, 3).join(", ")}${fresh.length > 3 ? " \u2026" : ""}`;
+  const payload = JSON.stringify({ host, key: INDEXNOW_KEY, keyLocation: `${origin}/${INDEXNOW_KEY}.txt`, urlList: fresh });
+  const results = [];
+  let accepted = 0;
+  for (const endpoint of ENDPOINTS) {
+    const label = new URL(endpoint).hostname.replace(/^www\./, "");
+    try {
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "content-type": "application/json; charset=utf-8" },
+        body: payload
+      });
+      if (res.ok) accepted++;
+      results.push(`${label} ${res.status}`);
+    } catch (e) {
+      results.push(`${label} ${e instanceof Error ? e.message.slice(0, 40) : "failed"}`);
     }
-    return `indexnow: endpoint returned HTTP ${res.status}, state left unchanged so the same URLs retry next pass`;
-  } catch (e) {
-    return `indexnow: submission failed (${e instanceof Error ? e.message : String(e)}), state left unchanged`;
   }
+  if (accepted) {
+    await env.SNAPSHOT.put(STATE_KEY, JSON.stringify(current));
+    return `indexnow: submitted ${fresh.length} new URL(s) to ${accepted}/${ENDPOINTS.length} endpoints [${results.join(", ")}] \u2014 ${fresh.slice(0, 3).join(", ")}${fresh.length > 3 ? " \u2026" : ""}`;
+  }
+  return `indexnow: no endpoint accepted [${results.join(", ")}], state left unchanged so the same URLs retry next pass`;
 }
 
 // src/lib/flips.ts
@@ -839,7 +853,7 @@ async function fetchSpotCandles(product, granularity) {
 }
 
 // worker/build-stamp.ts
-var WORKER_BUILD = "2333b8181458";
+var WORKER_BUILD = "5a80c45af610";
 
 // worker/ingest.ts
 var RETAIN_HOURS = 72;

@@ -84,14 +84,20 @@ const sources = [
       here. It gets its own heading instead. */}
   <h2>Outbound, and behind no figure</h2>
   <p class="prose">
-    One host is contacted that supplies nothing you see. When a contract crosses the coverage
+    Five hosts are contacted that supply nothing you see. When a contract crosses the coverage
     floor or a coin reaches its publication date, a URL exists that did not exist before, and
-    the ingest worker announces that one URL to
+    the ingest worker announces that one URL through the
     {" "}<a href="https://www.indexnow.org/" rel="noopener" target="_blank">IndexNow</a>
-    {" "}(<code>api.indexnow.org</code>), which forwards it to the search engines that
-    implement the protocol. It is a server-to-server call: nothing about you is sent, because
-    nothing about you is known — see <a class="link" href="/privacy">Privacy</a>.
-    <strong>It fires on new URLs only</strong>, never on the prices moving. Every page here
+    {" "}protocol — to <code>api.indexnow.org</code> and, separately, to
+    {" "}<code>www.bing.com</code>, <code>yandex.com</code>, <code>search.seznam.cz</code> and
+    {" "}<code>searchadvisor.naver.com</code>. The protocol says one endpoint shares a
+    submission with the others, and until 19 August only the shared one was called; the five
+    were measured answering independently that day — one of them returns a different status
+    code for the same request — so a success from the aggregator is not evidence that any
+    particular index received anything. These are server-to-server calls: nothing about you is
+    sent, because nothing about you is known — see
+    {" "}<a class="link" href="/privacy">Privacy</a>.
+    <strong>They fire on new URLs only</strong>, never on the prices moving. Every page here
     changes every five minutes; announcing that would be announcing nothing, twelve times an
     hour, which is the behaviour the protocol exists to be distinguished from.
   </p>

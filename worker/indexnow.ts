@@ -30,7 +30,29 @@
 
 export const INDEXNOW_KEY = "a7f3c19e84b24d6fa0e5b17c93d82f46";
 
-const ENDPOINT = "https://api.indexnow.org/indexnow";
+/**
+ * EVERY PARTICIPATING ENDPOINT, NOT JUST THE AGGREGATOR.
+ *
+ * The protocol says a submission to any one endpoint is shared with the rest, and that is the
+ * whole appeal of it. But "is shared with" is somebody else's fan-out, and this project's only
+ * account-free route into the indexes that are NOT Google runs through it — which makes it the
+ * one dependency here worth not having a single point of failure in.
+ *
+ * Measured directly, 19 August 2026, one URL each: api.indexnow.org 200, www.bing.com 200,
+ * yandex.com 202, search.seznam.cz 200, searchadvisor.naver.com 200. Yandex answering 202 while
+ * the aggregator answers 200 is the reason this is a list: they are independent services, not
+ * mirrors, and a 200 from the aggregator is not evidence that any of the others received
+ * anything.
+ *
+ * Cost is four extra subrequests on a run that only happens when the URL set changes.
+ */
+const ENDPOINTS = [
+  "https://api.indexnow.org/indexnow",
+  "https://www.bing.com/indexnow",
+  "https://yandex.com/indexnow",
+  "https://search.seznam.cz/indexnow",
+  "https://searchadvisor.naver.com/indexnow",
+];
 /* One submission may carry many URLs; the protocol caps a batch at 10,000 and this site will
    never approach it. Capped anyway so a bug that invents URLs cannot become a flood. */
 const MAX_URLS = 200;
@@ -91,21 +113,33 @@ export async function stepIndexNow(env: IndexNowEnv, current: string[]): Promise
     return `indexnow: first run, recorded ${current.length} URLs as the baseline without submitting`;
   }
 
-  try {
-    const res = await fetch(ENDPOINT, {
-      method: "POST",
-      headers: { "content-type": "application/json; charset=utf-8" },
-      body: JSON.stringify({ host, key: INDEXNOW_KEY, keyLocation: `${origin}/${INDEXNOW_KEY}.txt`, urlList: fresh }),
-    });
-    /* 200 and 202 both mean received. Anything else is worth seeing in the log rather than
-       swallowing — but never worth failing the run for, since nothing a reader sees depends
-       on it. */
-    if (res.ok) {
-      await env.SNAPSHOT.put(STATE_KEY, JSON.stringify(current));
-      return `indexnow: submitted ${fresh.length} new URL(s), HTTP ${res.status} — ${fresh.slice(0, 3).join(", ")}${fresh.length > 3 ? " …" : ""}`;
+  const payload = JSON.stringify({ host, key: INDEXNOW_KEY, keyLocation: `${origin}/${INDEXNOW_KEY}.txt`, urlList: fresh });
+  const results: string[] = [];
+  let accepted = 0;
+  for (const endpoint of ENDPOINTS) {
+    const label = new URL(endpoint).hostname.replace(/^www\./, "");
+    try {
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "content-type": "application/json; charset=utf-8" },
+        body: payload,
+      });
+      /* 200 and 202 both mean received. Anything else is worth seeing in the log rather than
+         swallowing — but never worth failing the run for, since nothing a reader sees depends
+         on it. */
+      if (res.ok) accepted++;
+      results.push(`${label} ${res.status}`);
+    } catch (e) {
+      results.push(`${label} ${e instanceof Error ? e.message.slice(0, 40) : "failed"}`);
     }
-    return `indexnow: endpoint returned HTTP ${res.status}, state left unchanged so the same URLs retry next pass`;
-  } catch (e) {
-    return `indexnow: submission failed (${e instanceof Error ? e.message : String(e)}), state left unchanged`;
   }
+  /* STATE ADVANCES ONLY IF SOMETHING RECEIVED IT. One acceptance is enough — the URLs have
+     reached an index and re-announcing them is noise. Zero acceptances leaves the state alone
+     so the same set retries next pass, which is the behaviour that made a silent outage
+     recoverable rather than permanent. */
+  if (accepted) {
+    await env.SNAPSHOT.put(STATE_KEY, JSON.stringify(current));
+    return `indexnow: submitted ${fresh.length} new URL(s) to ${accepted}/${ENDPOINTS.length} endpoints [${results.join(", ")}] — ${fresh.slice(0, 3).join(", ")}${fresh.length > 3 ? " …" : ""}`;
+  }
+  return `indexnow: no endpoint accepted [${results.join(", ")}], state left unchanged so the same URLs retry next pass`;
 }
