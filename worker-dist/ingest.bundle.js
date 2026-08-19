@@ -783,7 +783,11 @@ Search performance not available: ${e instanceof Error ? e.message : String(e)}`
   }
   say("\n## C. Crawler fetches\n");
   try {
-    if (!env.CF_ANALYTICS_TOKEN || !env.CF_ZONE_ID) throw new Error("CF_ANALYTICS_TOKEN or CF_ZONE_ID is not set");
+    const absent = [
+      !env.CF_ANALYTICS_TOKEN && "CF_ANALYTICS_TOKEN",
+      !env.CF_ZONE_ID && "CF_ZONE_ID"
+    ].filter(Boolean);
+    if (absent.length) throw new Error(`${absent.join(" and ")} ${absent.length > 1 ? "are" : "is"} not set`);
     const day = 864e5;
     const groups = [];
     let windows = 0;
@@ -900,7 +904,7 @@ async function stepProbe(env) {
 }
 
 // worker/build-stamp.ts
-var WORKER_BUILD = "864b0b578b87";
+var WORKER_BUILD = "4ca57da6467f";
 
 // worker/ingest.ts
 var RETAIN_HOURS = 72;

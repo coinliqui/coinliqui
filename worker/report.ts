@@ -436,7 +436,15 @@ export async function stepReport(env: ReportEnv, force = false): Promise<string 
   /* ---------------------------------------------------------------- C. crawlers */
   say("\n## C. Crawler fetches\n");
   try {
-    if (!env.CF_ANALYTICS_TOKEN || !env.CF_ZONE_ID) throw new Error("CF_ANALYTICS_TOKEN or CF_ZONE_ID is not set");
+    /* NAME THE ONE THAT IS MISSING. This said "CF_ANALYTICS_TOKEN or CF_ZONE_ID is not set"
+       while knowing perfectly well which — and it published that to /status/indexation after
+       CF_ZONE_ID had been set, so the page told a reader to install a secret that was already
+       installed. An error message that lists its own possibilities is a count, not a diff. */
+    const absent = [
+      !env.CF_ANALYTICS_TOKEN && "CF_ANALYTICS_TOKEN",
+      !env.CF_ZONE_ID && "CF_ZONE_ID",
+    ].filter(Boolean);
+    if (absent.length) throw new Error(`${absent.join(" and ")} ${absent.length > 1 ? "are" : "is"} not set`);
 
     /* SEVEN ONE-DAY WINDOWS, NOT ONE SEVEN-DAY WINDOW.
        This section had never produced a single number, and the reason was not the missing
