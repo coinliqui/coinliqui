@@ -396,6 +396,20 @@ export interface KVNamespace {
  * a 200-with-empty-content or a 404 would not. This state exists only between deploying
  * and the first successful cron tick, and is not reachable once ingest has run once.
  */
+/**
+ * THE COPY USED TO PROMISE THAT THIS RESOLVES ITSELF.
+ *
+ * It said "This resolves within a few minutes of deployment and does not require any action" —
+ * true for a first deploy, which is the case it was written for, and false for the case that
+ * actually matters now. This page renders on 18 routes whenever the snapshot is absent OR the
+ * store cannot be read, and getSnapshot collapses both into the same EMPTY value. Since 19
+ * August 2026 the site has one upstream, so a sustained failure would serve that reassurance
+ * indefinitely, to readers and to crawlers, while nothing resolved.
+ *
+ * Same defect class as the cadence claim the freshness module replaced: an unconditional promise
+ * about the future, printed by a page that cannot see the future. The wording now describes the
+ * state and names both causes without predicting which one it is.
+ */
 export function coldStart(): Response {
   return new Response(
     `<!doctype html><html lang="en"><head><meta charset="utf-8">` +
@@ -404,8 +418,9 @@ export function coldStart(): Response {
       `display:grid;place-items:center;min-height:100vh;margin:0;padding:24px;text-align:center}` +
       `p{color:#9aa1ab;max-width:44ch}</style></head><body><div>` +
       `<h1 style="font-size:19px;font-weight:600;margin:0 0 8px">Collecting data</h1>` +
-      `<p>The first snapshot has not been written yet. This resolves within a few minutes of ` +
-      `deployment and does not require any action.</p></div></body></html>`,
+      `<p>No snapshot is available, so there is nothing to render here yet. On a first deploy ` +
+      `that clears itself once the ingest runs. It also appears if the data store cannot be ` +
+      `read, which does not.</p></div></body></html>`,
     {
       status: 503,
       headers: {

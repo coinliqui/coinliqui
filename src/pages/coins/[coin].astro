@@ -162,6 +162,21 @@ const description = `Live ${coin.name} (${coin.symbol}) perpetual price from Hyp
     <p>{coin.blurb}</p>
   </div>
 
+  {/* A PUBLISHED COIN WHOSE CONTRACT IS NOT IN THE SNAPSHOT. Coverage is gated on a publication
+      date and an open-interest floor, so a contract that falls below the floor, is delisted, or
+      simply stops appearing in Hyperliquid's response leaves this page rendering "—" in every
+      slot with a title that still promises a price. That is a page saying nothing while looking
+      like a page saying something, and it is indexed. It now says which it is. */}
+  {!perp && (
+    <div class="verdict verdict--warn">
+      <div>
+        <b>{coin.symbol} is not in the current snapshot.</b> The perpetual is either below this
+        site's coverage floor or not being returned by the venue right now, so the figures below
+        are unavailable rather than zero. Nothing here is an assertion about the market.
+      </div>
+    </div>
+  )}
+
   <div class="hero">
     <span class="hero__price" data-spot="last" data-sym={coin.symbol} data-dp={dp}>{Number.isFinite(price) ? px(price) : "—"}</span>
     <span class:list={["hero__chg"]} data-spot="chg" data-sym={coin.symbol}>
