@@ -95,6 +95,48 @@ export function undefinedClasses(html, css) {
  * prove it is well formed is a worse idea than the bug; these are two narrow signatures of one
  * observed defect, and both were confirmed against the two real pages before being written.
  */
+/**
+ * AN ATTRIBUTE THAT RENDERS AND IS NOT VALID.
+ *
+ * Found in a browser console: 131 identical SVG errors on one coin page, "rect attribute rx:
+ * Unexpected end of attribute. Expected length". Every candle body on every chart carried
+ * `rx=""`, and on the wide-candle timeframes `rx=" rx="1""` — quotes closing early and the
+ * remainder becoming stray attributes. One character wrong in src/lib/series.ts, shipped from
+ * the day hollow candles were written, on every coin page and every timeframe.
+ *
+ * WHY NOTHING CAUGHT IT. The picture was correct. Browsers recover from bad attributes by
+ * ignoring them, and the intended effect on narrow candles was no rounding, which is exactly
+ * what ignoring the attribute produces. So the page looked right, the check that reads the
+ * chart's DATA passed, and the only evidence was a console the checks never open. This is the
+ * phantom-`<code>` lesson again: markup can be wrong in ways the rendered result does not show.
+ *
+ * TWO SIGNATURES:
+ *   - a geometry attribute with an empty value. Every one of these takes a length; none of
+ *     them means anything empty, and the browser errors on each.
+ *   - a value containing an `attr="` sequence, which only happens when a fragment meant for
+ *     insertion between attributes is interpolated inside one.
+ *
+ * Deliberately narrow. This is not an SVG validator; it is the two shapes actually observed.
+ */
+const GEOMETRY_ATTRS = ["x", "y", "rx", "ry", "cx", "cy", "r", "width", "height", "x1", "y1", "x2", "y2", "stroke-width", "offset"];
+
+export function malformedAttributes(html) {
+  const out = [];
+  for (const a of GEOMETRY_ATTRS) {
+    const n = [...html.matchAll(new RegExp(`\\s${a}=""`, "g"))].length;
+    if (n) out.push(`${n} element(s) carry ${a}="" — that attribute takes a length and an empty one is invalid`);
+  }
+  /* A quoted value that itself contains `name="`. Restricted to the geometry set so a legitimate
+     value carrying an equals sign (a URL in href, JSON in a data- attribute) cannot trip it. */
+  for (const a of GEOMETRY_ATTRS) {
+    for (const m of html.matchAll(new RegExp(`\\s${a}="[^"]*\\s[a-zA-Z-]+="`, "g"))) {
+      out.push(`${a} contains a nested attribute — a fragment was interpolated as a value: ${m[0].slice(0, 48)}…`);
+      break;
+    }
+  }
+  return out;
+}
+
 const INLINE_INVENTED = ["code", "b", "i", "em", "strong", "kbd", "samp", "small"];
 const BLOCK_AFTER = ["p", "div", "table", "tbody", "thead", "tr", "td", "th", "h1", "h2", "h3", "section", "ul", "ol", "li"];
 

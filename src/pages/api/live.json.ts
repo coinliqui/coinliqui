@@ -1,5 +1,4 @@
 import type { APIRoute } from "astro";
-import { getSpot, SPOT_SOURCE } from "../../lib/coins.ts";
 import { getSnapshot, getLive } from "../../lib/hyperliquid.ts";
 
 /**
@@ -25,8 +24,7 @@ import { getSnapshot, getLive } from "../../lib/hyperliquid.ts";
  */
 export const GET: APIRoute = async ({ locals }) => {
   const env = (locals as any)?.runtime?.env;
-  const [spot, live, snap] = await Promise.all([
-    getSpot(env?.SNAPSHOT, import.meta.env.DEV),
+  const [live, snap] = await Promise.all([
     getLive(env?.SNAPSHOT),
     getSnapshot(env?.SNAPSHOT, import.meta.env.DEV),
   ]);
@@ -45,27 +43,40 @@ export const GET: APIRoute = async ({ locals }) => {
   }
   for (const [s, v] of Object.entries(live?.apr ?? {})) apr[s] = { ...(apr[s] ?? {}), ...(v as Record<string, number>) };
 
-  /* ATTRIBUTION TRAVELS WITH THE PAYLOAD, because this endpoint is publicly fetchable and
-     machine-readable, and the HTML footer that credits our sources does not reach anything
-     that reads JSON. Every page on this site names Coinbase Exchange next to a spot figure;
-     until this field existed, the one representation a third party could actually consume
-     named nobody. A compliance audit called that the sharpest exposure on the site and it
-     was right: the credit was attached to the presentation layer rather than to the data.
+  /* SPOT IS GONE FROM THIS PAYLOAD, ON PURPOSE, AND CAN COME BACK IN ONE LINE.
+     Removed 19 August 2026 with the licensing question still open rather than after it closed,
+     because the rule is that unconfirmed permission resolves toward removal. This endpoint was
+     the sharpest form of the question a compliance audit raised: not display of a third party's
+     market data on a page, but MACHINE-READABLE REDISTRIBUTION of it to anybody who requests a
+     URL. Attribution — which this payload now carries for what remains — mitigates a display
+     question and does not answer a redistribution one.
 
-     `spot` IS LOAD-BEARING and is not simply dropped. It feeds every `[data-spot]` element
-     on /coins and the eleven coin pages, which is how a price moves while a reader is
-     looking at it. Removing it would degrade a live product surface to answer a licensing
-     question that is still open — see /data-sources on what we do and do not claim about
-     Coinbase's terms. If that question resolves against display, `spot` goes and the pages
-     fall back to their server-rendered figure; that is a one-line change, kept ready. */
+     WHAT IT COST, stated rather than minimised: the spot price, the 24-hour change and the
+     basis stop moving while a reader watches. Every one of them is still server-rendered at
+     first byte, still current to the minute at page load, and still stamped with its own age.
+     A convenience, not a figure.
+
+     WHAT IT DID NOT COST: `mark` and `apr` are Hyperliquid's and stay. See interact.js — the
+     overlay freezes mark alongside spot on any page that prints a spot-derived figure, because
+     a mark that moves beside a spot that does not is two prices for one asset both looking
+     current, which is a defect this codebase has already fixed once.
+
+     TO REVERSE, if Coinbase's Market Data Terms turn out to permit it: restore the getSpot
+     call, the `spot` key, `spotAt`, and the spot entry in `sources`. interact.js needs no
+     change — it already paints spot when the payload carries it and freezes when it does not.
+
+     ATTRIBUTION STAYS IN THE PAYLOAD for what is left. The HTML footer credits our sources and
+     reaches nothing that reads JSON, so until `sources` existed the one representation a third
+     party could actually consume named nobody. */
   return new Response(
     JSON.stringify({
-      at: Math.max(spot?.at ?? 0, live?.at ?? 0, snap.fetchedAt),
-      spotAt: spot?.at ?? 0,
+      /* The clocks of what this payload actually delivers. `at` used to include the spot cron's
+         stamp, which would now claim page-wide freshness for the one figure the overlay no
+         longer refreshes. */
+      at: Math.max(live?.at ?? 0, snap.fetchedAt),
       liveAt: live?.at ?? 0,
       snapAt: snap.fetchedAt,
-      sources: { spot: SPOT_SOURCE, mark: "Hyperliquid", apr: "Hyperliquid (incl. Binance and Bybit rates it republishes)" },
-      spot: spot?.q ?? {},
+      sources: { mark: "Hyperliquid", apr: "Hyperliquid (incl. Binance and Bybit rates it republishes)" },
       mark,
       apr,
     }),

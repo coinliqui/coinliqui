@@ -473,6 +473,21 @@
     const pctOf = (v) => (v * 100).toFixed(2) + "%";
     let last = {};
 
+    /* SPOT LEFT THE LIVE FEED, AND MARK HAD TO STOP WITH IT ON THE PAGES THAT PRINT BOTH.
+       /api/live.json no longer carries Coinbase spot — see the note in that file for why. The
+       three spot-derived kinds below simply stop repainting, which is the intended cost. What
+       is NOT acceptable is the second-order effect: `mark` comes from Hyperliquid and is still
+       served, so without this it would keep moving beside a frozen spot, and the `basis`
+       printed between them would be the gap between a live number and a stale one. That is
+       three figures on two clocks presented as one moment — the exact defect the comment forty
+       lines below records fixing, arriving from the other direction.
+       So: any symbol with a spot-derived cell on this page has its mark frozen too, for as long
+       as the payload carries no spot. Nothing here is conditional on a build flag or a version;
+       it keys off what the response actually contains, so restoring spot server-side restores
+       every one of these with no client change. */
+    const SPOT_KINDS = new Set(["last", "chg", "basis"]);
+    const spotSyms = new Set(liveEls.filter((el) => SPOT_KINDS.has(el.dataset.spot)).map((el) => el.dataset.sym));
+
     /* THE CHART'S PRICE MARKER MOVES TOO.
        It used to show the last CANDLE close — up to two hours old, because the candle feed is
        on a two-hour gate while the quote is on a one-minute cron. On BTC that put $62,725 on
@@ -508,10 +523,16 @@
     };
 
     const paint = (d) => {
+      /* `d.spot` is ABSENT, not empty, in the current payload. `d.spot[sym]` threw a TypeError
+         on the first render after it was removed and took the whole overlay down with it —
+         including the APR repaint, which has nothing to do with spot. Read defensively. */
+      const spot = d.spot ?? {};
+      const spotServed = Object.keys(spot).length > 0;
+      const frozen = (sym) => !spotServed && spotSyms.has(sym);
       for (const el of liveEls) {
         const sym = el.dataset.sym;
-        const s = d.spot[sym];
-        const mk = d.mark[sym];
+        const s = spot[sym];
+        const mk = frozen(sym) ? undefined : d.mark[sym];
         const kind = el.dataset.spot;
         let next = null;
         if (kind === "last" && s) next = money(s.last, dpOf(el));
@@ -587,13 +608,23 @@
           setTimeout(() => el.removeAttribute("data-moved"), 700);
         }
       }
-      for (const sym in d.spot) moveMark(sym, "spot", d.spot[sym].last);
-      for (const sym in d.mark) moveMark(sym, "mark", d.mark[sym]);
+      for (const sym in spot) moveMark(sym, "spot", spot[sym].last);
+      /* Same rule for the picture as for the numbers: a marker that tracks the mark while the
+         spot marker beside it is pinned to page load would put two "now"s on one chart. */
+      for (const sym in d.mark) if (!frozen(sym)) moveMark(sym, "mark", d.mark[sym]);
 
       /* Each figure carries its own clock. The page-wide pill tracks the fastest thing on the
          page, and anything slower prints its own age beside it — a single timestamp would be
          true of some numbers and a lie about the rest. */
+      /* AND THE PAGE-WIDE CLOCK IS LEFT ALONE WHERE SPOT IS SHOWN AND NOT REFRESHED.
+         The server renders that pill from oldestStamp(...) — the age of the STALEST figure on
+         the page, deliberately — and `at` in the payload is the newest. Repainting it here
+         while the spot price is pinned to page load would advance the one label a reader uses
+         to decide whether to trust the numbers, on behalf of a figure that is genuinely ageing.
+         Left alone it counts up, which is the truth. */
+      const spotShownAndStale = spotSyms.size > 0 && !spotServed;
       document.querySelectorAll("[data-clock]").forEach((el) => {
+        if (spotShownAndStale && el.dataset.clock === "at") return;
         const at = d[el.dataset.clock];
         if (at) { el.dataset.fresh = String(at); el.setAttribute("datetime", new Date(at).toISOString()); }
       });
@@ -625,6 +656,10 @@
         const r = await fetch("/api/live.json", { headers: { accept: "application/json" }, cache: "no-store" });
         if (!r.ok) throw new Error(r.status);
         const d = await r.json();
+        /* `d.mark` and NOT `d.spot`: the shape guard named spot once, so removing spot from the
+           payload would have made every pull throw and the page declare "Not updating" while
+           the endpoint was answering correctly. A shape guard has to name what the contract
+           still requires. */
         if (!d || !d.mark) throw new Error("shape");
         paint(d);
         fails = 0;

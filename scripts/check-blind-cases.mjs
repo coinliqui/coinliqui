@@ -28,7 +28,7 @@ import {
   contradictoryStates, rawEnums, founderAgreement, readmeCounts,
   basisSelfConsistent, uncoveredRoutes, staleDerivedCells, botPolicyReasons,
   undefinedClasses, undefinedVars, unreadableText, colourLegend, colourLanguageDrift,
-  chartAgreement, formatterDrift, fixtureGaps, requestedLeverageLabels, phantomInlineElements,
+  chartAgreement, formatterDrift, fixtureGaps, requestedLeverageLabels, phantomInlineElements, malformedAttributes,
 } from "./checks.mjs";
 
 /* Enough page for a check to have something to read. Deliberately minimal: a fixture that is
@@ -55,6 +55,20 @@ const cases = [
     why: "a page carrying both an age and a claim it is not updating tells two stories at once",
     fire: () => contradictoryStates(doc(`<p>Updated 3 min ago</p><p>Not updating</p>`)),
     quiet: () => contradictoryStates(doc(`<p>Updated 3 min ago</p>`)),
+  },
+  {
+    check: "malformedAttributes",
+    why: "an attribute a browser ignores is an attribute that renders correctly and is still wrong",
+    /* BOTH observed shapes, verbatim from the live coin pages: the empty geometry attribute that
+       131 candles carried, and the fragment-as-value that the wide-candle branch produced. The
+       quiet fixture carries a correct rx AND a data- attribute holding an equals sign, because
+       the second signature must not fire on legitimate values that contain markup-like text. */
+    fire: () => malformedAttributes(doc(
+      `<svg><rect x="1" y="2" width="3" height="4" rx="" fill="none"/>` +
+      `<rect x="5" y="6" width="7" height="8" rx=" rx="1"" fill="none"/></svg>`)),
+    quiet: () => malformedAttributes(doc(
+      `<svg><rect x="1" y="2" width="3" height="4" rx="1" fill="none"/></svg>` +
+      `<div data-plot="16,16,1164,476" data-q="a=&quot;b&quot;"><a href="/x?a=1&amp;b=2">k</a></div>`)),
   },
   {
     check: "phantomInlineElements",

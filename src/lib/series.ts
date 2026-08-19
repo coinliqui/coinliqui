@@ -225,7 +225,15 @@ export function buildPriceChart(
       if (up && bh > 2.2) {
         /* A hollow body needs a stroke on the path, and stroke straddles the edge, so the rect
            is inset by half a stroke to keep the drawn width equal to the filled case. */
-        s.push(`<rect x="${n2(x - bw / 2 + 0.5)}" y="${n2(bt + 0.5)}" width="${n2(Math.max(0.5, bw - 1))}" height="${n2(Math.max(0.5, bh - 1))}" rx="${rx}" fill="none" stroke="${k}" stroke-width="1"/>`);
+        /* `${rx}` AND NOT `rx="${rx}"`. rx is an attribute FRAGMENT — either ` rx="1"` or the
+           empty string — which is what the rect() helper below takes as `extra`. Interpolated
+           here as a VALUE it produced `rx=""` on every narrow candle (invalid: rx takes a
+           length, and the browser logged one error per candle — 131 on a 1H chart, 88 on 1D)
+           and `rx=" rx="1""` on every wide one (22 on 1W, 5 on 1M), where the quotes close
+           early and the rest becomes stray attributes. Both shipped on every coin page from
+           the day hollow candles were written; both rendered, which is why nobody saw them.
+           Found in a browser console while verifying something else. */
+        s.push(`<rect x="${n2(x - bw / 2 + 0.5)}" y="${n2(bt + 0.5)}" width="${n2(Math.max(0.5, bw - 1))}" height="${n2(Math.max(0.5, bh - 1))}"${rx} fill="none" stroke="${k}" stroke-width="1"/>`);
       } else {
         s.push(rect(x - bw / 2, bt, bw, bh, k, rx));
       }

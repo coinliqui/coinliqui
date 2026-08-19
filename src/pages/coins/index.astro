@@ -24,7 +24,14 @@ const spotSet = await getSpot(env?.SNAPSHOT, import.meta.env.DEV);
 
    `live` and `spot` are written by the same minute() pass (worker/ingest.ts:156,160), so
    preferring live.mark puts both halves of the subtraction on one clock. Falling back to the
-   snapshot keeps a just-deployed page working, one clock slower, exactly as live.json does. */
+   snapshot keeps a just-deployed page working, one clock slower, exactly as live.json does.
+
+   AND SINCE 19 AUGUST THE CLIENT NO LONGER RECOMPUTES IT AT ALL. /api/live.json stopped
+   carrying Coinbase spot — a licensing question resolved toward removal rather than waiting to
+   be closed, see the note in that file — so the basis a reader sees is the server-rendered one
+   for the life of the page, which is the value this comment argued for in the first place. The
+   overlay freezes the mark alongside it rather than moving one half of a subtraction whose
+   other half is pinned. */
 const live = await getLive(env?.SNAPSHOT);
 const markOf = (sym: string, fallback: number) => live?.mark?.[sym] ?? fallback;
 
