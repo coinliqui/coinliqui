@@ -88,38 +88,57 @@ await check("the clock crosses six coins' publication date", base, withCoins,
 
 /* First run must NOT announce everything — that is the bulk dump the design refuses. */
 await check("first run, no state at all", undefined, base,
-  (s, line, stored) => s.length === 0 && /baseline/.test(line) && stored.length === base.length);
+  (s, line, stored) => s.length === 0 && /baseline/.test(line) && stored.known.length === base.length && !stored.pending);
 
 /* A contract dropping below the floor removes a URL. Nothing to announce, and the state must
    follow so that its return later counts as new again. */
 const fewer = publishedUrls(O, ["BTC"], T1);
 await check("a contract retires below the floor", base, fewer, (s) => s.length === 0);
 
-/* A failed submission must not record the URLs as sent, or they are lost forever. */
+/* A failed submission must not record the URLs as sent, or they are lost forever. The invariant
+   is no longer "the state is byte-identical" — `known` advances unconditionally now, because it
+   is a record of what has been published rather than a receipt. What must hold is that every
+   endpoint is still OWED the URL and will be offered it again. */
 {
   globalThis.fetch = async () => ({ ok: false, status: 500 });
   const store = kv(base);
   const line = await stepIndexNow({ SNAPSHOT: store, SITE_ORIGIN: O }, withNew);
-  const held = JSON.stringify(store.read()) === JSON.stringify(base);
-  console.log(`  ${held ? "ok  " : "FAIL"}  ${"every endpoint 500 — state must NOT advance".padEnd(52)} retries next pass`);
+  const st = store.read();
+  const owed = Object.values(st.pending ?? {});
+  const held = owed.length === 5 && owed.every((l) => l.includes(`${O}/funding/sol`));
+  console.log(`  ${held ? "ok  " : "FAIL"}  ${"every endpoint 500 — all five still owe the URL".padEnd(52)} ${owed.length}/5 owed`);
   if (!held) { bad++; console.log(`        line: ${line}`); }
 }
 
-/* PARTIAL ACCEPTANCE, WHICH IS THE STATE THE FAN-OUT INTRODUCED AND THE ONLY NEW ONE.
-   One index having received the URLs is the whole objective; holding the state back because a
-   second index was down would re-announce the same set to the first one on every pass until it
-   recovered, which is the submission pattern the baseline rule exists to avoid. So: any single
-   acceptance advances, and the log has to say which ones failed. */
+/* THE CASE THE LIVE RUN TAUGHT. Announcing the twenty-two previously-unannounced URLs returned
+   429 from the aggregator AND from Bing while three others accepted. Under a single shared state
+   that advanced on any acceptance, those URLs would never have been offered to Bing again —
+   losing the one index this project has no other account-free route into. */
 {
-  globalThis.fetch = async (url) => ({ ok: new URL(url).hostname === "yandex.com", status: new URL(url).hostname === "yandex.com" ? 202 : 503 });
+  let round = 0;
+  const seenBy = [];
+  globalThis.fetch = async (url, opts) => {
+    const h = new URL(url).hostname.replace(/^www\./, "");
+    seenBy.push(`${round}:${h}:${JSON.parse(opts.body).urlList.join("|")}`);
+    /* Bing 429s on the first pass and accepts on the second; everyone else accepts at once. */
+    const ok = !(h === "bing.com" && round === 0);
+    return { ok, status: ok ? 200 : 429 };
+  };
   const store = kv(base);
-  const line = await stepIndexNow({ SNAPSHOT: store, SITE_ORIGIN: O }, withNew);
-  const advanced = JSON.stringify(store.read()) === JSON.stringify(withNew);
-  const named = line.includes("yandex.com 202") && line.includes("503");
-  const ok = advanced && named;
-  console.log(`  ${ok ? "ok  " : "FAIL"}  ${"one endpoint accepts, four fail — state advances".padEnd(52)} ${advanced ? "advanced" : "HELD"}, log names both`);
-  if (!ok) { bad++; console.log(`        line: ${line}`); }
+  await stepIndexNow({ SNAPSHOT: store, SITE_ORIGIN: O }, withNew);
+  const afterFirst = store.read().pending ?? {};
+  round = 1;
+  const line2 = await stepIndexNow({ SNAPSHOT: store, SITE_ORIGIN: O }, withNew);
+  const afterSecond = store.read().pending ?? {};
+
+  const bingOwedFirst = (afterFirst["bing.com"] ?? []).includes(`${O}/funding/sol`);
+  const bingRetried = seenBy.includes(`1:bing.com:${O}/funding/sol`);
+  const othersNotRetried = !seenBy.some((e) => e.startsWith("1:") && !e.startsWith("1:bing.com"));
+  const clearedAfter = !Object.keys(afterSecond).length;
+  const ok = bingOwedFirst && bingRetried && othersNotRetried && clearedAfter;
+  console.log(`  ${ok ? "ok  " : "FAIL"}  ${"bing 429s, is retried alone next pass, then cleared".padEnd(52)} ${bingRetried ? "retried" : "NOT RETRIED"}, ${othersNotRetried ? "others untouched" : "OTHERS RESENT"}`);
+  if (!ok) { bad++; console.log(`        after first: ${JSON.stringify(afterFirst)}\n        calls: ${seenBy.join(" ")}\n        line: ${line2}`); }
 }
 
-console.log(bad ? `\n  ${bad} case(s) wrong` : "\n  submits only on a URL that did not exist before, and never on a price tick");
+console.log(bad ? `\n  ${bad} case(s) wrong` : "\n  submits only on a URL that did not exist before, never on a price tick, and never forgets an endpoint that refused");
 process.exit(bad ? 1 : 0);

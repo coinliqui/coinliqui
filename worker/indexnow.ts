@@ -105,13 +105,42 @@ export function publishedUrls(origin: string, symbols: string[], now = Date.now(
  * does nothing, because "no new URLs" is the expected result and a silent step is one nobody
  * notices has broken.
  */
+/**
+ * THE STATE IS PER-ENDPOINT, BECAUSE A SHARED ONE LOSES WHATEVER THE FAN-OUT DROPPED.
+ *
+ * The first version of the fan-out advanced one global set the moment ANY endpoint accepted,
+ * on the reasoning that one index having the URLs is the objective. Its first real run refuted
+ * that within the hour: announcing the twenty-two previously-unannounced URLs returned
+ * `api.indexnow.org 429, bing.com 429, yandex.com 200, search.seznam.cz 200,
+ * searchadvisor.naver.com 200` — three accepted, so the state advanced, so those twenty-two
+ * URLs would never have been offered to Bing again. Bing is the endpoint that matters most here:
+ * it is the index behind DuckDuckGo, Yahoo and Ecosia, and it is the one this project has no
+ * other account-free route into.
+ *
+ * So `known` records what has ever been published — that is what makes the first run a baseline
+ * rather than a bulk dump — and each endpoint carries its own backlog of what it has not yet
+ * accepted. An endpoint that 429s gets the same URLs again next pass; one that accepted does
+ * not. The whole state stays a single KV value.
+ */
+export interface IndexNowState {
+  /** Every URL ever seen published. Advances unconditionally; it is a record, not a receipt. */
+  known: string[];
+  /** Per endpoint hostname, URLs offered and not yet accepted. */
+  pending?: Record<string, string[]>;
+}
+
+/** Old state was a bare array of URLs. Read either shape; write only the new one. */
+const readState = (raw: unknown): IndexNowState | null =>
+  Array.isArray(raw) ? { known: raw as string[] } :
+  raw && typeof raw === "object" && Array.isArray((raw as IndexNowState).known) ? (raw as IndexNowState) : null;
+
 export async function stepIndexNow(env: IndexNowEnv, current: string[]): Promise<string> {
   const origin = env.SITE_ORIGIN || "https://coinliqui.com";
   const host = new URL(origin).host;
 
-  let seen: string[] = [];
+  let st: IndexNowState | null;
   try {
-    seen = ((await env.SNAPSHOT.get(STATE_KEY, "json")) as string[] | null) ?? [];
+    st = readState(await env.SNAPSHOT.get(STATE_KEY, "json"));
   } catch {
     /* An unreadable state file must not cause a resubmission of everything. Treating it as
        "everything already sent" fails closed: the worst case is a genuinely new URL going
@@ -119,44 +148,60 @@ export async function stepIndexNow(env: IndexNowEnv, current: string[]): Promise
     return "indexnow: state unreadable, skipped";
   }
 
-  const known = new Set(seen);
-  const fresh = current.filter((u) => !known.has(u)).slice(0, MAX_URLS);
-  if (!fresh.length) return `indexnow: nothing new (${current.length} URLs published, all previously submitted)`;
-
   /* FIRST RUN IS NOT A CHANGE. With no state, every URL looks new; announcing all of them at
      once is the one submission pattern that reads as a bulk dump. Record them and say so. */
-  if (!seen.length) {
-    await env.SNAPSHOT.put(STATE_KEY, JSON.stringify(current));
+  if (!st || !st.known.length) {
+    await env.SNAPSHOT.put(STATE_KEY, JSON.stringify({ known: current } satisfies IndexNowState));
     return `indexnow: first run, recorded ${current.length} URLs as the baseline without submitting`;
   }
 
-  const payload = JSON.stringify({ host, key: INDEXNOW_KEY, keyLocation: `${origin}/${INDEXNOW_KEY}.txt`, urlList: fresh });
+  const known = new Set(st.known);
+  const fresh = current.filter((u) => !known.has(u));
+  const pending = { ...(st.pending ?? {}) };
+  const label = (endpoint: string) => new URL(endpoint).hostname.replace(/^www\./, "");
+
+  /* What each endpoint is owed: whatever it never accepted, plus whatever is new. Capped per
+     endpoint, and the cap drops the OLDEST of a backlog rather than the newest — a URL that has
+     been waiting is the one at risk of never being announced at all. */
+  const owed = new Map<string, string[]>();
+  for (const e of ENDPOINTS) {
+    const back = (pending[label(e)] ?? []).filter((u) => current.includes(u));
+    const list = [...new Set([...back, ...fresh])].slice(-MAX_URLS);
+    if (list.length) owed.set(e, list);
+  }
+
+  if (!owed.size) {
+    /* `known` still advances: a URL that appeared and vanished between passes must not be
+       treated as new when it returns without having been announced. */
+    if (fresh.length) await env.SNAPSHOT.put(STATE_KEY, JSON.stringify({ known: current, pending } satisfies IndexNowState));
+    return `indexnow: nothing new (${current.length} URLs published, all previously submitted and accepted)`;
+  }
+
   const results: string[] = [];
   let accepted = 0;
-  for (const endpoint of ENDPOINTS) {
-    const label = new URL(endpoint).hostname.replace(/^www\./, "");
+  for (const [endpoint, list] of owed) {
+    const name = label(endpoint);
     try {
       const res = await fetch(endpoint, {
         method: "POST",
         headers: { "content-type": "application/json; charset=utf-8" },
-        body: payload,
+        body: JSON.stringify({ host, key: INDEXNOW_KEY, keyLocation: `${origin}/${INDEXNOW_KEY}.txt`, urlList: list }),
       });
       /* 200 and 202 both mean received. Anything else is worth seeing in the log rather than
          swallowing — but never worth failing the run for, since nothing a reader sees depends
          on it. */
-      if (res.ok) accepted++;
-      results.push(`${label} ${res.status}`);
+      if (res.ok) { accepted++; delete pending[name]; } else pending[name] = list;
+      results.push(`${name} ${res.status}${res.ok ? "" : `+${list.length} owed`}`);
     } catch (e) {
-      results.push(`${label} ${e instanceof Error ? e.message.slice(0, 40) : "failed"}`);
+      pending[name] = list;
+      results.push(`${name} ${e instanceof Error ? e.message.slice(0, 32) : "failed"}+${list.length} owed`);
     }
   }
-  /* STATE ADVANCES ONLY IF SOMETHING RECEIVED IT. One acceptance is enough — the URLs have
-     reached an index and re-announcing them is noise. Zero acceptances leaves the state alone
-     so the same set retries next pass, which is the behaviour that made a silent outage
-     recoverable rather than permanent. */
-  if (accepted) {
-    await env.SNAPSHOT.put(STATE_KEY, JSON.stringify(current));
-    return `indexnow: submitted ${fresh.length} new URL(s) to ${accepted}/${ENDPOINTS.length} endpoints [${results.join(", ")}] — ${fresh.slice(0, 3).join(", ")}${fresh.length > 3 ? " …" : ""}`;
-  }
-  return `indexnow: no endpoint accepted [${results.join(", ")}], state left unchanged so the same URLs retry next pass`;
+
+  await env.SNAPSHOT.put(STATE_KEY, JSON.stringify({ known: current, pending } satisfies IndexNowState));
+  const owedTotal = Object.keys(pending).length;
+  const head = fresh.length ? `submitted ${fresh.length} new URL(s)` : `retried a backlog`;
+  return `indexnow: ${head} to ${accepted}/${owed.size} endpoints [${results.join(", ")}]` +
+    (owedTotal ? `, ${owedTotal} endpoint(s) still owed and will retry` : "") +
+    (fresh.length ? ` — ${fresh.slice(0, 3).join(", ")}${fresh.length > 3 ? " …" : ""}` : "");
 }

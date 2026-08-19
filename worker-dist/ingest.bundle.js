@@ -364,44 +364,58 @@ function publishedUrls(origin, symbols, now = Date.now()) {
     ...liveCoins(now).map((c) => `${origin}/coins/${c.slug}`)
   ];
 }
+var readState = (raw) => Array.isArray(raw) ? { known: raw } : raw && typeof raw === "object" && Array.isArray(raw.known) ? raw : null;
 async function stepIndexNow(env, current) {
   const origin = env.SITE_ORIGIN || "https://coinliqui.com";
   const host = new URL(origin).host;
-  let seen = [];
+  let st;
   try {
-    seen = await env.SNAPSHOT.get(STATE_KEY, "json") ?? [];
+    st = readState(await env.SNAPSHOT.get(STATE_KEY, "json"));
   } catch {
     return "indexnow: state unreadable, skipped";
   }
-  const known = new Set(seen);
-  const fresh = current.filter((u) => !known.has(u)).slice(0, MAX_URLS);
-  if (!fresh.length) return `indexnow: nothing new (${current.length} URLs published, all previously submitted)`;
-  if (!seen.length) {
-    await env.SNAPSHOT.put(STATE_KEY, JSON.stringify(current));
+  if (!st || !st.known.length) {
+    await env.SNAPSHOT.put(STATE_KEY, JSON.stringify({ known: current }));
     return `indexnow: first run, recorded ${current.length} URLs as the baseline without submitting`;
   }
-  const payload = JSON.stringify({ host, key: INDEXNOW_KEY, keyLocation: `${origin}/${INDEXNOW_KEY}.txt`, urlList: fresh });
+  const known = new Set(st.known);
+  const fresh = current.filter((u) => !known.has(u));
+  const pending = { ...st.pending ?? {} };
+  const label = (endpoint) => new URL(endpoint).hostname.replace(/^www\./, "");
+  const owed = /* @__PURE__ */ new Map();
+  for (const e of ENDPOINTS) {
+    const back = (pending[label(e)] ?? []).filter((u) => current.includes(u));
+    const list = [.../* @__PURE__ */ new Set([...back, ...fresh])].slice(-MAX_URLS);
+    if (list.length) owed.set(e, list);
+  }
+  if (!owed.size) {
+    if (fresh.length) await env.SNAPSHOT.put(STATE_KEY, JSON.stringify({ known: current, pending }));
+    return `indexnow: nothing new (${current.length} URLs published, all previously submitted and accepted)`;
+  }
   const results = [];
   let accepted = 0;
-  for (const endpoint of ENDPOINTS) {
-    const label = new URL(endpoint).hostname.replace(/^www\./, "");
+  for (const [endpoint, list] of owed) {
+    const name = label(endpoint);
     try {
       const res = await fetch(endpoint, {
         method: "POST",
         headers: { "content-type": "application/json; charset=utf-8" },
-        body: payload
+        body: JSON.stringify({ host, key: INDEXNOW_KEY, keyLocation: `${origin}/${INDEXNOW_KEY}.txt`, urlList: list })
       });
-      if (res.ok) accepted++;
-      results.push(`${label} ${res.status}`);
+      if (res.ok) {
+        accepted++;
+        delete pending[name];
+      } else pending[name] = list;
+      results.push(`${name} ${res.status}${res.ok ? "" : `+${list.length} owed`}`);
     } catch (e) {
-      results.push(`${label} ${e instanceof Error ? e.message.slice(0, 40) : "failed"}`);
+      pending[name] = list;
+      results.push(`${name} ${e instanceof Error ? e.message.slice(0, 32) : "failed"}+${list.length} owed`);
     }
   }
-  if (accepted) {
-    await env.SNAPSHOT.put(STATE_KEY, JSON.stringify(current));
-    return `indexnow: submitted ${fresh.length} new URL(s) to ${accepted}/${ENDPOINTS.length} endpoints [${results.join(", ")}] \u2014 ${fresh.slice(0, 3).join(", ")}${fresh.length > 3 ? " \u2026" : ""}`;
-  }
-  return `indexnow: no endpoint accepted [${results.join(", ")}], state left unchanged so the same URLs retry next pass`;
+  await env.SNAPSHOT.put(STATE_KEY, JSON.stringify({ known: current, pending }));
+  const owedTotal = Object.keys(pending).length;
+  const head = fresh.length ? `submitted ${fresh.length} new URL(s)` : `retried a backlog`;
+  return `indexnow: ${head} to ${accepted}/${owed.size} endpoints [${results.join(", ")}]` + (owedTotal ? `, ${owedTotal} endpoint(s) still owed and will retry` : "") + (fresh.length ? ` \u2014 ${fresh.slice(0, 3).join(", ")}${fresh.length > 3 ? " \u2026" : ""}` : "");
 }
 
 // src/lib/flips.ts
@@ -886,7 +900,7 @@ async function stepProbe(env) {
 }
 
 // worker/build-stamp.ts
-var WORKER_BUILD = "48ca5a783ca6";
+var WORKER_BUILD = "864b0b578b87";
 
 // worker/ingest.ts
 var RETAIN_HOURS = 72;
