@@ -2,12 +2,11 @@
 import Base from "../../layouts/Base.astro";
 import { getSnapshot, coldStart, findPerp, getLive, oldestStamp } from "../../lib/hyperliquid.ts";
 import { usd, pct, paysClass } from "../../lib/funding.ts";
-import { COINS, isLive, getSpot, basisBps, SPOT_SOURCE } from "../../lib/coins.ts";
+import { COINS, isLive } from "../../lib/coins.ts";
 
 const env = (Astro.locals as any)?.runtime?.env;
 const snap = await getSnapshot(env?.SNAPSHOT, import.meta.env.DEV);
 if (!snap.available) return coldStart();
-const spotSet = await getSpot(env?.SNAPSHOT, import.meta.env.DEV);
 /* THE BASIS NEEDS BOTH PRICES ON ONE CLOCK, AND IT DID NOT HAVE THEM.
    The mark came from the 5-minute snapshot; spot comes from the KV `spot` key that the
    1-minute cron rewrites. Basis is a DIFFERENCE of two large, nearly-equal prices expressed
@@ -36,16 +35,17 @@ const live = await getLive(env?.SNAPSHOT);
 const markOf = (sym: string, fallback: number) => live?.mark?.[sym] ?? fallback;
 
 const rows = COINS.map((c) => {
-  const q = spotSet?.q[c.symbol] ?? null;
   const perp = findPerp(snap.perps, c.symbol);
-  const ntl = q ? q.last * q.volume24h : NaN;
+  /* Hyperliquid's own published dollar turnover, not a price times a base volume. The old
+     column multiplied a spot last by a spot base volume from another venue entirely; this is
+     one number from one feed, and it is the same number the contract pages sort on. */
+  const ntl = perp?.dayNtlVlm ?? NaN;
   return {
     ...c,
     live: isLive(c),
-    q,
     perp,
-    chg: q && q.open24h > 0 ? q.last / q.open24h - 1 : NaN,
-    basis: perp && q ? basisBps(markOf(c.symbol, perp.markPx), q.last) : NaN,
+    mark: perp ? markOf(c.symbol, perp.markPx) : NaN,
+    chg: perp && perp.prevDayPx > 0 ? markOf(c.symbol, perp.markPx) / perp.prevDayPx - 1 : NaN,
     ntl,
     apr: perp?.venues.find((v) => v.venue === "HlPerp")?.apr ?? NaN,
   };
@@ -56,18 +56,18 @@ const dp = (v: number) => (v >= 100 ? 2 : v >= 1 ? 3 : v >= 0.01 ? 5 : 7);
 const arrow = (n: number) => (n >= 0 ? "▲" : "▼");
 const fmtDate = (s: string) => new Date(s + "T00:00:00Z").toLocaleDateString("en-GB", { day: "numeric", month: "long", timeZone: "UTC" });
 
-const title = "Crypto coin prices, and what leverage costs on each";
-const description = `Spot prices for the major coins from ${SPOT_SOURCE}, each next to its perpetual basis, funding rate and open interest — the cost of the position beside the price of the asset.`;
+const title = "Crypto perpetual prices, and what leverage costs on each";
+const description = "Perpetual futures prices for the major coins on Hyperliquid, each next to its funding rate, 24-hour turnover and open interest — the cost of the position beside the price of the contract.";
 ---
 
-<Base title={title} description={description} fetchedAt={oldestStamp(snap.fetchedAt, spotSet?.at, live?.at)}>
+<Base title={title} description={description} fetchedAt={oldestStamp(snap.fetchedAt, live?.at)}>
   <div class="page-head">
-    <h1>Coin prices</h1>
+    <h1>Perpetual prices</h1>
     <p>
-      Spot prices from <strong>{SPOT_SOURCE}</strong> — a real USD order book, not an index — each
-      beside the thing a price table leaves out: what the perpetual is charging to hold the same
-      exposure. The <strong>basis</strong> is how far the perpetual trades from spot; the funding
-      rate is what pulls it back, and what it costs you while it does.
+      The <strong>perpetual futures</strong> price for each major coin on Hyperliquid, beside the
+      thing a price table leaves out: what the contract is charging to hold that exposure. These
+      are contract prices, not spot prices — the perpetual can trade above or below the coin, and
+      the funding rate is the mechanism that pulls it back.
     </p>
   </div>
 
@@ -75,8 +75,8 @@ const description = `Spot prices for the major coins from ${SPOT_SOURCE}, each n
     <table class="tbl">
       <thead>
         <tr>
-          <th>Coin</th><th class="num">Spot</th><th class="num">24h change</th><th class="num">24h volume</th>
-          <th class="num">Basis (bps)</th><th class="num">Funding APR</th><th class="num">Open interest</th>
+          <th>Coin</th><th class="num">Mark</th><th class="num">24h change</th><th class="num">24h volume</th>
+          <th class="num">Funding APR</th><th class="num">Open interest</th>
         </tr>
       </thead>
       <tbody>
@@ -86,16 +86,13 @@ const description = `Spot prices for the major coins from ${SPOT_SOURCE}, each n
               {r.live ? <a href={`/coins/${r.slug}`}>{r.name}</a> : <span class="dim">{r.name}</span>}
               <span class="tick">{r.symbol}</span>
             </td>
-            <td class="num" data-spot="last" data-sym={r.symbol} data-dp={r.q ? dp(r.q.last) : 2}>
-              {r.q ? usd(r.q.last, dp(r.q.last)) : "—"}
+            <td class="num" data-spot="mark" data-sym={r.symbol} data-dp={Number.isFinite(r.mark) ? dp(r.mark) : 2}>
+              {Number.isFinite(r.mark) ? usd(r.mark, dp(r.mark)) : "—"}
             </td>
             <td class="num" data-spot="chg" data-sym={r.symbol}>
               {Number.isFinite(r.chg) ? `${arrow(r.chg)} ${(Math.abs(r.chg) * 100).toFixed(2)}%` : "—"}
             </td>
             <td class="num">{Number.isFinite(r.ntl) ? usd(r.ntl) : "—"}</td>
-            <td class="num" data-spot="basis" data-sym={r.symbol}>
-              {Number.isFinite(r.basis) ? `${r.basis >= 0 ? "+" : ""}${r.basis.toFixed(1)}` : "—"}
-            </td>
             <td class:list={["num", Number.isFinite(r.apr) && paysClass(r.apr)]} style="font-weight:600">
               {Number.isFinite(r.apr) ? pct(r.apr) : "—"}
             </td>
@@ -106,8 +103,8 @@ const description = `Spot prices for the major coins from ${SPOT_SOURCE}, each n
     </table>
   </div>
   <p class="legend" style="margin-top:10px">
-    Basis in basis points: positive means the perpetual is richer than spot. ▲ longs pay shorts ·
-    ▼ shorts pay longs — colour encodes the direction of the funding payment only, never price.
+    ▲ longs pay shorts · ▼ shorts pay longs — colour encodes the direction of the funding payment
+    only, never price.
   </p>
 
   {pending.length > 0 && (
@@ -121,26 +118,29 @@ const description = `Spot prices for the major coins from ${SPOT_SOURCE}, each n
     </div>
   )}
 
-  <h2 class="section">Why the price here is Coinbase</h2>
+  <h2 class="section">Why this is a perpetual price, not a spot price</h2>
   <p class="prose">
-    A "coin price" should be a <strong>traded spot price</strong>, and the honest sources are
-    fewer than they look. Hyperliquid — which supplies everything else on this site — has no
-    Bitcoin spot market at all: its spot book is HIP-1 tokens and bridged wrappers turning over
-    about $60M a day in total, so a price from there would not be Bitcoin's.
+    Until 19 August 2026 this page led with a <strong>spot</strong> price from a third-party
+    exchange, and printed the basis between that price and the perpetual. Both are gone. The terms
+    governing that exchange's market data were read in full on that date and forbid displaying the
+    data, or anything derived from it, to anyone outside your own organisation. It was removed
+    rather than kept while the question was argued.
   </p>
   <p class="prose">
-    Binance and Bybit are unreachable from this site's servers. OKX and CoinGecko are not called
-    at all — no request to either exists anywhere in this codebase.
-    <strong>{SPOT_SOURCE}</strong> is a real USD order book, reachable without a key, and covers
-    every coin listed above, so that is where these prices are read from and they are labelled as
-    such everywhere they appear. What its terms permit is a question for its terms, not for this
-    page: we make no claim about them here.
+    What is here instead is Hyperliquid's own perpetual mark, from the same feed as the funding
+    and the open interest beside it. That is a real traded contract price, and it is the honest
+    label for it: a perpetual future on the coin, not the coin. Hyperliquid has no meaningful
+    spot market to substitute — its spot book is HIP-1 tokens and bridged wrappers — and its
+    oracle price is a validator median across venues, an index nobody can trade, so neither is
+    presented as a spot price here.
   </p>
   <p class="prose">
-    Hyperliquid also publishes an <strong>oracle price</strong>, a median across major spot venues.
-    It is a good index but nobody can trade it, so it is not used as the headline. Where the two
-    disagree, the difference is venue composition — Coinbase is one US venue, the oracle is a
-    global median.
+    The consequence worth stating: <strong>the basis is gone from this site.</strong> It was the
+    gap between the perpetual and the underlying, and computing it needs a spot price there is no
+    longer a defensible way to publish. Nothing approximates it against the oracle, because that
+    would be a different number wearing the old one's name.
+    {" "}<a class="link" href="/data-sources">Data sources</a> lists every endpoint behind every
+    figure here.
   </p>
 
   <style>

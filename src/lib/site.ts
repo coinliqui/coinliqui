@@ -99,7 +99,7 @@ export const IDENTITY = {
   summary:
     "An independent, free, read-only reference site for crypto derivatives data: perpetual " +
     "funding rates across venues, open interest, modelled liquidation levels, on-chain token " +
-    "vesting contracts and spot prices. It is published as ordinary web pages.",
+    "vesting contracts and perpetual futures prices. It is published as ordinary web pages.",
   /** What it is NOT. This is the sentence the mistaken answer needed and could not find. */
   notThis:
     "Coinliqui is not an exchange, a broker, a wallet or a custodian. It has no accounts, no " +

@@ -2,7 +2,8 @@
 import Base from "../../layouts/Base.astro";
 import { getSnapshot, coldStart, findPerp, getLive, oldestStamp } from "../../lib/hyperliquid.ts";
 import { usd, pct, VENUE_LABEL, paysClass, paysLabel, carryCost, type Venue } from "../../lib/funding.ts";
-import { findCoin, isLive, liveCoins, getSpot, getSpotCandles, basisBps, SPOT_SOURCE } from "../../lib/coins.ts";
+import { findCoin, isLive, liveCoins } from "../../lib/coins.ts";
+import { getCandles, getHourly, getM15 } from "../../lib/candles.ts";
 import { TIMEFRAMES, DEFAULT_TF, aggregate, buildPriceChart, CHART_H, type ChartMode } from "../../lib/series.ts";
 import { CH } from "../../lib/chart.ts";
 
@@ -14,8 +15,21 @@ import { CH } from "../../lib/chart.ts";
    people actually type — "bitcoin price" — and then earns the visit by putting next to that
    price the thing no price page has: what it costs to hold the position instead of the coin.
 
-   Spot is Coinbase. Everything derivative is Hyperliquid. The two are never mixed into one
-   number, and the gap between them — the basis — is printed rather than hidden.
+   THIS WAS A SPOT PAGE UNTIL 19 AUGUST 2026 and it is now a PERPETUAL page. Every figure came
+   from Coinbase Exchange; its Market Data Terms (https://www.coinbase.com/legal/market_data,
+   last updated 2026-08-07) were read in full that day and forbid displaying the data or anything
+   derived from it. See the header of src/lib/coins.ts for the clauses. So the
+   price here is the Hyperliquid perpetual mark, the chart is Hyperliquid's own candles, and the
+   24-hour figures come from the same series.
+
+   THE BASIS DIED WITH SPOT and is not faked. It was the gap between the perpetual and the
+   underlying, and computing it needs a spot price this site no longer has any defensible way to
+   publish. Nothing here approximates it from the oracle: Hyperliquid's oraclePx is a validator
+   median across venues, it is an index nobody can trade, and printing a "basis" against it
+   would be a different number wearing the old one's name.
+
+   WHAT THE CHANGE BOUGHT: the perpetual series carries 15-minute bars. The 15m and 30m
+   timeframes work on these pages now; spot never had a series that could serve them.
    ========================================================================================= */
 
 const env = (Astro.locals as any)?.runtime?.env;
@@ -38,47 +52,44 @@ if (!coin || !isLive(coin)) return Astro.rewrite(`/404?symbol=${encodeURICompone
 const snap = await getSnapshot(env?.SNAPSHOT, import.meta.env.DEV);
 if (!snap.available) return coldStart();
 
-const [spotSet, hourly, daily] = await Promise.all([
-  getSpot(env?.SNAPSHOT, import.meta.env.DEV),
-  getSpotCandles(env?.SNAPSHOT, coin.symbol, "h", import.meta.env.DEV),
-  getSpotCandles(env?.SNAPSHOT, coin.symbol, "d", import.meta.env.DEV),
+const [dayset, hourset, m15set] = await Promise.all([
+  getCandles(env?.SNAPSHOT, coin.symbol, import.meta.env.DEV),
+  getHourly(env?.SNAPSHOT, coin.symbol, import.meta.env.DEV),
+  getM15(env?.SNAPSHOT, coin.symbol, import.meta.env.DEV),
 ]);
-const q = spotSet?.q[coin.symbol] ?? null;
 const perp = findPerp(snap.perps, coin.symbol);
 
-const price = q?.last ?? NaN;
+const price = perp?.markPx ?? NaN;
 const dp = price >= 100 ? 2 : price >= 1 ? 3 : price >= 0.01 ? 5 : 7;
 const px = (v: number) => usd(v, dp);
-const chg24 = q && q.open24h > 0 ? q.last / q.open24h - 1 : NaN;
-/* THE BASIS NEEDS BOTH PRICES ON ONE CLOCK, AND IT DID NOT HAVE THEM.
-   The mark came from the 5-minute snapshot; spot comes from the KV `spot` key that the
-   1-minute cron rewrites. Basis is a DIFFERENCE of two large, nearly-equal prices expressed
-   in single-digit basis points, so any skew between the two clocks lands in the answer at
-   full size. Measured across a cycle: worst error 11.1 bps against a signal of 3-20, and the
-   SIGN inverted repeatedly — ADA -0.6 where the matched-clock value was +2.2, LINK +9.2 where
-   it was -1.9. A reader was told the perpetual was cheaper than spot when it was richer.
+/* 24h CHANGE FROM THE VENUE'S OWN PREVIOUS-DAY PRICE, not from a candle we aggregated. The
+   snapshot already carries prevDayPx and change24h for every contract, computed by Hyperliquid
+   against its own clock, so deriving it here would be a second answer to a question that
+   already has one. */
+const chg24 = perp && perp.prevDayPx > 0 ? perp.markPx / perp.prevDayPx - 1 : NaN;
+/* 24h HIGH AND LOW COME FROM THE HOURLY SERIES, because the snapshot does not carry them. The
+   last 24 closed hourly bars of the same Hyperliquid feed the chart is drawn from, so the
+   figures beside the chart and the figures in it cannot disagree. */
+const last24 = (hourset?.d ?? []).slice(-24);
+const high24 = last24.length ? Math.max(...last24.map((c) => c[2])) : NaN;
+const low24 = last24.length ? Math.min(...last24.map((c) => c[3])) : NaN;
+/* THE LIVE MARK, and the one clock that still matters here.
+   `live` is written by the one-minute cron; the snapshot is five-minutely. Preferring live.mark
+   means the headline price and the funding beside it are read off the same tick, and falling
+   back to the snapshot keeps a just-deployed page working one clock slower.
 
-   The site already had the matched-clock mark and was already using it in the wrong place:
-   /api/live.json merges KV `live` over the snapshot, and interact.js recomputed the basis
-   from that and silently overwrote the cell ~300ms after paint. So there were two values and
-   only the wrong one was server-rendered — which is the only one an AI crawler ever sees, and
-   the reason this could not be dismissed as a display nicety.
-
-   `live` and `spot` are written by the same minute() pass (worker/ingest.ts:156,160), so
-   preferring live.mark puts both halves of the subtraction on one clock. Falling back to the
-   snapshot keeps a just-deployed page working, one clock slower, exactly as live.json does.
-
-   AND SINCE 19 AUGUST THE CLIENT NO LONGER RECOMPUTES IT AT ALL. /api/live.json stopped
-   carrying Coinbase spot — a licensing question resolved toward removal rather than waiting to
-   be closed — the governing document is still unread after three HTTP 403s — see the note in that file — so the basis a reader sees is the server-rendered one
-   for the life of the page, which is the value this comment argued for in the first place. The
-   overlay freezes the mark alongside it rather than moving one half of a subtraction whose
-   other half is pinned. */
+   This block used to compute the basis, and the long note that stood here argued — correctly —
+   that a difference of two large nearly-equal prices puts any clock skew into the answer at
+   full size. The argument outlived the number: spot is gone, so there is no subtraction left to
+   get wrong. What survives is the reason to prefer live.mark, which is the same reason. */
 const live = await getLive(env?.SNAPSHOT);
 const markNow = live?.mark?.[coin.symbol] ?? perp?.markPx ?? NaN;
-const basis = perp && q ? basisBps(markNow, q.last) : NaN;
-const spotNtl = q ? q.last * q.volume24h : NaN;
-const oiToSpot = perp && Number.isFinite(spotNtl) && spotNtl > 0 ? perp.oiNotional / spotNtl : NaN;
+/* 24h VOLUME IS HYPERLIQUID'S OWN NOTIONAL, already in USD on the snapshot. The old figure was
+   spot base-units times the spot price; this one is the venue's published dollar turnover, so
+   the open-interest ratio beneath it is now perp OI against perp volume — the same market on
+   both sides of the fraction, which the old ratio never was. */
+const perpNtl = perp?.dayNtlVlm ?? NaN;
+const oiToVol = perp && Number.isFinite(perpNtl) && perpNtl > 0 ? perp.oiNotional / perpNtl : NaN;
 
 const ORDER: Venue[] = ["HlPerp", "BinPerp", "BybitPerp"];
 const by = new Map((perp?.venues ?? []).map((v) => [v.venue, v]));
@@ -100,14 +111,15 @@ const modeKey: ChartMode = qs.get("view") === "line" ? "line" : "candle";
 /* ONE PANEL, for the same reason as the contract page — and here it matters more, because this
    template multiplies: six timeframes times two chart styles is TWELVE renders of the same
    series to show one. Availability is a length check on the base series, not a built chart. */
-/* SPOT HAS NO 15-MINUTE SERIES, so the m15-based timeframes must resolve to NOTHING here
-   rather than falling through to the daily candles. A ternary with two arms and three bases
-   would have aggregated daily bars as if they were fifteen-minute ones and drawn a chart that
-   is wrong rather than absent — the failure this file's own button-bar comment warns about,
-   arriving through the back door. Returning undefined leaves 15m and 30m off the bar, which
-   is what "we do not collect that for spot" should look like. */
+/* THREE BASES NOW, WHERE SPOT COULD ONLY OFFER TWO. The note that stood here explained why the
+   m15 timeframes had to resolve to `undefined` — spot had no fifteen-minute series, and a
+   two-armed ternary would have aggregated daily bars as though they were fifteen-minute ones and
+   drawn a chart that is wrong rather than absent. The perpetual series has all three, so 15m and
+   30m are real here for the first time. The shape of the guard is kept: a base that is missing
+   still resolves to undefined and drops its buttons off the bar, because a timeframe whose data
+   has not arrived must be absent rather than approximated. */
 const baseFor = (tf: (typeof TIMEFRAMES)[number]) =>
-  (tf.base === "m15" ? undefined : tf.base === "hour" ? hourly : daily);
+  (tf.base === "m15" ? m15set?.d : tf.base === "hour" ? hourset?.d : dayset?.d);
 const tfsAvailable = TIMEFRAMES.filter((tf) => { const b = baseFor(tf); return Boolean(b && b.length >= 6); }).map((tf) => tf.key);
 const activeTf = TIMEFRAMES.find((tf) => tf.key === tfKey && tfsAvailable.includes(tf.key))
   ?? TIMEFRAMES.find((tf) => tfsAvailable.includes(tf.key));
@@ -132,11 +144,11 @@ const arrow = (n: number) => (n >= 0 ? "▲" : "▼");
 const stat = (_fn: (p: NonNullable<typeof active>) => string) => ({});
 
 const others = liveCoins().filter((c) => c.slug !== coin.slug);
-const title = `${coin.name} price — ${coin.symbol} spot, and what leverage costs`;
-const description = `Live ${coin.name} (${coin.symbol}) spot price from ${SPOT_SOURCE}, with the perpetual basis, the funding rate across three venues and what holding a leveraged position actually costs per week.`;
+const title = `${coin.name} price — ${coin.symbol} perpetual, and what leverage costs`;
+const description = `Live ${coin.name} (${coin.symbol}) perpetual price from Hyperliquid, with the funding rate across three venues, open interest, and what holding a leveraged position actually costs per week.`;
 ---
 
-<Base title={title} description={description} fetchedAt={oldestStamp(snap.fetchedAt, spotSet?.at, live?.at)} crumb={{ href: "/coins", label: "Coins", current: coin.name }}>
+<Base title={title} description={description} fetchedAt={oldestStamp(snap.fetchedAt, live?.at)} crumb={{ href: "/coins", label: "Coins", current: coin.name }}>
   <div class="page-head">
     <p class="crumb"><a href="/coins">Coins</a> › {coin.name}</p>
     <h1>{coin.name} price</h1>
@@ -148,21 +160,21 @@ const description = `Live ${coin.name} (${coin.symbol}) spot price from ${SPOT_S
     <span class:list={["hero__chg"]} data-spot="chg" data-sym={coin.symbol}>
       {Number.isFinite(chg24) ? `${arrow(chg24)} ${(Math.abs(chg24) * 100).toFixed(2)}%` : "—"}
     </span>
-    <span class="hero__span">24-hour change · {SPOT_SOURCE} spot</span>
+    <span class="hero__span">24-hour change · Hyperliquid perpetual</span>
   </div>
 
   <div class="hero__meta">
-    <div>24h high<b>{q ? px(q.high24h) : "—"}</b></div>
-    <div>24h low<b>{q ? px(q.low24h) : "—"}</b></div>
-    <div>24h spot volume<b>{Number.isFinite(spotNtl) ? usd(spotNtl) : "—"}</b></div>
-    <div>Perpetual mark<b data-spot="mark" data-sym={coin.symbol} data-dp={dp}>{Number.isFinite(markNow) ? px(markNow) : "—"}</b></div>
+    <div>24h high<b>{Number.isFinite(high24) ? px(high24) : "—"}</b></div>
+    <div>24h low<b>{Number.isFinite(low24) ? px(low24) : "—"}</b></div>
+    <div>24h volume<b>{Number.isFinite(perpNtl) ? usd(perpNtl) : "—"}</b></div>
+    <div>Oracle index <span class="scope">Hyperliquid</span><b>{perp && perp.oraclePx > 0 ? px(perp.oraclePx) : "—"}</b></div>
     <div>Open interest <span class="scope">Hyperliquid</span><b>{perp ? usd(perp.oiNotional) : "—"}</b></div>
   </div>
   <p class="clock">
-    Spot, the perpetual mark, the basis and funding update every minute. The 24-hour figures and
-    open interest come from the snapshot taken
+    The mark and the funding update every minute. The 24-hour figures and open interest come from
+    the snapshot taken
     <b><time data-fresh={snap.fetchedAt} data-clock="snapAt">{Math.max(0, Math.round((Date.now() - snap.fetchedAt) / 60000))} min ago</time></b>;
-    the candles are {SPOT_SOURCE}'s closed bars, refreshed every two hours.
+    the candles are Hyperliquid's closed bars, refreshed every two hours.
   </p>
 
   {hasChart ? (
@@ -180,7 +192,7 @@ const description = `Live ${coin.name} (${coin.symbol}) spot price from ${SPOT_S
           ))}
           <input type="hidden" name="tf" value={active!.tf.key} data-tfcarry="tf" />
         </div>
-        <span class="tfbar__note">{SPOT_SOURCE} spot candles — a traded price, not an index.</span>
+        <span class="tfbar__note">Hyperliquid perpetual candles — the traded contract, not the oracle index.</span>
       </form>
 
       {[active!].map(({ tf, mode, chart }) => (
@@ -188,7 +200,7 @@ const description = `Live ${coin.name} (${coin.symbol}) spot price from ${SPOT_S
              data-on={tf.key === active!.tf.key && mode.key === active!.mode.key ? "" : undefined}
              class="chart chart--price" style={`--chartRatio: ${CH.w} / ${CHART_H}`}>
           <Fragment set:html={chart!.svg.replace("<svg ",
-            `<svg data-xhair="cpts-${tf.key}" data-feed="spot" data-plot="${chart!.plot.join(",")}" data-prange="${chart!.range[0]},${chart!.range[1]}" ` +
+            `<svg data-xhair="cpts-${tf.key}" data-feed="mark" data-plot="${chart!.plot.join(",")}" data-prange="${chart!.range[0]},${chart!.range[1]}" ` +
             `data-axx="${chart!.axisX}" data-slot="${chart!.slot.toFixed(2)}" data-taxisy="${CHART_H - 27}" data-unit="${coin.symbol}" data-dp="${chart!.dp}" data-intraday="${tf.hours < 24 ? 1 : 0}" `)} />
         </div>
       ))}
@@ -214,7 +226,7 @@ const description = `Live ${coin.name} (${coin.symbol}) spot price from ${SPOT_S
     <div class="empty">
       <div class="empty__body">
         <p class="empty__title">Spot candles not collected yet</p>
-        <p class="empty__text">{SPOT_SOURCE} candles are refreshed every two hours, and a series that is missing entirely is filled on the next five-minute tick rather than waiting for that. Every figure above and below is unaffected.</p>
+        <p class="empty__text">Hyperliquid candles are refreshed every two hours, and a series that is missing entirely is filled on the next five-minute tick rather than waiting for that. Every figure above and below is unaffected.</p>
       </div>
     </div>
   )}
@@ -226,10 +238,14 @@ const description = `Live ${coin.name} (${coin.symbol}) spot price from ${SPOT_S
     from two sides.
   </p>
   <div class="cards">
+    {/* THIS CARD WAS THE BASIS and there is deliberately nothing in its place pretending to be
+        it. The nearest available number is the mark against Hyperliquid's oraclePx, and that is
+        a different quantity: an index median across venues rather than a traded underlying.
+        Printing it under the old label would have kept the card and lost the meaning. */}
     <div class="card card--lead">
-      <div class="card__label">Basis</div>
-      <div class="card__value" data-spot="basis" data-unit=" bps" data-sym={coin.symbol}>{Number.isFinite(basis) ? `${basis >= 0 ? "+" : ""}${basis.toFixed(1)} bps` : "—"}</div>
-      <div class="card__meta">{Number.isFinite(basis) ? (basis >= 0 ? "perpetual richer than spot" : "perpetual cheaper than spot") : "—"}</div>
+      <div class="card__label">Open interest <span class="card__scope">Hyperliquid</span></div>
+      <div class="card__value">{perp ? usd(perp.oiNotional) : "—"}</div>
+      <div class="card__meta">notional currently open</div>
     </div>
     <div class="card">
       <div class="card__label">Hyperliquid funding</div>
@@ -243,9 +259,9 @@ const description = `Live ${coin.name} (${coin.symbol}) spot price from ${SPOT_S
       <div class="card__meta">{hl ? `per week · ${hl.apr >= 0 ? "you pay" : "you receive"}` : "—"}</div>
     </div>
     <div class="card">
-      <div class="card__label">Open interest ÷ spot volume <span class="card__scope">HL ÷ Coinbase</span></div>
-      <div class="card__value">{Number.isFinite(oiToSpot) ? `${oiToSpot.toFixed(2)}×` : "—"}</div>
-      <div class="card__meta">derivatives against the cash market</div>
+      <div class="card__label">Open interest ÷ 24h volume <span class="card__scope">Hyperliquid</span></div>
+      <div class="card__value">{Number.isFinite(oiToVol) ? `${oiToVol.toFixed(2)}×` : "—"}</div>
+      <div class="card__meta">how long the open book takes to turn over</div>
     </div>
   </div>
 
@@ -284,15 +300,17 @@ const description = `Live ${coin.name} (${coin.symbol}) spot price from ${SPOT_S
 
   <h2 class="section">Where the numbers come from</h2>
   <p class="prose">
-    The price, the 24-hour figures and the candles are <strong>{SPOT_SOURCE} spot</strong> — a real
-    USD order book with a real bid and ask. This site does not show a Hyperliquid spot price for
-    {" "}{coin.name} because there is no such market: Hyperliquid's spot book is HIP-1 tokens and
-    bridged wrappers, and a price taken from it would not be {coin.name}'s.
+    Every figure on this page is <strong>Hyperliquid</strong>: the mark price, the 24-hour
+    figures, the candles, the funding and the open interest, all from the same feed the rest of
+    the site reads. This is a perpetual futures price, not a spot price — the contract, not the
+    coin — and the two can diverge.
   </p>
   <p class="prose">
-    The mark, the funding and the open interest are <strong>Hyperliquid</strong>, the same snapshot
-    the rest of the site reads. Nothing here averages the two together. Full detail on both is on
-    {" "}<a class="link" href="/data-sources">data sources</a>.
+    Until 19 August 2026 this page led with a spot price from a third-party exchange, and showed
+    the basis between that price and the perpetual. Both are gone: the terms governing that data
+    forbid displaying it or anything derived from it, so it was removed rather than kept while
+    the question was argued. <a class="link" href="/data-sources">Data sources</a> lists every
+    endpoint behind every number here, and what is deliberately absent.
   </p>
 
   <p style="margin-top:24px">

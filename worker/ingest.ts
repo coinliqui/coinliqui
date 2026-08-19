@@ -6,7 +6,7 @@ import { readFlips, readFlipEvents, writeCachedFlips, type D1Like } from "../src
 import { detectFlips, mergeEvents, feedFromEvents, carryForward, LAST_KEY, EVENTS_KEY, type AprSample } from "../src/lib/flip-events.ts";
 import type { Flip } from "../src/lib/flips.ts";
 import { stepReport, stepProbe } from "./report.ts";
-import { COINS, fetchSpot, fetchSpotCandles } from "../src/lib/coins.ts";
+import { COINS } from "../src/lib/coins.ts";
 
 /**
  * Ingest worker. Runs on a 5-minute cron, writes the current snapshot to KV (which the
@@ -224,10 +224,6 @@ interface RunResult {
   coverageChanged?: boolean;
   /** A slice of the weekly indexation report ran instead of the bulk sweeps. */
   report?: string;
-  /** Coins whose spot candles were refreshed this tick. */
-  spot?: number;
-  /** Coinbase was unreachable; coin pages keep their last spot price. */
-  spotError?: string;
 }
 
 /** The shape every sweep keeps in KV: last full cycle, cursor, frozen list, symbols with data,
@@ -267,12 +263,13 @@ const SKIP_SWEEPS = Symbol("skip-sweeps");
  */
 async function minute(env: Env): Promise<void> {
   const started = Date.now();
-  let spotErr = "", liveErr = "";
-  try {
-    await env.SNAPSHOT.put("spot", JSON.stringify(await fetchSpot()));
-  } catch (e) {
-    spotErr = (e instanceof Error ? e.message : String(e)).slice(0, 60);
-  }
+  /* THE SPOT LEG IS GONE. This tick used to fetch Coinbase's /products/stats every minute and
+     write it to KV; that source was removed on 19 August 2026 after its Market Data Terms
+     (https://www.coinbase.com/legal/market_data) were read in full and found to forbid display
+     of the data or anything derived from it. See the header of
+     src/lib/coins.ts. The minute tick now exists solely for Hyperliquid marks and APRs, which
+     is why it is still a minute tick — those are the figures that move at that scale. */
+  let liveErr = "";
   try {
     const published = ((await env.SNAPSHOT.get("published:set", "json")) as string[] | null) ?? [];
     if (published.length) await env.SNAPSHOT.put("live", JSON.stringify(await fetchLive(published)));
@@ -296,13 +293,13 @@ async function minute(env: Env): Promise<void> {
    * Wrapped, as ever: a failure to record a failure must never become an unhandled rejection
    * in a cron. */
   try {
-    const m = /(\d{3})/.exec(liveErr || spotErr);
+    const m = /(\d{3})/.exec(liveErr);
     await env.DB.prepare(
       "INSERT INTO upstream_check (at, source, status, ms, ok, note) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
     )
-      .bind(started, "minute", spotErr || liveErr ? (m ? Number(m[1]) : 0) : 200, Date.now() - started,
-            spotErr || liveErr ? 0 : 1,
-            JSON.stringify({ spotError: spotErr || undefined, liveError: liveErr || undefined }))
+      .bind(started, "minute", liveErr ? (m ? Number(m[1]) : 0) : 200, Date.now() - started,
+            liveErr ? 0 : 1,
+            JSON.stringify({ liveError: liveErr || undefined }))
       .run();
   } catch { /* swallowed on purpose — see above */ }
 }
@@ -378,16 +375,6 @@ async function run(env: Env): Promise<RunResult> {
     // exactly why a collapsed snapshot must not reach it. The previous one stays and ages
     // visibly instead.
     if (!collapsed) await env.SNAPSHOT.put("snapshot", JSON.stringify(snap));
-
-    /* SPOT, every tick, in one subrequest. Coinbase's /products/stats returns the whole
-       exchange at once, so the ten coin pages cost one call rather than ten. Wrapped on its
-       own: a Coinbase outage must degrade the coin pages to their last spot price, never
-       take down a tick that the fifty contract pages depend on. */
-    try {
-      await env.SNAPSHOT.put("spot", JSON.stringify(await fetchSpot()));
-    } catch (e) {
-      result.spotError = (e instanceof Error ? e.message : String(e)).slice(0, 80);
-    }
 
     if (rows.length) {
       // One batched statement per tick. At 25 symbols x 3 venues that is ~75 rows per 5
@@ -664,13 +651,6 @@ async function run(env: Env): Promise<RunResult> {
           after: async () => { await env.SNAPSHOT.put("funding:rot", JSON.stringify({ c: (rotCursor + 6) % Math.max(1, syms.length) })); } },
         { name: "candles", key: "candles:meta", hours: CANDLE_REFRESH_HOURS, write: async (s) => {
             await env.SNAPSHOT.put(`candles:${s}`, JSON.stringify(await fetchCandles(s))); return true; } },
-        { name: "spot", key: "cb:meta", hours: HOURLY_REFRESH_HOURS, extra: 10, over: COINS.map((c) => c.symbol), write: async (s) => {
-            const c = COINS.find((x) => x.symbol === s);
-            if (!c) return false;
-            const [h, d] = await Promise.all([fetchSpotCandles(c.product, 3600), fetchSpotCandles(c.product, 86400)]);
-            await env.SNAPSHOT.put(`cbh:${s}`, JSON.stringify(h));
-            await env.SNAPSHOT.put(`cbd:${s}`, JSON.stringify(d));
-            return true; } },
         { name: "m15", key: "m15:meta", hours: M15_REFRESH_HOURS, write: async (s) => {
             await env.SNAPSHOT.put(`m15:${s}`, JSON.stringify(await fetchM15(s))); return true; } },
       ];

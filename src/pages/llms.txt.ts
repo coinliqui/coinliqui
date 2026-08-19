@@ -53,8 +53,8 @@ ${base} is the only domain this project publishes. Any other site using this nam
 - Open interest and 24-hour turnover per contract: ${base}/open-interest
 - A modelled liquidation-density map, labelled as a model, with every assumption printed on the
   page and no claim to be observed data: ${base}/liquidations
-- Spot prices and the basis between spot and the perpetual, for ${liveCoins().length} coins:
-  ${base}/coins
+- Perpetual futures prices for ${liveCoins().length} major coins, with funding, 24h turnover and
+  open interest: ${base}/coins
 - A register of on-chain token vesting and lock contracts read directly from Ethereum, including
   contracts whose schedule has finished but whose tokens were never withdrawn: ${base}/unlocks
 - Four calculators — position size, leverage, funding cost, cross-venue funding spread:

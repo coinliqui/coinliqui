@@ -32,14 +32,20 @@ const BLIND = process.argv.includes("--blind");
 const UA = "Mozilla/5.0 (+https://coinliqui.com/about; coinliqui-selfcheck)";
 const ACCEPT = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8";
 
-/* SPOT HAS NO 15-MINUTE SERIES, so a coin page offers six of the eight timeframes. That is not
-   a shortfall to be tolerated — it is the correct set, and a page offering 15m would be a button
-   that empties the chart. Both directions are asserted. */
-const EXPECTED_TFS = ["1h", "4h", "12h", "1d", "1w", "1m"];
-const NOMINAL_MS = { "1h": 3.6e6, "4h": 1.44e7, "12h": 4.32e7, "1d": 8.64e7, "1w": 6.048e8, "1m": 2.592e9 };
-const UNAVAILABLE_TF = "15m";   // offered on perp pages, impossible on spot
-const FALLBACK_TF = "1h";       // what an unavailable timeframe must resolve to
-const DEFAULT_TF = "1d";        // what an unparseable one must resolve to
+/* ALL EIGHT TIMEFRAMES NOW, AND THIS LINE ASSERTED SIX UNTIL 19 AUGUST 2026.
+   The note that stood here said spot had no fifteen-minute series, so a coin page offering 15m
+   would be a button that empties the chart — correct at the time, and asserted in both
+   directions. Coinbase was then removed and the pages re-based on Hyperliquid's perpetual
+   series, which does carry 15-minute bars, so the pages started offering 15m and 30m and this
+   check failed sixty times on correct behaviour.
+   That is the third time in this repository a check has had to be edited because the decision it
+   encoded changed rather than because it was wrong — see the twice-rewritten CSP section in
+   verify-live.mjs. Worth stating plainly: a check that encodes a decision is a liability the day
+   the decision moves, and the failure looks identical whether the site broke or the rule did.
+   The only defence is that it fails LOUDLY and uniformly, which this did. */
+const EXPECTED_TFS = ["15m", "30m", "1h", "4h", "12h", "1d", "1w", "1m"];
+const NOMINAL_MS = { "15m": 9e5, "30m": 1.8e6, "1h": 3.6e6, "4h": 1.44e7, "12h": 4.32e7, "1d": 8.64e7, "1w": 6.048e8, "1m": 2.592e9 };
+const DEFAULT_TF = "1d";        // what an unparseable timeframe must resolve to
 
 let failures = 0;
 const bad = (m) => { failures++; console.log("   FAIL  " + m); };
@@ -193,8 +199,15 @@ if (BLIND) {
   const cases = [
     ["the clean fixture stays silent", clean, null],
     ["a timeframe button missing", (() => { const c = clone(clean); c.buttons = c.buttons.filter((b) => b.tf !== "12h"); return c; })(), /button\(s\) absent/],
-    ["a button spot cannot serve", (() => { const c = clone(clean); c.buttons.push({ tf: "15m", pressed: false }); return c; })(), /cannot serve/],
-    ["two timeframes marked active", (() => { const c = clone(clean); c.buttons[2].pressed = true; return c; })(), /marked active/],
+    /* "15m" USED TO BE THE UNSERVABLE KEY HERE and it is now a real timeframe, so this fixture
+       went silent the moment the pages re-based onto the perpetual series — a blind case that
+       had quietly stopped testing anything. Caught by running the file. The key below is not in
+       TIMEFRAMES at all, which is the property the case actually needs. */
+    ["a button for a timeframe that does not exist", (() => { const c = clone(clean); c.buttons.push({ tf: "5m", pressed: false }); return c; })(), /cannot serve/],
+    /* Index 2 was "12h" when the list held six timeframes and is "1h" now — the one already
+       pressed in the clean fixture — so this mutation changed nothing and the case went silent.
+       Selecting by KEY rather than by position cannot rot the same way. */
+    ["two timeframes marked active", (() => { const c = clone(clean); c.buttons.find((b) => b.tf === "1d").pressed = true; return c; })(), /marked active/],
     ["the switch did not switch", (() => { const c = clone(clean); c.active = "4h"; c.svgTfs = ["4h"]; c.jsonTfs = ["4h"]; return c; })(), /did not switch/],
     ["panel and payload disagree", (() => { const c = clone(clean); c.svgTfs = ["4h"]; return c; })(), /panel is cpts-4h/],
     ["two panels rendered", (() => { const c = clone(clean); c.svgTfs = ["1h", "4h"]; return c; })(), /chart panels rendered/],
@@ -273,9 +286,12 @@ else for (const r of short) {
     : bad(`/coins/${r.slug}?tf=${r.tf} plots ${r.n} bars while saying "${r.stat}"`);
 }
 
-console.log("\n4. a timeframe spot cannot serve, and an unparseable one");
+/* THE "TIMEFRAME THE SOURCE CANNOT SERVE" CASE IS GONE WITH SPOT — every timeframe in the table
+   is now servable, so there is nothing to fall back FROM. What remains is the unparseable input,
+   which is the case that never depended on the data source. */
+console.log("\n4. an unparseable timeframe");
 for (const slug of slugs.slice(0, 3)) {
-  for (const [ask, want, why] of [[UNAVAILABLE_TF, FALLBACK_TF, "no 15-minute spot series exists"], ["bogus", DEFAULT_TF, "unparseable"]]) {
+  for (const [ask, want, why] of [["bogus", DEFAULT_TF, "unparseable"], ["99z", DEFAULT_TF, "unparseable"]]) {
     const p = parsePage((await get(`/coins/${slug}?tf=${ask}`)).body);
     if (p.active !== want) bad(`/coins/${slug}?tf=${ask} rendered ${p.active}, expected the ${want} fallback (${why})`);
     else if (p.buttons.some((b) => b.tf === ask)) bad(`/coins/${slug} offers a tf=${ask} button while rendering ${p.active}`);

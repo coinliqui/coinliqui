@@ -232,13 +232,11 @@ var STATIC_ROUTES = [
 ];
 
 // src/lib/coins.ts
-var CB = "https://api.exchange.coinbase.com";
 var COINS = [
   {
     slug: "bitcoin",
     name: "Bitcoin",
     symbol: "BTC",
-    product: "BTC-USD",
     publishAt: "2026-08-14",
     blurb: "The first and largest cryptocurrency, and the one whose derivatives market sets the tone for every other."
   },
@@ -246,7 +244,6 @@ var COINS = [
     slug: "ethereum",
     name: "Ethereum",
     symbol: "ETH",
-    product: "ETH-USD",
     publishAt: "2026-08-14",
     blurb: "The largest smart-contract platform, and the second-largest perpetual market by open interest."
   },
@@ -254,7 +251,6 @@ var COINS = [
     slug: "solana",
     name: "Solana",
     symbol: "SOL",
-    product: "SOL-USD",
     publishAt: "2026-08-14",
     blurb: "A high-throughput layer-1 whose perpetual funding is among the most volatile of the majors."
   },
@@ -262,7 +258,6 @@ var COINS = [
     slug: "xrp",
     name: "XRP",
     symbol: "XRP",
-    product: "XRP-USD",
     publishAt: "2026-08-14",
     blurb: "A payment-focused asset with a large retail spot base and comparatively small open interest."
   },
@@ -270,7 +265,6 @@ var COINS = [
     slug: "bnb",
     name: "BNB",
     symbol: "BNB",
-    product: "BNB-USD",
     publishAt: "2026-08-17",
     blurb: "The BNB Chain asset, listed here because its perpetual funding rarely matches its spot demand."
   },
@@ -278,7 +272,6 @@ var COINS = [
     slug: "dogecoin",
     name: "Dogecoin",
     symbol: "DOGE",
-    product: "DOGE-USD",
     publishAt: "2026-08-17",
     blurb: "The original memecoin, and a reliable example of funding running far ahead of spot."
   },
@@ -286,7 +279,6 @@ var COINS = [
     slug: "cardano",
     name: "Cardano",
     symbol: "ADA",
-    product: "ADA-USD",
     publishAt: "2026-08-17",
     blurb: "A research-led layer-1 with deep spot liquidity relative to its open interest."
   },
@@ -294,7 +286,6 @@ var COINS = [
     slug: "avalanche",
     name: "Avalanche",
     symbol: "AVAX",
-    product: "AVAX-USD",
     publishAt: "2026-08-17",
     blurb: "A layer-1 with a subnet architecture, and one of the smaller major perpetual markets by open interest."
   },
@@ -302,7 +293,6 @@ var COINS = [
     slug: "chainlink",
     name: "Chainlink",
     symbol: "LINK",
-    product: "LINK-USD",
     publishAt: "2026-08-17",
     blurb: "The dominant oracle network, whose token trades with unusually persistent positive funding."
   },
@@ -310,41 +300,12 @@ var COINS = [
     slug: "litecoin",
     name: "Litecoin",
     symbol: "LTC",
-    product: "LTC-USD",
     publishAt: "2026-08-17",
     blurb: "One of the oldest altcoins, with a long, clean price history and a modest derivatives market."
   }
 ];
 var isLive = (c, now = Date.now()) => Date.parse(c.publishAt + "T00:00:00Z") <= now;
 var liveCoins = (now = Date.now()) => COINS.filter((c) => isLive(c, now));
-var num = (x) => typeof x === "string" || typeof x === "number" ? Number(x) : NaN;
-async function fetchSpot() {
-  const send = () => fetch(`${CB}/products/stats`, { headers: { "user-agent": "coinliqui.com" } });
-  let r = await send();
-  if (r.status === 429 || r.status === 502) {
-    await new Promise((res) => setTimeout(res, 1200));
-    r = await send();
-  }
-  if (!r.ok) throw new Error(`coinbase ${r.status}`);
-  const all = await r.json();
-  const q = {};
-  for (const c of COINS) {
-    const s = all[c.product]?.stats_24hour;
-    if (!s) continue;
-    const last = num(s.last);
-    if (!Number.isFinite(last)) continue;
-    q[c.symbol] = { last, open24h: num(s.open), high24h: num(s.high), low24h: num(s.low), volume24h: num(s.volume) };
-  }
-  return { at: Date.now(), q };
-}
-async function fetchSpotCandles(product, granularity) {
-  const r = await fetch(`${CB}/products/${product}/candles?granularity=${granularity}`, {
-    headers: { "user-agent": "coinliqui.com" }
-  });
-  if (!r.ok) throw new Error(`coinbase candles ${r.status}`);
-  const rows = await r.json();
-  return rows.map((x) => [x[0] * 1e3, x[3], x[2], x[1], x[4], x[5]]).filter((c) => c.every(Number.isFinite)).sort((a, b) => a[0] - b[0]);
-}
 
 // worker/indexnow.ts
 var INDEXNOW_KEY = "a7f3c19e84b24d6fa0e5b17c93d82f46";
@@ -925,7 +886,7 @@ async function stepProbe(env) {
 }
 
 // worker/build-stamp.ts
-var WORKER_BUILD = "400c8455c6fc";
+var WORKER_BUILD = "4b83db3ab6ce";
 
 // worker/ingest.ts
 var RETAIN_HOURS = 72;
@@ -1001,12 +962,7 @@ var ingest_default = {
 var SKIP_SWEEPS = /* @__PURE__ */ Symbol("skip-sweeps");
 async function minute(env) {
   const started = Date.now();
-  let spotErr = "", liveErr = "";
-  try {
-    await env.SNAPSHOT.put("spot", JSON.stringify(await fetchSpot()));
-  } catch (e) {
-    spotErr = (e instanceof Error ? e.message : String(e)).slice(0, 60);
-  }
+  let liveErr = "";
   try {
     const published = await env.SNAPSHOT.get("published:set", "json") ?? [];
     if (published.length) await env.SNAPSHOT.put("live", JSON.stringify(await fetchLive(published)));
@@ -1014,16 +970,16 @@ async function minute(env) {
     liveErr = (e instanceof Error ? e.message : String(e)).slice(0, 60);
   }
   try {
-    const m = /(\d{3})/.exec(liveErr || spotErr);
+    const m = /(\d{3})/.exec(liveErr);
     await env.DB.prepare(
       "INSERT INTO upstream_check (at, source, status, ms, ok, note) VALUES (?1, ?2, ?3, ?4, ?5, ?6)"
     ).bind(
       started,
       "minute",
-      spotErr || liveErr ? m ? Number(m[1]) : 0 : 200,
+      liveErr ? m ? Number(m[1]) : 0 : 200,
       Date.now() - started,
-      spotErr || liveErr ? 0 : 1,
-      JSON.stringify({ spotError: spotErr || void 0, liveError: liveErr || void 0 })
+      liveErr ? 0 : 1,
+      JSON.stringify({ liveError: liveErr || void 0 })
     ).run();
   } catch {
   }
@@ -1063,11 +1019,6 @@ async function run(env) {
     }
     result.rows = rows.length;
     if (!collapsed) await env.SNAPSHOT.put("snapshot", JSON.stringify(snap));
-    try {
-      await env.SNAPSHOT.put("spot", JSON.stringify(await fetchSpot()));
-    } catch (e) {
-      result.spotError = (e instanceof Error ? e.message : String(e)).slice(0, 80);
-    }
     if (rows.length) {
       const insert = env.DB.prepare("INSERT INTO funding_snapshot (symbol, venue, apr, at) VALUES (?1, ?2, ?3, ?4)");
       if (!collapsed) await env.DB.batch(rows.map((r) => insert.bind(...r)));
@@ -1220,14 +1171,6 @@ async function run(env) {
         },
         { name: "candles", key: "candles:meta", hours: CANDLE_REFRESH_HOURS, write: async (s) => {
           await env.SNAPSHOT.put(`candles:${s}`, JSON.stringify(await fetchCandles(s)));
-          return true;
-        } },
-        { name: "spot", key: "cb:meta", hours: HOURLY_REFRESH_HOURS, extra: 10, over: COINS.map((c) => c.symbol), write: async (s) => {
-          const c = COINS.find((x) => x.symbol === s);
-          if (!c) return false;
-          const [h, d] = await Promise.all([fetchSpotCandles(c.product, 3600), fetchSpotCandles(c.product, 86400)]);
-          await env.SNAPSHOT.put(`cbh:${s}`, JSON.stringify(h));
-          await env.SNAPSHOT.put(`cbd:${s}`, JSON.stringify(d));
           return true;
         } },
         { name: "m15", key: "m15:meta", hours: M15_REFRESH_HOURS, write: async (s) => {

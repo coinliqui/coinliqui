@@ -30,7 +30,7 @@ if (!snap.available) return coldStart();
    cadence. It named five upstreams and linked to none, on a site that had zero external hrefs
    anywhere. A reader who wants to confirm that `predictedFundings` returns what this page says
    it returns had to go and find the documentation themselves. */
-const UPSTREAM_DOCS: Record<string, string> = {"Hyperliquid": "https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api", "Coinbase Exchange": "https://docs.cdp.coinbase.com/exchange/docs/welcome", "Coinbase": "https://docs.cdp.coinbase.com/exchange/docs/welcome", "Ethereum JSON-RPC": "https://ethereum.org/en/developers/docs/apis/json-rpc/", "Cloudflare": "https://developers.cloudflare.com/"};
+const UPSTREAM_DOCS: Record<string, string> = {"Hyperliquid": "https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api", "Ethereum JSON-RPC": "https://ethereum.org/en/developers/docs/apis/json-rpc/", "Cloudflare": "https://developers.cloudflare.com/"};
 const sources = [
   { what: "Funding rate, per venue", ep: "POST /info {\"type\":\"predictedFundings\"}", who: "Hyperliquid", freq: "1 min" },
   /* SPLIT, because one row was claiming one cadence for five figures fetched on two.
@@ -52,8 +52,6 @@ const sources = [
   { what: "Price candles behind every chart, hourly and daily", ep: "POST /info {\"type\":\"candleSnapshot\"}", who: "Hyperliquid", freq: "2 h / 12 h" },
   { what: "Realised funding history, behind the funding series", ep: "POST /info {\"type\":\"fundingHistory\"}", who: "Hyperliquid", freq: "6 h" },
   { what: "Maintenance-margin tiers", ep: "POST /info {\"type\":\"marginTable\",\"id\":N}", who: "Hyperliquid", freq: "build time" },
-  { what: "Spot price, 24h open/high/low/volume", ep: "GET /products/stats", who: "Coinbase Exchange", freq: "1 min" },
-  { what: "Spot candles, hourly and daily", ep: "GET /products/{id}/candles", who: "Coinbase Exchange", freq: "2 h" },
   { what: "Vesting and lock contract state behind the register", ep: "eth_call, eth_blockNumber", who: "Ethereum JSON-RPC", freq: "on demand" },
 ];
 ---
@@ -64,23 +62,32 @@ const sources = [
     <thead><tr><th>Figure</th><th>Endpoint</th><th>Source</th><th>Refresh</th></tr></thead>
     <tbody>{sources.map((s) => (<tr><td>{s.what}</td><td><code>{s.ep}</code></td><td>{UPSTREAM_DOCS[s.who] ? <a href={UPSTREAM_DOCS[s.who]} rel="noopener" target="_blank">{s.who}</a> : s.who}</td><td>{s.freq}</td></tr>))}</tbody>
   </table></div>
-  <h2>Why spot comes from Coinbase</h2>
+  <h2>The source that was withdrawn</h2>
   <p class="prose">
-    Hyperliquid supplies everything derivative here, but it has no Bitcoin spot market — its spot book is
-    HIP-1 tokens and bridged wrappers turning over roughly $60M a day in total, so a "Bitcoin price" taken
-    from it would not be Bitcoin's. Hyperliquid does publish an <strong>oracle price</strong>, a validator
-    median across major spot venues, and it is a good index; but it is an index, and nobody can trade it.
-    Coinbase Exchange is a real USD order book with a real bid and ask, reachable without a key. So the spot
-    prices on this site are Coinbase's, labelled as such wherever they appear, and never averaged into a
-    Hyperliquid number.
+    Until <strong>19 August 2026</strong> the coin pages carried a spot price, 24-hour statistics
+    and spot candle charts from Coinbase Exchange, plus the basis between that price and the
+    perpetual. All of it has been removed and none of it is served anywhere, including through
+    this site's JSON endpoint.
   </p>
-  {/* THIS PARAGRAPH USED TO END "and it permits display with attribution".
-      That was a legal conclusion, asserted in the site's own voice, with nothing behind it —
-      on the one page whose entire purpose is that every claim can be checked against a primary
-      source. No Coinbase document granting it was ever cited here because none was ever found.
-      A reader who wants to know what Coinbase permits should read Coinbase, and the link is in
-      the table above. Stating the operational facts and linking the terms is both more useful
-      and more honest than paraphrasing a document we had not read. */}
+  <p class="prose">
+    Coinbase's <a href="https://www.coinbase.com/legal/market_data" rel="noopener" target="_blank">Market
+    Data Terms of Use</a> (last updated 7 August 2026) were read in full on that date. Quoting that
+    document, <code>https://www.coinbase.com/legal/market_data</code>: they bind on access alone — <em>"By accessing or using Coinbase Market Data, you agree to be bound by these
+    Market Data Terms of Use"</em> — grant a licence only for <em>"personal or research purposes"</em>
+    that <em>"may not be used to build an application intended for use by end users"</em>, and
+    provide that, absent prior express written consent, you may not <em>"Redistribute, display, or
+    disseminate the Market Data—or any data, charts, analytics, research, or other works based on,
+    referring to, or derived from the Market Data"</em> to any third party outside your
+    organisation. This site is a public website; that is the whole of the question.
+  </p>
+  <p class="prose">
+    So the coin pages are now perpetual pages, drawn from the same Hyperliquid feed as the rest of
+    the site. The <strong>basis</strong> went with the spot price, because computing it requires
+    one. Nothing here substitutes Hyperliquid's oracle index for a spot price: the oracle is a
+    validator median across venues rather than a traded market, and using it under the old label
+    would be a different number wearing the old one's name.
+  </p>
+
   <h2>Which Ethereum endpoints</h2>
   <p class="prose">
     The on-chain figures are read from three interchangeable public JSON-RPC endpoints —
@@ -141,7 +148,7 @@ const sources = [
   </ul>
   <Related items={[
     { href: "/status", label: "Status", note: "Whether the ingest described here actually ran, and what it saw." },
-    { href: "/coins", label: "Coins", note: "Where the Coinbase spot layer is used, and why it is not Hyperliquid's." },
+    { href: "/coins", label: "Coins", note: "Perpetual prices for the major coins, and why they are no longer spot prices." },
     { href: "/methodology", label: "Methodology", note: "What is done to these numbers once they arrive." },
     { href: "/privacy", label: "Privacy", note: "What is collected while serving them, and what is not." },
   ]} />

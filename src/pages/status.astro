@@ -61,12 +61,15 @@ let minuteLiveFails = 0;
 try {
   const db = (Astro.locals as any)?.runtime?.env?.DB;
   if (db) {
-    /* WHICH LEG, because the tick has two and they carry two different promises. It fetches
-       Coinbase spot AND Hyperliquid mark/funding, and writes ok=0 if EITHER fails — so a card
-       reading "9 failed" over a meta reading "spot and live mark" invites the reader to
-       distrust the site's headline numbers for a rate limit on a different upstream entirely.
-       Measured over 303 ticks: 49 failures, all of them `coinbase 429`, and the Hyperliquid
-       leg zero. The reader's actual question is which one, so the card answers it. */
+    /* ONE LEG NOW, WHERE THERE WERE TWO. The minute tick used to fetch Coinbase spot as well as
+       Hyperliquid mark/funding and write ok=0 if either failed — which mattered, because over
+       303 measured ticks all 49 failures were `coinbase 429` and the Hyperliquid leg failed
+       zero times, so an undifferentiated "9 failed" invited readers to distrust the headline
+       numbers over a rate limit on a different upstream. The Coinbase leg was removed on
+       19 August 2026 (see src/lib/coins.ts), so the split no longer has two sides.
+       spotError is still SELECTed because rows written before that date still carry it and the
+       last-hour window will keep reaching them for an hour after each deploy; it is reported
+       only when non-zero, and will simply stop appearing. */
     const r = await db.prepare(
       `SELECT count(*) n,
               sum(CASE WHEN ok = 0 THEN 1 ELSE 0 END) bad,
@@ -81,9 +84,8 @@ try {
   }
 } catch { /* the page must render with no store — that is when it is read */ }
 const minuteWhere = minuteFails === 0 ? ""
-  : minuteLiveFails === 0 ? " · all in the Coinbase spot leg; mark and funding unaffected"
-  : minuteSpotFails === 0 ? " · all in the Hyperliquid leg (mark and funding)"
-  : ` · ${minuteLiveFails} Hyperliquid, ${minuteSpotFails} Coinbase spot`;
+  : minuteSpotFails === 0 ? " · Hyperliquid mark and funding"
+  : ` · ${minuteLiveFails} Hyperliquid, ${minuteSpotFails} from the withdrawn spot leg`;
 /* Under 90% of the expected ticks is the same fault as a failing one and is reported as one. */
 const minuteMissing = minuteRuns !== null && minuteRuns < MINUTE_EXPECTED * 0.9;
 const minuteBad = minuteRuns === null || minuteRuns === 0 || minuteFails > 0 || minuteMissing;
@@ -190,7 +192,7 @@ const utc = (ms: number) => new Date(ms).toISOString().slice(0, 16).replace("T",
         : minuteMissing ? `only ${minuteRuns} of ${MINUTE_EXPECTED} ran`
         : `clean · ${minuteRuns} of ${MINUTE_EXPECTED}`
       }</div>
-      <div class="card__meta">Coinbase spot and Hyperliquid mark · every tick records, so one that never ran shows here{minuteWhere}</div>
+      <div class="card__meta">Hyperliquid mark and funding · every tick records, so one that never ran shows here{minuteWhere}</div>
     </div>
     <div class="card">
       <div class="card__label">Failures in last 24 runs</div>

@@ -1,7 +1,6 @@
 ---
 import { SITE, NAV, FOOTER_LINKS, IDENTITY, origin } from "../lib/site.ts";
 import ASSETS from "../data/assets.json";
-import { SPOT_SOURCE } from "../lib/coins.ts";
 
 interface Props {
   /** Bare page title. The brand suffix is appended here, not typed into every page. */
@@ -1003,8 +1002,8 @@ const schema = {
                   A footer is a CREDIT, not a provenance statement, so it names every source
                   the site draws on and hands the per-figure question to the page that answers
                   it properly. Naming them all is true on every page; naming one was not. */}
-              Data via Hyperliquid, Binance and Bybit (derivatives), {SPOT_SOURCE} (spot) and
-              Ethereum JSON-RPC (on-chain). <a href="/data-sources">Which endpoint feeds which
+              Data via Hyperliquid, Binance and Bybit (derivatives) and Ethereum JSON-RPC
+              (on-chain). <a href="/data-sources">Which endpoint feeds which
               figure →</a> <a href="/terms">Not investment advice →</a>
               {fetchedAt && <> Figures as of <time datetime={new Date(fetchedAt).toISOString()}>{new Date(fetchedAt).toISOString().replace("T", " ").slice(0, 16)} UTC</time>.</>}
             </p>
