@@ -72,6 +72,26 @@ export async function readFlips(db: D1Like | undefined, hours = 24, now = Date.n
     if (covered < hours) return { status: "warming", since, hours: covered };
 
     const cutoff = now - hours * 3_600_000;
+    /* gapMin ROUNDS, AND USED TO TRUNCATE.
+     *
+     * `at` and `prev_at` are integer milliseconds, so `(at - prev_at) / 60000` is INTEGER
+     * division in SQLite and truncates. flip-events.ts — the implementation that actually
+     * produces the stored feed — uses Math.round. Two implementations of one printed number,
+     * disagreeing by up to a whole minute, and the cron's phase-shifted five-minute cadence
+     * puts nearly every real gap in the fractional band where they differ: a 4.7-minute gap
+     * was 4 here and 5 there. scripts/flips-parity.mjs found it, thirteen of twenty-five rows
+     * off by exactly one in one direction, which is a signature no data produces.
+     * `/ 60000.0` forces real division; ROUND then matches the JS exactly.
+     *
+     * THIS EXPLANATION LIVES OUT HERE, and that is the second lesson of the same fix. Written
+     * as a SQL comment inside the query it read perfectly and broke the statement, because it
+     * contained an apostrophe — D1 tracks quotes without understanding comments, so one `'`
+     * inside a `/* *\/` ended the string as far as the wire protocol was concerned and every
+     * call threw. The catch below turned that into `no-store`, so the page reported an empty
+     * store rather than a broken query, and the only symptom was the parity check flipping
+     * from "thirteen rows differ" to "live no-store vs stored ready".
+     * Keep SQL comments short, and keep apostrophes out of them.
+     */
     const { results } = await db
       .prepare(
         `WITH ordered AS (
@@ -83,7 +103,7 @@ export async function readFlips(db: D1Like | undefined, hours = 24, now = Date.n
          )
          , flips AS (
            SELECT symbol, venue, prev_apr AS prevApr, apr, at,
-                  (at - prev_at) / 60000 AS gapMin,
+                  CAST(ROUND((at - prev_at) / 60000.0) AS INTEGER) AS gapMin,
                   ROW_NUMBER() OVER (PARTITION BY symbol, venue ORDER BY at DESC) AS rn
            FROM ordered
            WHERE prev_apr IS NOT NULL
@@ -116,7 +136,14 @@ export async function readFlips(db: D1Like | undefined, hours = 24, now = Date.n
 
     const rows = results ?? [];
     return { status: "ready", rows, since, total: Number(rows[0]?.total ?? rows.length) };
-  } catch {
+  } catch (e) {
+    /* SAY WHY, THEN DEGRADE. This was a bare `catch` returning no-store, which is the correct
+       READER behaviour and was the wrong DIAGNOSTIC behaviour: a query that threw on every
+       call looked exactly like a database with nothing in it. It cost three rounds of guessing
+       on an apostrophe in a SQL comment, because the only visible symptom was a feed that had
+       gone quiet. The reader still gets the same graceful empty state; the operator now gets
+       the reason, in `wrangler tail` and in any local run. */
+    console.warn("readFlips failed, degrading to no-store:", e instanceof Error ? e.message : e);
     return { status: "no-store" };
   }
 }
@@ -144,7 +171,7 @@ export async function readFlipEvents(db: D1Like | undefined, hours = 24, now = D
            FROM funding_snapshot
            WHERE at >= ?1
          )
-         SELECT symbol, venue, prev_apr AS prevApr, apr, at, (at - prev_at) / 60000 AS gapMin
+         SELECT symbol, venue, prev_apr AS prevApr, apr, at, CAST(ROUND((at - prev_at) / 60000.0) AS INTEGER) AS gapMin
          FROM ordered
          WHERE prev_apr IS NOT NULL
            AND ((prev_apr < 0 AND apr >= 0) OR (prev_apr >= 0 AND apr < 0))
@@ -153,7 +180,10 @@ export async function readFlipEvents(db: D1Like | undefined, hours = 24, now = D
       .bind(now - hours * 3_600_000)
       .all<Flip>();
     return results ?? [];
-  } catch {
+  } catch (e) {
+    /* Same reasoning as readFlips: an empty bootstrap and a broken bootstrap are the same
+       value, and only one of them is worth waking up for. */
+    console.warn("readFlipEvents failed, degrading to an empty event list:", e instanceof Error ? e.message : e);
     return [];
   }
 }

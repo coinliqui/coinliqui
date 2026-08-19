@@ -450,14 +450,15 @@ async function readFlipEvents(db, hours = 24, now = Date.now()) {
            FROM funding_snapshot
            WHERE at >= ?1
          )
-         SELECT symbol, venue, prev_apr AS prevApr, apr, at, (at - prev_at) / 60000 AS gapMin
+         SELECT symbol, venue, prev_apr AS prevApr, apr, at, CAST(ROUND((at - prev_at) / 60000.0) AS INTEGER) AS gapMin
          FROM ordered
          WHERE prev_apr IS NOT NULL
            AND ((prev_apr < 0 AND apr >= 0) OR (prev_apr >= 0 AND apr < 0))
          ORDER BY at ASC`
     ).bind(now - hours * 36e5).all();
     return results ?? [];
-  } catch {
+  } catch (e) {
+    console.warn("readFlipEvents failed, degrading to an empty event list:", e instanceof Error ? e.message : e);
     return [];
   }
 }
@@ -924,7 +925,7 @@ async function stepProbe(env) {
 }
 
 // worker/build-stamp.ts
-var WORKER_BUILD = "8a4aebe588b1";
+var WORKER_BUILD = "b86c17b6ffe9";
 
 // worker/ingest.ts
 var RETAIN_HOURS = 72;
