@@ -88,6 +88,24 @@ const sources = [
     would be a different number wearing the old one's name.
   </p>
 
+  <h2>The two venues we never contact</h2>
+  <p class="prose">
+    Binance and Bybit funding rates appear on this site, and <strong>no request is ever made to
+    either.</strong> They arrive inside Hyperliquid's <code>predictedFundings</code> response — one
+    query, to one venue — and that is checkable: there is no Binance or Bybit hostname anywhere in
+    this codebase. Both venues' terms bind on accessing <em>their</em> service, and we do not.
+  </p>
+  <p class="prose">
+    That is the whole of the position, and it is worth being exact about its shape rather than
+    comfortable about it. <strong>We rely on not being party to those venues' terms — not on any
+    permission from them.</strong> Neither has granted this site anything, neither has been asked,
+    and nothing here should be read as a claim that they permit the display. It is an argument
+    about who a contract reaches, and a lawyer has not tested it.
+    {" "}<a href="https://www.bybit.com/en/help-center/article/Bybit-API-Terms-and-Conditions" rel="noopener" target="_blank">Bybit's
+    API terms</a> were read on 19 August 2026; they bar providing access to Bybit's platform to a
+    third party and bar automated retrieval, which is why this site does neither.
+  </p>
+
   <h2>Which Ethereum endpoints</h2>
   <p class="prose">
     The on-chain figures are read from three interchangeable public JSON-RPC endpoints —

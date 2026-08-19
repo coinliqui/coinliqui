@@ -186,6 +186,35 @@ curl -s $URL/ | grep -c SearchAction   # must be 0
 # every sitemap URL resolves and is on the canonical origin
 ```
 
+## Multi-agent findings: never pass evidence through a prompt
+
+When a multi-agent run produces findings that a later step summarises, the summarising step must
+read them **from disk with an expected count**, not receive them interpolated into its prompt.
+
+This rule exists because the alternative failed twice in one day. A run produced ten findings;
+the synthesis step got them as `JSON.stringify(findings).slice(0, 26000)`; the slice cut
+mid-record; and the final report stated a conclusion about ten candidates having read four. Both
+times the conclusion was right, which is the dangerous version — nothing in the output
+distinguished "read everything" from "read 40% and generalised", and both times it was caught
+afterwards by reading the run journal by hand. That is not a mechanism.
+
+A bigger slice is not the fix; it fails the same way one input later. The convention:
+
+1. every finder agent writes its own result to `<dir>/<key>.json` as it finishes;
+2. the script passes the synthesis agent that directory **and the expected count**;
+3. the synthesis agent runs `node scripts/wf-collect.mjs <dir> <expected>`;
+4. the synthesis agent is instructed to refuse to synthesise on a non-zero exit, and to report
+   the run as incomplete rather than reporting on whatever survived.
+
+`wf-collect.mjs` prints the complete set or exits 1 naming exactly what is missing. It refuses on
+a short set, on unexpected extras (the caller's model of the run is wrong), on a file that will
+not parse, and on a finder that returned `{}` or `null` — an empty-but-valid result pads the
+count and makes a partial set look whole, which is the same lie arriving from the other end.
+
+```bash
+node scripts/wf-collect.mjs --blind    # nine cases: it accepts only the complete set
+```
+
 ## Deliberately not built
 
 **Accounts, and any notification channel.** No sign-up, no identity, no email, no wallet
