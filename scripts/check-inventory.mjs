@@ -70,7 +70,36 @@ for (const n of unfalsified.sort()) console.log(`    ${n.padEnd(26)} called by $
 console.log(`\nGROUP 3 — no call site anywhere: ${dead.length}`);
 for (const n of dead) console.log(`    ${n}  <-- exported and never invoked`);
 
+/* ---------------------------------------------------------------------------------------------
+   PROVEN ONCE IS NOT PROVEN.
+   The same defect as a dead check, one level up: a VERIFIER that exits non-zero on failure but
+   is referenced by no npm script runs only when somebody remembers, and everything it asserts
+   has been assumed since the last time anybody did. verify-live.mjs was the case that prompted
+   this — 84 assertions about what a client on the open internet actually receives, standalone.
+   It now runs at the end of deploy:site.
+   A script may be manual by design; that has to be a stated decision rather than an omission,
+   so the reason is written here and an unlisted one fails. */
+const MANUAL_BY_DESIGN = {
+  "configure-zone.mjs": "one-time zone setup; re-running it changes account state, not code",
+  "gen-og-png.mjs": "network plus a live credential, and og.png is committed as an artifact — a build that needs the network is a build that gets bypassed",
+  "gsc-report.mjs": "reads Search Console with a key that lives only in a worker secret; the worker produces the standing report instead",
+};
+const npmCmds = Object.values(JSON.parse(readFileSync("package.json", "utf8")).scripts).join(" && ");
+const canFail = readdirSync("scripts")
+  .filter((f) => /\.(mjs|ts)$/.test(f) && f !== "checks.mjs")
+  .filter((f) => /process\.exit\(1\)|process\.exitCode = 1/.test(readFileSync(`scripts/${f}`, "utf8")));
+const unwired = canFail.filter((f) => !npmCmds.includes(f));
+const undocumented = unwired.filter((f) => !MANUAL_BY_DESIGN[f]);
+
+console.log(`\nVERIFIERS — scripts that can fail: ${canFail.length}, of which ${unwired.length} are not run by any npm script`);
+for (const f of unwired.sort()) console.log(`    ${f.padEnd(26)} ${MANUAL_BY_DESIGN[f] ? "manual by design: " + MANUAL_BY_DESIGN[f].slice(0, 88) : "UNDOCUMENTED"}`);
+
 let bad = 0;
+if (undocumented.length) { bad++; console.log(`\n  FAIL  ${undocumented.join(", ")} can fail, is run by nothing, and has no stated reason — proven once is not proven`); }
+/* The exemption list rots in the other direction too: an entry excusing a script that no longer
+   needs excusing is a stale claim, and the coverage list two sections up is guarded the same way. */
+const staleExemptions = Object.keys(MANUAL_BY_DESIGN).filter((f) => !unwired.includes(f));
+if (staleExemptions.length) { bad++; console.log(`\n  FAIL  MANUAL_BY_DESIGN excuses ${staleExemptions.join(", ")}, which no longer needs excusing`); }
 if (dead.length) { bad++; console.log(`\n  FAIL  ${dead.length} export(s) have no call site — the extractionRatio class`); }
 if (fictional.length) { bad++; console.log(`\n  FAIL  coverage list names ${fictional.join(", ")}, which checks.mjs does not export`); }
 if (bad) process.exit(1);

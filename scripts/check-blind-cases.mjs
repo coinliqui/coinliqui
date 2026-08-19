@@ -26,10 +26,20 @@
 import {
   hiddenFromEveryone, dateModifiedAgreement, breadcrumbAgreement, publishesAPerson,
   contradictoryStates, rawEnums, founderAgreement, readmeCounts,
+  basisSelfConsistent, uncoveredRoutes, staleDerivedCells, botPolicyReasons,
+  undefinedClasses, undefinedVars, unreadableText, colourLegend, colourLanguageDrift,
+  chartAgreement, formatterDrift, fixtureGaps, requestedLeverageLabels,
 } from "./checks.mjs";
 
 /* Enough page for a check to have something to read. Deliberately minimal: a fixture that is
    almost a real page hides which detail made the check fire. */
+/* The real palette shape, so colourLegend is looking at the colours the site actually uses. */
+const PALETTE = {
+  candle: { up: "#26a69a", down: "#ef5350" },
+  funding: { paysL: "#f5a623", paysS: "#22b8cf" },
+  token: { paysL: "#f5a623", paysS: "#22b8cf" },
+};
+
 const doc = (body, head = "") => `<!doctype html><html><head>${head}</head><body>${body}</body></html>`;
 
 const cases = [
@@ -93,6 +103,126 @@ const cases = [
     why: "a hardcoded count in the README goes stale the moment a contract crosses the floor",
     fire: () => readmeCounts("# x\n\nIt covers 50 contracts across 3 venues.\n"),
     quiet: () => readmeCounts("# x\n\nIt covers every contract above the open-interest floor.\n"),
+  },
+  /* ---- batch 2: content and structural integrity ---------------------------------------- */
+  {
+    check: "basisSelfConsistent",
+    why: "a printed basis that is not the gap between the mark and spot printed beside it means one of the three is read off a different clock",
+    /* 100.00 vs 50.00 is +10,000 bps. Printing 12.0 is a contradiction far outside the
+       display-rounding tolerance the check derives from the decimal places themselves. */
+    fire: () => basisSelfConsistent(doc(
+      `<td data-spot="mark">$100.00</td><td data-spot="last">$50.00</td><td data-spot="basis">12.0</td>`)),
+    /* 100.05 against 100.00 is +5.0 bps, printed as such — inside tolerance, so silent. */
+    quiet: () => basisSelfConsistent(doc(
+      `<td data-spot="mark">$100.05</td><td data-spot="last">$100.00</td><td data-spot="basis">5.0</td>`)),
+  },
+  {
+    check: "uncoveredRoutes",
+    why: "a template the build produced that the smoke pass never requests is a page nobody has ever looked at",
+    fire: () => uncoveredRoutes('{"route":"/funding/[symbol]"},{"route":"/brand-new-thing"}', ["/funding/btc"]),
+    quiet: () => uncoveredRoutes('{"route":"/funding/[symbol]"}', ["/funding/btc"]),
+  },
+  {
+    check: "staleDerivedCells",
+    why: "a cell computed from a live APR without data-spot keeps its render-time value after the overlay repaints the rate",
+    fire: () => staleDerivedCells([["fixture.astro",
+      `<tr><td data-spot={x + "apr"}>5%</td><td>{carryCost(10000, apr, 7)}</td></tr>`]]),
+    quiet: () => staleDerivedCells([["fixture.astro",
+      `<tr><td data-spot={x + "apr"}>5%</td><td data-spot="carry">{carryCost(10000, apr, 7)}</td></tr>`]]),
+  },
+  {
+    check: "botPolicyReasons",
+    why: "excluding a crawler without saying why is a decision nobody can review later",
+    fire: () => botPolicyReasons(`const BLOCKED = [{ ua: "SomeBot", why: "" }];`),
+    quiet: () => botPolicyReasons(`const BLOCKED = [{ ua: "SomeBot", why: "scrapes aggressively and ignores crawl-delay" }];`),
+  },
+  /* ---- batch 3: the visual language, and the three that read source rather than markup ---- */
+  {
+    check: "undefinedClasses",
+    why: "a class in the markup with no rule behind it is styling the author believes exists",
+    fire: () => undefinedClasses(doc(`<div class="totally-made-up">x</div>`), `.something-else{color:red}`),
+    quiet: () => undefinedClasses(doc(`<div class="real-one">x</div>`), `.real-one{color:red}`),
+  },
+  {
+    check: "undefinedVars",
+    why: "var(--missing) with no fallback resolves to nothing, and nothing is not a colour",
+    fire: () => undefinedVars(doc(`<div style="color:var(--never-declared)">x</div>`), `:root{--other:#fff}`),
+    /* Two ways to be clean, and both must be silent: declared, or given a fallback. */
+    quiet: () => undefinedVars(doc(`<div style="color:var(--declared)">x</div>`), `:root{--declared:#fff}`)
+      .concat(undefinedVars(doc(`<div style="color:var(--absent,#fff)">x</div>`), `:root{}`)),
+  },
+  {
+    check: "unreadableText",
+    why: "text below 4.5:1 on the surface it sits on is unreadable, whatever the palette intended",
+    /* #777 on #666 is about 1.3:1. The tokens are the real ones so the check finds them. */
+    fire: () => unreadableText(`:root{--bg:#666666;--surface-1:#666666;--surface-2:#666666;--surface-3:#666666;--text:#777777;--text-dim:#777777;--text-faint:#777777}`),
+    quiet: () => unreadableText(`:root{--bg:#000000;--surface-1:#000000;--surface-2:#000000;--surface-3:#000000;--text:#ffffff;--text-dim:#ffffff;--text-faint:#ffffff}`),
+  },
+  {
+    check: "colourLanguageDrift",
+    why: "the chart ink and the CSS token for one meaning must be the same colour, or a table and a chart show it two ways",
+    fire: () => colourLanguageDrift({
+      candle: { up: "#26a69a", down: "#ef5350" },
+      funding: { paysL: "#f5a623", paysS: "#22b8cf" },
+      token:   { paysL: "#ff0000", paysS: "#22b8cf" },
+    }),
+    quiet: () => colourLanguageDrift({
+      candle: { up: "#26a69a", down: "#ef5350" },
+      funding: { paysL: "#f5a623", paysS: "#22b8cf" },
+      token:   { paysL: "#f5a623", paysS: "#22b8cf" },
+    }),
+  },
+  {
+    check: "colourLegend",
+    why: "colour carrying meaning without a written explanation excludes every reader who cannot separate the hues",
+    fire: () => colourLegend(doc(`<div class="pays-l">longs</div><div class="pays-s">shorts</div>`), PALETTE),
+    quiet: () => colourLegend(doc(
+      `<div class="pays-l">longs</div><div class="pays-s">shorts</div>` +
+      `<p>Amber means longs pay shorts; cyan means shorts pay longs.</p>` +
+      `<p>Candles are green when the close is above the open and red when it is below.</p>`), PALETTE),
+  },
+  {
+    check: "chartAgreement",
+    why: "a chart whose plotted points disagree with the table beside it is two answers to one question",
+    /* Three faults, one fixture each, because they are three different branches: unparsable
+       points, a point that is not a tuple (which used to throw and take the gate down), and an
+       incoherent candle whose high is below its open. */
+    fire: () => [
+      ...chartAgreement(doc(`<div data-tfpanel="1h" data-on></div><script id="pts-1h">{ not json</script>`)),
+      ...chartAgreement(doc(`<div data-tfpanel="1h" data-on></div><script id="pts-1h">[{"o":1}]</script>`)),
+      ...chartAgreement(doc(`<div data-tfpanel="1h" data-on></div><script id="pts-1h">[[1,0,10,5,1,8]]</script>`)),
+    ],
+    quiet: () => [
+      ...chartAgreement(doc(`<p>no chart on this page at all</p>`)),
+      ...chartAgreement(doc(`<div data-tfpanel="1h" data-on></div><script id="pts-1h">[[1,0,5,10,1,8]]</script>`)),
+    ],
+  },
+  {
+    check: "formatterDrift",
+    why: "the server and the client must format one number the same way, or the value changes when JS lands",
+    /* extractFn looks for `const NAME = (`, the shape interact.js actually uses — my first
+       fixture wrote `function usd(v)` and the check reported that it could not find it, which is
+       the check being right about a fixture that was wrong. */
+    fire: () => formatterDrift('const usd = (v) => "$" + (v * 2).toFixed(2);', { usd: (v) => `$${v.toFixed(2)}` }),
+    quiet: () => formatterDrift('const usd = (v) => "$" + v.toFixed(2);', { usd: (v) => `$${v.toFixed(2)}` }),
+  },
+  {
+    check: "fixtureGaps",
+    why: "a KV key the code reads but the seed never writes makes the smoke pass exercise an empty store",
+    fire: () => fixtureGaps([["fixture.ts", 'kv.get(`candles:${sym}`)']], ["snapshot"]),
+    quiet: () => fixtureGaps([["fixture.ts", 'kv.get(`candles:${sym}`)']], ["candles"]),
+  },
+  {
+    check: "requestedLeverageLabels",
+    why: "a page computing a tier-correct liquidation price while printing the leverage the reader asked for mislabels it — this shipped twice",
+    /* It tests for clamp AWARENESS by behaviour rather than by variable name — deliberately, per
+       its own comment, because a name test cried wolf on /tools/leverage. So the clean fixture
+       has to actually compute the clamp, not merely rename the variable. */
+    fire: () => requestedLeverageLabels(["f.astro"], () =>
+      `const liq = liquidationPrice({ leverage, table });\n<p>At {leverage}x your liquidation price is {liq}</p>`),
+    quiet: () => requestedLeverageLabels(["f.astro"], () =>
+      `const permitted = maxLeverage(table);\nconst effective = Math.min(requested, permitted);\n` +
+      `const liq = liquidationPrice({ leverage: effective, table });\n<p>At {effective}x your liquidation price is {liq}</p>`),
   },
 ];
 

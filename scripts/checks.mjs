@@ -391,6 +391,12 @@ export function chartAgreement(html) {
     out.push(`prose says ${bars[1]} bars, the active chart has ${pts.length}`);
 
   for (const p of pts) {
+    /* A GATE THAT DIES IS WORSE THAN ONE THAT REPORTS. Destructuring a non-array element threw a
+       TypeError and took the whole smoke pass down with it — found by writing a fixture with the
+       points as objects instead of tuples. The input is first-party today, so this is latent
+       rather than live, but the failure mode of a shape change should be a finding rather than a
+       crash: a crash names the checker, a finding names the page. */
+    if (!Array.isArray(p)) { out.push(`a chart point is ${typeof p}, not a [t, ?, o, h, l, c] tuple`); break; }
     const [, , o, h, l, c] = p;
     if (![o, h, l, c].every(Number.isFinite)) { out.push("a candle has non-finite OHLC"); break; }
     if (h < Math.max(o, c) - 1e-9 || l > Math.min(o, c) + 1e-9 || h < l) {
