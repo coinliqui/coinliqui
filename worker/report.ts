@@ -51,6 +51,8 @@ interface Template {
   tally?: Record<string, number>;
   /** WHICH url, not how many. See the coverage section for why a count was not enough. */
   failures?: [url: string, first: number, retry: number][];
+  /** Every URL Google did NOT report as indexed, with Google's own words for why. */
+  notIndexed?: [url: string, verdict: string, coverageState: string][];
 }
 interface State {
   week: string;
@@ -317,9 +319,18 @@ export async function stepReport(env: ReportEnv, force = false): Promise<string 
           body: JSON.stringify({ inspectionUrl: origin + (u || "/"), siteUrl: site }),
         });
         const j = (await r.json()) as any;
-        const v = j?.inspectionResult?.indexStatusResult?.verdict;
+        const res = j?.inspectionResult?.indexStatusResult ?? {};
+        const v = res.verdict;
         const k = v === "PASS" || v === "NEUTRAL" || v === "FAIL" ? v : "other";
         (t.tally ??= { PASS: 0, NEUTRAL: 0, FAIL: 0, other: 0 })[k]++;
+        /* THE SAME LESSON AS SECTION A, ONE SECTION LATER. The first time this ran it produced
+           "65/79 indexed" and named none of the fourteen — a number that says work is needed and
+           withholds the only thing needed to do it. Google returns its own reason per URL
+           (coverageState: "Discovered - currently not indexed", "Crawled - currently not
+           indexed", "Excluded by 'noindex' tag"), and those reasons want opposite responses. */
+        if (k !== "PASS") {
+          (t.notIndexed ??= []).push([u || "/", String(v ?? j?.error?.message ?? "no verdict"), String(res.coverageState ?? "—")]);
+        }
       }
       st.i = end;
       if (st.i >= flat.length) {
@@ -327,6 +338,17 @@ export async function stepReport(env: ReportEnv, force = false): Promise<string 
           const q = t.tally ?? { PASS: 0, NEUTRAL: 0, FAIL: 0, other: 0 };
           t.indexed = q.PASS;
           say(`| \`${t.name}\` | ${q.PASS}/${t.urls.length} (${pct(q.PASS, t.urls.length)}) | ${q.NEUTRAL} | ${q.FAIL} | ${q.other} |`);
+        }
+        const missing = st.templates.flatMap((t) => (t.notIndexed ?? []).map((n) => [t.name, ...n] as [string, string, string, string]));
+        if (missing.length) {
+          say(`\n**The ${missing.length} URLs Google has not indexed**, with its own reason for each. Read the`);
+          say("reason before acting: *Discovered — currently not indexed* is a queue, and the answer is");
+          say("usually to wait and watch the series below; *Crawled — currently not indexed* is a");
+          say("judgement about the page, and the answer is to change the page.\n");
+          say("| URL | Template | Verdict | Google's coverage state |");
+          say("|---|---|---|---|");
+          for (const [tpl, u, v, cov] of missing.slice(0, 40)) say(`| \`${u}\` | \`${tpl}\` | ${v} | ${cov} |`);
+          if (missing.length > 40) say(`\n…and ${missing.length - 40} more.`);
         }
         /* A SNAPSHOT CANNOT ANSWER THE QUESTION THIS DATA GETS ASKED.
            Four URLs came back "Discovered - currently not indexed" and the obvious causes were

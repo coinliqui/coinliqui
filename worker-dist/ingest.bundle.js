@@ -537,9 +537,13 @@ ${origin} \xB7 started ${now.toISOString().slice(0, 16).replace("T", " ")} UTC
           body: JSON.stringify({ inspectionUrl: origin + (u || "/"), siteUrl: site })
         });
         const j = await r.json();
-        const v = j?.inspectionResult?.indexStatusResult?.verdict;
+        const res = j?.inspectionResult?.indexStatusResult ?? {};
+        const v = res.verdict;
         const k = v === "PASS" || v === "NEUTRAL" || v === "FAIL" ? v : "other";
         (t.tally ??= { PASS: 0, NEUTRAL: 0, FAIL: 0, other: 0 })[k]++;
+        if (k !== "PASS") {
+          (t.notIndexed ??= []).push([u || "/", String(v ?? j?.error?.message ?? "no verdict"), String(res.coverageState ?? "\u2014")]);
+        }
       }
       st.i = end;
       if (st.i >= flat.length) {
@@ -547,6 +551,19 @@ ${origin} \xB7 started ${now.toISOString().slice(0, 16).replace("T", " ")} UTC
           const q = t.tally ?? { PASS: 0, NEUTRAL: 0, FAIL: 0, other: 0 };
           t.indexed = q.PASS;
           say(`| \`${t.name}\` | ${q.PASS}/${t.urls.length} (${pct(q.PASS, t.urls.length)}) | ${q.NEUTRAL} | ${q.FAIL} | ${q.other} |`);
+        }
+        const missing = st.templates.flatMap((t) => (t.notIndexed ?? []).map((n2) => [t.name, ...n2]));
+        if (missing.length) {
+          say(`
+**The ${missing.length} URLs Google has not indexed**, with its own reason for each. Read the`);
+          say("reason before acting: *Discovered \u2014 currently not indexed* is a queue, and the answer is");
+          say("usually to wait and watch the series below; *Crawled \u2014 currently not indexed* is a");
+          say("judgement about the page, and the answer is to change the page.\n");
+          say("| URL | Template | Verdict | Google's coverage state |");
+          say("|---|---|---|---|");
+          for (const [tpl, u, v, cov] of missing.slice(0, 40)) say(`| \`${u}\` | \`${tpl}\` | ${v} | ${cov} |`);
+          if (missing.length > 40) say(`
+\u2026and ${missing.length - 40} more.`);
         }
         try {
           const prev = await env.SNAPSHOT.get("index:history", "json") ?? [];
@@ -853,7 +870,7 @@ async function fetchSpotCandles(product, granularity) {
 }
 
 // worker/build-stamp.ts
-var WORKER_BUILD = "5a80c45af610";
+var WORKER_BUILD = "559486d023f0";
 
 // worker/ingest.ts
 var RETAIN_HOURS = 72;
