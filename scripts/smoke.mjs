@@ -113,6 +113,17 @@ try {
   );
   if (lev.length) { failures++; console.log(`\n  FAIL  ${lev.length} page(s) mislabel a clamped leverage:`); for (const l of lev) console.log(`          ${l}`); }
 
+  /* THE ROOT-PROBED ICON, AS AN ARTIFACT RATHER THAN A LINK TAG. The head carries
+     <link rel="icon" href="/icon.svg"> and always did, so nothing looked wrong — but
+     /favicon.ico is fetched at the root without reading any HTML by Google's favicon fetcher,
+     DuckDuckBot and the source cards in AI answers, and it was the 14KB HTML 404 page. Checked
+     as bytes, not presence: an ICO that is really an HTML error page still has a filename. */
+  try {
+    const ico = readFileSync("dist/favicon.ico");
+    const sig = ico.length >= 6 && ico.readUInt16LE(0) === 0 && ico.readUInt16LE(2) === 1 && ico.readUInt16LE(4) >= 1;
+    if (!sig) { failures++; console.log(`\n  FAIL  dist/favicon.ico is ${ico.length} bytes and is not an ICO`); }
+  } catch { failures++; console.log("\n  FAIL  dist/favicon.ico is missing — run scripts/gen-favicon.mjs"); }
+
   /* EVERY inline island must PARSE. A SyntaxError kills the whole island and every handler in
      it, while the server render stays perfect — so this is the one class the rest of the gate
      is structurally unable to see. */

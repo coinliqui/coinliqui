@@ -440,5 +440,32 @@ user. A service account added as a delegated owner is the supported arrangement.
 
 **C. Crawler fetches — `CF_ANALYTICS_TOKEN`, `CF_ZONE_ID`**
 
-A Cloudflare token scoped to this zone with **Analytics → Read**, then
-`npx wrangler secret put CF_ANALYTICS_TOKEN` and `npx wrangler secret put CF_ZONE_ID`.
+`CF_ZONE_ID` is already set. Only the token is outstanding, and it is the one credential on this
+project that cannot be installed from a script: the wrangler OAuth grant carries `zone:read`
+but not token creation, so `GET /user/tokens` returns 403 and there is no API path to mint one.
+
+One action, in the dashboard: **My Profile → API Tokens → Create Token → Custom token**, with
+**Zone → Analytics → Read** on `coinliqui.com` and nothing else. Then:
+
+```
+npx wrangler secret put CF_ANALYTICS_TOKEN
+```
+
+Two things about this section are worth knowing before reading its first output, because both
+were found by measurement after it had spent weeks producing nothing:
+
+- **It queries seven one-day windows, not one seven-day window.** The zone is on the Free plan,
+  which refuses any range wider than a day — `cannot request a time range wider than 1d`. Written
+  as a single week-long query, the first thing this section would ever have printed, on the day
+  the token arrived, is an error about time ranges under a heading about credentials.
+- **It counts VERIFIED clients, not user-agent strings.** Over five days this zone received
+  13,314 requests carrying a named crawler's user-agent; Cloudflare verified 1,205. Of the
+  remainder, 11,882 came from the IP of the laptop `scripts/verify-live.mjs` runs on, which
+  impersonates thirteen crawlers deliberately. Counting names would have reported this project's
+  own test suite as evidence of crawler interest, on the section the report calls the leading
+  indicator.
+
+A third thing, for anyone reading the zone dashboard rather than this report: about a fifth of
+this zone's requests are Cloudflare's own early-hints prefetcher (`nginx-ssl early hints`,
+`bastion early hints`). Every one of them receives a 504 and none reaches the origin, which makes
+the zone's 5xx rate read around 20% while the Pages Function's own error count is zero.

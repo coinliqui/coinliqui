@@ -43,7 +43,15 @@ interface IndexPoint {
   byTemplate: [name: string, indexed: number, total: number][];
 }
 
-interface Template { name: string; urls: string[]; ok?: number; indexed?: number; tally?: Record<string, number> }
+interface Template {
+  name: string;
+  urls: string[];
+  ok?: number;
+  indexed?: number;
+  tally?: Record<string, number>;
+  /** WHICH url, not how many. See the coverage section for why a count was not enough. */
+  failures?: [url: string, first: number, retry: number][];
+}
 interface State {
   week: string;
   phase: "coverage" | "inspect" | "search" | "crawlers" | "done";
@@ -55,7 +63,14 @@ interface State {
   tokenAt?: number;
 }
 
-const UA = "GPTBot/1.1";
+/* A CRAWLER'S NAME, AND OURS AFTER IT.
+   The crawler name is not decoration: nothing in src/ branches on user-agent, so what this
+   actually tests is the EDGE — whether Cloudflare challenges a client calling itself GPTBot.
+   The suffix is there because these 79 requests per run land in the same zone analytics that
+   section C reads, and a report whose section A feeds its own section C is an instrument
+   measuring itself. Section C counts only clients Cloudflare verified, which makes that
+   impossible by construction; this makes it legible to a human reading a UA breakdown too. */
+const UA = "GPTBot/1.1 (+https://coinliqui.com/status/indexation; coinliqui-selfcheck)";
 /** Well inside the 50-per-invocation ceiling, with room for the tick's own snapshot calls. */
 const SLICE = 20;
 
@@ -117,6 +132,46 @@ export async function gscToken(rawKey: string): Promise<string> {
   return j.access_token;
 }
 
+/** One (user-agent x verified-category) row as Cloudflare's analytics returns it. */
+export interface RawGroup { count: number; dimensions: { userAgent?: string; verifiedBotCategory?: string } }
+
+/** The crawlers worth a row. Order is the order they are printed in. */
+export const CRAWLERS = [
+  "GPTBot", "OAI-SearchBot", "ChatGPT-User", "ClaudeBot", "Claude-User", "Claude-SearchBot",
+  "PerplexityBot", "Perplexity-User", "Googlebot", "bingbot", "Applebot", "Amazonbot",
+] as const;
+
+/**
+ * Split crawler traffic into what was VERIFIED and what merely CLAIMED the name.
+ *
+ * Pure, and exported, so scripts/report-cases.mjs can run the case that matters: a fixture in
+ * which every request carries a crawler's user-agent and none is verified must report zero
+ * verified, not the claimed total. That is the exact shape this section shipped with, and no
+ * test that only checked "does it produce a table" would have caught it.
+ */
+export function tallyCrawlers(groups: RawGroup[]): {
+  rows: { name: string; verified: number; claimed: number }[];
+  verifiedTotal: number;
+  claimedTotal: number;
+} {
+  const rows = CRAWLERS.map((name) => {
+    let verified = 0, claimed = 0;
+    for (const g of groups) {
+      if (!(g.dimensions?.userAgent || "").includes(name)) continue;
+      claimed += g.count;
+      /* Non-empty is the whole test. Cloudflare returns the CATEGORY it verified the client
+         into ("AI Crawler", "Search Engine Crawler"); an unverified client returns "". */
+      if (g.dimensions?.verifiedBotCategory) verified += g.count;
+    }
+    return { name, verified, claimed };
+  });
+  return {
+    rows,
+    verifiedTotal: rows.reduce((a, r) => a + r.verified, 0),
+    claimedTotal: rows.reduce((a, r) => a + r.claimed, 0),
+  };
+}
+
 /**
  * Advance the report by one slice. Returns a short label when it did work, undefined when
  * there is nothing to do — so the caller can fall through to the ordinary sweeps.
@@ -172,7 +227,15 @@ export async function stepReport(env: ReportEnv, force = false): Promise<string 
     const end = Math.min(flat.length, st.i + SLICE * 2);
     for (let n = st.i; n < end; n++) {
       const { t, u } = flat[n];
-      t.ok = (t.ok ?? 0) + ((await get(u || "/")).status === 200 ? 1 : 0);
+      const first = (await get(u || "/")).status;
+      if (first === 200) { t.ok = (t.ok ?? 0) + 1; continue; }
+      /* RETRIED ONCE, AND BOTH STATUSES KEPT. A cold isolate returning one 5xx and a page that
+         is permanently broken produce the same count and want opposite responses, and the
+         count cannot tell them apart. The retry is what separates them; recording both is what
+         lets a reader see which happened without re-running anything. */
+      const again = (await get(u || "/")).status;
+      if (again === 200) t.ok = (t.ok ?? 0) + 1;
+      (t.failures ??= []).push([u || "/", first, again]);
     }
     st.i = end;
     if (st.i >= flat.length) {
@@ -184,7 +247,24 @@ export async function stepReport(env: ReportEnv, force = false): Promise<string 
       const total = st.templates.reduce((a, x) => a + x.urls.length, 0);
       const okAll = st.templates.reduce((a, x) => a + (x.ok ?? 0), 0);
       say(`| **total** | **${total}** | **${okAll}/${total}** |`);
-      if (okAll < total) say(`\n**${total - okAll} URLs are not fetchable by a crawler.** Nothing below matters until that is zero.`);
+      /* THE COUNT WAS THE WHOLE REPORT, AND THE COUNT IS NOT ACTIONABLE.
+         The first run of this section said "1 URLs are not fetchable by a crawler. Nothing
+         below matters until that is zero" and did not say which URL. By the time anyone read
+         it the page answered 200 again, so the finding could neither be acted on nor dismissed
+         — the report had produced an alarm and destroyed the only evidence for it. This project
+         has a standing rule about verifying diffs rather than counts; the instrument written to
+         enforce it broke it. */
+      const failed = st.templates.flatMap((t) => (t.failures ?? []).map((f) => [t.name, ...f] as [string, string, number, number]));
+      if (failed.length) {
+        const hard = failed.filter(([, , , retry]) => retry !== 200);
+        say(`\n**${hard.length} URLs are not fetchable by a crawler.** Nothing below matters until that is zero.`);
+        if (failed.length > hard.length) say(`${failed.length - hard.length} more failed once and succeeded on an immediate retry — transient, recorded rather than alarmed on.`);
+        say("");
+        say("| URL | Template | First | Retry |");
+        say("|---|---|---:|---:|");
+        for (const [tpl, u, first, retry] of failed.slice(0, 25)) say(`| \`${u}\` | \`${tpl}\` | ${first} | ${retry} |`);
+        if (failed.length > 25) say(`\n…and ${failed.length - 25} more.`);
+      }
       say("\n## B. Search Console\n");
       st.phase = env.GSC_SA_KEY ? "inspect" : "search";
       st.i = 0;
@@ -335,32 +415,67 @@ export async function stepReport(env: ReportEnv, force = false): Promise<string 
   say("\n## C. Crawler fetches\n");
   try {
     if (!env.CF_ANALYTICS_TOKEN || !env.CF_ZONE_ID) throw new Error("CF_ANALYTICS_TOKEN or CF_ZONE_ID is not set");
-    const since = new Date(Date.now() - 7 * 86400000).toISOString();
-    const r = await fetch("https://api.cloudflare.com/client/v4/graphql", {
-      method: "POST",
-      headers: { authorization: `Bearer ${env.CF_ANALYTICS_TOKEN}`, "content-type": "application/json" },
-      body: JSON.stringify({
-        query: `query($zone:String!,$since:Time!){viewer{zones(filter:{zoneTag:$zone}){
-          httpRequestsAdaptiveGroups(limit:200, filter:{datetime_geq:$since}, orderBy:[count_DESC]){
-            count dimensions{userAgent} }}}}`,
-        variables: { zone: env.CF_ZONE_ID, since },
-      }),
-    });
-    const j = (await r.json()) as any;
-    if (j.errors?.length) throw new Error(j.errors.map((e: any) => e.message).join("; "));
-    const groups: any[] = j.data?.viewer?.zones?.[0]?.httpRequestsAdaptiveGroups ?? [];
-    say("Last 7 days, from Cloudflare's edge — the only place a named crawler is visible at all,");
-    say("since Googlebot runs no JavaScript and never appears in Google Analytics.\n");
-    say("| Crawler | Requests |");
-    say("|---|---:|");
-    let any = false;
-    for (const w of ["GPTBot", "OAI-SearchBot", "ChatGPT-User", "ClaudeBot", "Claude-User", "Claude-SearchBot",
-      "PerplexityBot", "Perplexity-User", "Googlebot", "bingbot", "Applebot", "Amazonbot"]) {
-      const n = groups.filter((g) => (g.dimensions?.userAgent || "").includes(w)).reduce((a, g) => a + g.count, 0);
-      if (n) any = true;
-      say(`| ${w} | ${n || "—"} |`);
+
+    /* SEVEN ONE-DAY WINDOWS, NOT ONE SEVEN-DAY WINDOW.
+       This section had never produced a single number, and the reason was not the missing
+       token. The zone is on the Free plan, where httpRequestsAdaptiveGroups refuses any range
+       wider than a day: `cannot request a time range wider than 1d, but your query time range
+       spans 1w`. The moment the credential arrived it would have failed with a message about
+       time ranges and been read as a credential problem. Retention allows about eight days
+       back, so seven daily queries cover the same week and are accepted. */
+    const day = 86_400_000;
+    const groups: RawGroup[] = [];
+    let windows = 0;
+    for (let d = 0; d < 7; d++) {
+      const to = new Date(Date.now() - d * day).toISOString();
+      const from = new Date(Date.now() - (d + 1) * day).toISOString();
+      const r = await fetch("https://api.cloudflare.com/client/v4/graphql", {
+        method: "POST",
+        headers: { authorization: `Bearer ${env.CF_ANALYTICS_TOKEN}`, "content-type": "application/json" },
+        body: JSON.stringify({
+          query: `query($zone:String!,$from:Time!,$to:Time!){viewer{zones(filter:{zoneTag:$zone}){
+            httpRequestsAdaptiveGroups(limit:1000, filter:{datetime_geq:$from, datetime_lt:$to}, orderBy:[count_DESC]){
+              count dimensions{userAgent verifiedBotCategory} }}}}`,
+          variables: { zone: env.CF_ZONE_ID, from, to },
+        }),
+      });
+      const j = (await r.json()) as any;
+      /* A window older than retention is not an error worth failing the section for — it is the
+         edge of the data. Only fail if EVERY window failed, which is what a real fault looks like. */
+      if (j.errors?.length) { if (d === 0) throw new Error(j.errors.map((e: any) => e.message).join("; ")); continue; }
+      const g = j.data?.viewer?.zones?.[0]?.httpRequestsAdaptiveGroups ?? [];
+      if (g.length) { windows++; groups.push(...g); }
     }
-    if (!any) say("\nNo named crawler seen yet. Normal in the first fortnight; past week 3, re-run verify-live before assuming it is a ranking problem.");
+
+    const t = tallyCrawlers(groups);
+    say(`Last ${windows} day(s), from Cloudflare's edge — the only place a named crawler is visible at all,`);
+    say("since Googlebot runs no JavaScript and never appears in Google Analytics.\n");
+
+    /* VERIFIED, NOT CLAIMED. A user-agent string is an assertion by the client, and this site
+       measured what happens when an instrument believes it: over five days 13,314 requests
+       arrived wearing a named crawler's user-agent and Cloudflare verified 1,205 of them. The
+       gap was not an attack — 11,882 came from the IP of the laptop scripts/verify-live.mjs
+       runs on, which impersonates thirteen crawlers on purpose to test how the edge treats
+       them. Counting names would have reported this project's own test suite as crawler
+       interest, on the section the report itself calls the leading indicator. Both columns are
+       printed because the GAP is the finding; the left column is the one to read. */
+    say("| Crawler | Verified fetches | Requests claiming the name |");
+    say("|---|---:|---:|");
+    for (const row of t.rows) say(`| ${row.name} | ${row.verified || "—"} | ${row.claimed || "—"} |`);
+    say(`| **total** | **${t.verifiedTotal}** | **${t.claimedTotal}** |`);
+    if (!t.verifiedTotal) {
+      say("\nNo VERIFIED crawler seen yet. Normal in the first fortnight; past week 3, re-run verify-live before assuming it is a ranking problem.");
+    }
+    if (t.claimedTotal > t.verifiedTotal) {
+      const pct1 = ((t.verifiedTotal / t.claimedTotal) * 100).toFixed(1);
+      say(`\n${pct1}% of the requests carrying a crawler's name were verified as that crawler. Most of the`);
+      say("remainder is this project's own verification harness, which impersonates every crawler");
+      say("deliberately; the rest is credential scanners wearing whatever name is handy.");
+    }
+    say("\nA note for anyone reading the zone dashboard instead: roughly a fifth of this zone's");
+    say("requests are Cloudflare's own early-hints prefetcher, which receives a 504 every time and");
+    say("never reaches the origin. It makes the zone's 5xx rate read about 20% while the Pages");
+    say("Function's own error count is zero. Neither number is wrong; they count different things.");
   } catch (e) {
     say(`Not available: ${e instanceof Error ? e.message : String(e)}.\n`);
     say("Setup for this section is in DEPLOY.md.");

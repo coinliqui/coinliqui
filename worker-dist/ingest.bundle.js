@@ -335,7 +335,7 @@ function feedFromEvents(events, since, now, hours) {
 }
 
 // worker/report.ts
-var UA = "GPTBot/1.1";
+var UA = "GPTBot/1.1 (+https://coinliqui.com/status/indexation; coinliqui-selfcheck)";
 var SLICE = 20;
 var isoWeek = (d) => {
   const t = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
@@ -383,6 +383,36 @@ async function gscToken(rawKey) {
   if (!j.access_token) throw new Error(`token exchange failed: ${j.error_description || j.error || r.status}`);
   return j.access_token;
 }
+var CRAWLERS = [
+  "GPTBot",
+  "OAI-SearchBot",
+  "ChatGPT-User",
+  "ClaudeBot",
+  "Claude-User",
+  "Claude-SearchBot",
+  "PerplexityBot",
+  "Perplexity-User",
+  "Googlebot",
+  "bingbot",
+  "Applebot",
+  "Amazonbot"
+];
+function tallyCrawlers(groups) {
+  const rows = CRAWLERS.map((name) => {
+    let verified = 0, claimed = 0;
+    for (const g of groups) {
+      if (!(g.dimensions?.userAgent || "").includes(name)) continue;
+      claimed += g.count;
+      if (g.dimensions?.verifiedBotCategory) verified += g.count;
+    }
+    return { name, verified, claimed };
+  });
+  return {
+    rows,
+    verifiedTotal: rows.reduce((a, r) => a + r.verified, 0),
+    claimedTotal: rows.reduce((a, r) => a + r.claimed, 0)
+  };
+}
 async function stepReport(env, force = false) {
   const origin = env.SITE_ORIGIN || "https://coinliqui.com";
   const site = `sc-domain:${new URL(origin).hostname}`;
@@ -422,7 +452,14 @@ ${origin} \xB7 started ${now.toISOString().slice(0, 16).replace("T", " ")} UTC
     const end = Math.min(flat.length, st.i + SLICE * 2);
     for (let n2 = st.i; n2 < end; n2++) {
       const { t, u } = flat[n2];
-      t.ok = (t.ok ?? 0) + ((await get(u || "/")).status === 200 ? 1 : 0);
+      const first = (await get(u || "/")).status;
+      if (first === 200) {
+        t.ok = (t.ok ?? 0) + 1;
+        continue;
+      }
+      const again = (await get(u || "/")).status;
+      if (again === 200) t.ok = (t.ok ?? 0) + 1;
+      (t.failures ??= []).push([u || "/", first, again]);
     }
     st.i = end;
     if (st.i >= flat.length) {
@@ -434,8 +471,19 @@ ${origin} \xB7 started ${now.toISOString().slice(0, 16).replace("T", " ")} UTC
       const total = st.templates.reduce((a, x) => a + x.urls.length, 0);
       const okAll = st.templates.reduce((a, x) => a + (x.ok ?? 0), 0);
       say(`| **total** | **${total}** | **${okAll}/${total}** |`);
-      if (okAll < total) say(`
-**${total - okAll} URLs are not fetchable by a crawler.** Nothing below matters until that is zero.`);
+      const failed = st.templates.flatMap((t) => (t.failures ?? []).map((f) => [t.name, ...f]));
+      if (failed.length) {
+        const hard = failed.filter(([, , , retry]) => retry !== 200);
+        say(`
+**${hard.length} URLs are not fetchable by a crawler.** Nothing below matters until that is zero.`);
+        if (failed.length > hard.length) say(`${failed.length - hard.length} more failed once and succeeded on an immediate retry \u2014 transient, recorded rather than alarmed on.`);
+        say("");
+        say("| URL | Template | First | Retry |");
+        say("|---|---|---:|---:|");
+        for (const [tpl, u, first, retry] of failed.slice(0, 25)) say(`| \`${u}\` | \`${tpl}\` | ${first} | ${retry} |`);
+        if (failed.length > 25) say(`
+\u2026and ${failed.length - 25} more.`);
+      }
       say("\n## B. Search Console\n");
       st.phase = env.GSC_SA_KEY ? "inspect" : "search";
       st.i = 0;
@@ -562,44 +610,54 @@ Search performance not available: ${e instanceof Error ? e.message : String(e)}`
   say("\n## C. Crawler fetches\n");
   try {
     if (!env.CF_ANALYTICS_TOKEN || !env.CF_ZONE_ID) throw new Error("CF_ANALYTICS_TOKEN or CF_ZONE_ID is not set");
-    const since = new Date(Date.now() - 7 * 864e5).toISOString();
-    const r = await fetch("https://api.cloudflare.com/client/v4/graphql", {
-      method: "POST",
-      headers: { authorization: `Bearer ${env.CF_ANALYTICS_TOKEN}`, "content-type": "application/json" },
-      body: JSON.stringify({
-        query: `query($zone:String!,$since:Time!){viewer{zones(filter:{zoneTag:$zone}){
-          httpRequestsAdaptiveGroups(limit:200, filter:{datetime_geq:$since}, orderBy:[count_DESC]){
-            count dimensions{userAgent} }}}}`,
-        variables: { zone: env.CF_ZONE_ID, since }
-      })
-    });
-    const j = await r.json();
-    if (j.errors?.length) throw new Error(j.errors.map((e) => e.message).join("; "));
-    const groups = j.data?.viewer?.zones?.[0]?.httpRequestsAdaptiveGroups ?? [];
-    say("Last 7 days, from Cloudflare's edge \u2014 the only place a named crawler is visible at all,");
-    say("since Googlebot runs no JavaScript and never appears in Google Analytics.\n");
-    say("| Crawler | Requests |");
-    say("|---|---:|");
-    let any = false;
-    for (const w of [
-      "GPTBot",
-      "OAI-SearchBot",
-      "ChatGPT-User",
-      "ClaudeBot",
-      "Claude-User",
-      "Claude-SearchBot",
-      "PerplexityBot",
-      "Perplexity-User",
-      "Googlebot",
-      "bingbot",
-      "Applebot",
-      "Amazonbot"
-    ]) {
-      const n2 = groups.filter((g) => (g.dimensions?.userAgent || "").includes(w)).reduce((a, g) => a + g.count, 0);
-      if (n2) any = true;
-      say(`| ${w} | ${n2 || "\u2014"} |`);
+    const day = 864e5;
+    const groups = [];
+    let windows = 0;
+    for (let d = 0; d < 7; d++) {
+      const to = new Date(Date.now() - d * day).toISOString();
+      const from = new Date(Date.now() - (d + 1) * day).toISOString();
+      const r = await fetch("https://api.cloudflare.com/client/v4/graphql", {
+        method: "POST",
+        headers: { authorization: `Bearer ${env.CF_ANALYTICS_TOKEN}`, "content-type": "application/json" },
+        body: JSON.stringify({
+          query: `query($zone:String!,$from:Time!,$to:Time!){viewer{zones(filter:{zoneTag:$zone}){
+            httpRequestsAdaptiveGroups(limit:1000, filter:{datetime_geq:$from, datetime_lt:$to}, orderBy:[count_DESC]){
+              count dimensions{userAgent verifiedBotCategory} }}}}`,
+          variables: { zone: env.CF_ZONE_ID, from, to }
+        })
+      });
+      const j = await r.json();
+      if (j.errors?.length) {
+        if (d === 0) throw new Error(j.errors.map((e) => e.message).join("; "));
+        continue;
+      }
+      const g = j.data?.viewer?.zones?.[0]?.httpRequestsAdaptiveGroups ?? [];
+      if (g.length) {
+        windows++;
+        groups.push(...g);
+      }
     }
-    if (!any) say("\nNo named crawler seen yet. Normal in the first fortnight; past week 3, re-run verify-live before assuming it is a ranking problem.");
+    const t = tallyCrawlers(groups);
+    say(`Last ${windows} day(s), from Cloudflare's edge \u2014 the only place a named crawler is visible at all,`);
+    say("since Googlebot runs no JavaScript and never appears in Google Analytics.\n");
+    say("| Crawler | Verified fetches | Requests claiming the name |");
+    say("|---|---:|---:|");
+    for (const row of t.rows) say(`| ${row.name} | ${row.verified || "\u2014"} | ${row.claimed || "\u2014"} |`);
+    say(`| **total** | **${t.verifiedTotal}** | **${t.claimedTotal}** |`);
+    if (!t.verifiedTotal) {
+      say("\nNo VERIFIED crawler seen yet. Normal in the first fortnight; past week 3, re-run verify-live before assuming it is a ranking problem.");
+    }
+    if (t.claimedTotal > t.verifiedTotal) {
+      const pct1 = (t.verifiedTotal / t.claimedTotal * 100).toFixed(1);
+      say(`
+${pct1}% of the requests carrying a crawler's name were verified as that crawler. Most of the`);
+      say("remainder is this project's own verification harness, which impersonates every crawler");
+      say("deliberately; the rest is credential scanners wearing whatever name is handy.");
+    }
+    say("\nA note for anyone reading the zone dashboard instead: roughly a fifth of this zone's");
+    say("requests are Cloudflare's own early-hints prefetcher, which receives a 504 every time and");
+    say("never reaches the origin. It makes the zone's 5xx rate read about 20% while the Pages");
+    say("Function's own error count is zero. Neither number is wrong; they count different things.");
   } catch (e) {
     say(`Not available: ${e instanceof Error ? e.message : String(e)}.
 `);
@@ -781,7 +839,7 @@ async function fetchSpotCandles(product, granularity) {
 }
 
 // worker/build-stamp.ts
-var WORKER_BUILD = "076f46864065";
+var WORKER_BUILD = "2333b8181458";
 
 // worker/ingest.ts
 var RETAIN_HOURS = 72;
@@ -792,6 +850,12 @@ var FUNDING_REFRESH_HOURS = 6;
 var CANARY_RETAIN_HOURS = 168;
 var CHUNK = 24;
 var FILL_BACKOFF_MS = 10 * 6e4;
+function sameSecret(want, got) {
+  if (!want || !got) return false;
+  let diff = want.length ^ got.length;
+  for (let i = 0; i < got.length; i++) diff |= want.charCodeAt(i % want.length) ^ got.charCodeAt(i);
+  return diff === 0;
+}
 var ingest_default = {
   async scheduled(event, env, ctx) {
     if (event.cron === "* * * * *") {
@@ -800,11 +864,36 @@ var ingest_default = {
     }
     ctx.waitUntil(run(env));
   },
-  // Manual trigger, used once after deploy to warm KV before DNS is pointed at the site,
-  // and useful for smoke-testing afterwards.
+  /**
+   * MANUAL TRIGGERS, AND THEY WERE OPEN TO THE INTERNET.
+   *
+   * This Worker is published on workers.dev, which is a real, guessable hostname — the name of
+   * the script and the account's subdomain, both of which appear in ordinary places. Anyone who
+   * found it could POST nothing at all to /ingest and cause a full ingest: upstream fetches to
+   * Hyperliquid and Coinbase, D1 writes, KV writes. /report was worse per call — twelve slices,
+   * up to 160 subrequests, one Search Console URL Inspection per URL against a quota, and it
+   * overwrites the published weekly report. Nothing had happened, and nothing needed to for this
+   * to be wrong: the cost of the endpoint being open is not the traffic it has received.
+   *
+   * A bearer secret rather than an environment guard, deliberately. The lesson from
+   * astro.config.mjs — where `if (process.env.CF_PAGES)` protected a hypothesis about where the
+   * build ran, and the artifact shipped without it — is that a precondition on the ENVIRONMENT
+   * is not a precondition on the request. This one is on the request itself.
+   *
+   * ABSENT SECRET MEANS CLOSED, NOT OPEN. The failure mode of "no key configured, so let
+   * everyone in" is the same defect one layer down, and it is the state a fresh deploy is in.
+   *
+   * A 404 rather than a 401, matching the response every other path already gets, so the two
+   * live paths are not discoverable by probing.
+   */
   async fetch(req, env) {
     const url = new URL(req.url);
     const path = url.pathname;
+    if (path === "/report" || path === "/ingest") {
+      const want = env.TRIGGER_KEY;
+      const got = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "");
+      if (!want || !got || !sameSecret(want, got)) return new Response("not found", { status: 404 });
+    }
     if (path === "/report") {
       const steps = [];
       for (let n2 = 0; n2 < 12; n2++) {
@@ -1108,5 +1197,6 @@ async function run(env) {
   return result;
 }
 export {
-  ingest_default as default
+  ingest_default as default,
+  sameSecret
 };

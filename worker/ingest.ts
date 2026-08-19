@@ -32,6 +32,8 @@ interface Env {
      which section it could not produce and how to enable it — never a silent gap. */
   SITE_ORIGIN?: string;
   GSC_SA_KEY?: string;
+  /* Bearer secret for the two manual trigger paths. Absent means both are closed. */
+  TRIGGER_KEY?: string;
   CF_ANALYTICS_TOKEN?: string;
   CF_ZONE_ID?: string;
 }
@@ -115,6 +117,25 @@ const FILL_BACKOFF_MS = 10 * 60_000;
  */
 import { WORKER_BUILD } from "./build-stamp.ts";
 
+/**
+ * Compare two secrets without returning early on the first differing byte.
+ *
+ * The length mixes into the accumulator so a wrong-length guess cannot short-circuit, and the
+ * loop always walks the CANDIDATE, indexing the expected value modulo its length — reading past
+ * the end of either string would yield NaN, and `x ^ NaN` is `x` in JavaScript, which would
+ * quietly turn a mismatch into a match on some inputs. scripts/trigger-auth-cases.mjs runs that
+ * exact input.
+ */
+export function sameSecret(want: string, got: string): boolean {
+  /* An empty expected secret matches nothing, including an empty candidate. The handler
+     already refuses before calling this; a helper that disagreed with its only caller about
+     the open case is exactly the sort of thing that survives a refactor and lets everyone in. */
+  if (!want || !got) return false;
+  let diff = want.length ^ got.length;
+  for (let i = 0; i < got.length; i++) diff |= want.charCodeAt(i % want.length) ^ got.charCodeAt(i);
+  return diff === 0;
+}
+
 export default {
   async scheduled(event: ScheduledController, env: Env, ctx: ExecutionContext) {
     /* The one-minute cron does spot and nothing else. Everything the contract pages depend on
@@ -126,11 +147,36 @@ export default {
     ctx.waitUntil(run(env));
   },
 
-  // Manual trigger, used once after deploy to warm KV before DNS is pointed at the site,
-  // and useful for smoke-testing afterwards.
+  /**
+   * MANUAL TRIGGERS, AND THEY WERE OPEN TO THE INTERNET.
+   *
+   * This Worker is published on workers.dev, which is a real, guessable hostname — the name of
+   * the script and the account's subdomain, both of which appear in ordinary places. Anyone who
+   * found it could POST nothing at all to /ingest and cause a full ingest: upstream fetches to
+   * Hyperliquid and Coinbase, D1 writes, KV writes. /report was worse per call — twelve slices,
+   * up to 160 subrequests, one Search Console URL Inspection per URL against a quota, and it
+   * overwrites the published weekly report. Nothing had happened, and nothing needed to for this
+   * to be wrong: the cost of the endpoint being open is not the traffic it has received.
+   *
+   * A bearer secret rather than an environment guard, deliberately. The lesson from
+   * astro.config.mjs — where `if (process.env.CF_PAGES)` protected a hypothesis about where the
+   * build ran, and the artifact shipped without it — is that a precondition on the ENVIRONMENT
+   * is not a precondition on the request. This one is on the request itself.
+   *
+   * ABSENT SECRET MEANS CLOSED, NOT OPEN. The failure mode of "no key configured, so let
+   * everyone in" is the same defect one layer down, and it is the state a fresh deploy is in.
+   *
+   * A 404 rather than a 401, matching the response every other path already gets, so the two
+   * live paths are not discoverable by probing.
+   */
   async fetch(req: Request, env: Env) {
     const url = new URL(req.url);
     const path = url.pathname;
+    if (path === "/report" || path === "/ingest") {
+      const want = env.TRIGGER_KEY;
+      const got = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "");
+      if (!want || !got || !sameSecret(want, got)) return new Response("not found", { status: 404 });
+    }
     /* Manual trigger for the weekly report, so it can be exercised without waiting for a
        Monday. Same slice machine, just forced to start. */
     if (path === "/report") {

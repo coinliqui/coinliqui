@@ -32,9 +32,34 @@ const ok = (m) => console.log("   ok    " + m);
  * is verifying is worse than no verifier: it produces confident green.
  */
 const ACCEPT = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8";
+
+/**
+ * AND THE CORRECTION TO THE PARAGRAPH ABOVE: LOOK LIKE IT TO THE SERVER, NOT TO THE ANALYTICS.
+ *
+ * The rule above is right and it had an unwatched cost. This script impersonates thirteen
+ * crawlers on purpose, several times per run, over every URL in the sitemap — and the zone's
+ * analytics believed it. Measured over five days: 13,314 requests arrived carrying a named
+ * crawler's user-agent, and 11,882 of them (89%) came from the IP of the laptop this script
+ * runs on. Cloudflare verified 1,205 as genuine. The weekly report's section C, which had
+ * never once run, was written to count those names — so the first number it ever produced for
+ * "GPTBot fetches" would have been our own verification traffic, and it would have looked
+ * excellent.
+ *
+ * The two requirements are not in conflict, because the server does not branch on user-agent
+ * at all — there is no UA gate anywhere in src/, robots.txt is advisory text and nothing else.
+ * What the crawler UA is really testing is the EDGE: whether Cloudflare challenges a client
+ * calling itself GPTBot. A suffix leaves that intact and makes the traffic separable
+ * afterwards, so the harness stops being indistinguishable from the thing it imitates.
+ *
+ * Section C now counts only clients Cloudflare VERIFIED, which makes this contamination
+ * structurally impossible rather than merely labelled — this suffix is for the human reading
+ * a user-agent breakdown, not the mechanism that keeps the number honest.
+ */
+const SELF = " (+https://coinliqui.com/about; coinliqui-selfcheck)";
+
 async function fetchAs(path, ua = "Mozilla/5.0", accept = ACCEPT) {
   const r = await fetch(ORIGIN + path, {
-    headers: { "user-agent": ua, accept, "accept-language": "en-GB,en;q=0.9" },
+    headers: { "user-agent": ua + SELF, accept, "accept-language": "en-GB,en;q=0.9" },
     redirect: "manual",
   });
   return { status: r.status, headers: r.headers, body: await r.text() };
@@ -63,7 +88,7 @@ async function wireSizeIdentity(path) {
   return new Promise((resolve, reject) => {
     const u = new URL(ORIGIN + path);
     https.get({ hostname: u.hostname, path: u.pathname + u.search,
-      headers: { "user-agent": "Mozilla/5.0", accept: ACCEPT, "accept-encoding": "identity" } },
+      headers: { "user-agent": "Mozilla/5.0" + SELF, accept: ACCEPT, "accept-encoding": "identity" } },
       (res) => { let wire = 0; res.on("data", (c) => { wire += c.length; });
         res.on("end", () => resolve({ wire, enc: res.headers["content-encoding"] ?? "none" })); },
     ).on("error", reject);
@@ -76,7 +101,7 @@ async function wireSize(path) {
     const u = new URL(ORIGIN + path);
     https.get(
       { hostname: u.hostname, path: u.pathname + u.search,
-        headers: { "user-agent": "Mozilla/5.0", accept: ACCEPT, "accept-encoding": "br, gzip" } },
+        headers: { "user-agent": "Mozilla/5.0" + SELF, accept: ACCEPT, "accept-encoding": "br, gzip" } },
       (res) => {
         let wire = 0;
         res.on("data", (c) => { wire += c.length; });
@@ -168,7 +193,7 @@ console.log("\n3. indexability");
   xr ? bad(`apex still sends X-Robots-Tag: ${xr}`) : ok("apex sends no X-Robots-Tag");
   const canon = /<link rel="canonical" href="([^"]+)"/.exec(r.body)?.[1];
   canon === `${ORIGIN}/funding/btc` ? ok(`canonical ${canon}`) : bad(`canonical is ${canon}`);
-  const pv = await fetch("https://coinliqui.pages.dev/funding/btc", { headers: { "user-agent": "Googlebot/2.1" } });
+  const pv = await fetch("https://coinliqui.pages.dev/funding/btc", { headers: { "user-agent": "Googlebot/2.1" + SELF } });
   pv.headers.get("x-robots-tag")?.includes("noindex") ? ok("pages.dev still noindex") : bad("pages.dev is indexable");
 }
 
@@ -176,7 +201,7 @@ console.log("\n3. indexability");
 console.log("\n4. www");
 {
   const r = await fetchAs("/", "Mozilla/5.0");
-  const w = await fetch(ORIGIN.replace("https://", "https://www."), { redirect: "manual", headers: { "user-agent": "Mozilla/5.0" } });
+  const w = await fetch(ORIGIN.replace("https://", "https://www."), { redirect: "manual", headers: { "user-agent": "Mozilla/5.0" + SELF } });
   [301, 308].includes(w.status) ? ok(`www -> ${w.status} ${w.headers.get("location")}`) : bad(`www returns ${w.status}, not a redirect`);
   r.status === 200 ? ok("apex 200") : bad(`apex ${r.status}`);
 }
@@ -405,7 +430,7 @@ console.log("\n9. the document does not depend on a cookie");
 for (const p of ["/", "/funding/btc"]) {
   const plain = await fetchAs(p, "Mozilla/5.0");
   const withCookie = await fetch(ORIGIN + p, {
-    headers: { "user-agent": "Mozilla/5.0", accept: ACCEPT, cookie: "rail=0; _ga=GA1.1.1234567890.1700000000" },
+    headers: { "user-agent": "Mozilla/5.0" + SELF, accept: ACCEPT, cookie: "rail=0; _ga=GA1.1.1234567890.1700000000" },
     redirect: "manual",
   }).then(async (r) => ({ status: r.status, headers: r.headers, body: await r.text() }));
 
@@ -661,7 +686,15 @@ console.log("\n14. the social card renders where it is shared");
   if (!og || !tw) { bad(`missing card image tags (og:image ${og}, twitter:image ${tw})`); }
   else if (og !== tw) { bad(`og:image and twitter:image disagree: ${og} vs ${tw}`); }
   else {
-    const img = await fetch(og, { headers: { "user-agent": "facebookexternalhit/1.1" } });
+    /* The root-probed icon, from the open internet. dist/favicon.ico existing at build time and
+     coinliqui.com/favicon.ico answering are different claims — this is the second one. */
+  const fav = await fetch(ORIGIN + "/favicon.ico", { headers: { "user-agent": "Mozilla/5.0" + SELF } });
+  const favBytes = Buffer.from(await fav.arrayBuffer());
+  fav.status === 200 && favBytes.length >= 6 && favBytes.readUInt16LE(0) === 0 && favBytes.readUInt16LE(2) === 1
+    ? ok(`/favicon.ico is a real ICO (${favBytes.length} bytes)`)
+    : bad(`/favicon.ico returned ${fav.status}, ${favBytes.length} bytes, not an ICO`);
+
+  const img = await fetch(og, { headers: { "user-agent": "facebookexternalhit/1.1" + SELF } });
     const type = img.headers.get("content-type") ?? "";
     const bytes = (await img.arrayBuffer()).byteLength;
     if (img.status !== 200) bad(`${og} returns ${img.status} to a social crawler`);
