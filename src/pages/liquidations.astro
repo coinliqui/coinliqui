@@ -10,6 +10,7 @@ import { RAMP, CH, INK, MONO, FS_AXIS, compact, niceTicks } from "../lib/chart.t
 import { aggregate } from "../lib/series.ts";
 import tables from "../data/margin-tables.json";
 
+import Advisory from "../components/Advisory.astro";
 const env = (Astro.locals as any)?.runtime?.env;
 const snap = await getSnapshot(env?.SNAPSHOT, import.meta.env.DEV);
 if (!snap.available) return coldStart();
@@ -98,6 +99,7 @@ const description = `Where ${perp.symbol} liquidation levels sit and which ones 
       levels the market has already taken out. This is a model, and it is labelled as one inside
       the picture, not only underneath it.
     </p>
+    <Advisory />
   </div>
 
   <form method="GET" class="calc" style="margin-bottom:16px">

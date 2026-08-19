@@ -8,6 +8,7 @@ import { aggregate } from "../../lib/series.ts";
 import type { Candle } from "../../lib/candles.ts";
 import frozen from "../../data/sweep-2026-02.json";
 
+import Advisory from "../../components/Advisory.astro";
 /* =========================================================================================
    THE DEMONSTRATION CASE.
 
@@ -114,6 +115,7 @@ const description =
       for that window with the observed price drawn over it. Watch the bright bands under the price
       end where the candles reach them.
     </p>
+    <Advisory />
   </div>
 
   <div class="reads">

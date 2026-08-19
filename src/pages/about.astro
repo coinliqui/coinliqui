@@ -24,9 +24,10 @@ import { usd } from "../lib/funding.ts";
  * site or checkable against the upstream APIs named on /data-sources.
  *
  * (This used to end "…and the /privacy guarantees behind that are enforced by a
- * Content-Security-Policy the reader can check in their own network tab". That was an argument
- * about analytics, which this site now runs deliberately, and it was never the load-bearing
- * half: what answers "is this a scam" is having no mechanism to take money.)
+ * Content-Security-Policy the reader can check in their own network tab". That sentence was
+ * dropped when the site ran Google Analytics, restored in substance now that it does not, and
+ * is still deliberately not the argument this page leads with: what answers "is this a scam"
+ * is having no mechanism to take money, not having no way to count visitors.)
  */
 const snap = await getSnapshot((Astro.locals as any)?.runtime?.env?.SNAPSHOT, import.meta.env.DEV);
 

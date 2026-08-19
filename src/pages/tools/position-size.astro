@@ -5,6 +5,8 @@ import { usd, pct, queryNum } from "../../lib/funding.ts";
 import { liquidationPrice, tierFor, maintenanceMarginFraction, type MarginTable, type Side } from "../../lib/margin.ts";
 import tables from "../../data/margin-tables.json";
 
+import Advisory from "../../components/Advisory.astro";
+import Interests from "../../components/Interests.astro";
 const snap = await getSnapshot((Astro.locals as any)?.runtime?.env?.SNAPSHOT, import.meta.env.DEV);
 // Cold store: 503 + Retry-After rather than a page rendered from nothing.
 if (!snap.available) return coldStart();
@@ -89,6 +91,7 @@ const description = `Risk-based position sizing for ${perp.symbol} perpetuals th
       Risk-based sizing, checked against the price at which the position is actually closed.
       Opens on {perp.symbol} at {px(perp.markPx)}.
     </p>
+    <Advisory />
   </div>
 
   <form method="GET" class="calc">
@@ -284,4 +287,5 @@ const description = `Risk-based position sizing for ${perp.symbol} perpetuals th
       form.addEventListener("change", (e) => { if (e.target.name === "symbol") form.submit(); else recalc(); });
     }
   </script>
+  <Interests />
 </Base>

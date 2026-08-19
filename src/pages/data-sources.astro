@@ -70,9 +70,24 @@ const sources = [
     HIP-1 tokens and bridged wrappers turning over roughly $60M a day in total, so a "Bitcoin price" taken
     from it would not be Bitcoin's. Hyperliquid does publish an <strong>oracle price</strong>, a validator
     median across major spot venues, and it is a good index; but it is an index, and nobody can trade it.
-    Coinbase Exchange is a real USD order book with a real bid and ask, free, without a key, and it permits
-    display with attribution. So the spot prices on this site are Coinbase's, labelled as such wherever they
-    appear, and never averaged into a Hyperliquid number.
+    Coinbase Exchange is a real USD order book with a real bid and ask, reachable without a key. So the spot
+    prices on this site are Coinbase's, labelled as such wherever they appear, and never averaged into a
+    Hyperliquid number.
+  </p>
+  {/* THIS PARAGRAPH USED TO END "and it permits display with attribution".
+      That was a legal conclusion, asserted in the site's own voice, with nothing behind it —
+      on the one page whose entire purpose is that every claim can be checked against a primary
+      source. No Coinbase document granting it was ever cited here because none was ever found.
+      A reader who wants to know what Coinbase permits should read Coinbase, and the link is in
+      the table above. Stating the operational facts and linking the terms is both more useful
+      and more honest than paraphrasing a document we had not read. */}
+  <h2>Which Ethereum endpoints</h2>
+  <p class="prose">
+    The on-chain figures are read from three interchangeable public JSON-RPC endpoints —
+    <code>ethereum-rpc.publicnode.com</code>, <code>eth.drpc.org</code> and <code>1rpc.io</code> — whichever
+    answers first. The table calls that "Ethereum JSON-RPC" because the reader's question is which chain and
+    which method, not which mirror. They are named here anyway, for the narrower question that only a
+    hostname can answer: whose terms apply, and where to read them.
   </p>
 
   <h2>Coverage</h2>

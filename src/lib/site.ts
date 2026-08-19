@@ -116,7 +116,14 @@ export const IDENTITY = {
    * disambiguation that omits the site they were actually shown is answering a question nobody
    * asked. It is an operating, unrelated crypto price tracker — not a clone, not a scam, and
    * nothing to do with this project in either direction. */
-  notAffiliated: ["coinliq.com", "Liqui", "liqui.io", "Coinliqui.io", "LiquiTrade", "any exchange or broker"],
+  /* "LiquiTrade" WAS IN THIS LIST AND IS NOT ANY MORE. Every other entry is a defunct
+     exchange, a parked spelling, or a category. That one is an operating, regulator-registered
+     company that has never been confused with this site by anybody, and naming a live business
+     in a disambiguation list is a different act from naming a dead one: it puts our domain
+     beside their name on a page we control, for a confusion nobody reported. Removed on a
+     compliance audit's finding, which was right — the list should hold the confusions readers
+     actually arrive with, and no more. */
+  notAffiliated: ["coinliq.com", "Liqui", "liqui.io", "Coinliqui.io", "any exchange or broker"],
   /**
    * EMPTY ON PURPOSE. This listed a personal code-hosting account. A repository is good
    * corroboration for a project, but that one is tied to an individual's profile, so linking it
@@ -147,58 +154,34 @@ export const IDENTITY = {
   ] as string[],
 } as const;
 
-/**
- * GOOGLE ANALYTICS 4. The measurement ID, and the only thing that has to be filled in.
- *
- * Empty string means GA does not render at all — no tag, no request, no cookie — so the site
- * is correct and shippable before the ID exists, and a bad paste degrades to "no analytics"
- * rather than to a broken page. Everything else (the loader, the CSP allowances, the privacy
- * copy) is already in place and keyed off this one value.
- *
- * A measurement ID is public by design: it ships in the HTML of every page and identifies a
- * property, not an account. It is not a credential and does not belong in a secret store.
- *
- * GA_ENABLED is a SHAPE check, not a truthiness check, so a placeholder left in by accident
- * cannot emit a live tag pointing at nothing. It is deliberately loose about length — real IDs
- * are G- plus ten characters, but a regex tightened to exactly ten would silently disable
- * analytics if Google ever issues another width, and "silently off" is the worst failure this
- * value has. Loose enough to accept anything Google plausibly issues, strict enough to reject
- * an empty string or a leftover placeholder.
- */
-export const GA_MEASUREMENT_ID = "G-5Y4ZENWMQJ";
-export const GA_ENABLED = /^G-[A-Z0-9]{6,15}$/.test(GA_MEASUREMENT_ID);
+/* GOOGLE ANALYTICS 4 WAS HERE, AND IS GONE. Removed 19 August 2026, deliberately and not
+   by accident, so this note stands where the constants did.
 
-/**
- * LOAD gtag.js AFTER THE PAGE HAS SETTLED, rather than in parallel with it. Measured, not
- * assumed — /funding/btc on the local warm build, GA off then on:
- *
- *                       GA off      GA on
- *   long tasks          none        119 ms + 66 ms
- *   total blocking      0 ms        85 ms
- *   load event          133 ms      668 ms
- *   off-origin hosts    0           2
- *   transfer            —           +145.8 KB brotli (the whole page is 69 KB)
- *   JS to parse         ~0          +419 KB decoded
- *
- * This site ships almost no JavaScript, so gtag.js is not an increment on the main thread —
- * it IS the main-thread work. 419 KB to parse and execute, on a page whose own budget is a
- * search index and a price ticker. On mid-range mobile hardware that block is typically
- * several times longer than the 185 ms measured on a fast laptop, and INP is scored on the
- * interactions that land while it runs.
- *
- * Deferring keeps the data and removes the contention. The pageview still fires; it fires a
- * moment later. What is genuinely lost is the visitor who leaves before the trigger, which is
- * the shortest and least informative session there is.
- *
- * THE TRIGGER IS WHICHEVER COMES FIRST of: the browser going idle after load, the first real
- * interaction (a scroll, tap, key or pointer), or a 3-second backstop. The interaction case
- * matters most — a reader who is doing something is a reader worth counting, and they arm the
- * loader before the timer would.
- *
- * Set to false to get Google's stock `async`-in-head behaviour back. The numbers above are the
- * argument for the default; if they change, change the default.
- */
-export const GA_DEFER = true;
+   THE DECIDING ARGUMENT WAS NOT PRIVACY LAW. It was that in the whole life of the property
+   not one GA4 number was ever used to make a decision. Every call this project has made was
+   made on Search Console coverage, on Cloudflare's own request logs, or on a figure measured
+   directly off the live pages. GA4 answered questions nobody was asking.
+
+   WHAT IT COST TO ANSWER THEM: 167.8 KB brotli of loader and library, on a homepage that is
+   6.5 KB brotli — 25x the page, to measure the page. Measured on /funding/btc, GA off then
+   on: two long tasks (119 ms + 66 ms), 85 ms total blocking against 0 ms, load event 133 ms
+   -> 668 ms, 419 KB of JavaScript to parse on a site that otherwise ships almost none. This
+   project has spent a written decision moving a budget by 2,600 bytes. There is no version
+   of that standard that also carries this.
+
+   And it removed a pile of law at the same time: the ePrivacy Art 5(3) consent gate we were
+   not honouring, a breach of Google's own Analytics terms (a contract obligation, separate
+   from GDPR), the calculator values that reached Google inside `page_location` on a GET form
+   whose fields include one called `capital`, and most of the pressure toward an Art 27 EU
+   representative. Those were the audit's findings. They were not the reason; they were the
+   confirmation that the reason was pointing the right way.
+
+   IF ANALYTICS COME BACK, they should be server-side and cookieless. Cloudflare's own request
+   logs already answer "which pages are read" without a byte of client JavaScript, and the
+   weekly indexation report already reads them. Do not restore this by pasting a measurement
+   ID back into this file: the loader, the CSP allowances and the /privacy copy were all
+   removed with it, and a half-restored tag is the failure mode worth avoiding. */
+
 
 /** Namespace for anything this site writes to a visitor's own browser. One constant, so
  *  /privacy can document the exact key rather than a copy of it that drifts. */
@@ -273,6 +256,38 @@ export const NAV: NavGroup[] = [
 ];
 
 /** Footer carries every built destination, so nothing is reachable only at desktop widths. */
+/**
+ * THE TWO DISCLOSURES A RECOMMENDATION HAS TO CARRY, kept here rather than as copy in five
+ * templates, so they cannot drift page to page.
+ *
+ * WHY THEY EXIST. A compliance audit asked whether the funding-arbitrage calculator — a tool
+ * that names two venues, quantifies the spread between them and prints what the trade would
+ * pay — is an "investment recommendation" under MAR Article 20. That question is genuinely
+ * open and a lawyer has to answer it. But the two duties it would impose cost two sentences,
+ * and the site is better with them under either answer: a reader is entitled to know who
+ * produced a figure and whether the producer has a stake in it. So they ship now, and the
+ * classification question stops being load-bearing.
+ *
+ * THE POSITION SENTENCE IS DELIBERATELY "MAY HOLD". Everything else on this site is written
+ * to be checkable and "holds nothing" would be the one claim here that a reader could not
+ * check and this file could not verify. Disclosing a possible interest is the conservative
+ * direction and the standard one. If the operator wants the stronger sentence, it is one edit
+ * — but only if it is true, and it has to STAY true, which is the harder half.
+ *
+ * The commercial half is not hedged, because it is structural: there are no affiliate links
+ * in this codebase, no advertising, no sponsored placement, and coverage is decided by an
+ * open-interest floor published on /data-sources. A check can and does read that.
+ */
+export const PRODUCER = IDENTITY.founder
+  ? `Produced and published by ${IDENTITY.founder.name} as ${SITE.name}, an independent project with no legal entity.`
+  : `Produced and published by ${SITE.name}, an independent project with no legal entity.`;
+
+export const INTERESTS =
+  "No payment, sponsorship, affiliate or referral arrangement exists with any venue named here, " +
+  "and nothing paid influences which coins or venues appear — coverage is decided by the open-interest " +
+  "floor stated on Data sources. The operator may hold positions in coins covered here; nothing " +
+  "published is timed, ordered or selected around one.";
+
 export const FOOTER_LINKS = [
   { href: "/about", label: "About" },
   { href: "/watchlist", label: "Watchlist" },
@@ -286,4 +301,8 @@ export const FOOTER_LINKS = [
   { href: "/methodology/liquidations", label: "Why no liquidation totals" },
   { href: "/data-sources", label: "Data sources" },
   { href: "/privacy", label: "Privacy" },
+  /* TERMS WAS MISSING FROM THIS LIST, which is how the site's disclaimer ended up reachable
+     from /about and nowhere else. The footer said the words "Not investment advice" as plain
+     text on every page while the page that means it was unlinked from all of them. */
+  { href: "/terms", label: "Terms" },
 ];

@@ -275,27 +275,36 @@ console.log("\n5. sitemap");
 
 /* 6. THE CSP, AS THE ANTI-INJECTION CONTROL IT ACTUALLY IS.
  *
- * THIS SECTION USED TO ASSERT A RULE THAT NO LONGER EXISTS. It checked that the only
- * off-origin script was Cloudflare's blocked beacon and that script-src was exactly 'self',
- * because /privacy claimed zero third-party scripts and zero off-origin requests. The site now
- * runs Google Analytics 4 deliberately, so that assertion would fail on correct behaviour —
- * a check defending a retired rule, which is the drift this file exists to catch.
+ * THIS SECTION HAS NOW BEEN REWRITTEN TWICE FOR THE SAME REASON, in opposite directions, and
+ * that is the thing worth reading before editing it again. It first asserted script-src was
+ * exactly 'self', because /privacy claimed zero third-party scripts. Then the site ran Google
+ * Analytics 4 and the assertion failed on correct behaviour, so the allowlist grew. GA4 is now
+ * removed and SCRIPT_HOSTS is empty again — so an assertion demanding an analytics host would
+ * fail on correct behaviour a second time. A check that encodes a decision has to be edited
+ * when the decision is, and the failure looks identical either way: green where it should be
+ * red, or red where the site is right.
  *
- * What survives is the half that was always the real value. A CSP is protection against an
- * origin NOBODY CHOSE: a compromised dependency, an injected tag, a rewriting proxy. So:
+ * What survives both rewrites is the half that was always the real value. A CSP is protection
+ * against an origin NOBODY CHOSE: a compromised dependency, an injected tag, a rewriting
+ * proxy. So:
  *
- *   - every off-origin script must be on the allowlist below, BY HOSTNAME. A new one fails.
- *   - script-src must name hosts and must never contain a scheme or a wildcard. `https:` or
- *     `*` permits the entire internet while reading like a policy.
+ *   - every off-origin script must be on the allowlist below, BY HOSTNAME. The list is empty,
+ *     so any off-origin script that is PERMITTED TO RUN is a failure.
+ *   - script-src must never contain a scheme or a wildcard. `https:` or `*` permits the
+ *     entire internet while reading like a policy. With an empty allowlist it must also name
+ *     no host at all.
  *   - the directives that do the anti-injection work must all still be present. Relaxing
- *     script-src for analytics is a decision; quietly losing object-src 'none' is not.
+ *     script-src for analytics was a decision; quietly losing object-src 'none' is not.
  *
  * HOSTNAME EQUALITY OR AN EXPLICIT SUFFIX, NEVER A PREFIX. `startsWith("https://x.com")` also
  * matches https://x.com.evil.tld. That hole was found here once by writing the blind case out
  * and running it, and widening the allowlist makes it more dangerous rather than less —
  * scripts/blind-cases.mjs keeps the cases.
  */
-const SCRIPT_HOSTS = ["www.googletagmanager.com"];
+/* EMPTY, AND THAT IS THE ASSERTION. Not "no hosts have been added yet" — no host is permitted
+   to serve a script to this site. Adding one here is a deliberate act that has to survive the
+   question GA4 failed: what decision gets made with what it returns. */
+const SCRIPT_HOSTS = [];
 const REQUIRED_CSP = [
   ["object-src", "'none'"], ["base-uri", "'self'"], ["frame-ancestors", "'none'"],
   ["form-action", "'self'"], ["default-src", "'self'"],
@@ -315,11 +324,17 @@ for (const p of ["/", "/funding/btc"]) {
      check fail on correct behaviour the first time it ran. Cloudflare injects its own Web
      Analytics beacon into every page as it leaves the edge, after this Worker is done — the
      tag is in the HTML and the CSP does not permit its host, so the browser refuses to fetch
-     it. That is the intended state: GA4 is the analytics this site chose, and a second
-     off-origin script for duplicate data is weight nobody asked for.
+     it. That is the intended state, and /privacy describes it in those words.
      So the question is not "is there an off-origin tag" but "is there an off-origin script
      that IS PERMITTED TO RUN and that we did not choose". A tag present in the markup AND
-     allowed by script-src, without being on the deliberate list, is the actual failure. */
+     allowed by script-src, without being on the deliberate list, is the actual failure.
+     THIS LOOP CAN ONLY SEE THE BEACON BECAUSE OF ONE HEADER, which the SEND WHAT A BROWSER
+     SENDS note at the top of this file already explains and which was re-measured on 19 August
+     to be sure it still holds: the injection keys off `accept`, an HTML accept gets the tag, a
+     wildcard one does not, and the user-agent makes no difference in either direction. The
+     re-measurement was prompted by an ad-hoc curl elsewhere that omitted the header, saw a
+     clean page and was believed for several minutes. The note was right; the convenience fetch
+     was not. That is the whole reason ACCEPT is a constant at the top of this file. */
   const permitted = (u) => { const h = hostOf(u); return !!h && scriptSrc0.includes(h); };
   const scripts = [...r.body.matchAll(/<script[^>]*src="(https?:\/\/[^"]+)"/g)].map((m) => m[1]);
   const offOrigin = scripts.filter((u) => !sameOrigin(u));
@@ -354,9 +369,9 @@ for (const p of ["/", "/funding/btc"]) {
   const strayHosts = cspHosts.filter((h) => !SCRIPT_HOSTS.includes(h));
   loose ? bad(`${p} script-src contains a scheme or wildcard — that permits every origin: "${scriptSrc}"`)
     : !/'self'/.test(scriptSrc) ? bad(`${p} script-src no longer allows 'self': "${scriptSrc}"`)
-    : !named ? bad(`${p} script-src is missing an allowlisted analytics host: "${scriptSrc}"`)
+    : !named ? bad(`${p} script-src is missing an allowlisted host: "${scriptSrc}"`)
     : strayHosts.length ? bad(`${p} script-src permits a host nobody chose: ${strayHosts.join(", ")}`)
-    : ok(`${p} script-src permits exactly ${cspHosts.join(", ")} — parsed as hostnames, not matched as substrings`);
+    : ok(`${p} script-src permits no off-origin host at all — ${cspHosts.length} named, parsed as hostnames rather than matched as substrings`);
 
   const missing = REQUIRED_CSP.filter(([k, v]) => dir(k) !== v);
   missing.length

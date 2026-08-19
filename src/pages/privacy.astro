@@ -1,39 +1,43 @@
 ---
 import Base from "../layouts/Base.astro";
 import Related from "../components/Related.astro";
-import { PINNED_KEY, IDENTITY, GA_ENABLED } from "../lib/site.ts";
+import { PINNED_KEY, IDENTITY } from "../lib/site.ts";
 
 /**
  * AN ORDINARY PRIVACY POLICY. Deliberately short, deliberately unremarkable.
  *
- * This page used to be an argument. It led with "there are no accounts and none are planned",
- * claimed zero analytics, zero third-party scripts and zero off-origin requests, and spent
- * three paragraphs on a Cloudflare beacon that the CSP was blocking. That was a position, and
- * positions belong on pages that are selling something.
+ * THIS PAGE HAS NOW BEEN WRONG IN BOTH DIRECTIONS, which is the reason it is written the way
+ * it is. The first version was an argument: "no analytics, no third-party scripts, no
+ * off-origin requests", plus three paragraphs on a Cloudflare beacon. Then the site ran Google
+ * Analytics 4 and those sentences became false, so the page was rewritten as a compliance
+ * document. GA4 is now gone — see the note where its constants used to live in site.ts — and
+ * the GA-shaped half of that rewrite is false in turn.
  *
- * The site now runs Google Analytics 4 on purpose. So this is a compliance page: what is
- * collected, what cookies exist, what is not taken. No claims that need defending, no
- * paragraph asking the reader to open a network tab and check us.
+ * The lesson is not "be vague". It is that this page must describe WHAT RUNS, checked, on the
+ * day it is edited. So there are no gates left in it. There is no GA_ENABLED flag deciding
+ * which of two paragraphs a reader sees, because that flag is what let the page describe a
+ * configuration instead of a fact. Every claim below was measured against the live site.
  *
- * Two of the old sentences were about to become false rather than merely promotional, and
- * that is why this could not just be trimmed: "no analytics run" is now wrong, and "no
- * accounts, and none are planned" is wrong about the plan.
+ * THE ONE SUBTLE THING, and the reason the Cloudflare section is longer than a hosting note
+ * has any right to be: Cloudflare injects a measurement beacon into HTML responses, and it
+ * decides whether to do so from the request's `accept` HEADER. Isolated on the live site on 19
+ * August, four ways: an HTML accept gets the tag and 359 extra bytes; a wildcard accept does
+ * not; the user-agent changes nothing in either direction. The first pass at this note said it
+ * keyed off the user-agent, which was a guess dressed as a measurement — the difference was
+ * sitting in a header that had not been varied. scripts/verify-live.mjs had the correct
+ * explanation written at the top of it the whole time.
  *
- * GA_ENABLED gates the analytics section against the measurement ID actually being set, so
- * the page describes what the site does rather than what it is configured to do one day.
- * A page claiming to run analytics that are not running is the same class of untruth as the
- * one this replaced, pointed the other way.
+ * It matters because a check that fetches this page without a browser's accept header sees a
+ * clean document and reports one. verify-live sends a real browser's and therefore does see
+ * it; the ad-hoc curl that produced the page-weight baseline did not, and reported zero. A
+ * page describing what a reader receives has to be written from a request shaped like a
+ * reader's.
  */
 const title = "Privacy";
-/* GATED ON THE SAME FLAG AS THE BODY. The description asserted "Google Analytics for traffic
-   measurement, two cookies" while the body, correctly gated, said "No analytics are running on
-   this site at present" — the page contradicting itself in the one line search engines quote.
-   Written the moment the body was gated and the head was not, which is why both read from
-   GA_ENABLED now rather than from what the site is configured to do one day. */
-const description = GA_ENABLED
-  ? "What Coinliqui collects: Google Analytics for traffic measurement, cookies, and no payment or personal information."
-  : "What Coinliqui collects: no analytics at present, one preference cookie, and no payment or personal information.";
-const updated = "17 August 2026";
+const description =
+  "What Coinliqui collects: no analytics, no third-party scripts, one preference cookie, " +
+  "and no payment or personal information.";
+const updated = "19 August 2026";
 ---
 
 <Base title={title} description={description}>
@@ -50,44 +54,26 @@ const updated = "17 August 2026";
     nothing to sign into. If that changes, this page changes with it.
   </p>
 
-  {GA_ENABLED ? (
-    <>
-      <h2 class="section">Analytics</h2>
-      <p class="prose">
-        This site uses <strong>Google Analytics 4</strong> to measure traffic. It records which
-        pages are viewed and in what order, roughly where in the world the request came from,
-        the device and browser, and how you arrived — a search result, a link, or directly.
-        Google processes this on our behalf and may transfer it outside your country, including
-        to the United States. It is used to understand which pages are worth writing and
-        nothing else: no profiles are built, nothing is sold, and no data is shared with
-        advertisers.
-      </p>
-      <p class="prose">
-        You can stop it with any content blocker, with Google's own
-        {" "}<a class="link" href="https://tools.google.com/dlpage/gaoptout" rel="nofollow noopener">opt-out add-on</a>,
-        or by blocking cookies for this site. Every page works identically either way.
-      </p>
-    </>
-  ) : (
-    <>
-      <h2 class="section">Analytics</h2>
-      <p class="prose">No analytics are running on this site at present.</p>
-    </>
-  )}
+  <h2 class="section">Analytics</h2>
+  <p class="prose">
+    <strong>None run on this site.</strong> Google Analytics 4 was installed here between 17 and
+    19 August 2026 and has been removed: no tag, no <code>gtag.js</code>, no <code>_ga</code>
+    cookie, and no request to any Google host from any page. The
+    Content-Security-Policy this site sends now permits scripts from its own origin and nowhere
+    else, which you can read in the response headers of this page.
+  </p>
+  <p class="prose">
+    It was dropped because it was never used. Not one decision about this site was ever made
+    from a GA4 number — coverage came from Search Console, traffic from the host's own request
+    logs, and everything else from measuring the live pages. It cost 167.8&nbsp;KB of
+    JavaScript to answer questions nobody was asking, on a homepage of about 6.5&nbsp;KB.
+  </p>
 
   <h2 class="section">Cookies and local storage</h2>
   <div class="panel" style="max-width:860px">
     <table class="tbl">
       <thead><tr><th>Name</th><th>Kind</th><th>Purpose</th><th>Expires</th></tr></thead>
       <tbody>
-        {GA_ENABLED && (
-          <tr>
-            <td><code>_ga</code>, <code>_ga_*</code></td>
-            <td>Cookie</td>
-            <td>Google Analytics — tells one browser apart from another so a visit is not counted twice</td>
-            <td>2 years</td>
-          </tr>
-        )}
         <tr>
           <td><code>rail</code></td>
           <td>Cookie</td>
@@ -115,11 +101,35 @@ const updated = "17 August 2026";
     request logs. Nothing links them to you, but if you would rather a real account balance did
     not appear in a log line, use a representative figure.
   </p>
-
-  <h2 class="section">Hosting</h2>
   <p class="prose">
-    This site runs on Cloudflare, which processes the requests needed to serve a page and keeps
-    aggregate traffic metrics, as any web host does.
+    Those request logs are now the only place the values go. While Google Analytics ran, the
+    full URL of every page view — query string included, so the figure typed into a field named
+    <code>capital</code> along with it — was sent to Google as part of the standard page-view
+    event. That was true from the day the tag went in, it was not described on this page, and it
+    stopped when the tag came out.
+  </p>
+
+  <h2 class="section">Hosting, and the one script we did not put here</h2>
+  <p class="prose">
+    This site runs on Cloudflare. Serving a page means Cloudflare handles the request itself —
+    your IP address, the page asked for, the browser string, the response status — and keeps
+    aggregate traffic and security metrics from it. That much is true of any web host and is not
+    optional for a site that is served at all.
+  </p>
+  <p class="prose">
+    It also does something a host description would not lead you to expect, and this page used
+    to say only the first half. Cloudflare <strong>injects its own measurement script</strong>
+    into HTML responses, after this site's code has finished with them, and it does so whenever
+    a client asks for the page the way a browser asks for it. It is not ours, it was not added
+    here, and it is not in this site's source.
+  </p>
+  <p class="prose">
+    <strong>It does not run.</strong> The Content-Security-Policy this site sends allows scripts
+    only from its own origin, so your browser refuses to load it and logs the refusal in the
+    console. The tag arrives in the markup and does nothing. We would rather it were not sent at
+    all, and that is a setting on the hosting account rather than something this codebase can
+    reach; until it is switched off, this is exactly what happens, described here rather than
+    left for you to find in a developer console.
   </p>
 
   <h2 class="section">Contact</h2>

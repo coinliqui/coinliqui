@@ -131,52 +131,57 @@ export const onRequest = defineMiddleware(async (ctx, next) => {
      whose central claim is that it cannot take a payment should say so to the browser too. */
   res.headers.set("permissions-policy", "camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()");
 
-  /* THE CSP, WHICH NO LONGER DEFENDS A MARKETING CLAIM AND STILL EARNS ITS PLACE.
+  /* THE CSP, BACK TO `script-src 'self'` — the strongest form it has ever had here.
    *
-   * It used to exist to make "no third-party scripts" true by force — script-src 'self',
-   * nothing else, so an injected analytics beacon could not run. That policy is retired: this
-   * site runs Google Analytics 4 deliberately, and the CSP now names the hosts GA needs and
-   * refuses everything else.
+   * It began as script-src 'self' and nothing else, to make "no third-party scripts" true by
+   * force. That was relaxed to run Google Analytics 4: one named host in script-src, and
+   * wildcards on three Google domains across img-src and connect-src. GA4 is gone, so the
+   * seven allowances it bought are gone with it, and nothing off-origin can serve a script,
+   * receive a fetch, or load a pixel on this site any more.
    *
-   * Which is the part worth keeping. The threat a CSP is actually for is an origin nobody
-   * chose — a compromised dependency, an injected tag, a rewriting proxy.
+   * NARROWING IS THE WHOLE POINT, not a tidy-up after the fact. A CSP defends against an
+   * origin nobody chose — a compromised dependency, an injected tag, a rewriting proxy — and
+   * every named host is a hole punched in that defence for something we decided we wanted.
+   * www.googletagmanager.com in particular will serve any GTM container to anyone who asks for
+   * it by ID, so allowlisting it was strictly weaker than 'self'. It was a deliberate trade
+   * for the analytics. With the analytics gone, keeping it would be a trade for nothing.
    *
-   * BUT NOT "EXACTLY AS WELL AS 'self' ALONE", which is what this comment claimed and is not
-   * true. script-src gains ONE named host; connect-src and img-src gain wildcards on three
-   * Google domains. And www.googletagmanager.com will serve any GTM container to anyone who
-   * asks for it by ID, so allowlisting it is strictly weaker than 'self' — it is a deliberate
-   * trade for the analytics, not a free one. What carries the anti-injection weight is the set
-   * NOT relaxed: object-src 'none', base-uri 'self', frame-ancestors 'none', form-action
-   * 'self', default-src 'self'. None of those moved.
+   * THE CLOUDFLARE RUM BEACON IS DELIBERATELY NOT ALLOWED. Cloudflare injects
+   * static.cloudflareinsights.com into every response after this Worker is finished, and this
+   * policy blocks it — verified in a browser console, not assumed. Allowing it would buy real
+   * Core Web Vitals field data for about 11 KB. That is a genuine offer and it is declined for
+   * now: the beacon's cookielessness has not been confirmed against Cloudflare's current
+   * terms, and this is the wrong week to add a third-party script back on trust. The tag
+   * itself is being turned off at the dashboard so the page stops carrying an inert script it
+   * cannot run. Revisit when the confirmation is in — see /privacy, which describes exactly
+   * this state rather than a tidier version of it.
    *
    * The rule for editing this: name hosts, never a scheme and never a wildcard. `https:` or
    * `*` in script-src would permit every origin on the internet and read, at a glance, like a
    * tightened policy. scripts/verify-live.mjs fails on either.
    *
-   * 'unsafe-inline' permits EVERY inline script in the document — ours and anyone else's. CSP
+   * 'unsafe-inline' PERMITS EVERY INLINE SCRIPT in the document — ours and anyone else's. CSP
    * has no notion of authorship, and an earlier version of this comment claimed it did, which
-   * was flattering and false. It is here because the calculators' `define:vars` blocks and the
-   * GA config call are inline, and it is a real weakening of the inline-injection defence.
-   * What it does not do is admit an off-origin ORIGIN; that is the allowlist above, and that
-   * is the half this file guards. Removing it means hashing or noncing every inline block,
-   * which is worth doing and is not done.
+   * was flattering and false. It is here because the calculators' `define:vars` blocks are
+   * inline. It survives GA's removal because those blocks do; what it does not do is admit an
+   * off-origin ORIGIN, and that half is now as tight as it can be. Removing it means hashing
+   * or noncing every inline block, which is worth doing and is still not done — and it is now
+   * the single largest remaining weakness in this header.
    */
   if (isDocument) {
     res.headers.set(
       "content-security-policy",
       [
         "default-src 'self'",
-        /* Google Tag Manager serves gtag.js and nothing else is permitted to serve a script.
-           Named hosts, never a scheme or a wildcard: `https:` or `*` here would turn the
-           policy into decoration, which is the failure mode this directive exists to prevent. */
-        "script-src 'self' 'unsafe-inline' https://www.googletagmanager.com",
+        /* NO NAMED HOST. Not one, in any directive. If a host ever needs adding here again,
+           the question to answer first is the one GA4 failed: what decision will be made with
+           what it returns, that cannot be made without it. */
+        "script-src 'self' 'unsafe-inline'",
         "style-src 'self' 'unsafe-inline'",
-        /* GA falls back to a pixel when sendBeacon and fetch are both unavailable. */
-        "img-src 'self' data: https://www.google-analytics.com https://*.google-analytics.com",
+        "img-src 'self' data:",
         "font-src 'self'",
-        /* Where GA4 actually sends the hits. The regional endpoints are separate hosts and
-           omitting them drops data silently from whole continents rather than failing loudly. */
-        "connect-src 'self' https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com",
+        /* Same origin only. The one fetch this site makes is /api/live.json, to itself. */
+        "connect-src 'self'",
         "form-action 'self'",
         "base-uri 'self'",
         "frame-ancestors 'none'",

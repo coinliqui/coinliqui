@@ -63,6 +63,15 @@ const description =
     assumptions, and are not predictions.
     {" "}<a class="link" href="/methodology">Methodology</a> shows the arithmetic.
   </p>
+  <p class="prose">
+    This applies in full to every figure the site <em>derives</em> rather than receives, and those
+    are the ones most easily mistaken for a view: annualised funding rates, the cross-venue funding
+    spread and every figure on <a class="link" href="/tools">Tools</a>, modelled liquidation levels,
+    the survival table, the sweep order, and the output of all four calculators. Each is arithmetic
+    on an input under assumptions you can read and change — not a forecast, not a signal, and not a
+    statement that any position is a good idea. A calculator that computes what a trade would cost
+    is not an opinion that the trade is worth making.
+  </p>
 
   <h2 class="section">Accuracy, and its limits</h2>
   <p class="prose">
@@ -71,8 +80,11 @@ const description =
     apart from the normalisation described in the methodology. Upstreams fail, lag and revise;
     {" "}<a class="link" href="/status">Status</a> publishes the real success rate of the ingest,
     failures included. Every figure states its own age. No warranty of accuracy, completeness or
-    fitness for any purpose is offered, and decisions taken on the basis of anything here are
-    yours alone.
+    fitness for any purpose is offered — not for the data as received, and equally not for anything
+    derived or modelled from it — and decisions taken on the basis of anything here are yours alone.
+    Where an upstream disclaims the accuracy of its own numbers, that disclaimer travels: a figure
+    computed from an input carries every limit the input carried, plus the limits of the assumptions
+    applied to it.
   </p>
   <p class="prose">
     If a number here disagrees with the venue it came from, that is a bug and we want to know:
@@ -91,11 +103,27 @@ const description =
 
   <h2 class="section">Use of the site</h2>
   <p class="prose">
-    Read it, link to it, quote it with attribution. Automated access is welcome within reason —
-    {" "}<a class="link" href="/robots.txt">robots.txt</a> states which crawlers are asked to
-    stay away and why. Do not present the data as your own, and do not rely on it as a sole
-    source for anything that matters. The site may change or stop publishing at any time; where
-    a URL is withdrawn it is withdrawn honestly, with a 410 rather than a redirect.
+    Read it and link to it freely. Quote it with attribution, and automated access is welcome
+    within reason — {" "}<a class="link" href="/robots.txt">robots.txt</a> states which crawlers
+    are asked to stay away and why. Do not present the data as your own, and do not rely on it as
+    a sole source for anything that matters. The site may change or stop publishing at any time;
+    where a URL is withdrawn it is withdrawn honestly, with a 410 rather than a redirect.
+  </p>
+  {/* THIS SECTION USED TO GRANT REUSE OVER EVERYTHING ON THE PAGE, WITHOUT DISTINGUISHING
+      WHAT WE COMPUTE FROM WHAT WE RECEIVE. Read literally it sub-licensed upstream market data
+      to third parties — a right nobody here holds, from a project with no legal entity to hold
+      it. The permission is now split along the only line that matters: the arithmetic is ours
+      to share, the inputs are not. */}
+  <p class="prose">
+    That permission covers what this site <strong>computes</strong>: annualised rates, spreads,
+    modelled levels, the survival table, calculator outputs, and the words around them. It does
+    not, and cannot, cover the <strong>upstream data</strong> underneath. Funding rates, marks,
+    open interest, spot prices and contract state belong to the venues and networks that published
+    them, and reach you under their terms rather than ours.
+    {" "}<a class="link" href="/data-sources">Data sources</a> links each one, including the
+    endpoint every figure came from. If you intend to republish upstream figures — at scale, or
+    commercially — read the venue's terms. Nothing on this page grants you anything in respect of
+    them, and nothing on this page is a representation that they permit it.
   </p>
   <p class="prose">
     No personal data is collected that could be returned or deleted; what is and is not

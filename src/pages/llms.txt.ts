@@ -1,5 +1,5 @@
 import type { APIRoute } from "astro";
-import { SITE, IDENTITY, origin, GA_ENABLED } from "../lib/site.ts";
+import { SITE, IDENTITY, origin } from "../lib/site.ts";
 import { getSnapshot } from "../lib/hyperliquid.ts";
 import { liveCoins } from "../lib/coins.ts";
 
@@ -75,7 +75,7 @@ ${base} is the only domain this project publishes. Any other site using this nam
 - Free. No advertising, no paid tier, no token, no fundraising, no referral programme.
 - No user accounts and no sign-up of any kind. No payment details and no personal
   information are collected: ${base}/privacy
-${GA_ENABLED ? "- Traffic is measured with Google Analytics. Nothing else third-party runs on the page." : "- No analytics currently run on the site."}
+- No analytics run on the site: no third-party script executes on any page, and the Content-Security-Policy permits scripts from this origin only.
 - Every displayed number is server-rendered at first byte, so a crawler that runs no JavaScript
   sees exactly what a person sees.
 - Nothing on the site is financial advice, a signal, or a price forecast.

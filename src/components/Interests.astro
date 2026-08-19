@@ -1,0 +1,22 @@
+---
+import { PRODUCER, INTERESTS } from "../lib/site.ts";
+
+/**
+ * WHO PRODUCED THIS, AND WHAT THEY STAND TO GAIN. Two sentences, at the foot of every page
+ * that quantifies a trade.
+ *
+ * If MAR Article 20 reaches these pages — an open question, see the note on PRODUCER in
+ * site.ts — these are the two duties it imposes: identify the producer, and disclose any
+ * interest that could impair objectivity. If it does not reach them, they are still the two
+ * things a reader is entitled to know before acting on a number, so the classification does
+ * not have to be settled for this to be the right markup.
+ *
+ * At the FOOT rather than the head, unlike Advisory: this is disclosure a reader consults, not
+ * a caution they need before they start typing. Putting both above the fold would bury the
+ * one that has to be read.
+ */
+---
+<div class="interests">
+  <h2 class="section">Who produced this, and what they hold</h2>
+  <p class="prose">{PRODUCER} {INTERESTS}</p>
+</div>

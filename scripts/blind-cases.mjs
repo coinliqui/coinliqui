@@ -12,23 +12,33 @@
  * worst of them: it treated https://coinliqui.com.evil.tld/x.js as same-origin and exempted
  * it outright.
  *
- * THESE CASES MATTER MORE SINCE THE ALLOWLIST GREW, not less. The site now runs Google
- * Analytics on purpose, so verify-live permits off-origin scripts from named Google hosts
- * instead of permitting none. Every host added to an allowlist is another prefix an attacker
- * can extend, so the exempt host below is the one actually in use rather than a retired one.
+ * THE ALLOWLIST IS EMPTY AGAIN, AND THAT IS EXACTLY WHEN THIS FILE STOPS WORKING BY ACCIDENT.
+ * The site ran Google Analytics for two days, so verify-live permitted one named Google host;
+ * GA is gone and SCRIPT_HOSTS is `[]`. Rewriting these cases against the live allowlist would
+ * have made every one of them expect FLAGGED — six assertions that pass because the exempt
+ * branch is unreachable, proving nothing about the matcher and reporting green. That is the
+ * defect this whole file was written to catch, arriving through the front door.
+ *
+ * So the cases test the MATCHER against a hypothetical allowlist, and a separate assertion
+ * tests that the PRODUCTION allowlist is empty. Two questions, two tests: "does hostname
+ * comparison reject a lookalike" is permanently answerable, and "is anything allowed today"
+ * is answered by reading verify-live rather than by assuming.
  *
  * ANY ALLOWLIST COMPARED AS A STRING PREFIX HAS THIS HOLE. This file exists so the next one is
  * found by running it.
  *
  *   node scripts/blind-cases.mjs
  */
-const ORIGIN="https://coinliqui.com", ALLOWED="www.googletagmanager.com";
+import { readFileSync } from "node:fs";
+/* A HOST THAT IS NOT ALLOWED IN PRODUCTION, on purpose. The matcher does not care which name
+   it is given, and using the retired GA host would read as though it were still permitted. */
+const ALLOWED="cdn.example-allowed.test";
 const cases=[
-  ["the real GA loader",                 "https://www.googletagmanager.com/gtag/js?id=G-XXXXXXXXXX", true],
-  ["lookalike host, prefix collision",   "https://www.googletagmanager.com.evil.tld/x.js",           false],
-  ["subdomain of the allowed host",      "https://evil.www.googletagmanager.com/x.js",               false],
-  ["different google host, not listed",  "https://tagmanager.google.com/x.js",                       false],
-  ["the retired cloudflare beacon",      "https://static.cloudflareinsights.com/beacon.min.js/v123", false],
+  ["the allowlisted host itself",        "https://cdn.example-allowed.test/x.js",                    true],
+  ["lookalike host, prefix collision",   "https://cdn.example-allowed.test.evil.tld/x.js",           false],
+  ["subdomain of the allowed host",      "https://evil.cdn.example-allowed.test/x.js",               false],
+  ["the retired GA loader",              "https://www.googletagmanager.com/gtag/js?id=G-XXXXXXXXXX", false],
+  ["the cloudflare beacon",              "https://static.cloudflareinsights.com/beacon.min.js/v123", false],
   ["unrelated third party",              "https://cdn.example.net/tracker.js",                       false],
 ];
 let bad=0;
@@ -40,17 +50,31 @@ for(const [name,url,shouldPass] of cases){
   console.log(`  ${correct?"ok  ":"BLIND"}  ${verdict.padEnd(7)} ${name}`);
   if(!correct) console.log(`          ^^ ${url}`);
 }
-/* THE CSP RULE CHANGED AND ITS BLIND CASES CHANGED WITH IT.
-   The old predicate was `'self'` and nothing else — any host in script-src failed. That
-   encoded "no third-party scripts", a rule this project has retired, and it would now fail on
-   the correct policy. The predicate that replaces it is the one that was always doing the
-   work: NAMED HOSTS ARE FINE, A SCHEME OR A WILDCARD IS NOT. `https:` and `*` each permit
-   every origin on the internet while reading, at a glance, like a policy.
-   The two cases that would have been dropped by simply loosening the old test — "scheme
-   allowed" and "wildcard" — are exactly why the predicate is written this way. */
+/* AND THE OTHER QUESTION: what does verify-live actually permit today? Read, not assumed.
+   If a host is ever added there, this fails and whoever added it has to say so here too. */
+{
+  const src = readFileSync(new URL("./verify-live.mjs", import.meta.url), "utf8");
+  const m = src.match(/const SCRIPT_HOSTS = \[([^\]]*)\]/);
+  const hosts = m ? m[1].split(",").map((t)=>t.trim().replace(/^["']|["']$/g,"")).filter(Boolean) : null;
+  if (!m) { bad++; console.log("  BLIND  SCRIPT_HOSTS not found in verify-live.mjs — this assertion is not reading anything"); }
+  else if (hosts.length) { bad++; console.log(`  BLIND  verify-live permits off-origin script host(s): ${hosts.join(", ")} — intended?`); }
+  else console.log("  ok     EMPTY   verify-live permits no off-origin script host at all");
+}
+
+/* THE CSP RULE HAS CHANGED TWICE AND ITS BLIND CASES CHANGED WITH IT BOTH TIMES.
+   It began as `'self'` and nothing else — any host in script-src failed. Google Analytics
+   made that fail on correct behaviour, so it became NAMED HOSTS ARE FINE, A SCHEME OR A
+   WILDCARD IS NOT. GA is gone and the allowlist is empty, so "self plus the GA host" — which
+   this list asserted was SOUND right up until it was run today — is now a policy that must be
+   rejected. It was caught by running the file rather than by reading it, which is the entire
+   argument for the file.
+   The predicate is unchanged and did not need to change: every named host must be one we
+   chose, and we now choose none. `https:` and `*` each permit every origin on the internet
+   while reading, at a glance, like a policy; those two cases are why it is written this way
+   rather than as "does it contain a hostname". */
 const csps=[
   ["self only",                "'self' 'unsafe-inline'",                          true],
-  ["self plus the GA host",    "'self' 'unsafe-inline' https://www.googletagmanager.com", true],
+  ["self plus the retired GA host", "'self' 'unsafe-inline' https://www.googletagmanager.com", false],
   ["wildcard",                 "'self' *",                                        false],
   ["scheme allowed",           "'self' https:",                                   false],
   ["scheme buried mid-list",   "'self' https://www.googletagmanager.com https:",  false],

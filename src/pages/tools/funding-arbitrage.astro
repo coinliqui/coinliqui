@@ -3,6 +3,8 @@ import Base from "../../layouts/Base.astro";
 import { getSnapshot, coldStart, findPerp } from "../../lib/hyperliquid.ts";
 import { usd, pct, rawRate, VENUE_LABEL, paysClass, type Venue, queryNum, LEGEND_PAYS } from "../../lib/funding.ts";
 
+import Advisory from "../../components/Advisory.astro";
+import Interests from "../../components/Interests.astro";
 const snap = await getSnapshot((Astro.locals as any)?.runtime?.env?.SNAPSHOT, import.meta.env.DEV);
 // Cold store: 503 + Retry-After rather than a page rendered from nothing.
 if (!snap.available) return coldStart();
@@ -58,6 +60,7 @@ const description = `What the funding spread between venues is actually worth on
       difference. Opens on <strong>{perp.symbol}</strong>, the widest live spread across the venues
       covered here.
     </p>
+    <Advisory />
   </div>
 
   <form method="GET" class="calc">
@@ -87,12 +90,12 @@ const description = `What the funding spread between venues is actually worth on
     <div class="card">
       <div class="card__label">Gross over {days} days</div>
       <div class="card__value" id="out-period">{usd(grossPeriod, 2)}</div>
-      <div class="card__meta">on {usd(perLeg, 0)} per leg</div>
+      <div class="card__meta">on {usd(perLeg, 0)} per leg · modelled at today's rate, held</div>
     </div>
     <div class="card">
       <div class="card__label">Gross per year</div>
       <div class="card__value" id="out-year">{usd(grossYear, 2)}</div>
-      <div class="card__meta">at the current rate, before costs</div>
+      <div class="card__meta">modelled: today's rate held all year, before costs</div>
     </div>
   </div>
 
@@ -146,6 +149,11 @@ const description = `What the funding spread between venues is actually worth on
 
   <h2 class="section">What this number is not</h2>
   <p class="prose">
+    Both dollar figures are <strong>modelled</strong>, not measured: they are today's spread
+    projected forward under assumptions you can read here and disagree with. Nothing on this page
+    is a figure anybody was actually paid.
+  </p>
+  <p class="prose">
     It is a <strong>gross</strong> carry at the current rate. It does not deduct taker fees on four
     fills (two to open, two to close), borrowing or margin costs, or slippage — on a spread of a few
     per cent a year, fees alone can exceed the entire edge.
@@ -190,4 +198,5 @@ const description = `What the funding spread between venues is actually worth on
       form.addEventListener("change", (e) => { if (e.target.name === "symbol") form.submit(); else recalc(); });
     }
   </script>
+  <Interests />
 </Base>

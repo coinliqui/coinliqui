@@ -1,5 +1,5 @@
 import type { APIRoute } from "astro";
-import { getSpot } from "../../lib/coins.ts";
+import { getSpot, SPOT_SOURCE } from "../../lib/coins.ts";
 import { getSnapshot, getLive } from "../../lib/hyperliquid.ts";
 
 /**
@@ -45,12 +45,26 @@ export const GET: APIRoute = async ({ locals }) => {
   }
   for (const [s, v] of Object.entries(live?.apr ?? {})) apr[s] = { ...(apr[s] ?? {}), ...(v as Record<string, number>) };
 
+  /* ATTRIBUTION TRAVELS WITH THE PAYLOAD, because this endpoint is publicly fetchable and
+     machine-readable, and the HTML footer that credits our sources does not reach anything
+     that reads JSON. Every page on this site names Coinbase Exchange next to a spot figure;
+     until this field existed, the one representation a third party could actually consume
+     named nobody. A compliance audit called that the sharpest exposure on the site and it
+     was right: the credit was attached to the presentation layer rather than to the data.
+
+     `spot` IS LOAD-BEARING and is not simply dropped. It feeds every `[data-spot]` element
+     on /coins and the eleven coin pages, which is how a price moves while a reader is
+     looking at it. Removing it would degrade a live product surface to answer a licensing
+     question that is still open — see /data-sources on what we do and do not claim about
+     Coinbase's terms. If that question resolves against display, `spot` goes and the pages
+     fall back to their server-rendered figure; that is a one-line change, kept ready. */
   return new Response(
     JSON.stringify({
       at: Math.max(spot?.at ?? 0, live?.at ?? 0, snap.fetchedAt),
       spotAt: spot?.at ?? 0,
       liveAt: live?.at ?? 0,
       snapAt: snap.fetchedAt,
+      sources: { spot: SPOT_SOURCE, mark: "Hyperliquid", apr: "Hyperliquid (incl. Binance and Bybit rates it republishes)" },
       spot: spot?.q ?? {},
       mark,
       apr,

@@ -1,5 +1,5 @@
 ---
-import { SITE, NAV, FOOTER_LINKS, IDENTITY, origin, GA_MEASUREMENT_ID, GA_ENABLED, GA_DEFER } from "../lib/site.ts";
+import { SITE, NAV, FOOTER_LINKS, IDENTITY, origin } from "../lib/site.ts";
 import ASSETS from "../data/assets.json";
 import { SPOT_SOURCE } from "../lib/coins.ts";
 
@@ -496,6 +496,20 @@ const schema = {
       .page-head { margin: 8px 0 24px; }
       .page-head h1 { font-size: 22px; font-weight: 600; letter-spacing: -.015em; margin: 0 0 var(--gap-pair); }
       .page-head p { margin: 0; color: var(--text-dim); max-width: 76ch; }
+      /* THE DISCLAIMER LINE, above the fold on the calculators and the liquidation map — see
+         src/components/Advisory.astro for why it exists at all. `p.advisory` rather than
+         `.advisory` so it outranks `.page-head p`, which would otherwise flatten its margin
+         and lift its colour back to the lede's. Same specificity, later in the sheet: the one
+         place in this file where source order is load-bearing, so it is written down. */
+      p.advisory { margin: var(--gap-block) 0 0; font-size: var(--fs-sm); color: var(--text-faint); max-width: 76ch; }
+      p.advisory a { color: var(--text-dim); text-decoration: underline; text-underline-offset: 2px; }
+      p.advisory a:hover { color: var(--text); }
+      /* The producer-and-interests disclosure at the foot of the calculators — see
+         src/components/Interests.astro. Ruled off and dimmed because it is not part of the
+         argument of the page; it is the thing you check about the page. */
+      .interests { margin-top: var(--gap-region); padding-top: var(--gap-major); border-top: 1px solid var(--border-soft); }
+      .interests h2.section { margin-top: 0; }
+      .interests p { color: var(--text-faint); font-size: var(--fs-sm); }
       .crumb { font-size: var(--fs-sm); color: var(--text-faint); margin: 0 0 var(--gap-pair); }
       .crumb a { text-decoration: none; }
       .crumb a:hover { color: var(--text); }
@@ -897,62 +911,6 @@ const schema = {
         .calc .btn, .calc button { width: 100%; }
       }
     </style>
-    {/* GOOGLE ANALYTICS 4, the standard install: async loader plus the config call.
-        Renders only when src/lib/site.ts carries a well-formed measurement ID, so with no ID
-        there is no tag, no request and no cookie — the "off" state is genuinely off rather
-        than a broken tag pointing at nothing.
-
-        DELIBERATELY NO `preconnect` to googletagmanager.com. A preconnect opens a DNS+TLS
-        connection during the window the page is racing to paint its largest text block, which
-        is the one thing on this site that must not get slower. The script is `async` and not
-        on the critical path; buying it a faster start by spending the LCP window is the wrong
-        trade for a site whose entire distribution is organic search.
-
-        If measurement shows this costing LCP or INP, the mitigation is to move the loader
-        behind the load event rather than to drop it — see the note in /privacy about what is
-        collected, which does not change either way. */}
-    {GA_ENABLED && !GA_DEFER && (
-      <script async is:inline src={`https://www.googletagmanager.com/gtag/js?id=${GA_MEASUREMENT_ID}`}></script>
-    )}
-    {GA_ENABLED && (
-      <script is:inline define:vars={{ GA_ID: GA_MEASUREMENT_ID, DEFER: GA_DEFER }}>
-        window.dataLayer = window.dataLayer || [];
-        function gtag() { window.dataLayer.push(arguments); }
-        gtag("js", new Date());
-        gtag("config", GA_ID);
-
-        /* The queue above is safe to fill before gtag.js exists — that is what dataLayer is
-           for — so deferring the LOADER changes when the hit is sent, not whether it is. */
-        if (DEFER) {
-          var armed = false;
-          var events = ["pointerdown", "keydown", "scroll", "touchstart"];
-          function load() {
-            if (armed) return;
-            armed = true;
-            for (var i = 0; i < events.length; i++) {
-              window.removeEventListener(events[i], load, { passive: true });
-            }
-            var s = document.createElement("script");
-            s.async = true;
-            s.src = "https://www.googletagmanager.com/gtag/js?id=" + GA_ID;
-            document.head.appendChild(s);
-          }
-          for (var j = 0; j < events.length; j++) {
-            window.addEventListener(events[j], load, { passive: true, once: true });
-          }
-          /* After load, not after parse: the point is to be behind everything the page needs
-             to become useful. requestIdleCallback where it exists, a timeout where it does
-             not (Safari), and a 3s backstop so a perfectly still reader is still counted. */
-          function schedule() {
-            if (window.requestIdleCallback) window.requestIdleCallback(load, { timeout: 3000 });
-            else setTimeout(load, 1200);
-            setTimeout(load, 3000);
-          }
-          if (document.readyState === "complete") schedule();
-          else window.addEventListener("load", schedule, { once: true });
-        }
-      </script>
-    )}
   </head>
   <body>
     <div class="app">
@@ -1047,7 +1005,7 @@ const schema = {
                   it properly. Naming them all is true on every page; naming one was not. */}
               Data via Hyperliquid, Binance and Bybit (derivatives), {SPOT_SOURCE} (spot) and
               Ethereum JSON-RPC (on-chain). <a href="/data-sources">Which endpoint feeds which
-              figure →</a> Not investment advice.
+              figure →</a> <a href="/terms">Not investment advice →</a>
               {fetchedAt && <> Figures as of <time datetime={new Date(fetchedAt).toISOString()}>{new Date(fetchedAt).toISOString().replace("T", " ").slice(0, 16)} UTC</time>.</>}
             </p>
           </footer>

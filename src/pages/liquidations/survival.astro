@@ -7,6 +7,7 @@ import { getCandles, survivalGrid, gridLevels } from "../../lib/candles.ts";
 import { CH, INK, RAMP, text, rect, timeTicks, niceTicks, fint, SANS, FS_AXIS, FS_MICRO } from "../../lib/chart.ts";
 import tables from "../../data/margin-tables.json";
 
+import Advisory from "../../components/Advisory.astro";
 const env = (Astro.locals as any)?.runtime?.env;
 const snap = await getSnapshot(env?.SNAPSHOT, import.meta.env.DEV);
 if (!snap.available) return coldStart();
@@ -167,6 +168,7 @@ const description = `Which leveraged ${perp.symbol} positions were liquidated an
       {" "}<a class="link" href="/liquidations">the density map</a> needs, which is the honest
       version of the claim this paragraph used to make.
     </p>
+    <Advisory />
   </div>
 
   <form method="GET" class="calc" style="margin-bottom:16px">
