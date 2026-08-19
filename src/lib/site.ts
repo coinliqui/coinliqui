@@ -106,8 +106,17 @@ export const IDENTITY = {
     "sign-up, no deposits, no withdrawals, no wallet connection, no token and no referral " +
     "programme. It never asks for money, keys, seed phrases or personal details, and it has no " +
     "mechanism to accept them.",
-  /** Named because the confusion is specific, and denying it vaguely would not help. */
-  notAffiliated: ["Liqui", "liqui.io", "Coinliqui.io", "LiquiTrade", "any exchange or broker"],
+  /** Named because the confusion is specific, and denying it vaguely would not help.
+   *
+   * coinliq.com WAS MISSING, AND IT IS THE ONE THAT MATTERS. This list named the defunct Liqui
+   * exchange and three near-spellings, and omitted the single domain that actually captures the
+   * query: measured on 19 August, Google rewrites "coinliqui" to "coinliq" before retrieval runs
+   * and hands coinliq.com the entire result page with a sitelinks block, and Brave returns it
+   * too. A reader who arrives here suspicious very likely arrived by that route, and a
+   * disambiguation that omits the site they were actually shown is answering a question nobody
+   * asked. It is an operating, unrelated crypto price tracker — not a clone, not a scam, and
+   * nothing to do with this project in either direction. */
+  notAffiliated: ["coinliq.com", "Liqui", "liqui.io", "Coinliqui.io", "LiquiTrade", "any exchange or broker"],
   /**
    * EMPTY ON PURPOSE. This listed a personal code-hosting account. A repository is good
    * corroboration for a project, but that one is tied to an individual's profile, so linking it

@@ -70,7 +70,41 @@ export const onRequest = defineMiddleware(async (ctx, next) => {
        which they were not before. That is the point, and it is only safe because the document
        genuinely does not depend on them. Anything added later that DOES depend on a cookie must
        either go client-side the same way or bring `Vary` back with its cost understood. */
-    res.headers.set("cache-control", "public, s-maxage=120, stale-while-revalidate=600");
+    /* =====================================================================================
+       DYNAMIC IS THE RIGHT ANSWER FOR THIS SITE, DECIDED ON MEASUREMENT — DO NOT "OPTIMISE" IT.
+
+       Measured 18-19 August: Cloudflare returns `dynamic` for 73% of requests and the edge hit
+       rate is 3.5%, so the origin serves 96.5% of traffic. HTML is not cached by default and
+       would need an explicit Cache Rule. Every render-cost model on this project had assumed
+       the opposite, and the meter corrected it.
+
+       WHAT A CACHE RULE WOULD SAVE: nothing that is scarce. 13,897 requests/day is 422,000 a
+       month against an allowance of 10,000,000 — 4.22%. Pages CPU is bounded well under the
+       allowance, and Cloudflare egress is unmetered. There is no resource here under pressure.
+
+       WHAT IT WOULD COST: the site's central claim. The freshness pill renders its age STRING
+       at render time — "1 min ago" — and JavaScript recomputes it from the absolute timestamp
+       in the same element. A reader running JS always sees the truth. Anything that does not
+       run JS reads the baked string, and that is exactly the audience this project cares most
+       about: crawlers, answer engines, reader-mode views. A 120-second shared cache would serve
+       them an age understated by up to 120 seconds, and `stale-while-revalidate=600` would
+       stretch that to twelve minutes. A site whose entire argument is that every figure states
+       its own age cannot afford to understate the age specifically to machines.
+
+       So the previous header was a latent version of that hazard rather than a benefit: it
+       promised 120 seconds of shared caching plus ten minutes of stale-while-revalidate to any
+       intermediary that honours it. Cloudflare does not, which is why nothing has gone wrong —
+       but a corporate proxy, a CDN in front of a reader, or a future Cache Rule added by
+       someone reading only the header would all have served an understated age. The declaration
+       is now what we actually want and what we actually get.
+
+       IF THIS IS EVER REVISITED, the change that makes caching safe is not a longer TTL: it is
+       rendering an ABSOLUTE time as the pill's text and letting JS produce the relative form —
+       the same shape as the "Not updating" fix, where the server states what it knows and the
+       client states what depends on now. Do that first, then cache freely. Caching first would
+       be trading the site's one distinguishing claim for 4% of an allowance nobody is near.
+       ===================================================================================== */
+    res.headers.set("cache-control", "public, max-age=0, must-revalidate");
   }
 
   // The rail toggle sets a cookie and redirects; a shared cache must never hold that.
