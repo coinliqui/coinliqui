@@ -83,7 +83,7 @@ That file is both migrations concatenated, so there is nothing to run in order.
 1. **github.com/new** → name `coinliqui` → **Public** → do *not* add a README, .gitignore
    or licence (the repo has them) → **Create repository**.
 2. Push the local repo. GUI route: **GitHub Desktop** → *Add → Add Existing Repository* →
-   `~/Documents/basis` → **Publish repository** → untick *Keep this code private*.
+   `~/Documents/coinliqui` → **Publish repository** → untick *Keep this code private*.
 
 **What is in it:** 64 tracked files, scanned — no credential patterns, no `.env`, no
 `.dev.vars`. The KV and D1 IDs that go in `wrangler.toml` are identifiers rather than
