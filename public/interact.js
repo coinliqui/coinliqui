@@ -131,9 +131,24 @@ const { paysClass, paysLabel, carryCost, spreadOf, pct, changeWords, ageWords, n
     svg.addEventListener("pointerdown", move, { passive: false });
   };
 
-  /* -------------------------------------------- price chart: crosshair + OHLCV tooltip */
-  document.querySelectorAll("svg[data-xhair]").forEach((svg) => {
-    const src = document.getElementById(svg.dataset.xhair);
+  /* -------------------------------------------- price chart: crosshair + OHLCV tooltip
+     RE-RUNNABLE, BECAUSE PANELS ARRIVE AFTER LOAD. This was an inline
+     `document.querySelectorAll(...).forEach(...)` inside a one-shot IIFE, so it bound the chart
+     the server rendered and nothing else. Every timeframe a reader switches to is fetched and
+     inserted afterwards, and none of them ever got a crosshair or an OHLCV tooltip: the chart
+     drew perfectly and did nothing on hover. No check could see it, because every one of them
+     asks about markup rather than behaviour.
+     Called once at load over the whole document, and again on each inserted panel. */
+  const bindXhair = (root) => root.querySelectorAll("svg[data-xhair]").forEach((svg) => {
+    if (svg.dataset.xhairBound) return;                  // idempotent: insertion re-scans
+    /* THE PAYLOAD BELONGING TO THIS PANEL, not the first in the document with that id.
+       Coin pages key the payload by timeframe while their panels are keyed timeframe.view, so
+       the candle and line panels for one timeframe both carry `cpts-4h`. getElementById returns
+       whichever came first, which is a different chart's point list. Looking inside the panel
+       first cannot pick the wrong one; the document lookup stays for anything unpanelled. */
+    const panel = svg.closest("[data-tfpanel]");
+    const src = (panel && panel.querySelector(`script[type="application/json"][id="${svg.dataset.xhair}"]`))
+      || document.getElementById(svg.dataset.xhair);
     let pts;
     try { pts = JSON.parse(src.textContent); } catch { return; }
     if (!pts || !pts.length) return;
@@ -200,7 +215,13 @@ const { paysClass, paysLabel, carryCost, spreadOf, pct, changeWords, ageWords, n
     const off = () => { g.setAttribute("opacity", "0"); fade(false); hideTip(); };
     svg.addEventListener("pointerleave", off);
     svg.addEventListener("pointercancel", off);
+    /* STAMPED ON SUCCESS, NOT ON ATTEMPT. Set at the top, it marked a chart "bound" even when
+       one of the early returns above fired — a missing payload, an empty point list, no
+       crosshair group — and no later rescan would ever try again. The flag has to mean what it
+       says, or it is one more claim that outlives what it described. */
+    svg.dataset.xhairBound = "1";
   });
+  bindXhair(document);
 
   /* -------------------------------------------------- heatmap: crosshair + band readout */
   document.querySelectorAll("svg[data-heat]").forEach((svg) => {
@@ -277,11 +298,22 @@ const { paysClass, paysLabel, carryCost, spreadOf, pct, changeWords, ageWords, n
   /* --------------------------------------------------------- mobile: open at the right
      A scroll container starts at scrollLeft 0, which on a chart means the OLDEST bars with
      the price axis off screen entirely. The interesting end is the right one. */
-  const openRight = () => document.querySelectorAll(".chart").forEach((c) => {
+  /* AND IT HAS TO RUN AGAIN WHEN A PANEL IS REVEALED, not only at load and on resize.
+     A fetched panel is inserted with `data-on` removed, so it is display:none: scrollWidth and
+     clientWidth are both 0 and it cannot be positioned yet. Nothing called this after apply()
+     revealed it, so on a phone every timeframe a reader switched to opened at scrollLeft 0 —
+     the oldest bars, with the price axis, the live price pill and the newest candles all off
+     screen to the right. Measured on /funding/ondo at 375px: the server-rendered panel sits at
+     scrollLeft 823 of 823, the fetched one at 0. The chart is there, and the reader is looking
+     at the wrong quarter of it, which reads as "switching does not work".
+     Rotating the phone fixed it, because resize fires — which is exactly what would make it
+     feel intermittent. The `_sx` latch still means a panel is positioned once and a reader's
+     own scrolling is never yanked back. */
+  const openRight = (root) => (root || document).querySelectorAll(".chart").forEach((c) => {
     if (c.scrollWidth > c.clientWidth + 4 && !c._sx) { c.scrollLeft = c.scrollWidth; c._sx = 1; }
   });
   openRight();
-  addEventListener("resize", openRight, { passive: true });
+  addEventListener("resize", () => openRight(), { passive: true });
 
   /* ------------------------------------------------- simple tooltips on marked shapes */
   document.querySelectorAll("svg[data-tips]").forEach((svg) => {
@@ -365,15 +397,57 @@ const { paysClass, paysLabel, carryCost, spreadOf, pct, changeWords, ageWords, n
           const doc = new DOMParser().parseFromString(html, "text/html");
           const incoming = doc.querySelector(`[data-tfpanel][data-group="${id}"]`);
           if (!incoming) throw new Error("no panel in response");
-          /* The pts-* JSON rides inside the panel, so the table rebuild finds it once injected. */
-          const host = document.querySelector(`[data-tfpanel][data-group="${id}"]`).parentNode;
+          /* NEXT TO ITS SIBLINGS, NOT AT THE END OF THE PAGE.
+             This was `document.querySelector('[data-tfpanel]...').parentNode.appendChild(...)`,
+             and that parent is <main>: the element that holds the whole page. So a fetched panel
+             was appended as the LAST child of main — after the legend, the funding cards, the
+             margin tiers, the related links and the FOOTER.
+             Switching a timeframe therefore hid the chart where the reader was looking and
+             revealed the new one about 1,400px further down, below the end of the page. Measured
+             on /funding/ondo at 1280x900: the server-rendered 1d panel is child 5 at y=442, the
+             fetched 4h panel was child 20 at y=1821, with the page scrolled to the top. The
+             chart does not fail to arrive — it arrives somewhere nobody is looking.
+             Every check missed it for the same reason: they asked whether a panel was visible,
+             had a size and held bars, and it was, did and does. None asked WHERE.
+             Inserting after the last panel of the group keeps them contiguous and keeps the live
+             one exactly where the server put it. */
+          /* REQUIRED TO EXIST. A document-wide query trusts document ORDER the way the bug
+             this replaced trusted .parentNode; if `last` were ever undefined the TypeError
+             would surface as a full page navigation on every press, via the catch below. */
+          const siblings = document.querySelectorAll(`[data-tfpanel][data-group="${id}"]`);
+          const last = siblings[siblings.length - 1];
+          if (!last) throw new Error("no panel to insert beside");
           incoming.removeAttribute("data-on");
-          host.appendChild(document.importNode(incoming, true));
-          /* Stats come from the fetched document rather than from precomputed attributes. */
-          const from = doc.querySelectorAll(`[data-tfstat][data-group="${id}"]`);
-          document.querySelectorAll(`[data-tfstat][data-group="${id}"]`).forEach((el, i) => {
-            if (from[i]) el.dataset["v" + String(t).replace(/\W/g, "")] = from[i].textContent;
+          const added = document.importNode(incoming, true);
+          last.insertAdjacentElement("afterend", added);
+          /* A CHART THAT ARRIVED AFTER LOAD STILL HAS TO BEHAVE LIKE ONE. The crosshair binder
+             ran once over the document, so every fetched panel drew correctly and did nothing
+             on hover. Bound here, on the panel that just arrived. */
+          bindXhair(added);
+          /* Stats come from the fetched document, PAIRED BY NAME rather than by ordinal.
+             This walked both NodeLists with the same index, which assumes the i-th figure in the
+             live document is the i-th in the fetched one. The live document is the one this
+             script mutates by inserting panels; the fetched one is a virgin server render. They
+             agreed only because no [data-tfstat] happened to sit inside a [data-tfpanel] — put
+             a per-timeframe figure in its own panel, the obvious place for it, and after one
+             fetch every stat from the second panel on is paired with a different figure. Period
+             low in the period-high slot: silently wrong numbers, no exception, nothing a
+             did-it-render check can see.
+             Each stat now carries its own name, so the pairing cannot depend on document order
+             at all. Falls back to the ordinal only if a template forgets to name one, which
+             `unnamed` below makes visible rather than silent. */
+          const from = new Map();
+          let unnamed = 0;
+          doc.querySelectorAll(`[data-tfstat][data-group="${id}"]`).forEach((el, i) => {
+            const k = el.dataset.tfstat || `#${i}`;
+            if (!el.dataset.tfstat) unnamed++;
+            from.set(k, el.textContent);
           });
+          document.querySelectorAll(`[data-tfstat][data-group="${id}"]`).forEach((el, i) => {
+            const k = el.dataset.tfstat || `#${i}`;
+            if (from.has(k)) el.dataset["v" + String(t).replace(/\W/g, "")] = from.get(k);
+          });
+          if (unnamed) console.warn(`[coinliqui] ${unnamed} unnamed data-tfstat in group ${id} — paired by position, which document order can break`);
           return key;
         })
         .catch((e) => { inflight.delete(key); throw e; });
@@ -405,7 +479,12 @@ const { paysClass, paysLabel, carryCost, spreadOf, pct, changeWords, ageWords, n
          also the better thing to look at while the next one loads. */
       const shownNow = [...panels].find((p) => p.hasAttribute("data-on"))?.dataset.tfpanel ?? null;
       const show = visiblePanel([...panels].map((p) => p.dataset.tfpanel), key, shownNow);
-      if (show) panels.forEach((p) => p.toggleAttribute("data-on", p.dataset.tfpanel === show));
+      if (show) {
+        panels.forEach((p) => p.toggleAttribute("data-on", p.dataset.tfpanel === show));
+        /* Positioned only now: until data-on is set the panel is display:none and has no
+           measurable width to scroll. */
+        openRight();
+      }
       group.querySelectorAll("[data-tf]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.tf === tf)));
       group.querySelectorAll("[data-mode]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.mode === mode)));
       const carryTf = group.querySelector('[data-tfcarry="tf"]');
@@ -530,7 +609,11 @@ const { paysClass, paysLabel, carryCost, spreadOf, pct, changeWords, ageWords, n
        the chart under a hero reading $62,977.52: two prices for one asset on one screen, both
        looking current. The bars are closed and stay put; the marker is what "now" means on a
        price chart, so it is what has to follow. */
-    const marks = [...document.querySelectorAll("svg[data-xhair][data-plot]")]
+    /* COLLECTED PER PULL, NOT ONCE. This was `const marks = [...]` evaluated at load, so the
+       live price line and pill on any panel fetched later were never in the list — the marker
+       froze at whatever the server drew when that panel was requested, on a page whose whole
+       promise is a mark that moves. A handful of svgs per pull is nothing to re-query. */
+    const collectMarks = () => [...document.querySelectorAll("svg[data-xhair][data-plot]")]
       .map((svg) => {
         const g = {
           sym: svg.dataset.unit,
@@ -547,7 +630,9 @@ const { paysClass, paysLabel, carryCost, spreadOf, pct, changeWords, ageWords, n
       })
       .filter(Boolean);
     const moveMark = (sym, feed, v) => {
-      for (const m of marks) {
+      /* Re-queried on every call rather than closed over: a panel fetched since the last pull
+         is otherwise invisible to the live marker forever. */
+      for (const m of collectMarks()) {
         if (m.sym !== sym || m.feed !== feed || !Number.isFinite(v)) continue;
         const y = m.yOf(v);
         m.line.setAttribute("y1", y.toFixed(1));

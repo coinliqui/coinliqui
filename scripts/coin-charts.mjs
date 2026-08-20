@@ -123,6 +123,27 @@ export function parsePage(html) {
      page. If a self-referential URL ever picked the query up, ?tf= would become eight duplicate
      pages per coin and sixteen per view, which is the one thing this site cannot afford.
      Asserted on every render because every render already fetched the page. */
+  /* IS THE CROSSHAIR PAYLOAD INSIDE THE PANEL? Only the element matching
+     [data-tfpanel][data-group] is copied out of a fetched response — public/interact.js takes
+     that and nothing else. A payload rendered as a SIBLING of the panel therefore stays behind
+     when a reader switches timeframe, and the new chart asks getElementById for an id that is
+     no longer in the document: the tooltip fails silently, because the handler catches and
+     returns. The contract template had it inside; the coin template had it outside, and the
+     crosshair died on every coin page the moment anyone switched. Measured on the live page —
+     after switching to 4h, the only payload id present was still cpts-1d.
+     Checked on every render because a template can only get this wrong in the markup. */
+  const activePanelBlock = (() => {
+    const m = /<[a-z]+[^>]*data-tfpanel="[^"]+"[^>]*\sdata-on[^>]*>/.exec(html);
+    if (!m) return null;
+    /* From the opening tag to the end of that element. The panel holds one svg and at most one
+       script, so the first </div> after the svg closes it. */
+    const from = m.index;
+    const svgEnd = html.indexOf("</svg>", from);
+    const end = svgEnd === -1 ? html.indexOf("</div>", from) : html.indexOf("</div>", svgEnd);
+    return end === -1 ? html.slice(from) : html.slice(from, end + 6);
+  })();
+  const payloadInPanel = activePanelBlock ? /<script type="application\/json" id="c?pts-/.test(activePanelBlock) : false;
+
   const canonical = (/<link rel="canonical" href="([^"]+)"/.exec(html) ?? [, null])[1];
   const ogUrl = (/<meta property="og:url" content="([^"]+)"/.exec(html) ?? [, null])[1];
   const schemaUrls = [...html.matchAll(/"url":"(https:\/\/[^"]+)"/g)].map((m) => m[1]);
@@ -136,6 +157,7 @@ export function parsePage(html) {
     canonical,
     ogUrl,
     schemaUrls,
+    payloadInPanel,
     active: buttons.find((b) => b.pressed)?.tf ?? null,
     svgTfs: svgs,
     prange: rangeM ? [Number(rangeM[1]), Number(rangeM[2])] : null,
@@ -163,6 +185,11 @@ export function chartFaults(p, wantTf, now = Date.now(), expected = EXPECTED_TFS
 
   /* THE VIEW, AND THE KEY THE CLIENT MATCHES ON. Only checked when a view was asked for, so a
      page with no Candles/Line control is not held to a control it does not have. */
+  /* THE PAYLOAD MUST TRAVEL WITH THE PANEL. Only asserted when the fixture models it. */
+  if (p.payloadInPanel !== undefined && p.payloadInPanel === false) {
+    f.push("the crosshair payload is rendered outside the chart panel — only the panel is copied when a timeframe is fetched, so switching leaves the payload behind and the tooltip dies silently");
+  }
+
   /* THE SELF-REFERENTIAL URLS MUST NOT CARRY THE QUERY. Only asserted when the fixture supplies
      them, so the pure-geometry blind cases are not held to a property they do not model. */
   if (p.canonical !== undefined) {
@@ -290,6 +317,7 @@ if (BLIND) {
     activePanel: "1h.candle",
     canonical: "https://coinliqui.com/coins/bitcoin",
     ogUrl: "https://coinliqui.com/coins/bitcoin",
+    payloadInPanel: true,
     schemaUrls: ["https://coinliqui.com/coins/bitcoin", "https://coinliqui.com"],
   };
   const NOW = t0 + 24 * 3.6e6;
@@ -347,6 +375,9 @@ if (BLIND) {
     ["og:url picked up the query", (() => { const c = clone(clean); c.ogUrl += "?tf=1h&view=candle"; return c; })(), /og:url carries a query string/],
     ["a schema url picked up the query", (() => { const c = clone(clean); c.schemaUrls[0] += "?view=line"; return c; })(), /schema url #1 carries a query string/],
     ["no canonical at all", (() => { const c = clone(clean); c.canonical = null; return c; })(), /declares no canonical/],
+    /* THE ONE THAT KILLED THE CROSSHAIR ON EVERY COIN PAGE. Right chart, right panel, right
+       key — and the payload rendered next to the panel instead of inside it. */
+    ["the crosshair payload is outside the panel", (() => { const c = clone(clean); c.payloadInPanel = false; return c; })(), /payload is rendered outside the chart panel/],
   ];
   /* THE CONTRACT-PAGE SHAPE: no view control, panels keyed by the bare timeframe. Fifty of the
      sixty pages are this, and asserting the coin shape against them is what produced 3,980

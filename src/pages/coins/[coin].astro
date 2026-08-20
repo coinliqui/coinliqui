@@ -249,20 +249,23 @@ const description = `Live ${coin.name} (${coin.symbol}) perpetual price from Hyp
           <Fragment set:html={chart!.svg.replace("<svg ",
             `<svg data-xhair="cpts-${tf.key}" data-feed="mark" data-plot="${chart!.plot.join(",")}" data-prange="${chart!.range[0]},${chart!.range[1]}" ` +
             `data-axx="${chart!.axisX}" data-slot="${chart!.slot.toFixed(2)}" data-taxisy="${CHART_H - 27}" data-unit="${coin.symbol}" data-dp="${chart!.dp}" data-intraday="${tf.hours < 24 ? 1 : 0}" `)} />
+          {/* INSIDE THE PANEL, because only the panel is fetched.
+              public/interact.js copies `[data-tfpanel][data-group]` out of the response and
+              nothing else. This block sat NEXT to the panel, so switching a timeframe on a coin
+              page brought the chart across and left its crosshair payload behind: the new svg
+              asked for `cpts-4h` and the document still held only `cpts-1d`. The tooltip then
+              failed silently — getElementById returns null, JSON.parse throws, the handler
+              returns. Measured on the live page: after switching, jsonIds was still `cpts-1d`.
+              The contract template already had it inside, which is why only this one broke. */}
+          <script type="application/json" id={`cpts-${tf.key}`}
+                  set:html={JSON.stringify(chart!.points)} />
         </div>
       ))}
-      {/* ONLY THE ACTIVE TIMEFRAME'S POINTS. This looped over every available timeframe and read
-          panels.find(...) — which was safe while `panels` held them all and threw the moment it
-          held one, taking the whole page down with a mid-stream TypeError. Caught by the gate,
-          on the cold run, before it reached anything. A fetched panel carries its own cpts-*
-          block, so the crosshair and the table find one when it arrives. */}
-      <script type="application/json" id={`cpts-${active!.tf.key}`}
-              set:html={JSON.stringify(active!.chart!.points)} />
 
       <p class="legend">
-        Period high <b data-tfstat data-group="cx" {...stat((p) => px(p.chart!.high))}>{px(active!.chart!.high)}</b>,
-        low <b data-tfstat data-group="cx" {...stat((p) => px(p.chart!.low))}>{px(active!.chart!.low)}</b>,
-        over <b data-tfstat data-group="cx" {...stat((p) => `${p.chart!.bars} ${span(p.tf.key)}`)}>{active!.chart!.bars} {span(active!.tf.key)}</b>.
+        Period high <b data-tfstat="high" data-group="cx" {...stat((p) => px(p.chart!.high))}>{px(active!.chart!.high)}</b>,
+        low <b data-tfstat="low" data-group="cx" {...stat((p) => px(p.chart!.low))}>{px(active!.chart!.low)}</b>,
+        over <b data-tfstat="bars" data-group="cx" {...stat((p) => `${p.chart!.bars} ${span(p.tf.key)}`)}>{active!.chart!.bars} {span(active!.tf.key)}</b>.
         Candles are green for up and red for down, with the up candles hollow so direction reads
         without relying on colour. No funding band here — funding is a property of the perpetual,
         not of spot, and it has

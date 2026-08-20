@@ -197,7 +197,7 @@ const description = `What a ${p.symbol} perpetual costs to hold: ${venuePhrase},
 
   <div class="hero">
     <span class="hero__price" data-spot="mark" data-sym={p.symbol} data-dp={dp}>{px(markNow)}</span>
-    <span class="hero__chg" data-tfstat data-group="px" {...stat((c) => `${arrow(c.chart!.change)} ${(Math.abs(c.chart!.change) * 100).toFixed(2)}%`)}>
+    <span class="hero__chg" data-tfstat="change" data-group="px" {...stat((c) => `${arrow(c.chart!.change)} ${(Math.abs(c.chart!.change) * 100).toFixed(2)}%`)}>
       {/* THE FALLBACK BRANCH HAD NO FINITENESS GUARD, and it is the branch that only runs on a
           contract with no chart yet — i.e. one that just entered coverage, which is exactly when
           change24h is most likely to be absent. Every sibling figure on this page guards; this one
@@ -206,16 +206,16 @@ const description = `What a ${p.symbol} perpetual costs to hold: ${venuePhrase},
       {active ? changeWords(active.chart.change) : changeWords(p.change24h)}
     </span>
     <span class="hero__span">
-      <span data-tfstat data-group="px" {...stat((c) => `over ${c.chart!.bars} ${span(c.tf.key)}`)}>
+      <span data-tfstat="bars" data-group="px" {...stat((c) => `over ${c.chart!.bars} ${span(c.tf.key)}`)}>
         {active ? `over ${active.chart.bars} ${span(active.tf.key)}` : "24-hour change"}
       </span> · Hyperliquid perpetual mark
     </span>
   </div>
 
   <div class="hero__meta">
-    <div>Period high<b data-tfstat data-group="px" {...stat((c) => px(c.chart!.high))}>{active ? px(active.chart.high) : "—"}</b></div>
-    <div>Period low<b data-tfstat data-group="px" {...stat((c) => px(c.chart!.low))}>{active ? px(active.chart.low) : "—"}</b></div>
-    <div>Period volume<b data-tfstat data-group="px" {...stat((c) => qty(c.chart!.volume) + " " + p.symbol)}>{active ? qty(active.chart.volume) + " " + p.symbol : "—"}</b></div>
+    <div>Period high<b data-tfstat="high" data-group="px" {...stat((c) => px(c.chart!.high))}>{active ? px(active.chart.high) : "—"}</b></div>
+    <div>Period low<b data-tfstat="low" data-group="px" {...stat((c) => px(c.chart!.low))}>{active ? px(active.chart.low) : "—"}</b></div>
+    <div>Period volume<b data-tfstat="volume" data-group="px" {...stat((c) => qty(c.chart!.volume) + " " + p.symbol)}>{active ? qty(active.chart.volume) + " " + p.symbol : "—"}</b></div>
     <div>Oracle index <span class="scope">Hyperliquid</span><b>{p.oraclePx > 0 ? px(p.oraclePx) : "—"}</b></div>
     <div>Open interest <span class="scope">Hyperliquid</span><b>{usd(p.oiNotional)}</b></div>
     <div>Max leverage<b>{p.maxLeverage}×</b></div>
