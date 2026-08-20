@@ -2,6 +2,7 @@
 import Base from "../layouts/Base.astro";
 import Related from "../components/Related.astro";
 import { SITE, IDENTITY, STORE_NS } from "../lib/site.ts";
+import { publishedSameAs } from "../lib/corroboration.ts";
 import { getSnapshot, OI_NOTIONAL_FLOOR } from "../lib/hyperliquid.ts";
 import { usd } from "../lib/funding.ts";
 
@@ -30,6 +31,9 @@ import { usd } from "../lib/funding.ts";
  * is having no mechanism to take money, not having no way to count visitors.)
  */
 const snap = await getSnapshot((Astro.locals as any)?.runtime?.env?.SNAPSHOT, import.meta.env.DEV);
+/* THE SAME RUNTIME ANSWER THE LAYOUT USES FOR THE STRUCTURED DATA, so the prose on this page and
+   the machine-readable claim can never say different things about the same link. */
+const sameAs = await publishedSameAs((Astro.locals as any)?.runtime?.env?.SNAPSHOT);
 
 const title = "About Coinliqui — who runs it, what it is, and what it is not";
 const description =
@@ -259,18 +263,18 @@ const description =
       GitHub hides a flagged account's pages from anyone not signed in as its owner. A sceptical
       reader following the site's strongest claim about itself found "no such thing".
 
-      So both halves are driven by IDENTITY.sameAs, including the heading, which promised a
+      So both halves are driven by the runtime check, including the heading, which promised a
       history "you can read". Empty means the paragraph does not merely drop the link: it says
       the repository is not reachable and points at the evidence that is, because deleting the
       sentence and leaving the heading would be the same claim with the check removed. */}
   <h2 class="section">
-    {IDENTITY.sameAs.length ? "The site's own history, which you can read" : "The site's own history, and what of it you can check"}
+    {sameAs.length ? "The site's own history, which you can read" : "The site's own history, and what of it you can check"}
   </h2>
-  {IDENTITY.sameAs.length ? (
+  {sameAs.length ? (
     <p class="prose">
       Every claim above is a statement this site makes about itself, and there is no reason to
       take any of them on trust. The source is public at
-      {" "}<a class="link" href={IDENTITY.sameAs[0]} rel="noopener">{IDENTITY.sameAs[0].split("://")[1] ?? IDENTITY.sameAs[0]}</a>
+      {" "}<a class="link" href={sameAs[0]} rel="noopener">{sameAs[0].split("://")[1] ?? sameAs[0]}</a>
       {" "}— the same code that renders these pages, with the commit history behind it. It records
       when each of the limitations above was found and what was changed, which is a different kind
       of evidence from a page asserting that it is careful.
@@ -288,8 +292,8 @@ const description =
     {" "}<time datetime={IDENTITY.launched}>{new Date(IDENTITY.launched).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" })}</time>.
     That is recent, and no amount of writing changes it — a site with a short history is exactly
     what a short history looks like. What can be checked instead is whether the history that
-    exists is real and consistent: {IDENTITY.sameAs.length ? "the commits, the dated figures on every page, and" : "the dated figures on every page,"}
-    {IDENTITY.sameAs.length ? "" : <Fragment>{" "}<a class="link" href="/status">the real ingest success rate including its failures</a>, and</Fragment>}
+    exists is real and consistent: {sameAs.length ? "the commits, the dated figures on every page, and" : "the dated figures on every page,"}
+    {sameAs.length ? "" : <Fragment>{" "}<a class="link" href="/status">the real ingest success rate including its failures</a>, and</Fragment>}
     {" "}<a class="link" href="/status/indexation">the indexation report</a>, which publishes how
     much of this site search engines have actually accepted, including the parts they have not.
   </p>

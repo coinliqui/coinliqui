@@ -294,8 +294,13 @@ const cases = [
   {
     check: "fixtureGaps",
     why: "a KV key the code reads but the seed never writes makes the smoke pass exercise an empty store",
-    fire: () => fixtureGaps([["fixture.ts", 'kv.get(`candles:${sym}`)']], ["snapshot"]),
-    quiet: () => fixtureGaps([["fixture.ts", 'kv.get(`candles:${sym}`)']], ["candles"]),
+    /* THE READ SHAPES ARE PART OF THE CASE. This check used to match one syntax and say it
+       covered every KV series the code reads; the fixture below now carries all three it can
+       see — a template prefix, a literal key and a module constant — so a future narrowing
+       that silently drops one of them fails here rather than in production. Each read carries
+       its type argument, because that is what distinguishes a KV read from searchParams.get. */
+    fire: () => fixtureGaps([["fixture.ts", 'const REACH = "identity:reach";\nkv.get(`candles:${sym}`, "json");\nkv.get("live", "json");\nkv.get(REACH, "json");\nurl.searchParams.get("tf");']], ["snapshot"]).gaps,
+    quiet: () => fixtureGaps([["fixture.ts", 'const REACH = "identity:reach";\nkv.get(`candles:${sym}`, "json");\nkv.get("live", "json");\nkv.get(REACH, "json");\nurl.searchParams.get("tf");']], ["candles", "live", "identity:reach"]).gaps,
   },
   {
     check: "requestedLeverageLabels",

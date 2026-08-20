@@ -2,6 +2,7 @@
 import { SITE, NAV, FOOTER_LINKS, IDENTITY, origin } from "../lib/site.ts";
 import { ageWords } from "../lib/freshness.ts";
 import { codeStamp } from "../lib/sitemap.ts";
+import { publishedSameAs } from "../lib/corroboration.ts";
 import ASSETS from "../data/assets.json";
 
 interface Props {
@@ -32,6 +33,13 @@ interface Props {
   frozen?: boolean;
 }
 const { title, description, fetchedAt, noindex, frozen, crumb, namesFounder, titleMode = "suffix" } = Astro.props;
+
+/* sameAs IS NO LONGER A CONSTANT, AND THE REASON IS IN src/lib/corroboration.ts. Short version:
+   this emitted a URL that returned 404 to every signed-out reader, on every page, for days. The
+   worker checks the candidates once a day and this publishes only what a reader can actually
+   reach — so the link comes back on its own when the block on it lifts, and goes away on its own
+   if it breaks again, neither of which should wait on somebody remembering. */
+const sameAs = await publishedSameAs((Astro.locals as any)?.runtime?.env?.SNAPSHOT);
 const fullTitle = titleMode === "exact" ? title : `${title} | ${SITE.name}`;
 const path = Astro.url.pathname;
 // Canonical origin comes from the build-time SITE_URL via Astro.site — never a literal,
@@ -178,7 +186,7 @@ const schema = {
         "liquidation price modelling",
         "token vesting schedules",
       ],
-      ...(IDENTITY.sameAs.length ? { sameAs: IDENTITY.sameAs } : {}),
+      ...(sameAs.length ? { sameAs } : {}),
       /* THIS COMMENT USED TO SAY "NO founder ... Removed at the operator's request", and the
          founder node three lines above it had been emitting a real name the whole time. The
          removal it described was real and was then reversed — see the note on `namesFounder`

@@ -1007,8 +1007,47 @@ async function stepProbe(env) {
   return String(out.coverageState ?? out.error ?? "done");
 }
 
+// src/lib/corroboration.ts
+var CANDIDATES = ["https://github.com/coinliqui/coinliqui"];
+var REACH_KEY = "identity:reach";
+var PROBE_EVERY_MS = 24 * 36e5;
+var MAX_AGE_MS = 7 * 24 * 36e5;
+
+// worker/corroborate.ts
+var UA2 = "Mozilla/5.0 (compatible; coinliqui-linkcheck/1.0; +https://coinliqui.com/about)";
+async function stepCorroborate(env, now = Date.now()) {
+  if (!CANDIDATES.length) return null;
+  let prior = [];
+  try {
+    const raw = await env.SNAPSHOT.get(REACH_KEY, "json");
+    if (Array.isArray(raw)) prior = raw;
+  } catch {
+  }
+  const newest = prior.reduce((m, r) => r && typeof r.at === "number" && r.at > m ? r.at : m, 0);
+  if (newest && now - newest < PROBE_EVERY_MS) return null;
+  const out = [];
+  for (const url of CANDIDATES) {
+    try {
+      const r = await fetch(url, {
+        redirect: "follow",
+        headers: { "user-agent": UA2, accept: "text/html,application/xhtml+xml,*/*;q=0.8" }
+      });
+      try {
+        await r.arrayBuffer();
+      } catch {
+      }
+      out.push({ url, ok: r.status >= 200 && r.status < 300, status: r.status, at: now });
+    } catch {
+      out.push({ url, ok: false, status: null, at: now });
+    }
+  }
+  await env.SNAPSHOT.put(REACH_KEY, JSON.stringify(out));
+  const good = out.filter((r) => r.ok).length;
+  return `corroborate: ${good}/${out.length} reachable (${out.map((r) => `${new URL(r.url).pathname.slice(1)} ${r.status ?? "no answer"}`).join(", ")})`;
+}
+
 // worker/build-stamp.ts
-var WORKER_BUILD = "f33c5a91477f";
+var WORKER_BUILD = "5f7bba2a1a54";
 
 // worker/ingest.ts
 var RETAIN_HOURS = 72;
@@ -1163,6 +1202,8 @@ async function run(env) {
     try {
       const probe = await stepProbe(env);
       if (probe) result.probe = probe;
+      const reach = await stepCorroborate(env);
+      if (reach) result.corroborate = reach;
       const step = await stepReport(env);
       if (step) {
         result.report = step;

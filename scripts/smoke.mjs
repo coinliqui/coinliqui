@@ -158,10 +158,15 @@ try {
         } catch { /* not a KV store */ } finally { db.close(); }
         if (keys.length) break;
       }
-      const libs = readdirSync("src/lib").filter((f) => f.endsWith(".ts")).map((f) => [`src/lib/${f}`, readSource(`src/lib/${f}`)]);
-      const gaps = fixtureGaps(libs, keys);
+      /* THE RENDER PATH, not just src/lib. This read only src/lib, so a key a page or the layout
+         reads directly was outside the input and the check said nothing about it while its
+         success line claimed to cover "every KV series the code reads". */
+      const walk = (dir) => readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
+        e.isDirectory() ? walk(`${dir}/${e.name}`) : (/\.(ts|astro)$/.test(e.name) ? [`${dir}/${e.name}`] : []));
+      const rendered = [...walk("src/lib"), ...walk("src/pages"), ...walk("src/layouts")].map((f) => [f, readSource(f)]);
+      const { gaps, searched } = fixtureGaps(rendered, keys);
       if (gaps.length) { failures++; console.log(`\n  FAIL  the warm fixture cannot render ${gaps.length} feature(s):`); for (const g of gaps) console.log(`          ${g}`); }
-      else console.log(`\n  ok    the warm fixture covers every KV series the code reads (${keys.length} keys)`);
+      else console.log(`\n  ok    ${searched} KV key prefix(es) read anywhere in the render path are all present in the warm fixture (${keys.length} keys)`);
     } catch (e) {
       failures++;
       console.log(`\n  FAIL  fixture coverage could not be checked: ${e.message}`);
@@ -440,6 +445,44 @@ for (const path of ROUTES) {
     } catch (e) {
       bad++;
       console.log(`  FAIL          sitemap lastmod audit failed: ${e.message}`);
+    }
+    if (warmDir) try {
+      /* THE THREE SURFACES THAT CARRY ONE CLAIM, AND THE BRANCH PRODUCTION CANNOT REACH.
+         The site's external corroboration is published only while a daily worker probe says a
+         signed-out reader can reach it. In production that probe says 404, so every render takes
+         the withheld branch — and the branch that emits it would ship having never been rendered
+         here. seed-smoke-kv.mjs writes a reachable record precisely so this run exercises it.
+
+         Two assertions, and the second is why this is not satisfied by "the link is never there":
+           1. the three surfaces AGREE — JSON-LD sameAs, the visible /about link, and the
+              llms.txt provenance clause are one fact rendered three ways, and this project has
+              already shipped that shape drifting apart more than once;
+           2. on the warm run the link is PRESENT. If the seed is ever dropped, the branch goes
+              back to being untested and this says so instead of quietly passing. */
+      const { CANDIDATES } = await import("../src/lib/corroboration.ts");
+      const url = CANDIDATES[0];
+      const about = await (await fetch(`http://127.0.0.1:${PORT}/about`)).text();
+      const llms = await (await fetch(`http://127.0.0.1:${PORT}/llms.txt`)).text();
+      const graph = /"sameAs":\s*\[([^\]]*)\]/.exec(about);
+      const surfaces = {
+        "JSON-LD sameAs": !!graph && graph[1].includes(url),
+        "the /about link": new RegExp(`href="${url.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"`).test(about),
+        "the llms.txt provenance clause": llms.includes(url),
+      };
+      const on = Object.entries(surfaces).filter(([, v]) => v).map(([k]) => k);
+      const off = Object.entries(surfaces).filter(([, v]) => !v).map(([k]) => k);
+      if (on.length && off.length) {
+        bad++;
+        console.log(`  FAIL          the corroboration link is on ${on.join(" and ")} but not on ${off.join(" or ")} — one fact, three surfaces, disagreeing`);
+      } else if (!on.length) {
+        bad++;
+        console.log(`  FAIL          the corroboration link renders on none of the three surfaces, though the warm fixture says it is reachable — the restored branch is untested again (check seed-smoke-kv.mjs)`);
+      } else {
+        console.log(`  ok            the corroboration link renders on all three surfaces when the probe says it resolves`);
+      }
+    } catch (e) {
+      bad++;
+      console.log(`  FAIL          corroboration surface audit failed: ${e.message}`);
     }
     try {
       /* PAGE WEIGHT, REPORTED EVERY RUN AND GATED ONLY ON BREAKAGE.

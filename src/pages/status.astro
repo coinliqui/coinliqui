@@ -2,6 +2,7 @@
 import Base from "../layouts/Base.astro";
 import { IDENTITY } from "../lib/site.ts";
 import { getSnapshot } from "../lib/hyperliquid.ts";
+import { reachRows } from "../lib/corroboration.ts";
 import { EXPECTED_WORKER_BUILD } from "../lib/version.ts";
 import { VENUE_LABEL, type Venue } from "../lib/funding.ts";
 
@@ -10,6 +11,7 @@ import { VENUE_LABEL, type Venue } from "../lib/funding.ts";
 // robots.txt disallows it — it is operational, not editorial, and changes every 5 minutes.
 const env = (Astro.locals as any)?.runtime?.env;
 const snap = await getSnapshot(env?.SNAPSHOT, import.meta.env.DEV);
+const reach = reachRows(await env?.SNAPSHOT?.get("identity:reach", "json").catch(() => null), Date.now());
 
 interface Check { at: number; source: string; status: number; ms: number; ok: number; note: string | null }
 let checks: Check[] = [];
@@ -246,6 +248,31 @@ const utc = (ms: number) => new Date(ms).toISOString().slice(0, 16).replace("T",
       </div>
     </div>
   )}
+
+  {/* THE ONE CLAIM ON THIS SITE THAT POINTS SOMEWHERE WE DO NOT CONTROL, and the only one whose
+      failure is invisible from here. It published a 404 on every page for days. The worker checks
+      it daily; this row is where a probe that has stopped, or is being refused, becomes visible —
+      without it, "no link" and "the check is broken" look identical to a reader and to us. */}
+  <h2 class="section">External corroboration</h2>
+  <p class="section-note">
+    What a signed-out reader gets when they follow the one external link this site would publish
+    about itself. It is published only while this says <b>published</b>: a link that does not
+    resolve is worse corroboration than none, and nothing here has to be edited either way.
+  </p>
+  <div class="panel" style="max-width:860px">
+    <table class="tbl">
+      <thead><tr><th>URL</th><th>State</th><th>Last anonymous GET</th></tr></thead>
+      <tbody>
+        {reach.map((r) => (
+          <tr class={r.state === "published" ? undefined : "is-active"}>
+            <td><code>{r.url}</code></td>
+            <td class:list={[r.state === "published" ? "is-ok" : "is-bad"]} style="font-weight:600">{r.state}</td>
+            <td class="reason">{r.detail}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
 
   <h2 class="section">Series coverage</h2>
   <p class="section-note">

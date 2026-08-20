@@ -116,6 +116,93 @@ for (const { key, blob_id } of rows) {
   console.log(`  flips:24h  ${flips.result.rows.length} rows of ${flips.result.total}, one with a 890-minute detection gap`);
 }
 
+/* THE RESTORED BRANCH, WHICH PRODUCTION CANNOT EXERCISE.
+   The site publishes its external corroboration only while a daily worker probe says a
+   signed-out reader can reach it. In production that probe currently says 404, so every render
+   takes the withheld branch — and the branch that emits sameAs, the /about paragraph with the
+   link in it and the llms.txt provenance clause would go to production having never once been
+   rendered by the gate. That is the "branch that says not yet and has never run" shape this
+   fixture exists to prevent, and it is worse here than usual because the branch only turns on
+   when nobody is watching for it.
+   Reachable and one hour old, so it passes both the ok test and the freshness test. */
+{
+  const rec = [{ url: "https://github.com/coinliqui/coinliqui", ok: true, status: 200, at: Date.now() - 3_600_000 }];
+  const id = randomBytes(40).toString("hex");
+  writeFileSync(join(blobDir, id), JSON.stringify(rec));
+  put.run("identity:reach", id);
+  console.log(`  identity:reach  ${rec[0].url} reachable — the gate renders the branch production cannot`);
+}
+
+/* THREE MORE KEYS THE FIXTURE HAD NEVER HELD, and nothing said so.
+   fixtureGaps() matched only `kv.get(\`prefix:${sym}\`)` while printing "the warm fixture covers
+   every KV series the code reads". Once it could also see literal and constant keys, and once
+   its input covered src/pages and src/layouts rather than src/lib alone, three more turned up:
+   `live` (the one-minute overlay's source), `report:latest` (everything /status/indexation
+   renders) and `worker:build` (the stamp row on /status). Every one of those pages had only ever
+   been gated in its empty state. */
+{
+  const snapBlob = (() => {
+    const row = db.prepare("SELECT blob_id FROM _mf_entries WHERE key = 'snapshot'").get();
+    return row ? readBlob(row.blob_id) : null;
+  })();
+  const perps = (snapBlob?.perps ?? []).slice(0, 40);
+
+  /* Derived from the fixture's own snapshot, so the overlay's numbers cannot drift away from
+     the page they repaint — the same rule the m15 bars above are built by. Nudged by a tenth of
+     a percent so a check that compares rendered against live sees a real difference rather than
+     two copies of one number. */
+  const live = { at: Date.now(), mark: {}, apr: {} };
+  for (const p of perps) {
+    if (typeof p?.markPx === "number") live.mark[p.symbol] = +(p.markPx * 1.001).toFixed(8);
+    const venues = {};
+    for (const v of p?.venues ?? []) if (Number.isFinite(v?.apr)) venues[v.venue] = v.apr;
+    if (Object.keys(venues).length) live.apr[p.symbol] = venues;
+  }
+  if (Object.keys(live.mark).length) {
+    const id = randomBytes(40).toString("hex");
+    writeFileSync(join(blobDir, id), JSON.stringify(live));
+    put.run("live", id);
+    console.log(`  live  ${Object.keys(live.mark).length} marks, ${Object.keys(live.apr).length} apr sets, derived from the fixture's snapshot`);
+  }
+
+  /* Small but structurally complete: a heading, a table with a header row, a bold run and a
+     list, because the markdown renderer on /status/indexation handles exactly those and a
+     fixture that exercises none of them proves nothing about it. */
+  const md = [
+    "# Indexation — 2026-W00",
+    "",
+    "https://coinliqui.com · started 2026-01-01 07:00 UTC",
+    "",
+    "## A. Coverage",
+    "",
+    "| Template | URLs | Fetchable as GPTBot |",
+    "|---|---:|---:|",
+    "| `pages` | 7 | 7/7 |",
+    "| **total** | **79** | **79/79** |",
+    "",
+    "**A fixture, not a reading.** Seeded by scripts/seed-smoke-kv.mjs so the populated branch",
+    "of this page is rendered by the gate at all. Nothing here is a measurement.",
+    "",
+    "- one list item",
+    "- and a second",
+    "",
+  ].join("\n");
+  const id = randomBytes(40).toString("hex");
+  writeFileSync(join(blobDir, id), JSON.stringify({ week: "2026-W00", at: Date.now(), tookMs: 61_000, md }));
+  put.run("report:latest", id);
+  console.log(`  report:latest  ${md.split("\n").length} lines of markdown — /status/indexation's populated branch`);
+
+  /* The stamp the site expects, read from the source of truth rather than typed here, so the
+     row renders "current" instead of a false staleness alarm. */
+  const stamp = /"([0-9a-f]{12})"/.exec(readFileSync("worker/build-stamp.ts", "utf8"))?.[1];
+  if (stamp) {
+    const wid = randomBytes(40).toString("hex");
+    writeFileSync(join(blobDir, wid), JSON.stringify({ build: stamp, at: Date.now() }));
+    put.run("worker:build", wid);
+    console.log(`  worker:build  ${stamp} — matches build-stamp.ts, so /status renders the current row`);
+  }
+}
+
 db.close();
 console.log(wrote ? `seeded ${wrote} m15 series into the gate's fixture` : "nothing written");
 process.exit(wrote ? 0 : 1);

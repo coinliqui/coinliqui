@@ -985,14 +985,50 @@ export function founderAgreement(html) {
  * It reports prefixes that the code reads and the fixture lacks. It deliberately does NOT
  * complain about the reverse — a fixture holding keys nothing reads is harmless clutter, not a
  * blind spot.
+ *
+ * IT USED TO SEE ONE SYNTAX OUT OF THREE, AND SAID OTHERWISE. The only pattern matched was
+ * `.get(`prefix:${...}`)` — the shape a per-symbol series uses — and a comment beside it claimed
+ * "bare constant keys ("snapshot", "live") are matched separately below", which nothing did.
+ * The line it printed on success read *"the warm fixture covers every KV series the code reads"*.
+ * That is a name asserting something the value does not measure: `kv.get("flips:24h")` and
+ * `kv.get(REACH_KEY)` were both invisible to it, and a maintainer reading the green line would
+ * have believed the opposite. Found while adding a KV-backed identity claim whose absence from
+ * the fixture this check would have certified as fine.
+ *
+ * Three read shapes now, and the message names what was searched: a template-literal prefix, a
+ * bare quoted key, and a module constant assigned a string literal in the same file. The INPUT
+ * widened too — it read only src/lib, so anything a page or a layout reads directly was outside
+ * it. The worker stays out on purpose: the gate does not render the worker, so a key only the
+ * worker reads is not a fixture gap.
  */
 export function fixtureGaps(sources, fixtureKeys) {
   const wanted = new Map();
+  const note = (key, file) => {
+    const prefix = key.includes(":") ? key.split(":")[0] : key;
+    if (prefix && !wanted.has(prefix)) wanted.set(prefix, file);
+  };
+  /* WHAT MAKES A `.get` A KV READ, and it is not the receiver's name.
+     Widening the syntax first produced twenty-nine prefixes of which most were
+     `searchParams.get("tf")`, `cookies.get("rail")` and `headers.get("referer")` — a check with
+     more exemptions than findings, which is the shape this repository has already had to unpick
+     once. The input is narrowed instead: a KV read passes a TYPE as its second argument and
+     every other `.get` in this codebase takes one. That is syntactic, needs no list of receiver
+     names, and cannot be defeated by renaming a variable. */
+  const TYPE = String.raw`\s*,\s*["'](?:json|text|arrayBuffer|stream)["']`;
   for (const [file, src] of sources) {
-    /* Template reads of the form kv.get(`prefix:${sym}`) — the shape every per-symbol series
-       uses. Bare constant keys ("snapshot", "live") are matched separately below. */
-    for (const m of src.matchAll(/\.get\(\s*`([a-z0-9]+):\$\{/gi)) {
-      if (!wanted.has(m[1])) wanted.set(m[1], file);
+    /* 1. kv.get(`prefix:${sym}`, "json") — every per-symbol series. */
+    for (const m of src.matchAll(new RegExp(String.raw`\.get\(\s*\x60([a-z0-9]+):\$\{[^\x60]*\x60` + TYPE, "gi"))) note(m[1], file);
+    /* 2. kv.get("snapshot", "json") — a literal key, with or without a prefix. */
+    for (const m of src.matchAll(new RegExp(String.raw`\.get\(\s*["']([A-Za-z0-9_:.-]+)["']` + TYPE, "g"))) note(m[1], file);
+    /* 3. kv.get(REACH_KEY, "json") where REACH_KEY is a string literal declared in this file.
+          A constant is the normal way to share a key between its reader and its writer, so
+          treating it as unreadable would leave exactly the keys most likely to be shared
+          unchecked — which is how the identity claim got in. */
+    const consts = new Map();
+    for (const m of src.matchAll(/\b(?:const|let|var)\s+([A-Z][A-Z0-9_]*)\s*(?::[^=]+)?=\s*["']([A-Za-z0-9_:.-]+)["']/g)) consts.set(m[1], m[2]);
+    for (const m of src.matchAll(new RegExp(String.raw`\.get\(\s*([A-Z][A-Z0-9_]*)` + TYPE, "g"))) {
+      const lit = consts.get(m[1]);
+      if (lit) note(lit, file);
     }
   }
   const have = new Set([...fixtureKeys].map((k) => (k.includes(":") ? k.split(":")[0] : k)));
@@ -1000,7 +1036,7 @@ export function fixtureGaps(sources, fixtureKeys) {
   for (const [prefix, file] of wanted) {
     if (!have.has(prefix)) gaps.push(`${prefix}:* is read by ${file} and absent from the warm fixture — the gate renders its empty branch and never sees the feature`);
   }
-  return gaps.sort();
+  return { gaps: gaps.sort(), searched: wanted.size };
 }
 
 /**

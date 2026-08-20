@@ -124,52 +124,27 @@ export const IDENTITY = {
      compliance audit's finding, which was right — the list should hold the confusions readers
      actually arrive with, and no more. */
   notAffiliated: ["coinliq.com", "Liqui", "liqui.io", "Coinliqui.io", "any exchange or broker"],
-  /**
-   * EMPTY ON PURPOSE. This listed a personal code-hosting account. A repository is good
-   * corroboration for a project, but that one is tied to an individual's profile, so linking it
-   * from every page published the person as surely as printing their name did.
+  /* sameAs IS NOT A FIELD HERE ANY MORE, and its absence from this object is the point.
    *
-   * Anything added here later must be an account that belongs to the PROJECT, not to a person.
-   * Base.astro already omits sameAs entirely when this is empty, so no empty property is
-   * emitted into the structured data.
-   */
-  sameAs: [
-    /* EMPTY, AND THE REASON IS MEASURED RATHER THAN CAUTIOUS.
-     *
-     * The history. Until 18 August 2026 this was deliberately empty: the repository existed but
-     * sat under a personal account, and pointing at it would have traded the operator's
-     * separation from the domain for the corroboration. It then moved into a project
-     * organisation, the trade disappeared, and the URL was added — the site's first and only
-     * external reference.
-     *
-     * IT WAS REMOVED AGAIN ON 20 AUGUST 2026, and not because the argument changed. The
-     * repository is still public: `gh api repos/coinliqui/coinliqui` returns
-     * `"private": false, "visibility": "public"`. But the account that owns it is under a spam
-     * flag, and GitHub hides a flagged account's pages from anyone not signed in as its owner.
-     * Measured: an anonymous GET of https://github.com/coinliqui/coinliqui returns 404.
-     *
-     * So the one external corroboration this site offered resolved to "no such thing" for every
-     * reader, every crawler and every answer engine, while the markup on all 79 pages asserted
-     * it existed. That is worse than asserting nothing. A sameAs is a claim the consumer is
-     * invited to check, and this one failed the check.
-     *
-     * The damage was not hypothetical. Asked to assess this domain from /about alone, an
-     * extraction model named "examining the public GitHub repository at
-     * github.com/coinliqui/coinliqui showing actual code and commit history" as the FIRST of
-     * three ways a reader could verify the site, and quoted "The source is public ... with the
-     * commit history behind it" as grounds for its verdict. An agent that followed the link
-     * would have found a 404 under the site's strongest claim about itself — which is the exact
-     * failure mode this identity block exists to end.
-     *
-     * Restore the line below the moment an anonymous GET returns 200. Section 17 of
-     * scripts/verify-live.mjs checks every URL this site publishes about itself and fails on one
-     * that does not resolve for a signed-out reader, so it cannot be re-added while still
-     * broken, and cannot break again silently.
-     *
-     * Base.astro omits sameAs entirely while this is empty, so no hollow property is emitted —
-     * and a check refuses any entry here that looks like somebody's personal profile. */
-    // "https://github.com/coinliqui/coinliqui",
-  ] as string[],
+   * It was a compile-time constant. On 20 August 2026 it was found publishing
+   * https://github.com/coinliqui/coinliqui on all 79 pages, in the visible /about link and in
+   * llms.txt, while an anonymous GET of that URL returned 404 — the repository is public, but
+   * its owning account is under a spam flag and GitHub hides a flagged account's pages from
+   * anyone not signed in as its owner. A constant cannot know that. It asserted the link for as
+   * long as nobody checked, and nothing in this repository checks anything outside our own
+   * origin.
+   *
+   * Before that it was deliberately empty for a different reason, worth keeping: the repository
+   * existed but sat under a personal account, and pointing at it would have traded the
+   * operator's separation from the domain for the corroboration. Anything published here must
+   * belong to the PROJECT, never to a person, and scripts/checks.mjs enforces that against the
+   * rendered HTML rather than against this file.
+   *
+   * The candidates now live in src/lib/corroboration.ts, the ingest worker fetches each of them
+   * once a day, and the site publishes only what a signed-out reader can actually reach. A field
+   * called `sameAs` sitting in this object would be a name asserting something its value cannot
+   * support — "these are published" — which is the exact defect being cleaned up elsewhere in
+   * this pass. There is nothing to edit here to restore the link: it restores itself. */
 } as const;
 
 /* GOOGLE ANALYTICS 4 WAS HERE, AND IS GONE. Removed 19 August 2026, deliberately and not

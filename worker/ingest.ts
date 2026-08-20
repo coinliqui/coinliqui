@@ -7,6 +7,7 @@ import { readFlips, readFlipEvents, writeCachedFlips, type D1Like } from "../src
 import { detectFlips, mergeEvents, feedFromEvents, carryForward, LAST_KEY, EVENTS_KEY, type AprSample } from "../src/lib/flip-events.ts";
 import type { Flip } from "../src/lib/flips.ts";
 import { stepReport, stepProbe } from "./report.ts";
+import { stepCorroborate } from "./corroborate.ts";
 import { COINS } from "../src/lib/coins.ts";
 
 /**
@@ -244,6 +245,8 @@ interface RunResult {
   coverageChanged?: boolean;
   /** A slice of the weekly indexation report ran instead of the bulk sweeps. */
   report?: string;
+  /** The daily check of whether the site's published external link still resolves. */
+  corroborate?: string;
 }
 
 /** The shape every sweep keeps in KV: last full cycle, cursor, frozen list, symbols with data,
@@ -454,6 +457,12 @@ async function run(env: Env): Promise<RunResult> {
          per probe written. Placed here so a diagnostic can never starve the ingest. */
       const probe = await stepProbe(env);
       if (probe) result.probe = probe;
+
+      /* WHETHER THE SITE'S OWN EXTERNAL LINK STILL RESOLVES. One GET a day, rate-limited by the
+         record it writes. It sits here for the same reason the inspection probe does: a single
+         subrequest that must never compete with the sweeps. See worker/corroborate.ts. */
+      const reach = await stepCorroborate(env);
+      if (reach) result.corroborate = reach;
 
       const step = await stepReport(env);
       if (step) { result.report = step; throw SKIP_SWEEPS; }

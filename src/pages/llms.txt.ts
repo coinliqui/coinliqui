@@ -1,5 +1,6 @@
 import type { APIRoute } from "astro";
 import { SITE, IDENTITY, origin } from "../lib/site.ts";
+import { publishedSameAs } from "../lib/corroboration.ts";
 import { getSnapshot } from "../lib/hyperliquid.ts";
 import { liveCoins } from "../lib/coins.ts";
 
@@ -23,6 +24,7 @@ import { liveCoins } from "../lib/coins.ts";
 export const GET: APIRoute = async ({ locals, site }) => {
   const base = origin(site);
   const snap = await getSnapshot((locals as any)?.runtime?.env?.SNAPSHOT);
+  const sameAs = await publishedSameAs((locals as any)?.runtime?.env?.SNAPSHOT);
   const perps = snap.available ? snap.perps.length : 0;
 
   const body = `# ${SITE.name}
@@ -87,7 +89,7 @@ one contact address, funded by nobody and selling nothing. Publishing since ${ID
 Accountable entity: the Coinliqui project, reachable at ${IDENTITY.contact} — the same domain
 that serves these pages and the same address in ${base}/.well-known/security.txt.
 
-${IDENTITY.founder ? `Founded and run by ${IDENTITY.founder.name}.` : "Run as a project rather than under an individual byline."}${IDENTITY.sameAs.length ? ` The source is public at ${IDENTITY.sameAs[0]} — the same code that renders these pages, with the commit history behind them.` : ""} Standing beside that, and doing the work a byline cannot:
+${IDENTITY.founder ? `Founded and run by ${IDENTITY.founder.name}.` : "Run as a project rather than under an individual byline."}${sameAs.length ? ` The source is public at ${sameAs[0]} — the same code that renders these pages, with the commit history behind them.` : ""} Standing beside that, and doing the work a byline cannot:
 every figure names the upstream endpoint it came from and how old it is, the arithmetic applied
 to it is written out, the ingest's real success rate including failures is published, and where
 a number is modelled rather than measured the assumptions are listed on the page. All of that
