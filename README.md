@@ -186,6 +186,49 @@ curl -s $URL/ | grep -c SearchAction   # must be 0
 # every sitemap URL resolves and is on the canonical origin
 ```
 
+## Reachability: verify at a phone width, as a reader
+
+**Every check in this repository reads one moment, in one viewport, at one width.** The worst
+defect found so far was invisible to all of them.
+
+Measured on the live site at `innerWidth: 371`: the eight-button timeframe group was **442px
+wide**, `flex-wrap: nowrap`, `overflow-x: visible`. 1W sat at x=366 and 1M at x=420 — both past
+the right edge, no scrollbar, no fade, no affordance. The document scrolled sideways instead,
+472px against a 371px viewport, on all sixty chart pages. The last button a reader could reach
+was 1D, which is also the default, so the page read as though it had one timeframe.
+
+The buttons were present, correct, labelled, wired, and served identically to every crawler. The
+markup was right. The fetch was right. Desktop was right. It was only wrong on a phone, and only
+to a person holding one.
+
+**Presence is not reachability.** They are different properties and nothing automated here tests
+the second one. `controlGroupOverflow` in `scripts/checks.mjs` is a floor — it asserts that any
+container rendering a *generated* list of controls wraps or scrolls — but it cannot measure
+layout, and layout is where this lives.
+
+So, as a standing step whenever anything visual changes:
+
+```
+resize to 375x812, then on each page family:
+  document.documentElement.scrollWidth === innerWidth      # the page must not scroll sideways
+  every button/a/select/input: rect.right <= innerWidth    # or inside an overflow-x:auto parent
+  every control row: scrollWidth <= clientWidth            # or carrying the mask fade
+  open the drawer: its items fit, and it scrolls if it does not
+```
+
+Run it as a reader — click the controls, do not just query them. Three of this project's own
+instrument bugs looked exactly like site failures because the parser and the reader were asking
+different questions.
+
+**A control inside a horizontally scrolling `.panel` is acceptable** — that is the table pattern,
+and the mask fade signals it. A control past the edge of the *page* is not: nothing signals it,
+and the reader has no reason to believe there is more.
+
+Swept 2026-08-20 at 375px across every page family — `/`, `/coins`, `/coins/[coin]`, `/funding`,
+`/funding/[symbol]`, `/liquidations` and both sub-pages, `/open-interest`, `/unlocks`, all four
+`/tools`, `/watchlist`, `/status`, `/data-sources`, `/methodology`, `/terms`, `/about`. Every one
+`375/375`. The only element-level overflows are inside `.panel` containers that carry the fade.
+
 ## Multi-agent findings: never pass evidence through a prompt
 
 When a multi-agent run produces findings that a later step summarises, the summarising step must

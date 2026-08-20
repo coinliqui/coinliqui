@@ -171,8 +171,13 @@ try {
   /* The same shape one mechanism over: a calculator repaints its cards from the form and leaves
      the sentence explaining them at its first-byte value. Source invariant for the same reason —
      a rendered page shows the two agreeing until somebody types. */
-  /* The stylesheet lives in the layout, so the control-group rule is read from there. */
-  const overflow = controlGroupOverflow(readFileSync("src/layouts/Base.astro", "utf8"));
+  /* Which containers hold a GENERATED list of controls is a fact about the templates; whether
+     each one wraps is a fact about the stylesheet. Both are passed in, and components are
+     included because a container can be declared in one. */
+  const overflow = controlGroupOverflow(
+    readFileSync("src/layouts/Base.astro", "utf8"),
+    [...walkAstro("src/pages"), ...walkAstro("src/components")].map((f) => [f, readFileSync(f, "utf8")]),
+  );
   if (overflow.length) { failures++; console.log(`\n  FAIL  ${overflow.length} control group(s) can run off a narrow screen:`); for (const l of overflow) console.log(`          ${l}`); }
   else console.log("  ok            every segmented control group wraps or scrolls rather than leaving the page");
 

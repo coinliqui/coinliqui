@@ -1552,30 +1552,58 @@ export function staleCalculatorFigures(sources) {
  * though it had one timeframe.
  *
  * The cause was a correct fix. The mobile block widens each pill to a 44px touch target, which
- * is right, and made the row 71px too long, which nobody measured.
+ * is right, and made the row 71px too long, which nothing measured.
  *
- * WHAT THIS CAN AND CANNOT SEE. It is a source assertion: it reads the stylesheet and requires
- * every segmented control group to declare a wrap or a scroll, because a flex row of unknown
- * length that does neither is one added option away from this defect. It cannot measure layout —
- * only a browser can, and this was found in one. So it is a floor rather than a proof, and the
- * comment is here so the next person knows which.
+ * REACHABILITY IS ITS OWN PROPERTY, and markup is where it is invisible: those buttons were
+ * present, correct, labelled and wired. It is invisible to a fetcher, invisible at desktop
+ * width, and visible only to somebody holding a phone. This is a floor; the proof is the
+ * phone-width pass in README.md.
+ *
+ * WHAT IT ASSERTS, AND WHY IT IS NOT "EVERY FLEX ROW". The first version of this asked every
+ * flex rule in the stylesheet to wrap or be exempted, and fired on ten of them — .btn, .verdict,
+ * .empty, .nav-item, the topbar clusters. Every one was a fixed arrangement of two or three
+ * children that cannot grow, so the finding was noise and the fix would have been a longer
+ * exemption list than finding list. A check like that gets turned off, which this file already
+ * says in another comment and which I then did anyway.
+ *
+ * The property that actually matters is narrower and is a fact about the MARKUP, not the CSS: a
+ * container whose children are produced by a `.map()` holds a number of controls that nobody
+ * chose. The timeframe group has gone from six buttons to eight this year. So the input is read
+ * from the templates — every container that renders a variable-length list of buttons or links —
+ * and each one's CSS rule must wrap or scroll. Add a new such row anywhere and it is covered
+ * without touching this function.
  */
-export function controlGroupOverflow(css) {
+export function controlGroupOverflow(css, sources = []) {
   const out = [];
-  /* The segmented groups on this site: .tf is the timeframe and view control. Named rather than
-     inferred, because "is this element a control group" is not a question a regex can answer —
-     and an inferred rule that fires on every flex row would be turned off within a week. */
-  const GROUPS = [".tf"];
-  for (const sel of GROUPS) {
-    const rule = new RegExp(`\\${sel}\\s*\\{([^}]*)\\}`).exec(css);
-    if (!rule) { out.push(`the stylesheet has no \`${sel}\` rule — the control group this check exists for is gone or renamed, so the check is no longer looking at anything`); continue; }
-    const body = rule[1];
-    if (!/display:\s*(inline-)?flex/.test(body)) continue;   // not a flex row; nothing to overflow
-    const wraps = /flex-wrap:\s*wrap/.test(body);
-    const scrolls = /overflow-x:\s*(auto|scroll)/.test(body);
-    if (!wraps && !scrolls) {
-      out.push(`\`${sel}\` is a flex row that neither wraps nor scrolls — on a narrow screen its last options fall off the edge of the page, and the page scrolls sideways instead of the group`);
+  const bare = css.replace(/\/\*[\s\S]*?\*\//g, " ");
+  /* Containers whose controls are generated rather than written out one by one. */
+  const generated = new Map();
+  for (const [file, src] of sources) {
+    for (const m of src.matchAll(/<(\w+)[^>]*\bclass="([^"{]+)"[^>]*>([\s\S]{0,600}?)<\/\1>/g)) {
+      const body = m[3];
+      if (!/\.map\(/.test(body)) continue;
+      if (!/<(button|a)\b/.test(body)) continue;
+      for (const cls of m[2].trim().split(/\s+/)) {
+        if (!generated.has(cls)) generated.set(cls, { file, own: src });
+      }
     }
+  }
+  for (const [cls, entry] of generated) {
+    const { file, own } = entry;
+    /* THE RULE MAY BE IN EITHER PLACE. Most live in the layout's stylesheet; a page with its own
+       <style> block styles its own containers, and looking only at the layout reported those as
+       "no rule in the stylesheet" — an instrument saying it cannot see rather than a finding. */
+    const find = (text) => new RegExp(`(^|[},])\\s*\\.${cls}\\s*\\{([^}]*)\\}`, "m").exec(text.replace(/\/\*[\s\S]*?\*\//g, " "));
+    const rule = find(bare) ?? find(own);
+    if (!rule) { out.push(`\`.${cls}\` in ${file} renders a variable number of controls and has no rule in either the layout stylesheet or its own page — nothing here can say whether it wraps`); continue; }
+    const body = rule[2];
+    /* A non-flex container wraps by default; only a flex row queues its children off the edge. */
+    if (!/display:\s*(inline-)?flex/.test(body)) continue;
+    if (/flex-direction:\s*column/.test(body)) continue;
+    if (/flex-wrap:\s*wrap/.test(body)) continue;
+    if (/overflow-x:\s*(auto|scroll)/.test(body)) continue;
+    out.push(`\`.${cls}\` (${file}) is a flex row holding a generated list of controls, and it neither wraps nor scrolls — on a narrow screen its last options fall off the edge of the page, and the page scrolls sideways instead of the row`);
   }
   return out;
 }
+

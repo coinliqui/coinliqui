@@ -117,6 +117,15 @@ export function parsePage(html) {
      no error anywhere. That is precisely "the chart only ever shows one timeframe", and it
      would pass every assertion in this file as it stood. */
   const panelKeys = [...html.matchAll(/data-tfpanel="([^"]+)"/g)].map((m) => m[1]);
+  /* WHAT THE PAGE SAYS ITS OWN ADDRESS IS. The timeframe now survives in the reader's URL —
+     public/interact.js writes ?tf= rather than deleting it — and the whole justification for
+     that is that <link rel="canonical"> already tells a crawler the query is not a separate
+     page. If a self-referential URL ever picked the query up, ?tf= would become eight duplicate
+     pages per coin and sixteen per view, which is the one thing this site cannot afford.
+     Asserted on every render because every render already fetched the page. */
+  const canonical = (/<link rel="canonical" href="([^"]+)"/.exec(html) ?? [, null])[1];
+  const ogUrl = (/<meta property="og:url" content="([^"]+)"/.exec(html) ?? [, null])[1];
+  const schemaUrls = [...html.matchAll(/"url":"(https:\/\/[^"]+)"/g)].map((m) => m[1]);
   const activePanel = (/data-tfpanel="([^"]+)"[^>]*\sdata-on/.exec(html) ?? [, null])[1];
   return {
     buttons,
@@ -124,6 +133,9 @@ export function parsePage(html) {
     activeMode: modes.find((m) => m.pressed)?.mode ?? null,
     panelKeys,
     activePanel,
+    canonical,
+    ogUrl,
+    schemaUrls,
     active: buttons.find((b) => b.pressed)?.tf ?? null,
     svgTfs: svgs,
     prange: rangeM ? [Number(rangeM[1]), Number(rangeM[2])] : null,
@@ -151,6 +163,15 @@ export function chartFaults(p, wantTf, now = Date.now(), expected = EXPECTED_TFS
 
   /* THE VIEW, AND THE KEY THE CLIENT MATCHES ON. Only checked when a view was asked for, so a
      page with no Candles/Line control is not held to a control it does not have. */
+  /* THE SELF-REFERENTIAL URLS MUST NOT CARRY THE QUERY. Only asserted when the fixture supplies
+     them, so the pure-geometry blind cases are not held to a property they do not model. */
+  if (p.canonical !== undefined) {
+    for (const [name, u] of [["canonical", p.canonical], ["og:url", p.ogUrl], ...(p.schemaUrls ?? []).map((x, i) => [`schema url #${i + 1}`, x])]) {
+      if (u === null) { if (name === "canonical") f.push("the page declares no canonical"); continue; }
+      if (u.includes("?")) f.push(`${name} carries a query string (${u}) — ?tf= would become a separate indexable page for every timeframe and view`);
+    }
+  }
+
   /* THE PANEL KEY IS CHECKED EITHER WAY. With a view control the client keys panels `tf.view`;
      without one, by the bare timeframe. Both are contracts with public/interact.js, and the
      failure is identical and silent in both cases. */
@@ -267,6 +288,9 @@ if (BLIND) {
     activeMode: "candle",
     panelKeys: ["1h.candle", "4h.candle"],
     activePanel: "1h.candle",
+    canonical: "https://coinliqui.com/coins/bitcoin",
+    ogUrl: "https://coinliqui.com/coins/bitcoin",
+    schemaUrls: ["https://coinliqui.com/coins/bitcoin", "https://coinliqui.com"],
   };
   const NOW = t0 + 24 * 3.6e6;
   const clone = (o) => JSON.parse(JSON.stringify(o));
@@ -319,6 +343,10 @@ if (BLIND) {
        nothing is revealed, and the reader keeps the chart they already had. Silent everywhere. */
     ["the panel key the client matches on is wrong", (() => { const c = clone(clean); c.panelKeys = ["1h", "4h.candle"]; c.activePanel = "1h"; return c; })(), /reveals panels by the literal "1h.candle"/],
     ["two panels share the live key", (() => { const c = clone(clean); c.panelKeys = ["1h.candle", "1h.candle"]; return c; })(), /2 panels keyed/],
+    ["the canonical picked up the query", (() => { const c = clone(clean); c.canonical += "?tf=1h"; return c; })(), /canonical carries a query string/],
+    ["og:url picked up the query", (() => { const c = clone(clean); c.ogUrl += "?tf=1h&view=candle"; return c; })(), /og:url carries a query string/],
+    ["a schema url picked up the query", (() => { const c = clone(clean); c.schemaUrls[0] += "?view=line"; return c; })(), /schema url #1 carries a query string/],
+    ["no canonical at all", (() => { const c = clone(clean); c.canonical = null; return c; })(), /declares no canonical/],
   ];
   /* THE CONTRACT-PAGE SHAPE: no view control, panels keyed by the bare timeframe. Fifty of the
      sixty pages are this, and asserting the coin shape against them is what produced 3,980
