@@ -38,7 +38,14 @@ if (p && wanted !== p.symbol.toLowerCase()) {
    requested symbol back off the request and says why it is not published. */
 if (!p) return Astro.rewrite(`/404?symbol=${encodeURIComponent(wanted)}`);
 
+/* THE SAME RULE AS THE COVERAGE FLOOR, for the same reason. A contract whose tier table is not
+   in the committed file cannot have a liquidation price, a maintenance margin or a tier ladder —
+   which is most of this page — and the unguarded lookup used to hand `undefined` to tierFor(),
+   answering 500 on an indexed URL. Not the sibling pages' fallback either: this page is ABOUT
+   this symbol, so quietly rendering a different contract under its heading would be the kBONK
+   defect again. See pickPerp in src/lib/hyperliquid.ts. */
 const table = (tables as Record<string, MarginTable>)[String(p.marginTableId)];
+if (!table) return Astro.rewrite(`/404?symbol=${encodeURIComponent(wanted)}`);
 /* If this contract also has a published coin page, the two should know about each other. */
 const coin = COINS.find((c) => c.symbol === p.symbol && isLive(c));
 const ORDER: Venue[] = ["HlPerp", "BinPerp", "BybitPerp"];

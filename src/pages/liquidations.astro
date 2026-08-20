@@ -1,6 +1,6 @@
 ---
 import Base from "../layouts/Base.astro";
-import { getSnapshot, coldStart, findPerp } from "../lib/hyperliquid.ts";
+import { getSnapshot, coldStart, pickPerp } from "../lib/hyperliquid.ts";
 import { usd, pct } from "../lib/funding.ts";
 import { maintenanceMarginFraction, nextTierBoundary, type MarginTable } from "../lib/margin.ts";
 import { getHourly, type Candle } from "../lib/candles.ts";
@@ -17,8 +17,11 @@ const snap = await getSnapshot(env?.SNAPSHOT, import.meta.env.DEV);
 if (!snap.available) return coldStart();
 
 const q = Astro.url.searchParams;
-const perp = findPerp(snap.perps, q.get("symbol")) ?? snap.perps[0];
-const table = (tables as Record<string, MarginTable>)[String(perp.marginTableId)];
+/* The contract and its tier table are chosen together — see pickPerp in src/lib/hyperliquid.ts
+   for why these were two lines and what the second one did when the first one won. */
+const picked = pickPerp(snap.perps, q.get("symbol"), tables as Record<string, MarginTable>);
+if (!picked) return coldStart();
+const { perp, table } = picked;
 const tiers = [...table.marginTiers].sort((a, b) => a.lowerBound - b.lowerBound);
 const tier1 = tiers[0];
 const mark = perp.markPx;

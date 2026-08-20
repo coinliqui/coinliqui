@@ -16,7 +16,7 @@
  * itself a claim that can rot. A name in it that is no longer an export would inflate the number
  * while proving nothing, so every entry is required to resolve to a real export.
  */
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 
 const SRC = "scripts/checks.mjs";
@@ -131,7 +131,33 @@ const MANUAL_BY_DESIGN = {
   "gen-og-png.mjs": "network plus a live credential, and og.png is committed as an artifact — a build that needs the network is a build that gets bypassed",
   "gsc-report.mjs": "reads Search Console with a key that lives only in a worker secret; the worker produces the standing report instead",
 };
-const npmCmds = Object.values(JSON.parse(readFileSync("package.json", "utf8")).scripts).join(" && ");
+const npmScripts = JSON.parse(readFileSync("package.json", "utf8")).scripts;
+const npmCmds = Object.values(npmScripts).join(" && ");
+
+/* ---------------------------------------------------------------------------------------------
+   AN NPM SCRIPT POINTING AT A FILE THAT IS NOT THERE.
+
+   `gen:margin` ran `node --experimental-strip-types scripts/gen-margin-tables.ts`. The file is
+   scripts/gen-margin-tables.mjs and has been since it was written. So the only way to refresh
+   src/data/margin-tables.json — the tier tables five templates compute liquidation prices from —
+   threw MODULE_NOT_FOUND, and had done for as long as the data has been committed. Nothing
+   noticed, because the data was still right: the failure is invisible until the day you need it,
+   which is the day upstream adds a tier table and every one of those pages throws.
+
+   This is the same class as a dead check, one layer out. A command nobody has run since it was
+   typed is a claim about a capability, and the claim is worth exactly as much as the path in it.
+   Only the file operand is verified — flags, pipes and binaries are somebody else's business —
+   which is enough to catch a rename or a moved file, and those are what actually happen. */
+const missingTargets = [];
+for (const [name, cmd] of Object.entries(npmScripts)) {
+  for (const tok of cmd.split(/\s+/)) {
+    if (!/^[\w./-]+\.(mjs|ts|js|cjs)$/.test(tok)) continue;
+    if (tok.startsWith("-")) continue;
+    if (!existsSync(tok)) missingTargets.push(`${name} runs \`${tok}\`, which does not exist`);
+  }
+}
+console.log(`\nNPM SCRIPTS — file operands that do not exist: ${missingTargets.length}`);
+for (const m of missingTargets) console.log(`    ${m}`);
 /* "CAN FAIL" MEANT "CONTAINS THE LITERAL STRING process.exit(1)", AND THAT IS NOT WHAT IT MEANS.
  *
  * Most verifiers in this directory compute their exit code — `process.exit(bad ? 1 : 0)` is the
@@ -168,6 +194,7 @@ const staleExemptions = Object.keys(MANUAL_BY_DESIGN).filter((f) => !unwired.inc
 if (staleExemptions.length) { bad++; console.log(`\n  FAIL  MANUAL_BY_DESIGN excuses ${staleExemptions.join(", ")}, which no longer needs excusing`); }
 if (dead.length) { bad++; console.log(`\n  FAIL  ${dead.length} export(s) have no call site — the extractionRatio class`); }
 if (workerDead.length) { bad++; console.log(`\n  FAIL  ${workerDead.length} worker export(s) nothing calls — dead code that still deploys`); }
+if (missingTargets.length) { bad++; console.log(`\n  FAIL  ${missingTargets.length} npm script(s) point at a file that is not there — a capability nobody has exercised since it was typed`); }
 if (fictional.length) { bad++; console.log(`\n  FAIL  coverage list names ${fictional.join(", ")}, which checks.mjs does not export`); }
 if (bad) process.exit(1);
 console.log(`\n  every export of checks.mjs and of worker/ is invoked; ${claimed.length}/${checks.length} checks have a fixture proving they can fire`);

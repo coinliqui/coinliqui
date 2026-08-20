@@ -17,6 +17,7 @@
  *   node --experimental-strip-types scripts/funding-cases.mjs
  */
 import { nextSettlement, toApr, settlementsPerYear, queryNum, usd, paymentDirection, stopVerdict } from "../src/lib/funding.ts";
+import { pickPerp } from "../src/lib/hyperliquid.ts";
 
 const now = Date.parse("2026-08-17T14:27:48Z");
 const at = (s) => Date.parse(s);
@@ -161,6 +162,35 @@ for (const side of ["long", "short"]) {
 if (wrongBenign) vbad++;
 console.log(`  ${wrongBenign ? "FAIL" : "ok  "}  ${swept} combinations — ${wrongBenign} claimed a bounded loss with the stop on the winning side`);
 if (vbad) bad++;
+
+
+/* ------------------------------------------------------------------------------------------
+   pickPerp — THE CONTRACT AND ITS TIER TABLE, CHOSEN TOGETHER.
+   Four templates tested existence on the live snapshot and then read the tier table out of a
+   JSON file committed at the last build. Different sources, different update paths, nothing
+   making them agree — and tierFor() reads table.marginTiers unguarded, so the mismatch was a
+   TypeError at render rather than a missing figure.
+   ------------------------------------------------------------------------------------------ */
+console.log("\n  pickPerp — a contract with no committed tier table is not a candidate");
+const P = (symbol, marginTableId) => ({ symbol, marginTableId });
+const TBL = { "3": "t3", "51": "t51" };
+let pbad = 0;
+const pc = (name, got, want) => { const ok = JSON.stringify(got) === JSON.stringify(want); if (!ok) { pbad++; console.log(`  FAIL  ${name}: ${JSON.stringify(got)} wanted ${JSON.stringify(want)}`); } else console.log(`  ok    ${name}`); };
+const sym = (r) => (r ? [r.perp.symbol, r.table] : null);
+
+pc("asked for a contract that has a table", sym(pickPerp([P("BTC", 3), P("NEW", 99)], "btc", TBL)), ["BTC", "t3"]);
+pc("case-insensitive, as findPerp is", sym(pickPerp([P("kPEPE", 51)], "KPEPE", TBL)), ["kPEPE", "t51"]);
+/* THE ONE THAT USED TO 500. Asked for a contract whose table is not committed: it must not be
+   selected, and the page must not be handed `undefined` as a table. */
+pc("asked for a contract with no table -> falls back to one that has", sym(pickPerp([P("BTC", 3), P("NEW", 99)], "new", TBL)), ["BTC", "t3"]);
+pc("no symbol asked -> the first USABLE contract, not the first", sym(pickPerp([P("NEW", 99), P("BTC", 3)], null, TBL)), ["BTC", "t3"]);
+pc("every contract lacks a table -> null, so the caller degrades", pickPerp([P("NEW", 99), P("NEWER", 98)], null, TBL), null);
+pc("empty universe -> null", pickPerp([], "btc", TBL), null);
+pc("no tables committed at all -> null", pickPerp([P("BTC", 3)], "btc", {}), null);
+/* A numeric id and its string key are the same table; the lookup is by String(id) and the guard
+   must use the same rule or it would reject exactly the contracts it is meant to admit. */
+pc("id 3 matches key \"3\"", sym(pickPerp([P("BTC", 3)], "btc", { "3": "t3" })), ["BTC", "t3"]);
+if (pbad) bad++;
 
 console.log(bad ? `\n  ${bad} failure(s) in the funding library\n` : "\n  funding library invariants hold\n");
 process.exit(bad ? 1 : 0);

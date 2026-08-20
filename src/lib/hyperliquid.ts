@@ -336,6 +336,44 @@ export const findPerp = (perps: Perp[], want: string | null | undefined): Perp |
   return perps.find((p) => p.symbol.toLowerCase() === k);
 };
 
+/**
+ * THE CONTRACT AND ITS TIER TABLE, CHOSEN TOGETHER — because they were being chosen apart.
+ *
+ * Four templates carried the identical pair of lines:
+ *
+ *     const perp  = findPerp(snap.perps, q.get("symbol")) ?? snap.perps[0];
+ *     const table = tables[String(perp.marginTableId)];
+ *
+ * The existence test is on the LIVE snapshot; the table comes from a JSON file committed at the
+ * last build. They are different sources with different update paths, and nothing made them
+ * agree. `tierFor` and `liquidationPrice` both read `table.marginTiers` unguarded, so a contract
+ * whose tier table is not in the committed file does not degrade — it throws a TypeError at
+ * render, and five indexed URLs answer 500.
+ *
+ * Today the two sets match exactly: upstream declares 3, 5, 10, 20 and 51-56, and the file holds
+ * all ten. That is a fact about today. The worker publishes a new contract the moment it crosses
+ * the open-interest floor, with no redeploy involved, so the window between upstream adding a
+ * tier table and this repository committing one is a window in which those pages are broken.
+ *
+ * And the way out was itself broken: `npm run gen:margin` pointed at a `.ts` file that has never
+ * existed — the generator is `.mjs` — so the only command that refreshes the tables threw
+ * MODULE_NOT_FOUND, and had since the data was committed. Invisible until the day you need it.
+ *
+ * So a contract with no tier table is simply not a candidate. That is the same rule the site
+ * already applies below the coverage floor: a page that cannot compute half of what it exists to
+ * say should not be that page. Returning the pair together is what stops the two decisions
+ * drifting apart again.
+ */
+export function pickPerp<T>(
+  perps: Perp[],
+  want: string | null | undefined,
+  tables: Record<string, T>,
+): { perp: Perp; table: T } | null {
+  const usable = perps.filter((p) => Object.prototype.hasOwnProperty.call(tables, String(p.marginTableId)));
+  const perp = findPerp(usable, want) ?? usable[0];
+  return perp ? { perp, table: tables[String(perp.marginTableId)] } : null;
+}
+
 const EMPTY: Snapshot = { fetchedAt: 0, perps: [], eligibleCount: 0, universeCount: 0, available: false };
 
 /**
