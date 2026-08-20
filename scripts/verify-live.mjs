@@ -420,19 +420,31 @@ for (const p of ["/", "/funding/btc", "/coins/bitcoin", "/watchlist", "/404",
 console.log("\n8. next settlement is in the future");
 for (const p of ["/funding/btc", "/funding/eth", "/funding/sol", "/funding/kpepe"]) {
   const r = await fetchAs(p, "Mozilla/5.0");
+  const renderedAt = new Date();   // within a second of when the server rendered it
   const card = /Next settlement<\/div>\s*<div[^>]*>([^<]*)</.exec(r.body)?.[1]?.trim();
   const stampStr = /<time datetime="([^"]+)"/.exec(r.body)?.[1];
   if (!card || !stampStr) { bad(`${p} has no readable "Next settlement" card or render stamp`); continue; }
   if (card === "—") { ok(`${p.padEnd(16)} no next settlement published — dash, not a guess`); continue; }
   const m = /^(\d{2}):(\d{2})$/.exec(card);
   if (!m) { bad(`${p} "Next settlement" is not a HH:MM time: "${card}"`); continue; }
+  /* AGAINST THE RENDER TIME, NOT THE SNAPSHOT STAMP — and the difference is not cosmetic.
+     nextSettlement() in src/lib/funding.ts computes from Date.now() at render. This check used
+     the page's first <time datetime> — the freshness pill, which carries the SNAPSHOT's age and
+     is routinely five minutes older. Whenever a render landed after an hour boundary that the
+     snapshot predated, the arithmetic produced 61-65 minutes and the check failed three correct
+     pages: "Next settlement 07:00 is 63 min from the page's stamp 05:57". Intermittent by
+     construction, invisible for most of the day, and the page was right every time.
+     Same shape as the defect that prompted this sweep: a condition evaluated on a proxy for the
+     value the code actually used. The stamp is still printed, because the GAP between it and the
+     render time is the useful diagnostic when this does fail. */
   const stamp = new Date(stampStr);
-  const cand = new Date(stamp); cand.setUTCHours(Number(m[1]), Number(m[2]), 0, 0);
-  if (cand <= stamp) cand.setUTCDate(cand.getUTCDate() + 1);
-  const aheadMin = Math.round((cand - stamp) / 60000);
-  aheadMin <= 60
-    ? ok(`${p.padEnd(16)} ${card} UTC, ${aheadMin} min after the page's own stamp (${stampStr.slice(11, 19)})`)
-    : bad(`${p} "Next settlement ${card}" is ${aheadMin} min from the page's stamp ${stampStr.slice(11, 19)} — an hourly contract cannot settle that far out, so this time is in the past`);
+  const cand = new Date(renderedAt); cand.setUTCHours(Number(m[1]), Number(m[2]), 0, 0);
+  if (cand <= renderedAt) cand.setUTCDate(cand.getUTCDate() + 1);
+  const aheadMin = Math.round((cand - renderedAt) / 60000);
+  const lagMin = Math.round((renderedAt - stamp) / 60000);
+  aheadMin > 0 && aheadMin <= 60
+    ? ok(`${p.padEnd(16)} ${card} UTC, ${aheadMin} min ahead of render (snapshot ${lagMin} min behind)`)
+    : bad(`${p} "Next settlement ${card}" is ${aheadMin} min from render time — an hourly contract settles within 60, so this time is in the past or too far out`);
 }
 
 /* 9. Data freshness, as served. */
@@ -788,23 +800,57 @@ console.log("\n15. the ingest write budget still holds at today's coverage");
       return v ? Number(v) : null;
     };
     const CHUNK = constOf("CHUNK");
-    const SWEEPS = [["hourly", constOf("HOURLY_REFRESH_HOURS")], ["funding", constOf("FUNDING_REFRESH_HOURS")], ["candles", constOf("CANDLE_REFRESH_HOURS")]];
-    const cron = /crons\s*=\s*\[([^\]]*)\]/.exec(readFileSync("wrangler.toml", "utf8"))?.[1] ?? "";
-    const everyN = /"\d+-\d+\/(\d+)/.exec(cron)?.[1];
-    const TICKS = everyN ? Math.floor((24 * 60) / Number(everyN)) : null;
+    /* THE SWEEP LIST IS DERIVED, NOT TRANSCRIBED — and that is the whole correction here.
+       It used to be the literal array [hourly, funding, candles], typed into this file. A fourth
+       sweep, m15, was added to the worker at the same 2-hour cadence as hourly, and this check
+       never saw it: 600 writes a day, the joint-largest source, invisible. A check that keeps its
+       own copy of the list it is auditing is auditing its copy. */
+    const SWEEPS = [...src.matchAll(/\{\s*name:\s*"([a-z0-9]+)"\s*,\s*key:\s*"[^"]*"\s*,\s*hours:\s*([A-Z0-9_]+)/g)]
+      .map((m) => [m[1], constOf(m[2])]);
 
-    if (!CHUNK || !TICKS || SWEEPS.some(([, h]) => !h)) {
-      bad(`could not read the ingest constants (CHUNK=${CHUNK}, ticks/day=${TICKS}, sweeps=${JSON.stringify(SWEEPS)}) — the budget cannot be recomputed, so this check is blind`);
+    /* AND EVERY CRON, NOT THE FIRST ONE THAT MATCHED A SHAPE. `/"\d+-\d+\/(\d+)/` matched
+       "2-59/5" and stopped, so the second trigger — "* * * * *", 1,440 ticks a day, each writing
+       the `live` key — was absent from the budget entirely. That single omission was larger than
+       the whole stated total. */
+    const cron = /crons\s*=\s*\[([^\]]*)\]/.exec(readFileSync("wrangler.toml", "utf8"))?.[1] ?? "";
+    const specs = [...cron.matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+    const ticksOf = (spec) => {
+      const min = spec.trim().split(/\s+/)[0];
+      if (min === "*") return 1440;
+      const every = /^\d+-\d+\/(\d+)$/.exec(min) ?? /^\*\/(\d+)$/.exec(min);
+      return every ? Math.floor(1440 / Number(every[1])) : null;
+    };
+    const ticks = specs.map(ticksOf);
+    const FIVE = Math.min(...ticks.filter(Number.isFinite));   // the ingest tick
+    const MINUTE = Math.max(...ticks.filter(Number.isFinite)); // the live tick
+
+    /* WRITES PER TICK ARE DECLARED, AND THE DECLARATION IS GUARDED. Counting them from source
+       would mean parsing control flow; declaring them means the numbers can go stale. So the
+       count of SNAPSHOT.put call sites in the worker is asserted instead: add a write anywhere
+       and this fails until somebody comes back here and decides what it costs. */
+    const PUT_SITES = (src.match(/SNAPSHOT\.put\(/g) ?? []).length;
+    const PUT_SITES_KNOWN = 13;
+    const PER_INGEST_TICK = 3;   // snapshot, flips LAST_KEY, flips EVENTS_KEY
+    const PER_MINUTE_TICK = 1;   // live
+
+    if (PUT_SITES !== PUT_SITES_KNOWN) {
+      bad(`worker/ingest.ts has ${PUT_SITES} KV write sites, the budget below was reasoned about ${PUT_SITES_KNOWN} — re-derive it before trusting the percentage`);
+    }
+    if (!CHUNK || !Number.isFinite(FIVE) || !Number.isFinite(MINUTE) || !SWEEPS.length || SWEEPS.some(([, h]) => !h)) {
+      bad(`could not read the ingest constants (CHUNK=${CHUNK}, ticks=${JSON.stringify(ticks)}, sweeps=${JSON.stringify(SWEEPS)}) — the budget cannot be recomputed, so this check is blind`);
     } else {
       const chunks = Math.ceil(published / CHUNK);
-      const perDay = TICKS + SWEEPS.reduce((a, [, h]) => a + published * (24 / h) + chunks * (24 / h), 0);
+      const TICKS = FIVE;
+      const perDay = FIVE * PER_INGEST_TICK + MINUTE * PER_MINUTE_TICK
+        + SWEEPS.reduce((a, [, h]) => a + published * (24 / h) + chunks * (24 / h), 0);
       const perMonth = perDay * 30;
       const QUOTA = 1_000_000, TRIP = 0.25;
       const pct = (100 * perMonth) / QUOTA;
       const cad = SWEEPS.map(([n, h]) => `${n} ${h}h`).join(", ");
+      const ticksNote = `${FIVE} ingest + ${MINUTE} live ticks/day`;
       pct > TRIP * 100
-        ? bad(`ingest would write ~${Math.round(perMonth).toLocaleString()} KV writes/month at ${published} published contracts (${cad}, ${TICKS} ticks/day) — ${pct.toFixed(1)}% of the ${QUOTA.toLocaleString()} quota, past the ${TRIP * 100}% trip point. The budget in worker/ingest.ts was measured at 49 contracts and no longer holds.`)
-        : ok(`~${Math.round(perMonth).toLocaleString()} writes/month at ${published} published · ${cad} · ${TICKS} ticks/day (${pct.toFixed(1)}% of quota, trips at ${TRIP * 100}%)`);
+        ? bad(`ingest would write ~${Math.round(perMonth).toLocaleString()} KV writes/month at ${published} published contracts (${cad}, ${ticksNote}) — ${pct.toFixed(1)}% of the ${QUOTA.toLocaleString()} quota, past the ${TRIP * 100}% trip point. The budget in worker/ingest.ts was measured at 49 contracts and no longer holds.`)
+        : ok(`~${Math.round(perMonth).toLocaleString()} writes/month at ${published} published · ${cad} · ${ticksNote} (${pct.toFixed(1)}% of quota, trips at ${TRIP * 100}%)`);
     }
   }
 }

@@ -42,32 +42,51 @@ interface Env {
 const RETAIN_HOURS = 72;
 
 /**
- * WRITE BUDGET, measured rather than assumed, at 49 published contracts:
+ * WRITE BUDGET. THE NUMBER THAT STOOD HERE WAS WRONG BY A FACTOR OF THREE.
  *
- *   snapshot   288/day (every tick)
- *   hourly     49 x 12 cycles + 36 cursor writes = 624/day
- *   funding    49 x  4 cycles + 16               = 212/day
- *   candles    49 x  2 cycles +  6               = 104/day
- *   total    ~1,228/day  =  ~36,800/month
+ * It read ~1,228 writes/day, ~36,800/month, 3.7% of quota — measured from the KV analytics API
+ * at 49 published contracts, and correct on the day it was taken. It was then never re-derived,
+ * and two write sources were added underneath it:
  *
- * That is 3.7% of the 1,000,000 writes/month included with Workers Paid, which this account
- * is on. It is NOT inside the free tier — and the free tier's 1,000/day is an ACCOUNT ceiling
- * shared with everything else on the account, which in this case is already spending 450-610
- * a day of it. Both numbers were read from the KV analytics API, not estimated.
+ *   - the `live` key, written on the ONE-MINUTE cron: 1,440/day on its own, larger than the
+ *     entire total this note used to state;
+ *   - the m15 sweep, per symbol at the same 2-hour cadence as hourly: another ~600/day, joint
+ *     largest of the four sweeps.
  *
- * Daily candles change once a day, so the 5-minute tick refreshing them would be 7,200
- * pointless upstream calls a day.
+ * Neither appeared in the table, and — the part that matters — neither appeared in the CHECK
+ * either. scripts/verify-live.mjs section 15 kept its own transcribed list of three sweeps and
+ * read only the first of the two crons, so it recomputed the same understatement every deploy
+ * and reported it as green. A check that keeps a copy of the thing it audits is auditing its
+ * copy. It now derives the sweep list and every cron from source, and asserts the number of
+ * SNAPSHOT.put call sites in this file so a new write source fails it until someone comes back
+ * here and prices it.
  *
- * THE 49 IN THE FIRST LINE IS AN EXPIRY DATE. This budget is correct only while the published
- * set and the sweep cadences stay near what they were when it was measured, and it scales with
- * both. scripts/verify-live.mjs section 15 recomputes it from the LIVE published count and from
- * the constants below — read out of this file, not copied into that one — and fails at 25% of
- * quota rather than at 100%. Measured headroom: 3.7% today, 12.3% with every sweep hourly, 13.9%
- * at the full 232-contract universe, 53.1% at both, which trips.
+ * DERIVED FROM THE CODE, at 50 published contracts, by that check:
+ *
+ *   live          1,440/day   (one-minute cron, one key)
+ *   ingest tick     864/day   (288 ticks x snapshot + flips LAST + flips EVENTS)
+ *   hourly    2h    624/day   (50 symbols + 3 chunk-meta writes, 12 cycles)
+ *   m15       2h    624/day
+ *   funding   6h    208/day
+ *   candles  12h    104/day
+ *   total     ~3,894/day  =  ~116,820/month  =  11.7% of the 1,000,000 included with Workers Paid
+ *
+ * Stated as COMPUTED, not measured — the old figure's authority came from having been read off
+ * the analytics API, and this one has not been. What it is is consistent with the code, and it
+ * moves when the code moves, which the measured one did not.
+ *
+ * 11.7% is not a problem and it is not the 3.7% this project believed. The trip point in the
+ * check is 25%, so the real headroom is about 2x rather than about 7x. Daily candles change once
+ * a day, so refreshing them on the 5-minute tick would be 7,200 pointless upstream calls a day.
+ *
+ * THE 50 IS AN EXPIRY DATE. This scales with the published set and with every cadence below.
+ * The check recomputes it from the LIVE published count and from the constants in this file —
+ * read out of here, not copied into there — and fails at 25% rather than at 100%.
  *
  * The trigger exists because a note exactly like this one, in src/lib/hyperliquid.ts, justified
  * leaving two funding fields unreconciled on a measurement that later stopped being true — and
- * the note asking the next person not to touch it was what stood in the way.
+ * the note asking the next person not to touch it was what stood in the way. This note has now
+ * done the same thing to itself.
  */
 const CANDLE_REFRESH_HOURS = 12;
 /* Every 2 hours. The liquidation map's right edge is only as current as this, and a 6-hour
