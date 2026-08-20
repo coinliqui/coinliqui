@@ -128,6 +128,27 @@ async function wireSize(path) {
   });
 }
 
+/** Does this URL answer a signed-out reader? GET, not HEAD — GitHub, among others, answers the
+ *  two differently, and this project has been wrong about exactly that before. Redirects are
+ *  followed, because a 301 to a live page is a working link. */
+async function reachable(url) {
+  try {
+    const r = await fetch(url, {
+      redirect: "follow",
+      headers: { "user-agent": "Mozilla/5.0" + SELF, accept: ACCEPT, "accept-language": "en-GB,en;q=0.9" },
+      signal: AbortSignal.timeout(20_000),
+    });
+    /* The body is read and discarded: some hosts only fail after the headers, and an unread
+       body leaves the socket open for the rest of the run. */
+    await r.arrayBuffer().catch(() => {});
+    return { ok: r.status >= 200 && r.status < 300, status: r.status, why: `HTTP ${r.status}` };
+  } catch (e) {
+    /* status null means "never got an answer" — a different fact from any status code, and the
+       judge treats it differently depending on the class. */
+    return { ok: false, status: null, why: String(e.message || e).slice(0, 80) };
+  }
+}
+
 console.log(`\n=== ${ORIGIN} ===\n`);
 
 /* 0. THE INSTRUMENTS, BEFORE ANY READING TAKEN WITH THEM.
@@ -898,6 +919,109 @@ console.log("\n16. data");
   ]) console.log(`   ---   ${lbl}: ${grab(re)}`);
   const w = /Deployed <code[^>]*>([^<]*)<\/code>, site expects <code[^>]*>([^<]*)</.exec(r.body);
   w && (w[1] === w[2] ? ok(`worker bundle current (${w[1]})`) : bad(`worker bundle stale: deployed ${w[1]}, expected ${w[2]}`));
+}
+
+/* 17. THE URLS THIS SITE PUBLISHES ABOUT ITSELF MUST RESOLVE FOR A SIGNED-OUT READER.
+ *
+ * The defect this exists for: `sameAs` on all 79 pages, the visible link on /about under the
+ * heading "The site's own history, which you can read", and the provenance line in llms.txt all
+ * pointed at https://github.com/coinliqui/coinliqui. The repository is public — the GitHub API
+ * says `"private": false` to an authenticated call. An anonymous GET returns 404, because the
+ * owning account is under a spam flag and GitHub hides a flagged account's pages from everyone
+ * but its owner. So the site's single external corroboration resolved to "no such thing" for
+ * every reader, every crawler and every answer engine, and every instrument this project owns
+ * reported green, because every one of them reads OUR origin.
+ *
+ * It was not a cosmetic break. Asked to assess the domain from /about alone, an extraction model
+ * named the repository as the FIRST of three ways a reader could verify the site and quoted the
+ * "source is public" sentence as grounds for its verdict — so the one link an agent would follow
+ * to check us was the one that failed.
+ *
+ * TWO CLASSES, AND THE FIRST DRAFT CONFLATED THEM. Run once against everything external, this
+ * reported three failures: the GitHub 404, a 403 from coinbase.com and a timeout from bybit.com.
+ * Only the first is ours. The other two are anti-bot edges refusing a non-browser client, and
+ * treating them as defects would have produced two standing exemptions on the first run — the
+ * shape this project keeps having to unpick. So the question asked of each URL is what CLAIM it
+ * carries:
+ *
+ *   SELF-CLAIM — sameAs, and any external URL in llms.txt. These exist to be checked by a
+ *     stranger. Anything that is not a 2xx fails, including a 403: a reader who cannot reach it
+ *     cannot verify us, and why they cannot is not the point.
+ *   EDITORIAL — an ordinary outbound link to somebody's docs or terms. Only 404 and 410 fail,
+ *     because those mean the page is gone. A 403, a 429 or a timeout is that host's policy about
+ *     robots and says nothing about this site; it is printed, not counted.
+ *
+ * WHAT IT FIRES ON TODAY, asked before wiring it in: six distinct external URLs, zero exemptions.
+ * It fired on the GitHub URL the first time it ran, which is why sameAs is empty today.
+ *
+ * WHY THIS IS NOT MISTAKEN FOR ABUSE: one GET per DISTINCT URL per run, deduplicated, from a
+ * self-identifying user-agent, following redirects — five to eight requests spread over as many
+ * unrelated hosts. That is an ordinary outbound-link check, and smaller than one page load.
+ */
+console.log("\n17. the URLs this site publishes about itself resolve to a signed-out reader");
+{
+  /* THE INSTRUMENT FIRST, ON OUR OWN ORIGIN, so proving the judge can fail costs a third party
+     nothing. Both verdicts are exercised: a 404 must fail in either class, and the editorial
+     class must NOT fail on a 403 — an over-strict judge would fill this section with exemptions,
+     which is the failure mode being avoided rather than a lesser one. */
+  const probe = await reachable(ORIGIN + "/notacoin");
+  /* status null is "never got an answer": fatal for a self-claim, because a reader cannot
+     verify what they cannot reach; tolerated for an editorial link, because a host that drops
+     non-browser clients has not deleted the page. */
+  const judge = (status, self) => status === null ? !self : (status >= 200 && status < 300 ? true : self ? false : !(status === 404 || status === 410));
+  const instrumentOk =
+    !probe.ok && probe.status === 404 &&
+    judge(404, true) === false && judge(404, false) === false &&
+    judge(403, true) === false && judge(403, false) === true &&
+    judge(200, true) === true && judge(null, false) === true && judge(null, true) === false;
+  if (!instrumentOk) {
+    bad(`the reachability judge is wrong about at least one of {404 self, 404 editorial, 403 self, 403 editorial, 200, timeout} — section 17 means nothing (probe: ${probe.why})`);
+  } else {
+    ok(`reachability judge: 404 fails in both classes, 403 fails only as a self-claim, our own /notacoin rejected (${probe.why})`);
+
+    const PAGES = ["/about", "/data-sources", "/methodology", "/terms", "/privacy", "/"];
+    const host = (u) => { try { return new URL(u).hostname; } catch { return null; } };
+    const SELF_HOST = host(ORIGIN);
+    const found = new Map();          // url -> { self, where:Set }
+    const note = (u, where, self) => {
+      if (!/^https?:\/\//i.test(u)) return;
+      if (host(u) === SELF_HOST) return;   // our own origin is sections 5 and 7's job
+      const e = found.get(u) ?? { self: false, where: new Set() };
+      e.self ||= self;
+      e.where.add(where);
+      found.set(u, e);
+    };
+    for (const p of PAGES) {
+      const r = await fetchAs(p, "Mozilla/5.0");
+      for (const m of r.body.matchAll(/<a\b[^>]*href="(https?:\/\/[^"]+)"/g)) note(m[1], `${p} link`, false);
+      /* sameAs is the one that mattered, and it lives in the graph rather than in an anchor. */
+      for (const m of r.body.matchAll(/"sameAs":\s*(\[[^\]]*\])/g)) {
+        try { for (const u of JSON.parse(m[1])) note(u, `${p} sameAs`, true); } catch { /* section 10 owns malformed JSON-LD */ }
+      }
+    }
+    const llms = await fetchAs("/llms.txt", "Mozilla/5.0", "text/plain,*/*");
+    for (const m of llms.body.matchAll(/https?:\/\/[^\s)>\]]+/g)) note(m[0].replace(/[.,;]$/, ""), "llms.txt", true);
+
+    if (!found.size) {
+      bad(`no external URL found on ${PAGES.join(" ")} or /llms.txt — this check is not looking at anything`);
+    } else {
+      const selfClaims = [...found].filter(([, e]) => e.self);
+      const broken = [];
+      for (const [u, e] of found) {
+        const r = await reachable(u);
+        const good = judge(r.status, e.self);
+        if (!good) broken.push(`${u} — ${r.why} — ${e.self ? "SELF-CLAIM" : "editorial"} — in ${[...e.where].join(", ")}`);
+        else if (!r.ok) console.log(`   ---   ${u} answered ${r.why} to a non-browser client; editorial link, not counted`);
+      }
+      /* An empty self-claim set is the CURRENT DELIBERATE STATE, not a pass. Saying so keeps this
+         from reading as "the corroboration checks out" when there is none to check. */
+      console.log(`   ---   ${selfClaims.length} self-claim URL(s), ${found.size - selfClaims.length} editorial`
+        + (selfClaims.length ? "" : " — the site currently corroborates itself with no external URL at all (see IDENTITY.sameAs)"));
+      broken.length
+        ? bad(`${broken.length} published URL(s) do not resolve:\n         ` + broken.join("\n         "))
+        : ok(`all ${found.size} external URL(s) published on this site resolve, or are refused by an anti-bot edge rather than gone`);
+    }
+  }
 }
 
 console.log(`\n${failures ? `${failures} FAILURES` : "all checks passed"}\n`);

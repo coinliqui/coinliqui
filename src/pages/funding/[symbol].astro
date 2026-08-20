@@ -186,7 +186,13 @@ const venuePhrase = venueNames.length > 1
   ? `funding across ${venueNames.slice(0, -1).join(", ")} and ${venueNames[venueNames.length - 1]} annualised side by side`
   : `funding on ${venueNames[0] ?? "its venue"}, annualised`;
 const tfSpan = offered.length ? `${offered[0].label} to ${offered[offered.length - 1].label}` : "several timeframes";
-const description = `What a ${p.symbol} perpetual costs to hold: ${venuePhrase}, the price chart from ${tfSpan} with funding on the same axis, ${usd(p.oiNotional)} of open interest and the published margin tiers.`;
+/* THE ONE FIGURE ONLY THIS PAGE HAS SAT PAST THE TRUNCATION. Measured on 20 August: the fifty
+   contract descriptions run 190–230 characters and a result snippet shows roughly 155, so the
+   open-interest number — the only part of the sentence that is specific to this contract and to
+   today — was cut off every time, leaving fifty snippets that differed only by a ticker. Moved
+   to the front. The sentence is still longer than the snippet; that is fine, because what gets
+   dropped now is the generic tail rather than the distinguishing number. */
+const description = `What a ${p.symbol} perpetual costs to hold, against ${usd(p.oiNotional)} of open interest: ${venuePhrase}, the price chart from ${tfSpan}, and the published margin tiers.`;
 ---
 
 <Base title={title} description={description} fetchedAt={snap.fetchedAt} crumb={{ href: "/funding", label: "Funding", current: p.symbol }}>
@@ -355,7 +361,18 @@ const description = `What a ${p.symbol} perpetual costs to hold: ${venuePhrase},
   </div>
 
   <h2 class="section">Funding by venue</h2>
-  <p class="section-note">The quoted column is what each venue publishes. Those numbers are not comparable to each other; the annualised column is.</p>
+  {/* THE CALCULATOR FOR THE THING THESE FIFTY PAGES ARE ABOUT, AND NOT ONE OF THEM LINKED TO IT.
+      Measured across the live surface on 20 August: /tools/funding-cost had exactly one inbound
+      link in the whole site — the tools hub — while its three siblings had two or three, and the
+      tool itself already links back to this page. So the reciprocal half of an existing pattern
+      was missing, on the fifty pages where it is most useful: the card above prices one size over
+      one period, and the calculator is where a reader changes both. It carries ?symbol= for the
+      same reason /liquidations?symbol= does — arriving on the contract you were already reading
+      is the difference between a link and a detour. */}
+  <p class="section-note">
+    The quoted column is what each venue publishes. Those numbers are not comparable to each other; the annualised column is.
+    {" "}<a class="link" href={`/tools/funding-cost?symbol=${p.symbol}`}>Cost of holding {p.symbol}, at your size and horizon →</a>
+  </p>
   <div class="panel">
     <table class="tbl">
       <thead><tr><th>Venue</th><th class="num">Quoted rate</th><th class="num">Interval</th><th class="num">Settlements / yr</th><th class="num">Annualised</th></tr></thead>

@@ -17,13 +17,13 @@ const rows = ORDER.map((v) => example?.venues.find((x) => x.venue === v)).filter
 
 const title = "How crypto funding rates are annualised across venues";
 const description =
-  "Perpetual venues settle funding on different intervals, so their quoted rates are not comparable. This is how the rates on this site are annualised, and why the raw comparison everyone else publishes is wrong.";
+  "Perpetual venues settle funding on different intervals, so comparing their quoted rates side by side makes the shorter interval look cheaper by exactly the interval ratio. This is how the rates here are annualised.";
 ---
 
 <Base title={title} description={description} fetchedAt={snap.fetchedAt}>
   <div class="page-head">
     <h1>Methodology</h1>
-    <p>How the funding rates on this site are annualised, why the raw comparison every other site publishes is wrong, and what is deliberately absent.</p>
+    <p>How the funding rates on this site are annualised, why comparing the quoted rates side by side is wrong whoever publishes them, and what is deliberately absent.</p>
   </div>
 
   <h2>Why quoted funding rates cannot be compared</h2>

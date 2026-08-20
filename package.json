@@ -24,7 +24,7 @@
     "preflight": "node scripts/credentials.mjs",
     "verify": "node scripts/verify-live.mjs && node scripts/coin-charts.mjs && node scripts/behaviour-live.mjs && node --experimental-strip-types --disable-warning=ExperimentalWarning scripts/flips-parity.mjs",
     "indexnow:drain": "node --experimental-strip-types --disable-warning=ExperimentalWarning scripts/indexnow-drain.mjs",
-    "deploy:site": "node scripts/credentials.mjs --strict && node scripts/gen-margin-tables.mjs --check && npm run check && node scripts/no-localhost.mjs && wrangler pages deploy dist --project-name coinliqui --branch main && node scripts/verify-live.mjs && node scripts/coin-charts.mjs && node scripts/behaviour-live.mjs"
+    "deploy:site": "node scripts/credentials.mjs --strict && node scripts/gen-margin-tables.mjs --check && node scripts/gen-lastmod.mjs --check && npm run check && node scripts/no-localhost.mjs && wrangler pages deploy dist --project-name coinliqui --branch main && node scripts/verify-live.mjs && node scripts/coin-charts.mjs && node scripts/behaviour-live.mjs"
   },
   "dependencies": {
     "@astrojs/cloudflare": "^12.6.10",

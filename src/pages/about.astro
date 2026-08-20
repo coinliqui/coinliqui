@@ -253,21 +253,45 @@ const description =
   {/* PROVENANCE IS THE ONE THING A FIVE-DAY-OLD DOMAIN CANNOT FAKE, and it is the answer to
       the only reasonable objection a sceptical reader has left: that everything above is just
       words on a page written by whoever owns the page. A commit history is not. */}
-  <h2 class="section">The site's own history, which you can read</h2>
-  <p class="prose">
-    Every claim above is a statement this site makes about itself, and there is no reason to
-    take any of them on trust. The source is public at
-    {" "}<a class="link" href={IDENTITY.sameAs[0]} rel="noopener">github.com/coinliqui/coinliqui</a>
-    {" "}— the same code that renders these pages, with the commit history behind it. It records
-    when each of the limitations above was found and what was changed, which is a different kind
-    of evidence from a page asserting that it is careful.
-  </p>
+  {/* THE LINK IS ONLY EVIDENCE WHILE IT RESOLVES. This section used to assert, unconditionally,
+      that the source is public at a URL that had begun returning 404 to every signed-out
+      reader — the repository is still public, but its owning account is under a spam flag and
+      GitHub hides a flagged account's pages from anyone not signed in as its owner. A sceptical
+      reader following the site's strongest claim about itself found "no such thing".
+
+      So both halves are driven by IDENTITY.sameAs, including the heading, which promised a
+      history "you can read". Empty means the paragraph does not merely drop the link: it says
+      the repository is not reachable and points at the evidence that is, because deleting the
+      sentence and leaving the heading would be the same claim with the check removed. */}
+  <h2 class="section">
+    {IDENTITY.sameAs.length ? "The site's own history, which you can read" : "The site's own history, and what of it you can check"}
+  </h2>
+  {IDENTITY.sameAs.length ? (
+    <p class="prose">
+      Every claim above is a statement this site makes about itself, and there is no reason to
+      take any of them on trust. The source is public at
+      {" "}<a class="link" href={IDENTITY.sameAs[0]} rel="noopener">{IDENTITY.sameAs[0].split("://")[1] ?? IDENTITY.sameAs[0]}</a>
+      {" "}— the same code that renders these pages, with the commit history behind it. It records
+      when each of the limitations above was found and what was changed, which is a different kind
+      of evidence from a page asserting that it is careful.
+    </p>
+  ) : (
+    <p class="prose">
+      Every claim above is a statement this site makes about itself, and there is no reason to
+      take any of them on trust. The source repository is not publicly reachable at present, so
+      it is not offered here as evidence: a link that does not resolve is worse corroboration
+      than none, and this page will not carry one. What can be checked is on this domain and is
+      dated — every figure names the upstream endpoint it came from and how old it is, the
+      arithmetic applied to it is written out, and where a number is modelled rather than
+      measured the assumptions are listed beside it.
+    </p>
+  )}
   <p class="prose">
     Publishing began on
     {" "}<time datetime={IDENTITY.launched}>{new Date(IDENTITY.launched).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" })}</time>.
     That is recent, and no amount of writing changes it — a site with a short history is exactly
     what a short history looks like. What can be checked instead is whether the history that
-    exists is real and consistent: the commits, the dated figures on every page, and
+    exists is real and consistent: {IDENTITY.sameAs.length ? "the commits, the dated figures on every page, and" : "the dated figures on every page, the published ingest success rate including its failures, and"}
     {" "}<a class="link" href="/status/indexation">the indexation report</a>, which publishes how
     much of this site search engines have actually accepted, including the parts they have not.
   </p>

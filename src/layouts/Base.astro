@@ -1,6 +1,7 @@
 ---
 import { SITE, NAV, FOOTER_LINKS, IDENTITY, origin } from "../lib/site.ts";
 import { ageWords } from "../lib/freshness.ts";
+import { codeStamp } from "../lib/sitemap.ts";
 import ASSETS from "../data/assets.json";
 
 interface Props {
@@ -96,12 +97,23 @@ const age = ageWords;
    already made once here, and expensive because a host that lies about dates gets its dates
    disregarded. Pages with no data behind them (the prose, the 404) emit no node rather than a
    date they cannot justify. */
-const pageNode = fetchedAt && !noindex && {
+/* THE PROSE PAGES TOLD THE SITEMAP WHEN THEY CHANGED AND TOLD THE PAGE ITSELF NOTHING.
+   `fetchedAt` is a market timestamp, so a page with no market data on it — /privacy,
+   /methodology/liquidations — emitted no WebPage node and therefore no date, while
+   sitemaps/pages.xml published a real committed git date for the same URL from
+   codeStamp(). Two of our own surfaces, one fact, disagreeing by omission: a crawler
+   comparing them saw a lastmod claim the document would not corroborate.
+
+   Same function as the sitemap now, so they cannot drift. Routes with neither a market
+   timestamp nor a committed date (/terms, /about) still emit no node, which is the same
+   answer the sitemap gives them and the correct way to say "I do not know". */
+const modified = fetchedAt ? new Date(fetchedAt).toISOString() : codeStamp(path);
+const pageNode = modified && !noindex && {
   "@type": "WebPage",
   "@id": `${base}${Astro.url.pathname}#page`,
   url: `${base}${Astro.url.pathname}`,
   isPartOf: { "@id": `${base}#website` },
-  dateModified: new Date(fetchedAt).toISOString(),
+  dateModified: modified,
 };
 
 const crumbNode = crumb && !noindex && {
@@ -167,10 +179,17 @@ const schema = {
         "token vesting schedules",
       ],
       ...(IDENTITY.sameAs.length ? { sameAs: IDENTITY.sameAs } : {}),
-      /* NO founder. This emitted a Person with a real name into the structured data on every
-         page — the single most machine-readable way to attach an individual to a domain, and
-         exactly what gets lifted into knowledge panels and training corpora. Removed at the
-         operator's request. An Organization with no founder is still a valid Organization. */
+      /* THIS COMMENT USED TO SAY "NO founder ... Removed at the operator's request", and the
+         founder node three lines above it had been emitting a real name the whole time. The
+         removal it described was real and was then reversed — see the note on `namesFounder`
+         above and the matching one in about.astro — and the sentence recording the removal was
+         left standing over the code that undid it. Nobody reading this file would have known
+         which of the two to believe.
+
+         Found while auditing the site's machine-readable identity, and worth keeping as an
+         example rather than deleting silently: a comment describing a state the code no longer
+         has is the same defect as a check that cannot fire, and this project has now produced
+         both in the same file. */
     },
   ],
 };

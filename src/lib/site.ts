@@ -134,23 +134,41 @@ export const IDENTITY = {
    * emitted into the structured data.
    */
   sameAs: [
-    /* THE FIRST AND ONLY EXTERNAL REFERENCE THIS SITE HAS.
+    /* EMPTY, AND THE REASON IS MEASURED RATHER THAN CAUTIOUS.
      *
-     * The source of this site, independently hosted, with a commit history that cannot be
-     * back-dated — which is the whole reason it is worth anything here. Until 18 August 2026
-     * this was deliberately empty: the repository existed but sat under a personal account, and
-     * pointing at it would have traded the operator's separation from the domain for the
-     * corroboration. It now lives in a project organisation, so the trade is gone and the
-     * argument that always applied to a project account finally applies to this one.
+     * The history. Until 18 August 2026 this was deliberately empty: the repository existed but
+     * sat under a personal account, and pointing at it would have traded the operator's
+     * separation from the domain for the corroboration. It then moved into a project
+     * organisation, the trade disappeared, and the URL was added — the site's first and only
+     * external reference.
      *
-     * The transfer left a 301 from the old personal path to the new one, which would have
-     * preserved exactly the association the move was meant to end. Measured, not assumed:
-     * anonymous GET returned 301 with the org URL in Location. A private repository now occupies
-     * the old path and it returns 404 to anonymous requests.
+     * IT WAS REMOVED AGAIN ON 20 AUGUST 2026, and not because the argument changed. The
+     * repository is still public: `gh api repos/coinliqui/coinliqui` returns
+     * `"private": false, "visibility": "public"`. But the account that owns it is under a spam
+     * flag, and GitHub hides a flagged account's pages from anyone not signed in as its owner.
+     * Measured: an anonymous GET of https://github.com/coinliqui/coinliqui returns 404.
+     *
+     * So the one external corroboration this site offered resolved to "no such thing" for every
+     * reader, every crawler and every answer engine, while the markup on all 79 pages asserted
+     * it existed. That is worse than asserting nothing. A sameAs is a claim the consumer is
+     * invited to check, and this one failed the check.
+     *
+     * The damage was not hypothetical. Asked to assess this domain from /about alone, an
+     * extraction model named "examining the public GitHub repository at
+     * github.com/coinliqui/coinliqui showing actual code and commit history" as the FIRST of
+     * three ways a reader could verify the site, and quoted "The source is public ... with the
+     * commit history behind it" as grounds for its verdict. An agent that followed the link
+     * would have found a 404 under the site's strongest claim about itself — which is the exact
+     * failure mode this identity block exists to end.
+     *
+     * Restore the line below the moment an anonymous GET returns 200. Section 17 of
+     * scripts/verify-live.mjs checks every URL this site publishes about itself and fails on one
+     * that does not resolve for a signed-out reader, so it cannot be re-added while still
+     * broken, and cannot break again silently.
      *
      * Base.astro omits sameAs entirely while this is empty, so no hollow property is emitted —
      * and a check refuses any entry here that looks like somebody's personal profile. */
-    "https://github.com/coinliqui/coinliqui",
+    // "https://github.com/coinliqui/coinliqui",
   ] as string[],
 } as const;
 
