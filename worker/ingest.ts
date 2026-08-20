@@ -2,6 +2,7 @@ import { fetchSnapshot, fetchLive } from "../src/lib/hyperliquid.ts";
 import { fetchCandles, fetchHourly, fetchM15, fetchFundingHistory, mergeFunding, type FundingPoint } from "../src/lib/candles.ts";
 import { orderSweeps } from "../src/lib/sweep-order.ts";
 import { stepIndexNow, publishedUrls } from "./indexnow.ts";
+import { collapsedCoverage, publishedSet, orphans } from "./coverage.ts";
 import { readFlips, readFlipEvents, writeCachedFlips, type D1Like } from "../src/lib/flips.ts";
 import { detectFlips, mergeEvents, feedFromEvents, carryForward, LAST_KEY, EVENTS_KEY, type AprSample } from "../src/lib/flip-events.ts";
 import type { Flip } from "../src/lib/flips.ts";
@@ -345,38 +346,48 @@ async function run(env: Env): Promise<RunResult> {
     result.status = 200;
     result.symbols = snap.perps.length;
 
-    /* A PLAUSIBILITY FLOOR, because "the upstream failed" and "the upstream answered nonsense"
-       need the same response and only one of them throws.
+    /* THE PLAUSIBILITY FLOOR, and what it does NOT decide.
      *
-     * info() checks the HTTP status and then trusts the body. Fed a 200 with an empty universe,
-     * with contexts full of nulls, or with markPx as the string "n/a", fetchSnapshot returns a
-     * perfectly well-formed snapshot containing ZERO contracts — exercised directly against the
-     * real function, all three produced perps=0 — and the line below would have written it over
-     * the healthy one. The site would then serve fifty empty pages from a snapshot whose
-     * timestamp says it is seconds old.
-     *
-     * The partial case is worse because it is quieter: a response carrying one contract instead
-     * of fifty leaves rows.length > 0, so result.ok stays TRUE and /status reports a healthy
-     * ingest while forty-nine contracts have silently vanished.
-     *
-     * So a collapse is refused rather than recorded after the fact. The previous snapshot stays
-     * in KV and ages visibly — which is the failure mode this site already knows how to show,
-     * on every page, in the freshness pill. A stale number that says it is stale beats a fresh
-     * number that is wrong. The threshold is half of the previously published set, and it only
-     * applies once there IS a meaningful set, so first boot and genuine growth are unaffected. */
+       The rule and the reasoning are in worker/coverage.ts, exercised by the check that ships
+       rather than by a transcription of it. What matters here is the shape of the response: a
+       collapse is REFUSED rather than recorded after the fact. The previous snapshot stays in
+       KV and ages visibly — the failure mode this site already knows how to show, on every
+       page, in the freshness pill. A stale number that says it is stale beats a fresh number
+       that is wrong. */
     const prevCount = prevPublished.length;
-    const collapsed = snap.perps.length === 0 || (prevCount >= 10 && snap.perps.length < prevCount / 2);
+    const collapsed = collapsedCoverage(prevCount, snap.perps.length);
     if (collapsed) result.error = `refused: coverage collapsed ${prevCount} -> ${snap.perps.length}`;
 
-    const nowPublished = snap.perps.map((p) => p.symbol);
-    /* NOT ON A COLLAPSE. This is the coverage DECISION, and it is stickier than the snapshot:
-       rewriting it to the degenerate set would retire the missing contracts, and their indexed
-       URLs would begin returning 404 on the strength of one bad upstream response. URLs are
-       promises; a transient is not a reason to break fifty of them. */
-    if (!collapsed && nowPublished.slice().sort().join(",") !== prevPublished.slice().sort().join(",")) {
-      await env.SNAPSHOT.put(publishedKey, JSON.stringify(nowPublished));
-      result.coverageChanged = true;
-    }
+    /* THE COVERAGE DECISION, NAMED ONCE, AND THE RAW LIST SEALED INSIDE IT.
+     *
+       The floor above refuses to WRITE a degenerate set, and then both consumers of that
+       decision went on naming the raw fetch: the IndexNow announcement, and the symbol list
+       every bulk sweep walks. The defect the guard exists to prevent, restated one line later —
+       a condition evaluated on one value and acted on with another.
+     *
+       What it cost, concretely. A sweep prunes when its cycle wraps, deleting `<kind>:<SYM>`
+       for anything outside the scope it just covered; that is the correct cleanup for a
+       contract genuinely leaving coverage. Handed the degenerate list, a collapsed tick wraps
+       inside a single chunk and deletes hourly:, m15:, candles: and funding: for the other
+       forty-nine. `published:set` is correctly left alone, so all fifty pages stay live —
+       serving chart-shaped holes built from series that were not stale but erased.
+     *
+       So `nowPublished` lives and dies inside this block. It is an INPUT to the decision, and
+       below this line there is nothing for a future edit to get wrong: the raw list is not in
+       scope to be named. Tested by scripts/ingest-guard-cases.mjs against worker/coverage.ts,
+       which is the copy that ships. */
+    const published = await (async () => {
+      const nowPublished = snap.perps.map((p) => p.symbol);
+      /* NOT ON A COLLAPSE. This is stickier than the snapshot: rewriting it to the degenerate
+         set would retire the missing contracts, and their indexed URLs would begin returning
+         404 on the strength of one bad upstream response. URLs are promises; a transient is
+         not a reason to break fifty of them. */
+      if (!collapsed && nowPublished.slice().sort().join(",") !== prevPublished.slice().sort().join(",")) {
+        await env.SNAPSHOT.put(publishedKey, JSON.stringify(nowPublished));
+        result.coverageChanged = true;
+      }
+      return publishedSet(collapsed, prevPublished, nowPublished);
+    })();
 
     const at = snap.fetchedAt;
     const rows: [string, string, number, number][] = [];
@@ -502,15 +513,18 @@ async function run(env: Env): Promise<RunResult> {
          so a submission can never delay data collection, and so a failure here is a logged
          line rather than a lost pass: nothing a reader sees depends on it. */
       try {
-        /* Two arguments, and neither can be got wrong by this caller: the static routes come
-           from src/lib/routes.ts and the coin slugs from liveCoins(). A third argument used to
-           sit here carrying `[]`, which is why all ten coin pages were never announced. */
-        result.indexnow = await stepIndexNow(env, publishedUrls(env.SITE_ORIGIN || "https://coinliqui.com", nowPublished));
+        /* Two arguments, and the second one HAD been got wrong twice by this caller. It once
+           sat here as a literal `[]`, which is why all ten coin pages were never announced; it
+           then carried `nowPublished`, so a collapsed upstream would have announced a shrunken
+           URL set as though the site had lost forty-nine pages. It now carries the coverage
+           decision itself. The static routes come from src/lib/routes.ts and the coin slugs
+           from liveCoins(), and neither is reachable from a bad response. */
+        result.indexnow = await stepIndexNow(env, publishedUrls(env.SITE_ORIGIN || "https://coinliqui.com", published));
       } catch (e) {
         result.indexnow = `indexnow: threw (${e instanceof Error ? e.message : String(e)})`;
       }
 
-      const syms = nowPublished;
+      const syms = published;
 
       /**
        * Chunked sweep. Returns how many symbols were written this invocation, or undefined if
@@ -619,12 +633,9 @@ async function run(env: Env): Promise<RunResult> {
           /* A cycle just covered the whole set, so `have` is exactly the set with data —
              anything else is a leftover from a contract that dropped out of coverage. Its
              keys would otherwise sit in KV forever. */
-          const covered = new Set(scope);
-          for (const s of have) {
-            if (!covered.has(s)) {
-              await env.SNAPSHOT.delete(`${key.split(":")[0]}:${s}`).catch(() => {});
-              have.delete(s);
-            }
+          for (const s of orphans(have, scope)) {
+            await env.SNAPSHOT.delete(`${key.split(":")[0]}:${s}`).catch(() => {});
+            have.delete(s);
           }
         }
 

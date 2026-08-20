@@ -1,7 +1,8 @@
 ---
 import Base from "../../layouts/Base.astro";
 import { getSnapshot, coldStart, findPerp } from "../../lib/hyperliquid.ts";
-import { usd, pct, queryNum } from "../../lib/funding.ts";
+import { usd, pct, queryNum, stopVerdict } from "../../lib/funding.ts";
+import ASSETS from "../../data/assets.json";
 import { liquidationPrice, tierFor, maintenanceMarginFraction, type MarginTable, type Side } from "../../lib/margin.ts";
 import tables from "../../data/margin-tables.json";
 
@@ -45,7 +46,23 @@ const notional = size * entry;
 const r = liquidationPrice({ entryPrice: entry, positionSize: size, leverage, side, table });
 const { tier } = tierFor(table, notional);
 const mmf = maintenanceMarginFraction(tier.maxLeverage);
-const liquidatedFirst = side === "long" ? r.liquidationPrice > stop : r.liquidationPrice < stop;
+/* THREE STATES, NOT TWO, and the third was being reported as the safest of them.
+ *
+ * This line used to be a bare price ordering: for a long, liquidation above the stop meant
+ * liquidation came first. It is a proxy for the real question — does an ADVERSE move reach the
+ * stop before it reaches liquidation — and the two agree only while the stop is on the losing
+ * side of entry, which nothing checked.
+ *
+ * Measured live before this change: ?side=short&entry=110000&stop=100000&leverage=5 rendered
+ * data-state="stop" and "the stop executes first and the loss is bounded by the $250.00 you
+ * budgeted", for a short whose stop sits 9.09% into profit and can never fill on the losing
+ * side. The rule now lives in public/shared.js so the calculator's own script cannot disagree
+ * with the server about it — this page has already shipped that disagreement twice. */
+const verdict = stopVerdict(side, entry, stop, r.liquidationPrice);
+const liquidatedFirst = verdict === "liq";
+const stopUnreachable = verdict === "wrongside";
+/* Both non-benign states earn the alert colour. Only one of them used to. */
+const alarming = liquidatedFirst || stopUnreachable;
 
 /* THE BRANCH THAT IS NOT TRUE IS NOT IN THE DOCUMENT.
  *
@@ -63,8 +80,9 @@ const liquidatedFirst = side === "long" ? r.liquidationPrice > stop : r.liquidat
  * server-rendered at first byte — is about the TRUE state, and the true state is still a plain
  * div. The counterfactual was never owed a first-byte rendering; it is only reachable through
  * an interaction that requires script anyway. */
-const LiqTag = liquidatedFirst ? "div" : "template";
-const StopTag = liquidatedFirst ? "template" : "div";
+const LiqTag = verdict === "liq" ? "div" : "template";
+const StopTag = verdict === "stop" ? "div" : "template";
+const NoneTag = verdict === "wrongside" ? "div" : "template";
 
 // Largest leverage that still leaves liquidation beyond the stop. Solved from
 // liq = entry(1 ∓ 1/L)/(1 ∓ mmf), set equal to the stop.
@@ -139,18 +157,22 @@ const description = `Risk-based position sizing for ${perp.symbol} perpetuals th
           The identical bug was fixed on /funding/[symbol] earlier today and this sibling never
           got the change — the same one-policy-two-templates shape as the /coins case guard. */}
       <div class="card__label">Liquidation at {r.effectiveLeverage}×{r.leverageClamped && <span class="card__scope">tier max</span>}</div>
-      <div class:list={["card__value", liquidatedFirst && "card__value--alert"]} id="out-liq">{px(r.liquidationPrice)}</div>
-      <div class="card__meta" id="out-liqnote">{liquidatedFirst ? "before your stop" : "beyond your stop"}</div>
+      <div class:list={["card__value", alarming && "card__value--alert"]} id="out-liq">{px(r.liquidationPrice)}</div>
+      <div class="card__meta" id="out-liqnote">{stopUnreachable ? `your stop is ${side === "long" ? "above" : "below"} entry` : liquidatedFirst ? "before your stop" : "beyond your stop"}</div>
     </div>
     <div class="card">
       <div class="card__label">Closed out by a move of</div>
-      <div class:list={["card__value", liquidatedFirst && "card__value--alert"]} id="out-move">{pct(liqMove)}</div>
+      <div class:list={["card__value", alarming && "card__value--alert"]} id="out-move">{pct(liqMove)}</div>
       <div class="card__meta">you sized for <span id="out-stopmove">{pct(stopMove)}</span></div>
     </div>
     <div class="card">
       <div class="card__label">Max leverage for this stop</div>
-      <div class="card__value" id="out-safe">{safeLeverage}×</div>
-      <div class="card__meta">keeps liquidation beyond {px(stop)}</div>
+      {/* A NUMBER THAT ANSWERS A QUESTION NOBODY ASKED. Solving liq = stop for L assumes the
+          stop is on the losing side; when it is not, the denominator goes negative, rawSafe
+          becomes Infinity and this card printed the contract's tier maximum as though it were
+          a safety finding. An em dash is the honest output for a question with no answer. */}
+      <div class="card__value" id="out-safe">{stopUnreachable ? "—" : `${safeLeverage}×`}</div>
+      <div class="card__meta" id="out-safenote">{stopUnreachable ? "the stop is not on the losing side" : `keeps liquidation beyond ${px(stop)}`}</div>
     </div>
   </div>
 
@@ -165,23 +187,42 @@ const description = `Risk-based position sizing for ${perp.symbol} perpetuals th
       around it: every number is server-rendered at first byte, a crawler sees the true state,
       and the interaction layer only reveals what is already there. Every live figure inside the
       prose carries an id so the same set() that updates the cards updates the sentence. */}
-  <div class:list={["verdict", liquidatedFirst ? "verdict--warn" : "verdict--ok"]} id="out-verdict" data-state={liquidatedFirst ? "liq" : "stop"}>
+  <div class:list={["verdict", alarming ? "verdict--warn" : "verdict--ok"]} id="out-verdict" data-state={verdict}>
+    {/* EVERY FIGURE IN HERE CARRIES AN ID, and six of them did not.
+        The cards were kept current and the sentences explaining them were left at their
+        first-byte values, which is worse than either being wrong alone — the two disagree on
+        the same screen. Observed in the browser on the deployed page: leverage 5 → 60 repainted
+        the liquidation price and left the sentence saying "At 5× the exchange closes this
+        position at $111,358.02", a price only 60× produces. The green branch was quieter and
+        worse: the loss it says is bounded by "the $250.00 you budgeted" never moved when
+        Account or Risk did, so the one number the card exists to promise was the stalest thing
+        on the page. Enforced now by staleCalculatorFigures in scripts/checks.mjs. */}
     <LiqTag data-when="liq">
-        <b>The stop never executes.</b> At {r.effectiveLeverage}×{r.leverageClamped ? " — this contract's tier maximum, so the leverage you asked for cannot be opened —" : ""} the exchange closes this position at
+        <b>The stop never executes.</b> At <b id="v-lev1">{r.effectiveLeverage}×</b><span id="v-clamp1">{r.leverageClamped ? " — this contract's tier maximum, so the leverage you asked for cannot be opened —" : ""}</span> the exchange closes this position at
         {" "}<b id="v-liq1">{px(r.liquidationPrice)}</b> — a <b id="v-move1">{pct(liqMove)}</b> move — while your stop sits
-        {" "}<span id="v-stopmove1">{pct(stopMove)}</span> away at <span id="v-stop1">{px(stop)}</span>. The trade gets <b>{pct(liqMove)}</b> of room
-        instead of the {pct(stopMove)} it was sized to survive, and the entire
-        {" "}<b>{usd(marginAtRisk, 2)}</b> of margin goes with it.
-        That the margin happens to be {marginAtRisk < riskUsd ? "smaller" : "larger"} than your
-        {" "}{usd(riskUsd, 2)} budget is beside the point: the position never got to be wrong slowly.
+        {" "}<span id="v-stopmove1">{pct(stopMove)}</span> away at <span id="v-stop1">{px(stop)}</span>. The trade gets <b id="v-move4">{pct(liqMove)}</b> of room
+        instead of the <span id="v-stopmove4">{pct(stopMove)}</span> it was sized to survive, and the entire
+        {" "}<b id="v-margin1">{usd(marginAtRisk, 2)}</b> of margin goes with it.
+        That the margin happens to be <span id="v-cmp1">{marginAtRisk < riskUsd ? "smaller" : "larger"}</span> than your
+        {" "}<span id="v-risk1">{usd(riskUsd, 2)}</span> budget is beside the point: the position never got to be wrong slowly.
         Drop to <b id="v-safe2">{safeLeverage}×</b> or move the stop closer.
     </LiqTag>
     <StopTag data-when="stop">
         <b>The stop is reachable.</b> Liquidation sits at <b id="v-liq2">{px(r.liquidationPrice)}</b>
         (<span id="v-move2">{pct(liqMove)}</span> away), past your stop at <span id="v-stopmove2">{pct(stopMove)}</span>, so the stop executes first and the
-        loss is bounded by the <b>{usd(riskUsd, 2)}</b> you budgeted. Leverage up to
+        loss is bounded by the <b id="v-risk2">{usd(riskUsd, 2)}</b> you budgeted. Leverage up to
         {" "}<b id="v-safe1">{safeLeverage}×</b> keeps that true.
     </StopTag>
+    <NoneTag data-when="wrongside">
+        <b>That is not a stop.</b> A <span id="v-side3">{side}</span> loses money when the price <span id="v-dir3">{side === "long" ? "falls" : "rises"}</span>,
+        and your stop at <span id="v-stop2">{px(stop)}</span> sits <span id="v-stopmove3">{pct(stopMove)}</span>
+        {" "}<span id="v-rel3">{side === "long" ? "above" : "below"}</span> entry — on the side where the trade is winning. An adverse
+        move never reaches it, so nothing here bounds the loss except the exchange: liquidation at
+        {" "}<b id="v-liq3">{px(r.liquidationPrice)}</b>, a <b id="v-move3">{pct(liqMove)}</b> move, taking the whole
+        {" "}<b id="v-margin3">{usd(marginAtRisk, 2)}</b> of margin. The position size above is what the standard formula
+        returns from the distance you gave it; it is not a risk of <span id="v-risk3">{usd(riskUsd, 2)}</span>.
+        Put the stop <span id="v-put3">{side === "long" ? "below" : "above"}</span>{" "}<span id="v-entry3">{px(entry)}</span> and this page can answer the question again.
+    </NoneTag>
   </div>
 
   <h2 class="section">Why sizing alone is not enough</h2>
@@ -209,7 +250,14 @@ const description = `Risk-based position sizing for ${perp.symbol} perpetuals th
     · <a class="link" href={`/funding/${perp.symbol.toLowerCase()}`}>{perp.symbol} detail →</a>
   </p>
 
-  <script is:inline define:vars={{ table, symbol: perp.symbol, dp }}>
+  {/* A MODULE, SO IT CAN READ THE SAME RULE THE SERVER DID.
+      This was a classic inline script carrying its own copy of the verdict test — `const first
+      = isLong ? liq > S : liq < S` — which is how the page shipped one defect in two places at
+      once. It now imports stopVerdict from public/shared.js, with the asset version forwarded
+      the way interact.js forwards it, because public/ is served with max-age=14400 and a bare
+      import would let a browser pair today's page with a four-hour-old module. */}
+  <script is:inline type="module" define:vars={{ table, symbol: perp.symbol, dp, sharedV: ASSETS["/shared.js"] }}>
+    const { stopVerdict } = await import("/shared.js" + (sharedV ? `?v=${sharedV}` : ""));
     const form = document.querySelector(".calc");
     if (form) {
       /* TWO FORMATTERS, because two kinds of number. `money` is account currency — the risk
@@ -235,30 +283,34 @@ const description = `Risk-based position sizing for ${perp.symbol} perpetuals th
         const mmf = 1 / (2 * maxLev);
         const eff = Math.min(L, maxLev);
         const liq = isLong ? (E * (1 - 1 / eff)) / (1 - mmf) : (E * (1 + 1 / eff)) / (1 + mmf);
-        const first = isLong ? liq > S : liq < S;
+        const state = stopVerdict(isLong ? "long" : "short", E, S, liq);
+        const first = state === "liq";
+        const wrong = state === "wrongside";
+        const alarm = first || wrong;
         const ratio = S / E;
         const denom = isLong ? 1 - ratio * (1 - mmf) : ratio * (1 + mmf) - 1;
         const safe = Math.max(1, Math.min(maxLev, Math.floor(denom > 0 ? 1 / denom : maxLev)));
         set("out-size", size.toFixed(4));
         set("out-notional", "$" + Math.round(notional).toLocaleString("en-US"));
         set("out-liq", price(liq));
-        set("out-liqnote", first ? "before your stop" : "beyond your stop");
+        set("out-liqnote", wrong ? `your stop is ${isLong ? "above" : "below"} entry` : first ? "before your stop" : "beyond your stop");
         set("out-move", ((Math.abs(liq - E) / E) * 100).toFixed(2) + "%");
         set("out-stopmove", ((Math.abs(S - E) / E) * 100).toFixed(2) + "%");
         const mv = document.getElementById("out-move");
-        if (mv) mv.className = "card__value" + (first ? " card__value--alert" : "");
-        set("out-safe", safe + "×");
+        if (mv) mv.className = "card__value" + (alarm ? " card__value--alert" : "");
+        set("out-safe", wrong ? "—" : safe + "×");
+        set("out-safenote", wrong ? "the stop is not on the losing side" : "keeps liquidation beyond " + price(S));
         /* The VERDICT is a state, not a colour. Setting className alone left the sentence
            contradicting its own box; the attribute selects which server-rendered variant shows,
            and the ids below keep its figures current. */
         const verdictEl = document.getElementById("out-verdict");
         if (verdictEl) {
-          verdictEl.dataset.state = first ? "liq" : "stop";
+          verdictEl.dataset.state = state;
           /* `hidden` rather than CSS alone: a text extractor that applies no stylesheet — which
              is what an AI crawler is — would otherwise read BOTH sentences and take the first,
              so a page in the "stop" state would read as "The stop never executes". The CSS rule
              stays for the visual case; this is what makes the DOM itself honest. */
-          verdictEl.className = "verdict " + (first ? "verdict--warn" : "verdict--ok");
+          verdictEl.className = "verdict " + (alarm ? "verdict--warn" : "verdict--ok");
           /* Promote the branch that is now true into the document, demote the other into a
              template. Done BEFORE the figures are set below, so the ids being written are the
              ones now live — a template's contents are unreachable to getElementById. */
@@ -275,14 +327,27 @@ const description = `Risk-based position sizing for ${perp.symbol} perpetuals th
           });
         }
         const setAll = (ids, val) => ids.forEach((i) => set(i, val));
-        setAll(["v-liq1", "v-liq2"], price(liq));
-        setAll(["v-move1", "v-move2"], ((Math.abs(liq - E) / E) * 100).toFixed(2) + "%");
-        setAll(["v-stopmove1", "v-stopmove2"], ((Math.abs(S - E) / E) * 100).toFixed(2) + "%");
+        /* EVERY id IN THE PROSE, not the six that happened to have one. See the comment on the
+           verdict block: the cards moved and the sentences did not. */
+        const margin = notional / eff;
+        setAll(["v-liq1", "v-liq2", "v-liq3"], price(liq));
+        setAll(["v-move1", "v-move2", "v-move3", "v-move4"], ((Math.abs(liq - E) / E) * 100).toFixed(2) + "%");
+        setAll(["v-stopmove1", "v-stopmove2", "v-stopmove3", "v-stopmove4"], ((Math.abs(S - E) / E) * 100).toFixed(2) + "%");
         setAll(["v-safe1", "v-safe2"], safe + "×");
-        set("v-stop1", price(S));
+        setAll(["v-stop1", "v-stop2"], price(S));
+        setAll(["v-margin1", "v-margin3"], money(margin));
+        setAll(["v-risk1", "v-risk2", "v-risk3"], money(riskUsd));
+        set("v-lev1", eff + "×");
+        set("v-clamp1", L > maxLev ? " — this contract's tier maximum, so the leverage you asked for cannot be opened —" : "");
+        set("v-cmp1", margin < riskUsd ? "smaller" : "larger");
+        set("v-side3", isLong ? "long" : "short");
+        set("v-dir3", isLong ? "falls" : "rises");
+        set("v-rel3", isLong ? "above" : "below");
+        set("v-put3", isLong ? "below" : "above");
+        set("v-entry3", price(E));
 
         const liqEl = document.getElementById("out-liq");
-        if (liqEl) liqEl.className = "card__value" + (first ? " card__value--alert" : "");
+        if (liqEl) liqEl.className = "card__value" + (alarm ? " card__value--alert" : "");
       };
       form.addEventListener("input", recalc);
       form.addEventListener("change", (e) => { if (e.target.name === "symbol") form.submit(); else recalc(); });

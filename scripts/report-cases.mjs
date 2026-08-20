@@ -93,3 +93,136 @@ if (t.rows.reduce((a, r) => a + r.claimed, 0) !== t.claimedTotal) { console.log(
 
 if (bad) { console.error(`\n  ${bad} case(s) wrong`); process.exit(1); }
 console.log("\n  crawler tally: verified is counted, claimed is only reported, and the gap survives every case");
+
+/* ============================================================================================
+ * THE STEP THAT COULD HOLD THE INGEST FOREVER.
+ *
+ * stepReport returns a label when it did work, and worker/ingest.ts reads a label as "the
+ * report has this tick": it throws SKIP_SWEEPS, so the flip precompute, the IndexNow step and
+ * all four candle sweeps stand aside. That is correct for the twenty minutes a run takes.
+ *
+ * The coverage phase decided "the sitemaps have not been fetched yet" by asking whether the
+ * template list was empty. A sitemap-index answering with anything that is not parseable XML —
+ * a 5xx HTML error page, a challenge interstitial, an empty body — matches no <loc>, so the
+ * list stays empty, so the next tick asks again. Truthy every time. One bad response from our
+ * own edge stopped chart ingest until the following Monday, with /status showing a healthy
+ * report in progress and every page ageing quietly.
+ *
+ * Exercised against the real stepReport with a stubbed KV and a stubbed edge, because the
+ * defect is in the loop and not in any single call.
+ * ========================================================================================== */
+import { stepReport, isoWeek } from "../worker/report.ts";
+
+const kv = () => {
+  const m = new Map();
+  return {
+    store: m,
+    async get(k) { const v = m.get(k); return v === undefined ? null : JSON.parse(v); },
+    async put(k, v) { m.set(k, v); },
+    async delete(k) { m.delete(k); },
+  };
+};
+
+/** Drive stepReport until it stops asking for ticks, with a hard cap that IS the assertion. */
+const drive = async (env, cap = 40) => {
+  const steps = [];
+  for (let n = 0; n < cap; n++) {
+    const s = await stepReport(env, n === 0);
+    if (!s) break;
+    steps.push(s);
+    if (s.startsWith("report: complete") || s.startsWith("report: abandoned")) break;
+  }
+  return steps;
+};
+
+const withFetch = async (handler, fn) => {
+  const real = globalThis.fetch;
+  globalThis.fetch = async (u) => handler(new URL(u).pathname);
+  try { return await fn(); } finally { globalThis.fetch = real; }
+};
+
+const ok200 = (body) => new Response(body, { status: 200 });
+
+let rbad = 0;
+const claim = (cond, msg) => { if (!cond) { console.log(`  MISS  ${msg}`); rbad++; } else console.log(`  ok    ${msg}`); };
+
+console.log("\n  the weekly report holding the ingest tick:");
+
+/* 1. THE DEFECT'S EXACT CONDITION. */
+{
+  const env = { SNAPSHOT: kv(), SITE_ORIGIN: "https://coinliqui.com" };
+  const steps = await withFetch(
+    (p) => p === "/sitemap-index.xml"
+      ? new Response("<!doctype html><title>500</title>edge is unhappy", { status: 500 })
+      : ok200("<urlset></urlset>"),
+    () => drive(env),
+  );
+  const spins = steps.filter((s) => s === "report: sitemaps").length;
+  claim(spins <= 1, `an unparseable sitemap index is fetched once, not every tick (asked ${spins}x)`);
+  claim(steps.length < 40, `the run ends instead of holding the tick forever (${steps.length} steps)`);
+  claim(!env.SNAPSHOT.store.has("report:state"), "and it clears its state, so the sweeps resume");
+  const md = JSON.parse(env.SNAPSHOT.store.get("report:latest") ?? "{}").md ?? "";
+  claim(md.includes("produced no templates"), "section A says why it is empty rather than printing a bare header");
+  claim(md.includes("500"), "and names the status it got");
+}
+
+/* 2. THE CONTROL. The same machine on a well-formed index must still walk its URLs. */
+{
+  const env = { SNAPSHOT: kv(), SITE_ORIGIN: "https://coinliqui.com" };
+  const index = "<sitemapindex><sitemap><loc>https://coinliqui.com/sitemaps/core.xml</loc></sitemap></sitemapindex>";
+  const core = "<urlset><url><loc>https://coinliqui.com/</loc></url><url><loc>https://coinliqui.com/funding</loc></url></urlset>";
+  const steps = await withFetch(
+    (p) => p === "/sitemap-index.xml" ? ok200(index) : p === "/sitemaps/core.xml" ? ok200(core) : ok200("hello"),
+    () => drive(env),
+  );
+  const md = JSON.parse(env.SNAPSHOT.store.get("report:latest") ?? "{}").md ?? "";
+  claim(steps.some((s) => s.startsWith("report: complete")), "a healthy index still produces a complete report");
+  claim(md.includes("| `core` | 2 | 2/2 |"), "with the coverage table it always had");
+  claim(!md.includes("produced no templates"), "and no failure text");
+}
+
+/* 3. A TEMPLATE WHOSE OWN SITEMAP FAILED. `0 | 0/0` read as full marks. */
+{
+  const env = { SNAPSHOT: kv(), SITE_ORIGIN: "https://coinliqui.com" };
+  const index = "<sitemapindex><sitemap><loc>https://coinliqui.com/sitemaps/contracts.xml</loc></sitemap></sitemapindex>";
+  await withFetch(
+    (p) => p === "/sitemap-index.xml" ? ok200(index)
+      : p === "/sitemaps/contracts.xml" ? new Response("nope", { status: 503 })
+      : ok200("hello"),
+    () => drive(env),
+  );
+  const md = JSON.parse(env.SNAPSHOT.store.get("report:latest") ?? "{}").md ?? "";
+  claim(md.includes("sitemap returned 503"), "an unreadable child sitemap is unmeasured, not empty");
+}
+
+/* 4. THE CEILING, which is the bound on the class rather than on this one stall.
+      The week must match the current one or the state is discarded as last week's, which is
+      the stall's real condition: a run that dies mid-week holds every tick until the next
+      Monday, and `st.week !== week` never fires to rescue it. */
+{
+  const env = { SNAPSHOT: kv(), SITE_ORIGIN: "https://coinliqui.com" };
+  await env.SNAPSHOT.put("report:state", JSON.stringify({
+    week: isoWeek(new Date()), phase: "inspect", i: 3,
+    lines: ["# stuck"], templates: [], startedAt: Date.now() - 3 * 3_600_000,
+  }));
+  const step = await withFetch(() => ok200("x"), () => stepReport(env));
+  claim(String(step).startsWith("report: abandoned"), `a run past the ceiling ends itself (${step})`);
+  claim(!env.SNAPSHOT.store.has("report:state"), "and releases the tick");
+  const md = JSON.parse(env.SNAPSHOT.store.get("report:latest") ?? "{}").md ?? "";
+  claim(md.includes("Abandoned after") && md.includes("inspect"), "naming the phase it died in");
+}
+
+/* 5. AND NOT A MINUTE BEFORE. A ceiling that trips early would abandon healthy runs, which is
+      the same outage wearing the guard's clothes. */
+{
+  const env = { SNAPSHOT: kv(), SITE_ORIGIN: "https://coinliqui.com" };
+  await env.SNAPSHOT.put("report:state", JSON.stringify({
+    week: isoWeek(new Date()), phase: "inspect", i: 3,
+    lines: ["# in progress"], templates: [], startedAt: Date.now() - 25 * 60_000,
+  }));
+  const step = await withFetch(() => ok200("x"), () => stepReport(env));
+  claim(!String(step).startsWith("report: abandoned"), `a 25-minute run is not abandoned (${step})`);
+}
+
+if (rbad) { console.error(`\n  ${rbad} case(s) wrong`); process.exit(1); }
+console.log("\n  the report can no longer hold the ingest tick: not on a bad sitemap, not on anything else");

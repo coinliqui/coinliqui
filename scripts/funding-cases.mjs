@@ -16,7 +16,7 @@
  *
  *   node --experimental-strip-types scripts/funding-cases.mjs
  */
-import { nextSettlement, toApr, settlementsPerYear, queryNum, usd, paymentDirection } from "../src/lib/funding.ts";
+import { nextSettlement, toApr, settlementsPerYear, queryNum, usd, paymentDirection, stopVerdict } from "../src/lib/funding.ts";
 
 const now = Date.parse("2026-08-17T14:27:48Z");
 const at = (s) => Date.parse(s);
@@ -118,6 +118,49 @@ t("1e30 is not a dollar amount", usd(1e30), "—");
 t("nor is 5e19", usd(5e19), "—");
 t("negatives too", usd(-1e30), "—");
 t("1e12 still prints", usd(1e12), "$1000.00B");
+
+
+/* ------------------------------------------------------------------------------------------
+   stopVerdict — THE STATE /tools/position-size IS IN, AND THERE ARE THREE OF THEM.
+   The page decided between two by comparing liquidation to the stop, which is an ORDERING. The
+   question is whether an ADVERSE move reaches the stop first, and the two agree only while the
+   stop is on the losing side of entry. The first case below is the live defect: a short whose
+   stop is 9% into profit was told "the stop executes first and the loss is bounded".
+   ------------------------------------------------------------------------------------------ */
+console.log("\n  stopVerdict — a stop on the wrong side of entry is not a safe stop");
+const sv = (side, e, st, liq) => stopVerdict(side, e, st, liq);
+const vcases = [
+  ["short, stop 9% into PROFIT (the live defect)", "short", 110_000, 100_000, 130_370, "wrongside"],
+  ["long, stop above entry — a target, not a stop", "long", 100, 110, 90, "wrongside"],
+  ["long, stop below entry, liq below the stop", "long", 100, 95, 90, "stop"],
+  ["long, stop below entry, liq between", "long", 100, 90, 95, "liq"],
+  ["short, stop above entry, liq above the stop", "short", 100, 105, 110, "stop"],
+  ["short, stop above entry, liq between", "short", 100, 110, 105, "liq"],
+  ["stop exactly at entry is not on the losing side", "long", 100, 100, 90, "wrongside"],
+  ["short, stop exactly at entry", "short", 100, 100, 110, "wrongside"],
+];
+let vbad = 0;
+for (const [name, side, e, st, liq, want] of vcases) {
+  const got = sv(side, e, st, liq);
+  if (got !== want) { vbad++; console.log(`  FAIL  ${name}: ${got}, wanted ${want}`); }
+  else console.log(`  ok    ${String(got).padEnd(9)} ${name}`);
+}
+/* NO INPUT MAY PRODUCE THE BENIGN VERDICT WITHOUT THE STOP BEING ON THE LOSING SIDE. That is
+   the whole claim the green card makes, so it is asserted over the space rather than by case. */
+let swept = 0, wrongBenign = 0;
+for (const side of ["long", "short"]) {
+  for (const stop of [50, 90, 99.9, 100, 100.1, 110, 200]) {
+    for (const liq of [1, 50, 90, 99, 101, 110, 150, 1e6]) {
+      swept++;
+      const v = sv(side, 100, stop, liq);
+      const adverse = side === "long" ? stop < 100 : stop > 100;
+      if (v === "stop" && !adverse) wrongBenign++;
+    }
+  }
+}
+if (wrongBenign) vbad++;
+console.log(`  ${wrongBenign ? "FAIL" : "ok  "}  ${swept} combinations — ${wrongBenign} claimed a bounded loss with the stop on the winning side`);
+if (vbad) bad++;
 
 console.log(bad ? `\n  ${bad} failure(s) in the funding library\n` : "\n  funding library invariants hold\n");
 process.exit(bad ? 1 : 0);

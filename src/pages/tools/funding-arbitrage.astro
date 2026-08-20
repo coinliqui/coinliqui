@@ -88,9 +88,9 @@ const description = `What the funding spread between venues is actually worth on
       <div class="card__meta">{sameInterval ? `same as above — both legs settle every ${ASSUMED}h` : "the side-by-side reading, assuming 8h"}</div>
     </div>
     <div class="card">
-      <div class="card__label">Gross over {days} days</div>
+      <div class="card__label">Gross over <span id="out-days">{days}</span> days</div>
       <div class="card__value" id="out-period">{usd(grossPeriod, 2)}</div>
-      <div class="card__meta">on {usd(perLeg, 0)} per leg · modelled at today's rate, held</div>
+      <div class="card__meta">on <span id="out-perleg">{usd(perLeg, 0)}</span> per leg · modelled at today's rate, held</div>
     </div>
     <div class="card">
       <div class="card__label">Gross per year</div>
@@ -105,7 +105,10 @@ const description = `What the funding spread between venues is actually worth on
         These two venues settle on <b>different intervals</b> ({shortLeg.intervalHours}h and
         {" "}{longLeg.intervalHours}h). Differencing the quoted rates gives
         {" "}<b>{pct(naiveSpreadApr)}</b> where the real spread is <b>{pct(spreadApr)}</b> — a gap of
-        {" "}<b>{usd(Math.abs(grossPeriod - naivePeriod), 2)}</b> on this position over {days} days.
+        {/* THESE TWO WERE STATIC IN A SENTENCE ABOUT THE FORM. Change Capital or Days and the
+            paragraph went on quoting the gap for the position you no longer had, with its own
+            "over 30 days" agreeing with itself and contradicting the input above it. */}
+        {" "}<b id="v-gap">{usd(Math.abs(grossPeriod - naivePeriod), 2)}</b> on this position over <span id="v-days">{days}</span> days.
       </div>
     </div>
   )}
@@ -175,24 +178,33 @@ const description = `What the funding spread between venues is actually worth on
     · <a class="link" href="/funding">All coins by spread →</a>
   </p>
 
-  <script is:inline define:vars={{ venues: perp.venues }}>
+  {/* EVERY DERIVED FIGURE COMES FROM THE SERVER, none is re-derived here.
+      This script used to sort the venues itself, pick the legs itself, and annualise the naive
+      spread itself — at a HARDCODED 8 hours, while the server used the legs' own interval
+      whenever they agreed. On the default pair, where both legs settle every 4h, the page
+      rendered 65.71% and the first keystroke in Capital or Days replaced it with 32.86%, under
+      a caption still saying "both legs settle every 4h". Exactly half, silently, on an input
+      event. The three constants below are now passed in, so there is nothing left to disagree
+      about — the client only multiplies them by what the reader typed. */}
+  <script is:inline define:vars={{ spreadApr, naiveApr: naiveSpreadApr }}>
     const form = document.querySelector(".calc");
     if (form) {
       const money = (x) => (x < 0 ? "−$" : "$") + Math.abs(x).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
       const pc = (x) => (x * 100).toFixed(2) + "%";
       const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
-      const s = [...venues].sort((a, b) => b.apr - a.apr);
-      const hi = s[0], lo = s[s.length - 1];
-      const spread = hi.apr - lo.apr;
-      const naive = (hi.rate - lo.rate) * (8760 / 8);
       const recalc = () => {
         const C = Number(form.capital.value), D = Number(form.days.value);
         if (!(C >= 0) || !(D >= 0)) return;
         const perLeg = C / 2;
-        set("out-spread", pc(spread));
-        set("out-naive", pc(naive));
-        set("out-period", money(perLeg * spread * (D / 365)));
-        set("out-year", money(perLeg * spread));
+        /* out-spread and out-naive are not written at all: neither depends on Capital or Days,
+           both are already correct at first byte, and writing them could only ever make them
+           wrong. */
+        set("out-period", money(perLeg * spreadApr * (D / 365)));
+        set("out-year", money(perLeg * spreadApr));
+        set("v-gap", money(Math.abs(perLeg * spreadApr * (D / 365) - perLeg * naiveApr * (D / 365))));
+        set("v-days", String(D));
+        set("out-days", String(D));
+        set("out-perleg", "$" + Math.round(perLeg).toLocaleString("en-US"));
       };
       form.addEventListener("input", recalc);
       form.addEventListener("change", (e) => { if (e.target.name === "symbol") form.submit(); else recalc(); });

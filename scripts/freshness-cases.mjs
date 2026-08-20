@@ -55,6 +55,20 @@ console.log("\n  a page with no live clock falls back to the snapshot's slower l
   const split = freshness(agoMin(90), agoMin(1), CLAIM, SUBJ, NOW);
   check("snapshot fresh but live tick dead -> stale", split.stale, true);
   check("  ...and judged against the FAST limit", split.note, /every minute/);
+  /* AND THE SENTENCE MUST DESCRIBE THE SAME THING THE VERDICT DID. The clock being judged is
+     the LAGGING one — that is the design — and the note called its age "the newest figure on
+     this page". On this very case that read "the newest figure on this page is 1 h 30 min old"
+     while the 24-hour change, the open interest and the venue table beside it were one minute
+     old. Right verdict, false sentence, and the sentence is the part a reader acts on. */
+  check("  ...and does not call the OLD clock the newest figure", split.note, /newest of them is 2 hours old/);
+  check("  ...and says the rest of the page is current", split.note, /five-minute snapshot, which is 1 minute old/);
+  /* The reverse case must not acquire a second sentence it has no business making: when the
+     snapshot is the older of the two there is nothing reassuring to add. */
+  const bothOld = freshness(agoMin(90), agoMin(120), CLAIM, SUBJ, NOW);
+  check("both clocks late -> no reassurance about the snapshot", bothOld.note, /^(?!.*five-minute snapshot, which)/s);
+  /* And with one clock only, there is no other clock to describe. */
+  const snapOnly = freshness(undefined, agoMin(40), CLAIM, SUBJ, NOW);
+  check("snapshot-only page mentions no second clock", snapOnly.note, /^(?!.*five-minute snapshot, which)/s);
 }
 
 console.log("\n  a clock that is wrong rather than late");

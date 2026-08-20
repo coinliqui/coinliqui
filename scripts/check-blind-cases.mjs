@@ -4,14 +4,13 @@
  *
  * Measured, not assumed. checks.mjs was instrumented so every exported function recorded its
  * calls and whether it returned a non-empty finding list, and the full `npm run check` was run
- * against it. Of 27 exports — 25 finding-returning checks and 2 measurement functions —
+ * against it. At the time: nothing was never called, FOUR were observed to fire — flipTableColour,
+ * inlineScriptSyntax, sitemapLastmodHonesty, weightFaults — and every other check ran and
+ * returned empty on every gate, every time.
  *
- *   0  were never called          (extractionRatio was the last one, fixed the cycle before)
- *   4  were observed to fire      flipTableColour, inlineScriptSyntax, sitemapLastmodHonesty,
- *                                 weightFaults
- *  21  ran and returned empty     every gate, every time
- *
- * Twenty-one of twenty-five is 84% of the suite reporting green that has never been falsified.
+ * The great majority of the suite was therefore reporting green that had never been falsified.
+ * The current split is printed at the bottom of this file rather than written here, because a
+ * ratio in a comment is a measurement with no way to go stale visibly.
  * Several of those had a fault injected BY HAND at the time they were written — that proves the
  * check once and proves nothing after the next refactor. This file is the standing version: one
  * fixture per check, built to make it fire, run on every gate.
@@ -23,12 +22,14 @@
  *
  * Fixtures are added a batch per cycle; the coverage line at the bottom is the number to watch.
  */
+import { readFileSync } from "node:fs";
 import {
   hiddenFromEveryone, dateModifiedAgreement, breadcrumbAgreement, publishesAPerson,
   contradictoryStates, rawEnums, founderAgreement, readmeCounts,
   basisSelfConsistent, uncoveredRoutes, staleDerivedCells, botPolicyReasons,
   undefinedClasses, undefinedVars, unreadableText, colourLegend, colourLanguageDrift,
   chartAgreement, duplicateRuleImplementations, fixtureGaps, requestedLeverageLabels, phantomInlineElements, malformedAttributes, uncitedPermissionClaims, unconditionalCadenceClaims,
+  staleCalculatorFigures, MEASUREMENT_EXPORTS,
 } from "./checks.mjs";
 
 /* Enough page for a check to have something to read. Deliberately minimal: a fixture that is
@@ -190,6 +191,14 @@ const cases = [
       `<tr><td data-spot={x + "apr"}>5%</td><td data-spot="carry">{carryCost(10000, apr, 7)}</td></tr>`]]),
   },
   {
+    check: "staleCalculatorFigures",
+    why: "a figure in a calculator's verdict with no id keeps its first-byte value while the cards beside it repaint — observed live as \"At 5x\" beside a price only 60x produces",
+    fire: () => staleCalculatorFigures([["fixture.astro",
+      `<div data-when="liq">the entire <b>{usd(marginAtRisk, 2)}</b> of margin goes with it</div>`]]),
+    quiet: () => staleCalculatorFigures([["fixture.astro",
+      `<div data-when="liq">the entire <b id="v-margin1">{usd(marginAtRisk, 2)}</b> of margin goes with it</div>`]]),
+  },
+  {
     check: "botPolicyReasons",
     why: "excluding a crawler without saying why is a decision nobody can review later",
     fire: () => botPolicyReasons(`const BLOCKED = [{ ua: "SomeBot", why: "" }];`),
@@ -302,11 +311,18 @@ for (const c of cases) {
   console.log(`  ok    ${c.check.padEnd(24)} fires on the fault, silent on the clean page  — ${c.why}`);
 }
 
-/* THE COVERAGE LINE IS THE POINT. 25 finding-returning checks exist; this is how many have a
-   standing fixture proving they can fire. Four more were already proven by cases living in
-   blind-cases.mjs, sitemap-honesty.mjs and weight-cases.mjs. */
+/* THE COVERAGE LINE IS THE POINT: how many finding-returning checks have a standing fixture
+   proving they can fire. Four are proven instead by cases living in blind-cases.mjs,
+   sitemap-honesty.mjs and weight-cases.mjs.
+
+   THE TOTAL IS COUNTED, NOT TRANSCRIBED. It was the literal 25, which is a number that was true
+   on the day it was typed. Adding a check printed "30 of 25 finding-returning checks now have a
+   standing fixture" and, underneath it, "-5 still report green that has never been falsified".
+   A coverage line that can go negative is not measuring coverage. */
 const PROVEN_ELSEWHERE = ["flipTableColour", "inlineScriptSyntax", "sitemapLastmodHonesty", "weightFaults"];
-const TOTAL_CHECKS = 25;
+const TOTAL_CHECKS = [...readFileSync(new URL("./checks.mjs", import.meta.url), "utf8")
+  .matchAll(/^export function (\w+)/gm)].map((m) => m[1])
+  .filter((n) => !MEASUREMENT_EXPORTS.includes(n)).length;
 const covered = new Set([...cases.map((c) => c.check), ...PROVEN_ELSEWHERE]).size;
 if (bad) { console.error(`\n  ${bad} case(s) wrong`); process.exit(1); }
 console.log(`\n  ${covered} of ${TOTAL_CHECKS} finding-returning checks now have a standing fixture that proves they fire`);

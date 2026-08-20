@@ -75,13 +75,14 @@ const claimed = [...new Set([...fixtured, ...elsewhere])];
 const fictional = claimed.filter((n) => !exportedFns.includes(n));
 
 /* Measurement functions return a value, not a list; "did it fire" is not a question about them.
-   Kept explicit rather than inferred, so adding one is a decision instead of an accident. */
-const MEASUREMENTS = ["pageWeight", "colourPalettes"];
-const checks = exportedFns.filter((n) => !MEASUREMENTS.includes(n));
+   The list lives in checks.mjs beside the functions — this file and check-blind-cases.mjs both
+   need it, and two copies of one fact is the shape this whole file exists to catch. */
+import { MEASUREMENT_EXPORTS } from "./checks.mjs";
+const checks = exportedFns.filter((n) => !MEASUREMENT_EXPORTS.includes(n));
 const unfalsified = checks.filter((n) => !claimed.includes(n));
 
 console.log(`checks.mjs exports ${exportedFns.length} functions and ${exportedConsts.length} consts`);
-console.log(`  ${checks.length} finding-returning checks, ${MEASUREMENTS.length} measurement functions\n`);
+console.log(`  ${checks.length} finding-returning checks, ${MEASUREMENT_EXPORTS.length} measurement functions\n`);
 
 console.log(`GROUP 1 — proven to fire by a standing fixture: ${claimed.length}`);
 for (const n of claimed.sort()) console.log(`    ${n}`);
@@ -89,6 +90,32 @@ console.log(`\nGROUP 2 — called every gate, never shown to fire: ${unfalsified
 for (const n of unfalsified.sort()) console.log(`    ${n.padEnd(26)} called by ${realCallersOf(n).join(", ") || "(fixture only)"}`);
 console.log(`\nGROUP 3 — no call site anywhere: ${dead.length}`);
 for (const n of dead) console.log(`    ${n}  <-- only its own fixture calls it; nothing runs it on real data`);
+
+/* ---------------------------------------------------------------------------------------------
+   GROUP 4 — THE WORKER'S OWN EXPORTS, because the closing line of this file said "every export
+   is invoked" and meant "every export of scripts/checks.mjs".
+
+   Found by mutation, and the mutation was meant to prove something else: an obviously dead
+   export was added to worker/coverage.ts, the gate was run, and GROUP 3 still printed 0. It was
+   right to — that file was never in the inventory. The sentence underneath it was not, and a
+   reader has no way to tell an overclaiming summary from a passing check.
+
+   The worker is where dead code is most expensive. Nothing type-checks a Cloudflare cron into
+   existence, so a function that stopped being called still bundles, still deploys, and still
+   reads as live infrastructure to whoever opens the file next.
+
+   Its OWN file does not count as a caller, for the same reason checks.mjs does not. */
+const WORKER_EXPORT = /^export (?:async )?(?:function|const) (\w+)/gm;
+const workerDead = [];
+for (const f of files.filter((x) => x.startsWith("./worker/"))) {
+  for (const m of readFileSync(f, "utf8").matchAll(WORKER_EXPORT)) {
+    const n = m[1];
+    const callers = callersOf(n).filter((c) => !f.endsWith(c) && `./${c}` !== f);
+    if (!callers.length) workerDead.push([n, f.replace("./", "")]);
+  }
+}
+console.log(`\nGROUP 4 — worker exports nothing outside their own file calls: ${workerDead.length}`);
+for (const [n, f] of workerDead) console.log(`    ${n.padEnd(26)} ${f}`);
 
 /* ---------------------------------------------------------------------------------------------
    PROVEN ONCE IS NOT PROVEN.
@@ -140,6 +167,7 @@ if (undocumented.length) { bad++; console.log(`\n  FAIL  ${undocumented.join(", 
 const staleExemptions = Object.keys(MANUAL_BY_DESIGN).filter((f) => !unwired.includes(f));
 if (staleExemptions.length) { bad++; console.log(`\n  FAIL  MANUAL_BY_DESIGN excuses ${staleExemptions.join(", ")}, which no longer needs excusing`); }
 if (dead.length) { bad++; console.log(`\n  FAIL  ${dead.length} export(s) have no call site — the extractionRatio class`); }
+if (workerDead.length) { bad++; console.log(`\n  FAIL  ${workerDead.length} worker export(s) nothing calls — dead code that still deploys`); }
 if (fictional.length) { bad++; console.log(`\n  FAIL  coverage list names ${fictional.join(", ")}, which checks.mjs does not export`); }
 if (bad) process.exit(1);
-console.log(`\n  every export is invoked; ${claimed.length}/${checks.length} checks have a fixture proving they can fire`);
+console.log(`\n  every export of checks.mjs and of worker/ is invoked; ${claimed.length}/${checks.length} checks have a fixture proving they can fire`);

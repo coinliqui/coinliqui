@@ -147,3 +147,33 @@ export const priceDp = (px) => (px >= 100 ? 2 : px >= 1 ? 3 : px >= 0.01 ? 5 : 7
 /** Fewer decimals for an axis, where the label has to stay short — but never zero on a coin
  *  whose whole price is below a dollar, which is what fint() did. */
 export const axisDp = (px) => (px >= 100 ? 0 : px >= 1 ? 2 : priceDp(px));
+
+/**
+ * WHICH OF THREE THINGS IS TRUE ABOUT A STOP — and it is three, not two.
+ *
+ * /tools/position-size chose between "the stop executes first" and "liquidation executes first"
+ * by comparing two prices: for a long, liquidation above the stop meant liquidation came first.
+ * That is an ORDERING, and the question the page answers is whether an ADVERSE move reaches the
+ * stop before it reaches liquidation. The two agree only while the stop is on the losing side of
+ * entry, and nothing checked that it was.
+ *
+ * Measured on the live page, 20 August 2026: a short entered at $110,000 with a stop at $100,000
+ * — 9.09% into PROFIT — rendered `data-state="stop"` and the sentence "the stop executes first
+ * and the loss is bounded by the $250.00 you budgeted". The only exit on the losing side of that
+ * position is liquidation at $130,370.37, which takes the whole $550.00 of margin. The page was
+ * stating a bound that does not exist, on the one number a reader is there to trust.
+ *
+ * It is one interaction from the default. The stop input is populated, the side control is a
+ * dropdown, and switching it carries the stop across.
+ *
+ * Both halves of the page read this: the Astro template through src/lib/funding.ts, and the
+ * calculator's own script through the same module. There is no second copy to drift — that is
+ * the shape which produced the original defect twice over on this page already.
+ */
+export function stopVerdict(side, entry, stop, liquidationPrice) {
+  const long = side === "long";
+  /* THE STOP MUST BE ON THE LOSING SIDE OF ENTRY BEFORE ANY ORDERING MEANS ANYTHING. */
+  const adverse = long ? stop < entry : stop > entry;
+  if (!adverse) return "wrongside";
+  return (long ? liquidationPrice > stop : liquidationPrice < stop) ? "liq" : "stop";
+}

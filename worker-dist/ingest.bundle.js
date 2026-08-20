@@ -400,6 +400,14 @@ async function stepIndexNow(env, current) {
   return `indexnow: ${head} to ${accepted}/${owed.size} endpoints [${results.join(", ")}]` + (held.length ? `, skipped: ${held.join(", ")}` : "") + (owedTotal ? `, ${owedTotal} endpoint(s) still owed` : "") + (fresh.length ? ` \u2014 ${fresh.slice(0, 3).join(", ")}${fresh.length > 3 ? " \u2026" : ""}` : "");
 }
 
+// worker/coverage.ts
+var collapsedCoverage = (prevCount, newCount) => newCount === 0 || prevCount >= 10 && newCount < prevCount / 2;
+var publishedSet = (collapsed, prev, fetched) => collapsed ? prev : fetched;
+var orphans = (have, scope) => {
+  const covered = new Set(scope);
+  return [...have].filter((s) => !covered.has(s));
+};
+
 // src/lib/flips.ts
 async function readFlipEvents(db, hours = 24, now = Date.now()) {
   if (!db) return [];
@@ -519,6 +527,7 @@ var terms_baseline_default = {
 };
 
 // worker/report.ts
+var RUN_CEILING_MS = 2 * 36e5;
 var UA = "GPTBot/1.1 (+https://coinliqui.com/status/indexation; coinliqui-selfcheck)";
 var SLICE = 20;
 var isoWeek = (d) => {
@@ -615,6 +624,19 @@ ${origin} \xB7 started ${now.toISOString().slice(0, 16).replace("T", " ")} UTC
 `);
   }
   if (st.phase === "done") return void 0;
+  if (Date.now() - st.startedAt > RUN_CEILING_MS) {
+    const mins = Math.round((Date.now() - st.startedAt) / 6e4);
+    st.lines.push(`
+> **Abandoned after ${mins} minutes in phase \`${st.phase}\`.**`);
+    st.lines.push(`> A run holds the ingest tick \u2014 flips, IndexNow and all four candle sweeps`);
+    st.lines.push(`> stand aside while it walks. It is ended here so they resume. Everything`);
+    st.lines.push(`> above is what it completed before that.`);
+    const partial = { week: st.week, at: Date.now(), tookMs: Date.now() - st.startedAt, md: st.lines.join("\n") + "\n" };
+    await env.SNAPSHOT.put(`report:${st.week}`, JSON.stringify(partial));
+    await env.SNAPSHOT.put("report:latest", JSON.stringify(partial));
+    await env.SNAPSHOT.delete("report:state");
+    return `report: abandoned in ${st.phase} after ${mins}m`;
+  }
   const say = (s = "") => st.lines.push(s);
   const get = async (path) => {
     const r = await fetch(origin + path, { headers: { "user-agent": UA } });
@@ -622,13 +644,18 @@ ${origin} \xB7 started ${now.toISOString().slice(0, 16).replace("T", " ")} UTC
   };
   const locs = (xml) => [...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => new URL(m[1]).pathname);
   if (st.phase === "coverage") {
-    if (!st.templates.length) {
+    if (!st.sitemapsAt) {
       const idx = await get("/sitemap-index.xml");
       for (const m of locs(idx.body)) {
         const b = await get(m);
-        st.templates.push({ name: m.replace("/sitemaps/", "").replace(".xml", ""), urls: locs(b.body) });
+        st.templates.push({ name: m.replace("/sitemaps/", "").replace(".xml", ""), urls: locs(b.body), status: b.status });
       }
+      st.sitemapsAt = Date.now();
       st.i = 0;
+      if (!st.templates.length) {
+        st.indexStatus = idx.status;
+        st.indexHead = idx.body.slice(0, 160).replace(/\s+/g, " ");
+      }
       await env.SNAPSHOT.put("report:state", JSON.stringify(st));
       return "report: sitemaps";
     }
@@ -649,12 +676,27 @@ ${origin} \xB7 started ${now.toISOString().slice(0, 16).replace("T", " ")} UTC
     if (st.i >= flat.length) {
       say("## A. Coverage\n");
       say("What exists, and whether a crawler can still fetch it. No credentials \u2014 this section always runs.\n");
-      say("| Template | URLs | Fetchable as GPTBot |");
-      say("|---|---:|---:|");
-      for (const t of st.templates) say(`| \`${t.name}\` | ${t.urls.length} | ${t.ok ?? 0}/${t.urls.length} |`);
-      const total = st.templates.reduce((a, x) => a + x.urls.length, 0);
-      const okAll = st.templates.reduce((a, x) => a + (x.ok ?? 0), 0);
-      say(`| **total** | **${total}** | **${okAll}/${total}** |`);
+      if (!st.templates.length) {
+        say(`**The sitemap index produced no templates, so nothing could be checked.**`);
+        say(`
+\`GET ${origin}/sitemap-index.xml\` \u2192 **${st.indexStatus ?? "?"}**, first bytes: \`${st.indexHead ?? ""}\``);
+        say(`
+Every URL on this site is enumerated from that document. Until it parses, coverage`);
+        say(`is unmeasured rather than good. Sections below still ran.`);
+      } else {
+        say("| Template | URLs | Fetchable as GPTBot |");
+        say("|---|---:|---:|");
+        for (const t of st.templates) {
+          const note = t.urls.length === 0 && t.status !== 200 ? ` \u2014 sitemap returned ${t.status ?? "?"}` : "";
+          say(`| \`${t.name}\`${note} | ${t.urls.length} | ${t.ok ?? 0}/${t.urls.length} |`);
+        }
+        const total = st.templates.reduce((a, x) => a + x.urls.length, 0);
+        const okAll = st.templates.reduce((a, x) => a + (x.ok ?? 0), 0);
+        say(`| **total** | **${total}** | **${okAll}/${total}** |`);
+        const dead = st.templates.filter((t) => t.urls.length === 0 && t.status !== 200);
+        if (dead.length) say(`
+**${dead.length} sitemap${dead.length > 1 ? "s" : ""} could not be read**, so those templates are unmeasured, not empty.`);
+      }
       const failed = st.templates.flatMap((t) => (t.failures ?? []).map((f) => [t.name, ...f]));
       if (failed.length) {
         const hard = failed.filter(([, , , retry]) => retry !== 200);
@@ -958,7 +1000,7 @@ async function stepProbe(env) {
 }
 
 // worker/build-stamp.ts
-var WORKER_BUILD = "d2efcaa366e1";
+var WORKER_BUILD = "f611d63b78f5";
 
 // worker/ingest.ts
 var RETAIN_HOURS = 72;
@@ -1072,13 +1114,16 @@ async function run(env) {
     result.status = 200;
     result.symbols = snap.perps.length;
     const prevCount = prevPublished.length;
-    const collapsed = snap.perps.length === 0 || prevCount >= 10 && snap.perps.length < prevCount / 2;
+    const collapsed = collapsedCoverage(prevCount, snap.perps.length);
     if (collapsed) result.error = `refused: coverage collapsed ${prevCount} -> ${snap.perps.length}`;
-    const nowPublished = snap.perps.map((p) => p.symbol);
-    if (!collapsed && nowPublished.slice().sort().join(",") !== prevPublished.slice().sort().join(",")) {
-      await env.SNAPSHOT.put(publishedKey, JSON.stringify(nowPublished));
-      result.coverageChanged = true;
-    }
+    const published = await (async () => {
+      const nowPublished = snap.perps.map((p) => p.symbol);
+      if (!collapsed && nowPublished.slice().sort().join(",") !== prevPublished.slice().sort().join(",")) {
+        await env.SNAPSHOT.put(publishedKey, JSON.stringify(nowPublished));
+        result.coverageChanged = true;
+      }
+      return publishedSet(collapsed, prevPublished, nowPublished);
+    })();
     const at = snap.fetchedAt;
     const rows = [];
     for (const p of snap.perps) {
@@ -1138,11 +1183,11 @@ async function run(env) {
         result.flips = `threw (${e instanceof Error ? e.message : String(e)})`;
       }
       try {
-        result.indexnow = await stepIndexNow(env, publishedUrls(env.SITE_ORIGIN || "https://coinliqui.com", nowPublished));
+        result.indexnow = await stepIndexNow(env, publishedUrls(env.SITE_ORIGIN || "https://coinliqui.com", published));
       } catch (e) {
         result.indexnow = `indexnow: threw (${e instanceof Error ? e.message : String(e)})`;
       }
-      const syms = nowPublished;
+      const syms = published;
       const sweep = async (key, hours, write, extra = 0, over = syms, preloaded = void 0) => {
         const scope = over;
         const m = preloaded !== void 0 ? preloaded : await env.SNAPSHOT.get(key, "json");
@@ -1190,13 +1235,10 @@ async function run(env) {
         const next = cursor + Math.min(room, Math.max(0, list.length - cursor));
         const wrapped = next >= list.length;
         if (wrapped) {
-          const covered = new Set(scope);
-          for (const s of have) {
-            if (!covered.has(s)) {
-              await env.SNAPSHOT.delete(`${key.split(":")[0]}:${s}`).catch(() => {
-              });
-              have.delete(s);
-            }
+          for (const s of orphans(have, scope)) {
+            await env.SNAPSHOT.delete(`${key.split(":")[0]}:${s}`).catch(() => {
+            });
+            have.delete(s);
           }
         }
         await env.SNAPSHOT.put(key, JSON.stringify({

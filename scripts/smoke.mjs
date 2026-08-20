@@ -35,7 +35,7 @@
 import { spawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { readdirSync, readFileSync } from "node:fs";
-import { cssFor, undefinedClasses, undefinedVars, rawEnums, searchIndexGaps, unnamedUpstreams, duplicateRuleImplementations, uncoveredRoutes, unreadableText, chartAgreement, requestedLeverageLabels, inlineScriptSyntax, flipTableColour, colourPalettes, colourLanguageDrift, colourLegend, publishesAPerson, fixtureGaps, staleDerivedCells, basisSelfConsistent, sitemapLastmodHonesty, breadcrumbAgreement, founderAgreement, readmeCounts, botPolicyReasons, contradictoryStates, hiddenFromEveryone, pageWeight, weightFaults, dateModifiedAgreement, phantomInlineElements, malformedAttributes, uncitedPermissionClaims, unconditionalCadenceClaims } from "./checks.mjs";
+import { cssFor, undefinedClasses, undefinedVars, rawEnums, searchIndexGaps, unnamedUpstreams, duplicateRuleImplementations, uncoveredRoutes, unreadableText, chartAgreement, requestedLeverageLabels, inlineScriptSyntax, flipTableColour, colourPalettes, colourLanguageDrift, colourLegend, publishesAPerson, fixtureGaps, staleDerivedCells, basisSelfConsistent, sitemapLastmodHonesty, breadcrumbAgreement, founderAgreement, readmeCounts, botPolicyReasons, contradictoryStates, hiddenFromEveryone, pageWeight, weightFaults, dateModifiedAgreement, phantomInlineElements, malformedAttributes, uncitedPermissionClaims, unconditionalCadenceClaims, staleCalculatorFigures} from "./checks.mjs";
 
 /* The SERVER side of each duplicated formatter, transcribed from the file that owns it and
    named here so the pairing is explicit. Transcription is the honest cost of having no bundler:
@@ -167,6 +167,13 @@ try {
      shipped this defect once and a rendered page cannot reveal a MISSING attribute. */
   const stale = staleDerivedCells(walkAstro("src/pages").map((f) => [f, readFileSync(f, "utf8")]));
   if (stale.length) { failures++; console.log(`\n  FAIL  ${stale.length} cell(s) derived from a live rate are never repainted:`); for (const l of stale) console.log(`          ${l}`); }
+
+  /* The same shape one mechanism over: a calculator repaints its cards from the form and leaves
+     the sentence explaining them at its first-byte value. Source invariant for the same reason —
+     a rendered page shows the two agreeing until somebody types. */
+  const frozen = staleCalculatorFigures(walkAstro("src/pages").map((f) => [f, readFileSync(f, "utf8")]));
+  if (frozen.length) { failures++; console.log(`\n  FAIL  ${frozen.length} figure(s) in a verdict never repaint:`); for (const l of frozen) console.log(`          ${l}`); }
+  else console.log("  ok            every figure inside a verdict branch is repainted with its cards");
 
   /* Source invariant, and a wider net than the pages: an uncited claim about what an upstream
      permits regrew on /coins after being deleted from /data-sources, because the root copy was a

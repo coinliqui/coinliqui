@@ -55,6 +55,10 @@ interface Template {
   failures?: [url: string, first: number, retry: number][];
   /** Every URL Google did NOT report as indexed, with Google's own words for why. */
   notIndexed?: [url: string, verdict: string, coverageState: string][];
+  /** The child sitemap's own status. A template with zero URLs and a 200 is a real empty
+      template; zero URLs and a 5xx is a fetch that failed, and section A used to print the
+      two identically as `0 | 0/0`. */
+  status?: number;
 }
 interface State {
   week: string;
@@ -65,7 +69,24 @@ interface State {
   startedAt: number;
   token?: string;
   tokenAt?: number;
+  /** WHEN the sitemap index was fetched — not what it returned. See the coverage phase. */
+  sitemapsAt?: number;
+  /** Kept only when that fetch produced no templates, so section A can say why. */
+  indexStatus?: number;
+  indexHead?: string;
 }
+
+/* HOW LONG A RUN MAY HOLD THE TICK BEFORE IT IS ABANDONED.
+   Every step of this machine returns a truthy label, and the caller reads that as "the report
+   has this tick": it skips the flip precompute, the IndexNow step and all four candle sweeps
+   until this function returns undefined. A whole run is about twenty minutes. So a run that
+   cannot finish is not a slow report, it is a stopped ingest — and the state carrying it
+   survives in KV until the next Monday, which is up to seven days of no chart refreshes with
+   /status cheerfully reporting a report in progress.
+   Two hours is six times the normal run and small against a weekly cadence. It is a bound on
+   the RUN rather than a fix for the one way it stalled, because the next stall will not be
+   that one. */
+const RUN_CEILING_MS = 2 * 3_600_000;
 
 /* A CRAWLER'S NAME, AND OURS AFTER IT.
    The crawler name is not decoration: nothing in src/ branches on user-agent, so what this
@@ -104,7 +125,7 @@ const share = (a: number, b: number) => (b ? `${((a / b) * 100).toFixed(0)}%` : 
  * WebCrypto: the PEM is unwrapped to DER, imported as PKCS#8, and signed with
  * RSASSA-PKCS1-v1_5. Same JWT, same exchange, no dependency.
  */
-export async function gscToken(rawKey: string): Promise<string> {
+async function gscToken(rawKey: string): Promise<string> {
   const key = JSON.parse(rawKey) as { client_email: string; private_key: string };
   const pem = key.private_key.replace(/-----[^-]+-----/g, "").replace(/\s+/g, "");
   const der = Uint8Array.from(atob(pem), (c) => c.charCodeAt(0));
@@ -203,6 +224,22 @@ export async function stepReport(env: ReportEnv, force = false): Promise<string 
   }
   if (st.phase === "done") return undefined;
 
+  /* THE CEILING, CHECKED BEFORE ANY WORK. Publishing what the run did manage is deliberate:
+     an abandoned report that names the phase it died in is a finding, and a deleted state is
+     the only thing that lets the sweeps run again. */
+  if (Date.now() - st.startedAt > RUN_CEILING_MS) {
+    const mins = Math.round((Date.now() - st.startedAt) / 60_000);
+    st.lines.push(`\n> **Abandoned after ${mins} minutes in phase \`${st.phase}\`.**`);
+    st.lines.push(`> A run holds the ingest tick — flips, IndexNow and all four candle sweeps`);
+    st.lines.push(`> stand aside while it walks. It is ended here so they resume. Everything`);
+    st.lines.push(`> above is what it completed before that.`);
+    const partial = { week: st.week, at: Date.now(), tookMs: Date.now() - st.startedAt, md: st.lines.join("\n") + "\n" };
+    await env.SNAPSHOT.put(`report:${st.week}`, JSON.stringify(partial));
+    await env.SNAPSHOT.put("report:latest", JSON.stringify(partial));
+    await env.SNAPSHOT.delete("report:state");
+    return `report: abandoned in ${st.phase} after ${mins}m`;
+  }
+
   const say = (s = "") => st!.lines.push(s);
   const get = async (path: string) => {
     const r = await fetch(origin + path, { headers: { "user-agent": UA } });
@@ -212,13 +249,29 @@ export async function stepReport(env: ReportEnv, force = false): Promise<string 
 
   /* ---------------------------------------------------------------- A. coverage */
   if (st.phase === "coverage") {
-    if (!st.templates.length) {
+    /* NOT `!st.templates.length`. That tests whether the list is empty; the question is whether
+       the fetch has happened. The two differ in precisely the case that matters — a
+       sitemap-index answering with anything that is not parseable XML (a 5xx HTML error page, a
+       challenge interstitial, an empty body) matches no <loc>, so the list stays empty, so the
+       next tick asks again, and the tick after that. The step returns a truthy label every
+       time, which the caller treats as "the report has the tick", so a single bad response from
+       our own edge stops flips, IndexNow and all four candle sweeps until the following Monday.
+       Recording WHEN the fetch happened cannot be confused with what it returned. */
+    if (!st.sitemapsAt) {
       const idx = await get("/sitemap-index.xml");
       for (const m of locs(idx.body)) {
         const b = await get(m);
-        st.templates.push({ name: m.replace("/sitemaps/", "").replace(".xml", ""), urls: locs(b.body) });
+        st.templates.push({ name: m.replace("/sitemaps/", "").replace(".xml", ""), urls: locs(b.body), status: b.status });
       }
+      st.sitemapsAt = Date.now();
       st.i = 0;
+      if (!st.templates.length) {
+        /* Degraded into the section's own words rather than retried into a stall. Section A is
+           the one section with no credentials and so no legitimate reason to be missing; the
+           status and the first bytes are what make it actionable a week later. */
+        st.indexStatus = idx.status;
+        st.indexHead = idx.body.slice(0, 160).replace(/\s+/g, " ");
+      }
       await env.SNAPSHOT.put("report:state", JSON.stringify(st));
       return "report: sitemaps";
     }
@@ -248,12 +301,29 @@ export async function stepReport(env: ReportEnv, force = false): Promise<string 
     if (st.i >= flat.length) {
       say("## A. Coverage\n");
       say("What exists, and whether a crawler can still fetch it. No credentials — this section always runs.\n");
+      if (!st.templates.length) {
+        /* An empty table reads as "nothing is wrong". This is the one outcome section A cannot
+           have and still be section A, so it says so instead of printing a header with no rows. */
+        say(`**The sitemap index produced no templates, so nothing could be checked.**`);
+        say(`\n\`GET ${origin}/sitemap-index.xml\` → **${st.indexStatus ?? "?"}**, first bytes: \`${st.indexHead ?? ""}\``);
+        say(`\nEvery URL on this site is enumerated from that document. Until it parses, coverage`);
+        say(`is unmeasured rather than good. Sections below still ran.`);
+      } else {
       say("| Template | URLs | Fetchable as GPTBot |");
       say("|---|---:|---:|");
-      for (const t of st.templates) say(`| \`${t.name}\` | ${t.urls.length} | ${t.ok ?? 0}/${t.urls.length} |`);
+      for (const t of st.templates) {
+        /* A template with no URLs and a 200 is genuinely empty; one with no URLs and a 5xx is a
+           sitemap that failed to fetch. `0 | 0/0` printed both the same, and the second is a
+           section-A failure hiding inside a full-marks row. */
+        const note = t.urls.length === 0 && t.status !== 200 ? ` — sitemap returned ${t.status ?? "?"}` : "";
+        say(`| \`${t.name}\`${note} | ${t.urls.length} | ${t.ok ?? 0}/${t.urls.length} |`);
+      }
       const total = st.templates.reduce((a, x) => a + x.urls.length, 0);
       const okAll = st.templates.reduce((a, x) => a + (x.ok ?? 0), 0);
       say(`| **total** | **${total}** | **${okAll}/${total}** |`);
+      const dead = st.templates.filter((t) => t.urls.length === 0 && t.status !== 200);
+      if (dead.length) say(`\n**${dead.length} sitemap${dead.length > 1 ? "s" : ""} could not be read**, so those templates are unmeasured, not empty.`);
+      }
       /* THE COUNT WAS THE WHOLE REPORT, AND THE COUNT IS NOT ACTIONABLE.
          The first run of this section said "1 URLs are not fetchable by a crawler. Nothing
          below matters until that is zero" and did not say which URL. By the time anyone read

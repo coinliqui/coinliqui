@@ -45,6 +45,14 @@ export async function cssFor(html, origin) {
  * no concept of an undefined class — it simply matches nothing — so the page looks fine and
  * the signal is gone.
  */
+/* WHICH EXPORTS ARE MEASUREMENTS RATHER THAN CHECKS.
+   A check returns a list of findings and can therefore be made to fire; a measurement returns a
+   value and "did it fire" is not a question about it. Both scripts that count this suite need
+   the distinction, and both used to carry their own copy — one of them as a hardcoded 25, which
+   went stale the moment a check was added and printed "30 of 25 ... -5 still unfalsified".
+   Declared here, beside the functions, so adding one is a decision instead of an accident. */
+export const MEASUREMENT_EXPORTS = ["pageWeight", "colourPalettes"];
+
 export function undefinedClasses(html, css) {
   const defined = new Set([...css.matchAll(/\.(-?[_a-zA-Z][\w-]*)/g)].map((m) => m[1]));
   const used = new Set();
@@ -717,11 +725,27 @@ export function inlineScriptSyntax(src, file) {
     const vars = (tag.match(/define:vars=\{\{([^}]*)\}\}/) ?? [, ""])[1]
       .split(",").map((v) => v.split(":")[0].trim()).filter(Boolean);
     const preamble = vars.length ? `let ${vars.join(", ")};` : "";
+    /* A MODULE IS NOT A CLASSIC SCRIPT, and this parsed every inline script as one.
+       `new Function` compiles a function BODY, where top-level await is a syntax error — so the
+       first `<script is:inline type="module">` on the site failed the gate for using a feature
+       that is legal in exactly the context it declares. The check was right that the code did
+       not parse; it was parsing it as the wrong kind of thing.
+       Wrapping a module body in an async arrow legalises top-level await, which is the whole
+       difference that matters here. What it still cannot see is a top-level `import`/`export`
+       DECLARATION — illegal inside any function body — so one of those would be reported as a
+       parse failure. That is a false alarm rather than a blind spot, it names itself clearly in
+       the message, and the site's one inline module uses dynamic import() deliberately: the
+       asset version has to travel in the URL, which a static specifier cannot carry. */
+    const isModule = /type\s*=\s*"module"/.test(tag);
+    const body = isModule ? `(async () => {\n${m[2]}\n});` : m[2];
     try {
       // eslint-disable-next-line no-new-func
-      new Function(preamble + m[2]);
+      new Function(preamble + body);
     } catch (e) {
-      out.push(`${file}: inline script does not parse — ${e.message}`);
+      const hint = isModule && /^(import|export)\b/m.test(m[2])
+        ? " (parsed as a module body; a top-level import/export declaration cannot be checked this way — use dynamic import())"
+        : "";
+      out.push(`${file}: inline script does not parse — ${e.message}${hint}`);
     }
   }
   return out;
@@ -1464,4 +1488,55 @@ export function dateModifiedAgreement(html) {
     }
   }
   return out;
+}
+
+/**
+ * A CALCULATOR'S PROSE MUST MOVE WITH ITS CARDS.
+ *
+ * The tools pages render every figure server-side and let an inline script repaint it on input.
+ * That works while every figure carries an id the script writes. Where one does not, the card
+ * updates and the sentence beside it keeps its first-byte value, and the page then states two
+ * different numbers for the same quantity in the same eyeful.
+ *
+ * Observed in the browser on the deployed /tools/position-size, 20 August 2026: leverage 5 → 60
+ * repainted the liquidation card and left the sentence reading "At 5× the exchange closes this
+ * position at $111,358.02" — a price only 60× produces. The benign branch was quieter and
+ * worse: "the loss is bounded by the $250.00 you budgeted" never moved when Account or Risk
+ * did, so the single number that card exists to promise was the stalest thing on the page.
+ *
+ * THE RULE. Inside an element carrying a `data-when` branch — the verdict prose — every Astro
+ * interpolation must sit directly inside a tag with an id. Not "should"; there is no figure in
+ * a verdict that does not derive from a form input, so a bare interpolation there is frozen by
+ * construction. `{" "}` is whitespace and `{/* … *␣/}` is a comment; neither is a figure.
+ *
+ * Scoped to data-when rather than to the whole page on purpose: headings, labels and the
+ * explanatory sections below are genuinely static, and a page-wide rule would be noise.
+ */
+export function staleCalculatorFigures(sources) {
+  const out = [];
+  for (const [file, src] of sources) {
+    for (const m of src.matchAll(/<(\w+)\s+data-when="[^"]*"[^>]*>([\s\S]*?)<\/\1>/g)) {
+      const branch = m[2];
+      const when = /data-when="([^"]*)"/.exec(m[0])[1];
+      for (const i of branch.matchAll(/\{/g)) {
+        const rest = branch.slice(i.index);
+        if (/^\{"\s*"\}/.test(rest) || /^\{\/\*/.test(rest)) continue;
+        /* What sits between the previous `>` and this `{`. Only whitespace means the
+           interpolation is the first child of that tag, so the tag's attributes decide. */
+        const before = branch.slice(0, i.index);
+        const gt = before.lastIndexOf(">");
+        const lt = before.lastIndexOf("<");
+        if (lt > gt) continue;                       // inside an attribute, not a text node
+        if (before.slice(gt + 1).trim() !== "") {
+          out.push(`${file}: a figure in the "${when}" branch is bare text — ${rest.slice(0, 46).replace(/\s+/g, " ")}… will hold its first-byte value while the cards repaint`);
+          continue;
+        }
+        const openTag = before.slice(before.lastIndexOf("<", gt), gt + 1);
+        if (!/\bid=/.test(openTag)) {
+          out.push(`${file}: a figure in the "${when}" branch has no id — ${openTag.trim()}${rest.slice(0, 34).replace(/\s+/g, " ")}… will hold its first-byte value while the cards repaint`);
+        }
+      }
+    }
+  }
+  return [...new Set(out)];
 }

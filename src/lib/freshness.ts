@@ -106,11 +106,20 @@ export function freshness(
   /* THE FASTEST CLOCK IS THE ONE THE CLAIM IS ABOUT. A page whose snapshot is current but whose
      minute tick died is exactly the case worth catching — the 24-hour figures keep arriving and
      the price stops, which looks like a working page. */
-  const fastest = liveAt && liveAt > 0 ? liveAt : snapAt;
-  const limit = liveAt && liveAt > 0 ? LIVE_STALE_MIN : SNAP_STALE_MIN;
-  const ageMin = Math.max(0, Math.round((now - fastest) / 60_000));
+  const hasLive = Boolean(liveAt && liveAt > 0);
+  const judged = hasLive ? (liveAt as number) : snapAt;
+  const limit = hasLive ? LIVE_STALE_MIN : SNAP_STALE_MIN;
+  const ageMin = Math.max(0, Math.round((now - judged) / 60_000));
+  /* THE OTHER CLOCK, when there are two. `judged` is deliberately the LAGGING one — that is
+     the whole point of the function — and the sentence used to call its age "the newest figure
+     on this page", which is a different quantity and, in exactly the case this exists to
+     catch, a false one. A page whose minute tick died 90 minutes ago and whose five-minute
+     snapshot landed 60 seconds ago told the reader its newest figure was an hour and a half
+     old, while the 24-hour change, the open interest and the venue table beside it were a
+     minute old. The verdict was right; the sentence describing it was not. */
+  const otherAgeMin = hasLive ? Math.max(0, Math.round((now - snapAt) / 60_000)) : undefined;
   /* A future stamp is a broken clock somewhere, not freshness, and must not read as healthy. */
-  const skewed = fastest - now > 60_000;
+  const skewed = judged - now > 60_000;
   const stale = skewed || ageMin > limit;
   return {
     ageMin,
@@ -119,6 +128,10 @@ export function freshness(
       ? claim
       : skewed
         ? `${subject} carry a timestamp in the future, which means a clock is wrong somewhere upstream — read every figure here with that in mind.`
-        : `${subject} have not refreshed on schedule — they are due every ${limit === LIVE_STALE_MIN ? "minute" : "five minutes"}, and the newest figure on this page is ${readableAge(ageMin)} old. The numbers below are real and were true when they were written.`,
+        : `${subject} have not refreshed on schedule — they are due every ${limit === LIVE_STALE_MIN ? "minute" : "five minutes"}, and the newest of them is ${readableAge(ageMin)} old.${
+            otherAgeMin !== undefined && otherAgeMin < ageMin
+              ? ` Everything else on this page comes from the five-minute snapshot, which is ${readableAge(otherAgeMin)} old.`
+              : ""
+          } The numbers below are real and were true when they were written.`,
   };
 }
