@@ -212,8 +212,8 @@ function orderSweeps(states, now, backoffMs) {
 }
 
 // src/lib/routes.ts
-var PAGES_DATA = ["/", "/methodology"];
-var PAGES_CODE = ["/about", "/methodology/liquidations", "/data-sources", "/privacy", "/terms"];
+var PAGES_DATA = ["/", "/methodology", "/about"];
+var PAGES_CODE = ["/methodology/liquidations", "/data-sources", "/privacy", "/terms"];
 var TOOLS = ["/tools", "/tools/position-size", "/tools/leverage", "/tools/funding-cost", "/tools/funding-arbitrage"];
 var LIQUIDATIONS = ["/liquidations", "/liquidations/sweep", "/liquidations/survival"];
 var FUNDING_HUB = ["/funding"];
@@ -1000,7 +1000,7 @@ async function stepProbe(env) {
 }
 
 // worker/build-stamp.ts
-var WORKER_BUILD = "002e1e04ed62";
+var WORKER_BUILD = "3db5c62cbcac";
 
 // worker/ingest.ts
 var RETAIN_HOURS = 72;
