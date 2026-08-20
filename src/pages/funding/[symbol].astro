@@ -4,7 +4,7 @@ import { getSnapshot, coldStart, findPerp, getLive } from "../../lib/hyperliquid
 import { VENUE_LABEL, pct, usd, rawRate, carryCost, settlementsPerYear, nextSettlement, paysClass, paysLabel, type Venue } from "../../lib/funding.ts";
 import { liquidationPrice, type MarginTable } from "../../lib/margin.ts";
 import { getCandles, getM15, getHourly, getFunding } from "../../lib/candles.ts";
-import { TIMEFRAMES, DEFAULT_TF, aggregate, buildPriceChart, shortDate, CHART_H } from "../../lib/series.ts";
+import { TIMEFRAMES, DEFAULT_TF, MIN_CHART_BARS, aggregate, buildPriceChart, shortDate, CHART_H } from "../../lib/series.ts";
 import { CH } from "../../lib/chart.ts";
 import tables from "../../data/margin-tables.json";
 import { COINS, isLive } from "../../lib/coins.ts";
@@ -114,7 +114,13 @@ const fresh = freshness(live?.at, snap.fetchedAt,
  * build six charts just to find out which six buttons to draw. */
 const baseFor = (tf: (typeof TIMEFRAMES)[number]) =>
   (tf.base === "m15" ? m15set?.d : tf.base === "hour" ? hourset?.d : dayset?.d);
-const offered = TIMEFRAMES.filter((tf) => { const b = baseFor(tf); return Boolean(b && b.length >= 6); });
+/* AVAILABILITY IS TESTED ON WHAT WILL BE DRAWN, not on the series it is drawn from. See
+   MIN_CHART_BARS in src/lib/series.ts for the defect this replaced. */
+const barsFor = (tf: (typeof TIMEFRAMES)[number]) => {
+  const b = baseFor(tf);
+  return b ? aggregate(b, tf.factor).slice(-tf.bars).length : 0;
+};
+const offered = TIMEFRAMES.filter((tf) => barsFor(tf) >= MIN_CHART_BARS);
 
 /* ONLY OFFER TIMEFRAMES THAT EXIST.
    The two candle series are collected on separate cadences, so a contract that has just
@@ -228,8 +234,10 @@ const description = `What a ${p.symbol} perpetual costs to hold: ${venuePhrase},
         <span class="tfbar__note">
           Real traded candles only — Hyperliquid's pre-launch backfill carries zero volume and is excluded.
           {missingTf.length > 0 && (
-            <> {missingTf.join(" and ")}{" "}{missingTf.length === 1 ? "is" : "are"} not offered yet: this contract
-            entered coverage recently and the candle series behind them is still being collected.</>
+            <> {missingTf.join(" and ")}{" "}{missingTf.length === 1 ? "is" : "are"} not offered: there is not
+            yet enough history to draw {missingTf.length === 1 ? "it" : "them"} — fewer than {MIN_CHART_BARS} bars
+            at that size. Either this contract entered coverage recently or it has not existed long enough,
+            and the series behind it is still filling.</>
           )}
         </span>
       </form>

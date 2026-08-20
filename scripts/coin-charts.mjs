@@ -81,12 +81,25 @@ async function get(path) {
 export function parsePage(html) {
   const buttons = [...html.matchAll(/<button[^>]*data-tf="([^"]+)"[^>]*aria-pressed="(true|false)"/g)]
     .map((m) => ({ tf: m[1], pressed: m[2] === "true" }));
-  const svgs = [...html.matchAll(/data-xhair="cpts-([^"]+)"/g)].map((m) => m[1]);
+  /* TWO PREFIXES, BECAUSE THERE ARE TWO TEMPLATES. Coin pages emit `cpts-<tf>` and contract
+     pages emit `pts-<tf>`. This parser knew only the first, so the moment the sweep was widened
+     to the fifty contract pages it reported "0 chart panels rendered" on every one of them —
+     1,208 failures in eight seconds, uniform across every page and timeframe. A defect that
+     uniform is the instrument, not the site: the charts were fine and the parser was blind. */
+  const svgs = [...html.matchAll(/data-xhair="c?pts-([^"]+)"/g)].map((m) => m[1]);
   const rangeM = html.match(/data-prange="([-\d.eE]+),([-\d.eE]+)"/);
   const plotM = html.match(/data-plot="([\d,]+)"/);
   const axxM = html.match(/data-axx="([\d.]+)"/);
-  const jsonM = [...html.matchAll(/<script type="application\/json" id="cpts-([^"]+)"[^>]*>([\s\S]*?)<\/script>/g)];
-  const statM = html.match(/over <b[^>]*data-tfstat[^>]*>([^<]*)</);
+  const jsonM = [...html.matchAll(/<script type="application\/json" id="c?pts-([^"]+)"[^>]*>([\s\S]*?)<\/script>/g)];
+  /* THE BAR COUNT IS RENDERED TWO WAYS. Coin pages put the word "over" outside the element —
+     `over <b data-tfstat>220 daily bars</b>` — and contract pages put it inside:
+     `<b data-tfstat> over 220 daily bars </b>`. A regex anchored on the coin shape reported
+     "the page states no bar count" on all 400 contract renders. So: take every data-tfstat
+     element and pick the one that actually carries a count, rather than assuming where the
+     surrounding prose sits. */
+  const statM = [...html.matchAll(/<[a-z]+\b[^>]*\bdata-tfstat\b[^>]*>([^<]*)</g)]
+    .map((m) => m[1].replace(/^\s*over\s+/i, "").trim())
+    .find((t) => /^[\d,]+\s+\S+.*\bbars?\b/i.test(t));
   let points = null;
   if (jsonM.length === 1) { try { points = JSON.parse(jsonM[0][2]); } catch { points = "unparseable"; } }
   return {
@@ -98,28 +111,28 @@ export function parsePage(html) {
     axx: axxM ? Number(axxM[1]) : null,
     jsonTfs: jsonM.map((m) => m[1]),
     points,
-    stat: statM ? statM[1].trim() : null,
+    stat: statM ?? null,
   };
 }
 
 /* One pure function, so the blind cases exercise the same code the live sweep does. Returns a
    list of complaints; empty means the chart on that page at that timeframe is a chart. */
-export function chartFaults(p, wantTf, now = Date.now()) {
+export function chartFaults(p, wantTf, now = Date.now(), expected = EXPECTED_TFS) {
   const f = [];
   const T = 1, H = 3, L = 4, C = 5;
 
   const offered = p.buttons.map((b) => b.tf);
-  const missing = EXPECTED_TFS.filter((t) => !offered.includes(t));
+  const missing = expected.filter((t) => !offered.includes(t));
   const extra = offered.filter((t) => !EXPECTED_TFS.includes(t));
   if (missing.length) f.push(`timeframe button(s) absent: ${missing.join(", ")}`);
-  if (extra.length) f.push(`timeframe button(s) offered that spot cannot serve: ${extra.join(", ")}`);
+  if (extra.length) f.push(`timeframe button(s) offered that no series can serve: ${extra.join(", ")}`);
   if (p.buttons.filter((b) => b.pressed).length !== 1) f.push(`${p.buttons.filter((b) => b.pressed).length} timeframes marked active — exactly one must be`);
   if (p.active !== wantTf) f.push(`asked for tf=${wantTf}, page rendered tf=${p.active} — the switch did not switch`);
 
   if (p.svgTfs.length !== 1) f.push(`${p.svgTfs.length} chart panels rendered — exactly one must be`);
-  else if (p.svgTfs[0] !== p.active) f.push(`panel is cpts-${p.svgTfs[0]} while the active timeframe is ${p.active}`);
+  else if (p.svgTfs[0] !== p.active) f.push(`panel is ${p.svgTfs[0]} while the active timeframe is ${p.active}`);
   if (p.jsonTfs.length !== 1) f.push(`${p.jsonTfs.length} crosshair payloads — exactly one must be`);
-  else if (p.jsonTfs[0] !== p.active) f.push(`payload is cpts-${p.jsonTfs[0]} while the active timeframe is ${p.active}`);
+  else if (p.jsonTfs[0] !== p.active) f.push(`payload is ${p.jsonTfs[0]} while the active timeframe is ${p.active}`);
 
   if (p.points === "unparseable") { f.push("crosshair payload is not valid JSON"); return f; }
   if (!Array.isArray(p.points)) { f.push("no crosshair payload at all — the panel has no data behind it"); return f; }
@@ -221,13 +234,13 @@ if (BLIND) {
        went silent the moment the pages re-based onto the perpetual series — a blind case that
        had quietly stopped testing anything. Caught by running the file. The key below is not in
        TIMEFRAMES at all, which is the property the case actually needs. */
-    ["a button for a timeframe that does not exist", (() => { const c = clone(clean); c.buttons.push({ tf: "5m", pressed: false }); return c; })(), /cannot serve/],
+    ["a button for a timeframe that does not exist", (() => { const c = clone(clean); c.buttons.push({ tf: "5m", pressed: false }); return c; })(), /no series can serve/],
     /* Index 2 was "12h" when the list held six timeframes and is "1h" now — the one already
        pressed in the clean fixture — so this mutation changed nothing and the case went silent.
        Selecting by KEY rather than by position cannot rot the same way. */
     ["two timeframes marked active", (() => { const c = clone(clean); c.buttons.find((b) => b.tf === "1d").pressed = true; return c; })(), /marked active/],
     ["the switch did not switch", (() => { const c = clone(clean); c.active = "4h"; c.svgTfs = ["4h"]; c.jsonTfs = ["4h"]; return c; })(), /did not switch/],
-    ["panel and payload disagree", (() => { const c = clone(clean); c.svgTfs = ["4h"]; return c; })(), /panel is cpts-4h/],
+    ["panel and payload disagree", (() => { const c = clone(clean); c.svgTfs = ["4h"]; return c; })(), /panel is 4h/],
     ["two panels rendered", (() => { const c = clone(clean); c.svgTfs = ["1h", "4h"]; return c; })(), /chart panels rendered/],
     ["no payload at all", (() => { const c = clone(clean); c.points = null; return c; })(), /no crosshair payload/],
     ["payload is not JSON", (() => { const c = clone(clean); c.points = "unparseable"; return c; })(), /not valid JSON/],
@@ -263,72 +276,118 @@ if (BLIND) {
 }
 
 /* ---------------------------------------------------------------------------------------
-   THE LIVE SWEEP.
+   THE LIVE SWEEP, ACROSS BOTH PAGE FAMILIES.
+
+   It covered the ten coin pages only. The fifty contract pages draw from the same three series
+   and had never been swept at all — a template verified once and a template verified sixty times
+   are the same template, and the untested one is where a gap would sit unnoticed.
+
+   EXPECTATIONS ARE PER PAGE, NOT GLOBAL. A page is asserted against WHAT IT OFFERS: every button
+   it shows must render a real chart. Which timeframes it offers is a separate question, reported
+   as a matrix rather than failed on, because a symbol that genuinely has no 15-minute history
+   upstream should not fail a deploy — it should be visible.
+
+   GUARDED, like scripts/behaviour-live.mjs, so importing the assertions above does not run a
+   five-hundred-render sweep as a side effect of an import.
    --------------------------------------------------------------------------------------- */
-console.log(`=== ${ORIGIN} — every coin page, every timeframe ===\n`);
+const invokedDirectly = process.argv[1] && import.meta.url.endsWith(process.argv[1].split("/").pop());
+if (invokedDirectly) {
+console.log(`=== ${ORIGIN} — every chart on the site, every timeframe it offers ===\n`);
 
-const sm = await get("/sitemaps/coins.xml");
-const slugs = [...sm.body.matchAll(/<loc>[^<]*\/coins\/([^<\/]+)<\/loc>/g)].map((m) => m[1]);
-if (!slugs.length) { bad("no coin pages found in /sitemaps/coins.xml — nothing was verified"); process.exit(1); }
-console.log(`1. ${slugs.length} coin pages x ${EXPECTED_TFS.length} timeframes = ${slugs.length * EXPECTED_TFS.length} renders\n`);
+const pageSet = async (sitemap, prefix) => {
+  const sm = await get(sitemap);
+  return [...sm.body.matchAll(new RegExp(`<loc>[^<]*${prefix}([^<\\/]+)</loc>`, "g"))].map((m) => m[1]);
+};
+const coins = await pageSet("/sitemaps/coins.xml", "/coins/");
+const syms = await pageSet("/sitemaps/funding-symbols.xml", "/funding/");
+if (!coins.length || !syms.length) { bad(`page discovery failed: ${coins.length} coins, ${syms.length} contracts`); process.exit(1); }
 
-const rows = [];
-for (const slug of slugs) {
-  for (const tf of EXPECTED_TFS) {
-    const r = await get(`/coins/${slug}?tf=${tf}`);
-    if (r.status !== 200) { bad(`/coins/${slug}?tf=${tf} returned ${r.status}`); continue; }
-    const p = parsePage(r.body);
-    const f = chartFaults(p, tf);
-    const g = Array.isArray(p.points) && p.points.length > 1 ? gapReport(p.points, tf) : null;
-    rows.push({ slug, tf, n: Array.isArray(p.points) ? p.points.length : 0, stat: p.stat, faults: f, gaps: g,
-                newestH: Array.isArray(p.points) && p.points.length ? (Date.now() - p.points[p.points.length - 1][1]) / 3.6e6 : NaN });
-    if (f.length) f.forEach((m) => bad(`/coins/${slug}?tf=${tf} — ${m}`));
-  }
+/* Bounded concurrency. Our own origin, but a burst of five hundred is a shape worth not making
+   even against infrastructure we own. */
+const pool = async (items, n, fn) => {
+  const out = new Array(items.length);
+  let i = 0;
+  await Promise.all(Array.from({ length: n }, async () => {
+    while (i < items.length) { const k = i++; out[k] = await fn(items[k], k); }
+  }));
+  return out;
+};
+
+const FAMILIES = [
+  { name: "coin", base: "/coins/", ids: coins },
+  { name: "contract", base: "/funding/", ids: syms },
+];
+
+console.log(`1. what each page offers (${coins.length} coin + ${syms.length} contract pages)\n`);
+const offered = {};
+for (const fam of FAMILIES) {
+  const got = await pool(fam.ids, 6, async (id) => parsePage((await get(`${fam.base}${id}`)).body).buttons.map((b) => b.tf));
+  fam.ids.forEach((id, k) => { offered[`${fam.name}:${id}`] = got[k]; });
 }
+const allOffer = Object.values(offered).every((o) => o.length === EXPECTED_TFS.length);
+console.log(allOffer
+  ? `   ok    every one of the ${Object.keys(offered).length} pages offers all ${EXPECTED_TFS.length} timeframes`
+  : `   ---   coverage is uneven; see the matrix in section 3`);
+
+const jobs = [];
+for (const fam of FAMILIES) for (const id of fam.ids) for (const tf of offered[`${fam.name}:${id}`]) jobs.push({ fam, id, tf });
+console.log(`\n2. ${jobs.length} renders — every page against every timeframe it offers\n`);
+
+const rows = await pool(jobs, 6, async ({ fam, id, tf }) => {
+  const path = `${fam.base}${id}?tf=${tf}`;
+  const r = await get(path);
+  if (r.status !== 200) return { fam: fam.name, id, tf, n: 0, faults: [`returned ${r.status}`], path };
+  const p = parsePage(r.body);
+  const exp = offered[`${fam.name}:${id}`];
+  const f = chartFaults(p, tf, Date.now(), exp);
+  const g = Array.isArray(p.points) && p.points.length > 1 ? gapReport(p.points, tf) : null;
+  return { fam: fam.name, id, tf, path, stat: p.stat, faults: f, gaps: g,
+           n: Array.isArray(p.points) ? p.points.length : 0,
+           newestH: Array.isArray(p.points) && p.points.length ? (Date.now() - p.points[p.points.length - 1][1]) / 3.6e6 : NaN };
+});
+for (const r of rows) if (r.faults.length) r.faults.forEach((m) => bad(`${r.path} — ${m}`));
 if (!rows.some((r) => r.faults.length)) ok(`all ${rows.length} renders: one panel, one payload, the requested timeframe, a real varying series, an axis that matches it, and a current newest bar`);
 
-console.log("\n2. what each timeframe actually holds");
-for (const tf of EXPECTED_TFS) {
-  const rs = rows.filter((r) => r.tf === tf);
-  if (!rs.length) continue;
-  const ns = rs.map((r) => r.n);
-  const offs = rs.reduce((a, r) => a + (r.gaps?.off ?? 0), 0);
-  const same = new Set(ns).size === 1;
-  console.log(`   ${tf.padEnd(4)} ${same ? `${ns[0]} bars on all ${rs.length}` : `${Math.min(...ns)}-${Math.max(...ns)} bars`}`.padEnd(34)
-    + `newest ${Math.max(...rs.map((r) => r.newestH)).toFixed(1)}h old at worst`.padEnd(30)
-    + (offs ? `${offs} interior gap(s) in the upstream series` : "no interior gaps")
-    + (rs.every((r) => r.gaps?.leadShort) ? " · oldest bucket short by construction" : ""));
-}
-const short = rows.filter((r) => r.n < 20);
-console.log("\n3. sparse series, and whether the page says so");
-if (!short.length) ok("no coin/timeframe holds fewer than 20 bars");
-else for (const r of short) {
-  const stated = Number((r.stat ?? "").match(/^([\d,]+)/)?.[1].replace(/,/g, "") ?? NaN);
-  stated === r.n ? ok(`/coins/${r.slug}?tf=${r.tf} plots ${r.n} bars and says "${r.stat}" — short, and stated`)
-    : bad(`/coins/${r.slug}?tf=${r.tf} plots ${r.n} bars while saying "${r.stat}"`);
-}
-
-/* THE "TIMEFRAME THE SOURCE CANNOT SERVE" CASE IS GONE WITH SPOT — every timeframe in the table
-   is now servable, so there is nothing to fall back FROM. What remains is the unparseable input,
-   which is the case that never depended on the data source. */
-console.log("\n4. an unparseable timeframe");
-for (const slug of slugs.slice(0, 3)) {
-  for (const [ask, want, why] of [["bogus", DEFAULT_TF, "unparseable"], ["99z", DEFAULT_TF, "unparseable"]]) {
-    const p = parsePage((await get(`/coins/${slug}?tf=${ask}`)).body);
-    if (p.active !== want) bad(`/coins/${slug}?tf=${ask} rendered ${p.active}, expected the ${want} fallback (${why})`);
-    else if (p.buttons.some((b) => b.tf === ask)) bad(`/coins/${slug} offers a tf=${ask} button while rendering ${p.active}`);
-    else if (chartFaults(p, want).length) bad(`/coins/${slug}?tf=${ask} fell back to ${want} but drew a broken chart`);
-    else ok(`/coins/${slug}?tf=${ask} -> ${want}, a real chart, and no button offering ${ask}`);
+console.log("\n3. bars held, by timeframe and family");
+for (const fam of ["coin", "contract"]) {
+  for (const tf of EXPECTED_TFS) {
+    const rs = rows.filter((r) => r.fam === fam && r.tf === tf && r.n);
+    if (!rs.length) continue;
+    const ns = rs.map((r) => r.n);
+    const offs = rs.reduce((a, r) => a + (r.gaps?.off ?? 0), 0);
+    console.log(`   ${fam.padEnd(9)} ${tf.padEnd(4)} ${new Set(ns).size === 1 ? `${ns[0]} bars on all ${rs.length}` : `${Math.min(...ns)}-${Math.max(...ns)} bars over ${rs.length}`}`.padEnd(46)
+      + `newest ${Math.max(...rs.map((r) => r.newestH)).toFixed(1)}h at worst`.padEnd(26)
+      + (offs ? `${offs} interior gap(s)` : "no interior gaps"));
   }
 }
 
-console.log("\n5. the other chart mode, at the default timeframe");
-for (const slug of slugs) {
-  const p = parsePage((await get(`/coins/${slug}?tf=${DEFAULT_TF}&cx=line`)).body);
-  const f = chartFaults(p, DEFAULT_TF);
-  f.length ? f.forEach((m) => bad(`/coins/${slug} line mode — ${m}`)) : null;
-}
-if (!failures) ok(`line mode holds on all ${slugs.length} pages`);
+console.log("\n4. the thinnest pages");
+const byId = {};
+for (const r of rows) { const k = `${r.fam}:${r.id}`; (byId[k] ??= []).push(r); }
+const thin = Object.entries(byId)
+  .map(([k, rs]) => ({ k, min: Math.min(...rs.map((r) => r.n)), tfs: rs.length }))
+  .filter((x) => x.min < 60 || x.tfs < EXPECTED_TFS.length)
+  .sort((a, b) => a.min - b.min);
+if (!thin.length) ok(`no page holds fewer than 60 bars on any timeframe it offers`);
+else for (const t of thin.slice(0, 12)) console.log(`   ---   ${t.k.padEnd(22)} ${t.tfs}/${EXPECTED_TFS.length} timeframes, thinnest ${t.min} bars`);
 
-console.log(failures ? `\n${failures} FAILURES\n` : `\nall checks passed\n`);
+console.log("\n5. sparse series, and whether the page says so");
+const short = rows.filter((r) => r.n && r.n < 20);
+if (!short.length) ok("no page/timeframe holds fewer than 20 bars");
+else for (const r of short) {
+  const stated = Number((r.stat ?? "").match(/^([\d,]+)/)?.[1].replace(/,/g, "") ?? NaN);
+  stated === r.n ? ok(`${r.path} plots ${r.n} and says "${r.stat}" — short, and stated`)
+    : bad(`${r.path} plots ${r.n} while saying "${r.stat}"`);
+}
+
+console.log("\n6. an unparseable timeframe falls back honestly");
+for (const fam of FAMILIES) for (const id of fam.ids.slice(0, 2)) {
+  const p = parsePage((await get(`${fam.base}${id}?tf=bogus`)).body);
+  if (p.active !== DEFAULT_TF) bad(`${fam.base}${id}?tf=bogus rendered ${p.active}, expected ${DEFAULT_TF}`);
+  else if (chartFaults(p, DEFAULT_TF, Date.now(), offered[`${fam.name}:${id}`]).length) bad(`${fam.base}${id}?tf=bogus fell back but drew a broken chart`);
+  else ok(`${fam.base}${id}?tf=bogus -> ${DEFAULT_TF}, a real chart`);
+}
+
+console.log(failures ? `\n${failures} FAILURES\n` : `\nall checks passed — ${rows.length} renders across ${Object.keys(byId).length} pages\n`);
 process.exit(failures ? 1 : 0);
+}

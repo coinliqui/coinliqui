@@ -5,7 +5,7 @@ import { usd, pct, VENUE_LABEL, paysClass, paysLabel, carryCost, type Venue } fr
 import { findCoin, isLive, liveCoins } from "../../lib/coins.ts";
 import { getCandles, getHourly, getM15 } from "../../lib/candles.ts";
 import { freshness, ageWords, minutesSince } from "../../lib/freshness.ts";
-import { TIMEFRAMES, DEFAULT_TF, aggregate, buildPriceChart, CHART_H, type ChartMode } from "../../lib/series.ts";
+import { TIMEFRAMES, DEFAULT_TF, MIN_CHART_BARS, aggregate, buildPriceChart, CHART_H, type ChartMode } from "../../lib/series.ts";
 import { CH } from "../../lib/chart.ts";
 
 /* =========================================================================================
@@ -121,7 +121,14 @@ const modeKey: ChartMode = qs.get("view") === "line" ? "line" : "candle";
    has not arrived must be absent rather than approximated. */
 const baseFor = (tf: (typeof TIMEFRAMES)[number]) =>
   (tf.base === "m15" ? m15set?.d : tf.base === "hour" ? hourset?.d : dayset?.d);
-const tfsAvailable = TIMEFRAMES.filter((tf) => { const b = baseFor(tf); return Boolean(b && b.length >= 6); }).map((tf) => tf.key);
+/* Same correction as the contract template: the test is on the aggregated bar count, because
+   that is what gets drawn. See MIN_CHART_BARS in src/lib/series.ts. */
+const barsFor = (tf: (typeof TIMEFRAMES)[number]) => {
+  const b = baseFor(tf);
+  return b ? aggregate(b, tf.factor).slice(-tf.bars).length : 0;
+};
+const tfsAvailable = TIMEFRAMES.filter((tf) => barsFor(tf) >= MIN_CHART_BARS).map((tf) => tf.key);
+const missingTf = TIMEFRAMES.filter((tf) => !tfsAvailable.includes(tf.key)).map((tf) => tf.label);
 const activeTf = TIMEFRAMES.find((tf) => tf.key === tfKey && tfsAvailable.includes(tf.key))
   ?? TIMEFRAMES.find((tf) => tfsAvailable.includes(tf.key));
 const activeMode = MODES.find((m) => m.key === modeKey) ?? MODES[0];
@@ -220,7 +227,18 @@ const description = `Live ${coin.name} (${coin.symbol}) perpetual price from Hyp
           ))}
           <input type="hidden" name="tf" value={active!.tf.key} data-tfcarry="tf" />
         </div>
-        <span class="tfbar__note">Hyperliquid perpetual candles — the traded contract, not the oracle index.</span>
+        <span class="tfbar__note">
+          Hyperliquid perpetual candles — the traded contract, not the oracle index.
+          {/* A GAP MUST BE STATED, NOT INFERRED FROM A MISSING BUTTON. The contract template has
+              said this since its button bar was fixed; this one dropped timeframes silently, so a
+              reader looking for a monthly view on a young contract found no button and no reason.
+              Both pages now name what is absent and why. */}
+          {missingTf.length > 0 && (
+            <> {missingTf.join(" and ")}{" "}{missingTf.length === 1 ? "is" : "are"} not offered: there is not
+            yet enough history to draw {missingTf.length === 1 ? "it" : "them"} — fewer than {MIN_CHART_BARS} bars
+            at that size.</>
+          )}
+        </span>
       </form>
 
       {[active!].map(({ tf, mode, chart }) => (
@@ -259,11 +277,17 @@ const description = `Live ${coin.name} (${coin.symbol}) perpetual price from Hyp
     </div>
   )}
 
-  <h2 class="section">Spot against the perpetual</h2>
+  {/* THIS HEADING SAID "Spot against the perpetual" AND THE SECTION HAD NO SPOT IN IT. The cards
+      beneath were re-based when Coinbase was removed and the heading above them was not — a
+      survival of the old premise, live on ten indexed pages, found by listing the headings of
+      the two page families side by side rather than by reading the file. The lesson is the one
+      the uncited-claims sweep already taught: a sentence deleted in one place has copies, and
+      the copies are not always sentences. */}
+  <h2 class="section">What the position costs</h2>
   <p class="section-note">
-    The one number a price page usually leaves out. The perpetual has no expiry, so nothing forces
-    it back to spot except the funding payment — the gap and the rate are the same mechanism seen
-    from two sides.
+    The number a price page usually leaves out. A perpetual has no expiry, so nothing pulls it
+    back toward the underlying except the funding payment — which means the rate is not a fee on
+    the side, it is the mechanism, and it is what holding this exposure actually costs.
   </p>
   <div class="cards">
     {/* THIS CARD WAS THE BASIS and there is deliberately nothing in its place pretending to be

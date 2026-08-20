@@ -38,6 +38,26 @@ export const TIMEFRAMES: Timeframe[] = [
 ];
 export const DEFAULT_TF = "1d";
 
+/**
+ * THE FEWEST AGGREGATED BARS WORTH DRAWING, and the reason it is a shared constant.
+ *
+ * buildPriceChart refuses below three; that is the floor at which a chart is arithmetically
+ * possible, not the floor at which it is worth showing. Six is where a reader can see a shape.
+ *
+ * WHAT IT FIXES. Both templates tested availability on the BASE series — `base.length >= 6` —
+ * and then drew from the AGGREGATED one. A contract with 45 daily bars passes that test for the
+ * monthly timeframe, aggregates ×30 to two bars, buildPriceChart returns null, and the page
+ * renders no chart AND no button bar AND no explanation: /funding/cashcat?tf=1m was a blank
+ * section. That is precisely the defect the button-bar comment in that template says it fixed —
+ * "pressing one that had no data selected it, showed no panel at all" — fixed for a missing base
+ * series and not for a base series too short to aggregate.
+ *
+ * So the test is now on what will actually be drawn, and the number lives here so the two
+ * templates and the check that guards them cannot hold three different opinions about it.
+ */
+export const MIN_CHART_BARS = 6;
+
+
 export function aggregate(src: Candle[], factor: number): Candle[] {
   if (factor <= 1) return src;
   const out: Candle[] = [];
