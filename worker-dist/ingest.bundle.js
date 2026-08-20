@@ -590,6 +590,14 @@ var CRAWLERS = [
   "Applebot",
   "Amazonbot"
 ];
+function coverageBucket(verdict, coverageState) {
+  if (verdict === "PASS") return "indexed";
+  const c = (coverageState ?? "").toLowerCase();
+  if (c.includes("crawled")) return "crawled";
+  if (c.includes("discovered")) return "discovered";
+  if (c.includes("unknown")) return "unknown";
+  return "other";
+}
 function tallyCrawlers(groups) {
   const rows = CRAWLERS.map((name) => {
     let verified = 0, claimed = 0;
@@ -725,8 +733,8 @@ Every URL on this site is enumerated from that document. Until it parses, covera
         st.phase = "crawlers";
       } else {
         say("### Indexed share, per template\n");
-        say("| Template | Indexed | Crawled, not indexed | Discovered, not crawled | Other |");
-        say("|---|---:|---:|---:|---:|");
+        say("| Template | Indexed | Crawled, not indexed | Discovered, not crawled | Unknown to Google | Other |");
+        say("|---|---:|---:|---:|---:|---:|");
       }
       st.i = 0;
     }
@@ -751,18 +759,18 @@ Every URL on this site is enumerated from that document. Until it parses, covera
         const j = await r.json();
         const res = j?.inspectionResult?.indexStatusResult ?? {};
         const v = res.verdict;
-        const k = v === "PASS" || v === "NEUTRAL" || v === "FAIL" ? v : "other";
-        (t.tally ??= { PASS: 0, NEUTRAL: 0, FAIL: 0, other: 0 })[k]++;
-        if (k !== "PASS") {
+        const k = coverageBucket(v, res.coverageState);
+        (t.tally ??= { indexed: 0, crawled: 0, discovered: 0, unknown: 0, other: 0 })[k]++;
+        if (k !== "indexed") {
           (t.notIndexed ??= []).push([u || "/", String(v ?? j?.error?.message ?? "no verdict"), String(res.coverageState ?? "\u2014")]);
         }
       }
       st.i = end;
       if (st.i >= flat.length) {
         for (const t of st.templates) {
-          const q = t.tally ?? { PASS: 0, NEUTRAL: 0, FAIL: 0, other: 0 };
-          t.indexed = q.PASS;
-          say(`| \`${t.name}\` | ${q.PASS}/${t.urls.length} (${share(q.PASS, t.urls.length)}) | ${q.NEUTRAL} | ${q.FAIL} | ${q.other} |`);
+          const q = t.tally ?? { indexed: 0, crawled: 0, discovered: 0, unknown: 0, other: 0 };
+          t.indexed = q.indexed;
+          say(`| \`${t.name}\` | ${q.indexed}/${t.urls.length} (${share(q.indexed, t.urls.length)}) | ${q.crawled} | ${q.discovered} | ${q.unknown} | ${q.other} |`);
         }
         const missing = st.templates.flatMap((t) => (t.notIndexed ?? []).map((n2) => [t.name, ...n2]));
         if (missing.length) {
@@ -1000,7 +1008,7 @@ async function stepProbe(env) {
 }
 
 // worker/build-stamp.ts
-var WORKER_BUILD = "3db5c62cbcac";
+var WORKER_BUILD = "f33c5a91477f";
 
 // worker/ingest.ts
 var RETAIN_HOURS = 72;

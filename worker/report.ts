@@ -177,6 +177,38 @@ export const CRAWLERS = [
  * verified, not the claimed total. That is the exact shape this section shipped with, and no
  * test that only checked "does it produce a table" would have caught it.
  */
+/**
+ * WHICH COLUMN A URL BELONGS IN, and it is not the one the first version used.
+ *
+ * The summary table was headed "Crawled, not indexed | Discovered, not crawled | Other" and
+ * the numbers under it were Google's VERDICT enum — NEUTRAL, FAIL, VERDICT_UNSPECIFIED —
+ * which says whether indexing succeeded and nothing at all about crawling. Measured on the
+ * 2026-W34 report: the row for `funding-symbols` read "8 crawled, not indexed", and the
+ * per-URL table directly beneath it, which prints Google's own coverageState verbatim, showed
+ * seven of those eight as *Discovered — currently not indexed* and one as *URL is unknown to
+ * Google*. Not one had been crawled.
+ *
+ * The two halves of one instrument disagreed, and they prescribe opposite work. "Crawled, not
+ * indexed" is a judgement about the page and the answer is to change it. "Discovered, not
+ * crawled" is a queue and the answer is to wait. "Unknown to Google" means the URL was never
+ * discovered at all, and the answer is the sitemap or IndexNow. A reader acting on the summary
+ * would have rewritten fifty pages Google has never fetched.
+ *
+ * So the buckets come from coverageState, which is the field that carries the fact. PASS still
+ * decides "indexed", because that is what the verdict is for. Anything unrecognised falls to
+ * `other` and is named individually in the table below — a catch-all is honest only while the
+ * detail is printed beside it.
+ */
+export type CoverageBucket = "indexed" | "crawled" | "discovered" | "unknown" | "other";
+export function coverageBucket(verdict: string | undefined, coverageState: string | undefined): CoverageBucket {
+  if (verdict === "PASS") return "indexed";
+  const c = (coverageState ?? "").toLowerCase();
+  if (c.includes("crawled")) return "crawled";
+  if (c.includes("discovered")) return "discovered";
+  if (c.includes("unknown")) return "unknown";
+  return "other";
+}
+
 export function tallyCrawlers(groups: RawGroup[]): {
   rows: { name: string; verified: number; claimed: number }[];
   verifiedTotal: number;
@@ -365,8 +397,8 @@ export async function stepReport(env: ReportEnv, force = false): Promise<string 
         st.phase = "crawlers";
       } else {
         say("### Indexed share, per template\n");
-        say("| Template | Indexed | Crawled, not indexed | Discovered, not crawled | Other |");
-        say("|---|---:|---:|---:|---:|");
+        say("| Template | Indexed | Crawled, not indexed | Discovered, not crawled | Unknown to Google | Other |");
+        say("|---|---:|---:|---:|---:|---:|");
       }
       st.i = 0;
     }
@@ -396,23 +428,23 @@ export async function stepReport(env: ReportEnv, force = false): Promise<string 
         const j = (await r.json()) as any;
         const res = j?.inspectionResult?.indexStatusResult ?? {};
         const v = res.verdict;
-        const k = v === "PASS" || v === "NEUTRAL" || v === "FAIL" ? v : "other";
-        (t.tally ??= { PASS: 0, NEUTRAL: 0, FAIL: 0, other: 0 })[k]++;
+        const k = coverageBucket(v, res.coverageState);
+        (t.tally ??= { indexed: 0, crawled: 0, discovered: 0, unknown: 0, other: 0 })[k]++;
         /* THE SAME LESSON AS SECTION A, ONE SECTION LATER. The first time this ran it produced
            "65/79 indexed" and named none of the fourteen — a number that says work is needed and
            withholds the only thing needed to do it. Google returns its own reason per URL
            (coverageState: "Discovered - currently not indexed", "Crawled - currently not
            indexed", "Excluded by 'noindex' tag"), and those reasons want opposite responses. */
-        if (k !== "PASS") {
+        if (k !== "indexed") {
           (t.notIndexed ??= []).push([u || "/", String(v ?? j?.error?.message ?? "no verdict"), String(res.coverageState ?? "—")]);
         }
       }
       st.i = end;
       if (st.i >= flat.length) {
         for (const t of st.templates) {
-          const q = t.tally ?? { PASS: 0, NEUTRAL: 0, FAIL: 0, other: 0 };
-          t.indexed = q.PASS;
-          say(`| \`${t.name}\` | ${q.PASS}/${t.urls.length} (${share(q.PASS, t.urls.length)}) | ${q.NEUTRAL} | ${q.FAIL} | ${q.other} |`);
+          const q = t.tally ?? { indexed: 0, crawled: 0, discovered: 0, unknown: 0, other: 0 };
+          t.indexed = q.indexed;
+          say(`| \`${t.name}\` | ${q.indexed}/${t.urls.length} (${share(q.indexed, t.urls.length)}) | ${q.crawled} | ${q.discovered} | ${q.unknown} | ${q.other} |`);
         }
         const missing = st.templates.flatMap((t) => (t.notIndexed ?? []).map((n) => [t.name, ...n] as [string, string, string, string]));
         if (missing.length) {

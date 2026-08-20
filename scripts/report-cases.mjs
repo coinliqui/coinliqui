@@ -111,6 +111,62 @@ console.log("\n  crawler tally: verified is counted, claimed is only reported, a
  * Exercised against the real stepReport with a stubbed KV and a stubbed edge, because the
  * defect is in the loop and not in any single call.
  * ========================================================================================== */
+/* ===================================================================================
+   THE SUMMARY TABLE AND THE DETAIL TABLE BENEATH IT DISAGREED, AND THE SUMMARY WAS WRONG.
+
+   Section B counted Google's VERDICT enum into columns headed "Crawled, not indexed" and
+   "Discovered, not crawled". The verdict says whether indexing succeeded; it carries nothing
+   about crawling. Taken from the live 2026-W34 report: the `funding-symbols` row read
+   "8 crawled, not indexed" while the per-URL table under it — which prints coverageState
+   verbatim — showed seven Discovered and one unknown. Zero crawled.
+
+   Those three states prescribe opposite work, so this is not a cosmetic mislabel: acting on
+   the summary meant rewriting fifty pages Google had never fetched.
+
+   The first case is that row exactly as it shipped. An implementation reading the verdict puts
+   all eight in "crawled"; the correct one puts none there.
+   =================================================================================== */
+import { coverageBucket } from "../worker/report.ts";
+{
+  const W34 = [
+    ["NEUTRAL", "Discovered - currently not indexed", "discovered"],
+    ["NEUTRAL", "Discovered - currently not indexed", "discovered"],
+    ["NEUTRAL", "Discovered - currently not indexed", "discovered"],
+    ["NEUTRAL", "Discovered - currently not indexed", "discovered"],
+    ["NEUTRAL", "Discovered - currently not indexed", "discovered"],
+    ["NEUTRAL", "Discovered - currently not indexed", "discovered"],
+    ["NEUTRAL", "Discovered - currently not indexed", "discovered"],
+    ["NEUTRAL", "URL is unknown to Google", "unknown"],
+  ];
+  const other = [
+    ["PASS", "Submitted and indexed", "indexed"],
+    ["PASS", "Indexed, not submitted in sitemap", "indexed"],
+    ["NEUTRAL", "Crawled - currently not indexed", "crawled"],
+    ["NEUTRAL", "Excluded by 'noindex' tag", "other"],
+    ["FAIL", "Server error (5xx)", "other"],
+    ["NEUTRAL", "Page with redirect", "other"],
+    ["VERDICT_UNSPECIFIED", undefined, "other"],
+    [undefined, undefined, "other"],
+  ];
+  let bad = 0;
+  console.log("\n  section B buckets a URL by what Google says about it, not by its verdict\n");
+  for (const [v, c, want] of [...W34, ...other]) {
+    const got = coverageBucket(v, c);
+    const label = `${String(v ?? "(none)").padEnd(20)} ${String(c ?? "(none)").padEnd(36)}`;
+    got === want ? console.log(`  ok    ${label} -> ${got}`) : (bad++, console.log(`  FAIL  ${label} -> ${got}, want ${want}`));
+  }
+  /* THE BLIND CASE. A verdict-reading implementation is the defect; if it agrees with the
+     correct one on the shipped row, this file proves nothing. */
+  const asShipped = (v) => (v === "PASS" ? "indexed" : v === "NEUTRAL" ? "crawled" : v === "FAIL" ? "discovered" : "other");
+  const shippedCrawled = W34.filter(([v]) => asShipped(v) === "crawled").length;
+  const nowCrawled = W34.filter(([v, c]) => coverageBucket(v, c) === "crawled").length;
+  shippedCrawled === 8 && nowCrawled === 0
+    ? console.log(`\n  ok    the shipped rule puts ${shippedCrawled}/8 of that row in "crawled" and this one puts ${nowCrawled} — the two are distinguishable`)
+    : (bad++, console.log(`\n  FAIL  the old rule and the new one agree on the row that caused this (${shippedCrawled} vs ${nowCrawled}) — this case cannot fire`));
+  if (bad) { console.log(`\n  ${bad} case(s) wrong\n`); process.exit(1); }
+  console.log("");
+}
+
 import { stepReport, isoWeek } from "../worker/report.ts";
 
 const kv = () => {
