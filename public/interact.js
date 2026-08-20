@@ -399,7 +399,24 @@ const { paysClass, paysLabel, carryCost, spreadOf, pct, changeWords, ageWords, n
         setTimeout(() => { s.textContent = next; s.removeAttribute("data-swap"); }, 110);
       });
       if (label) syncTable(tf, label);
-      try { history.replaceState(null, "", location.pathname); } catch {}
+      /* THE READER'S CHOICE BELONGS IN THE URL, and this line used to delete it.
+         It wrote location.pathname, so picking 4H left the address bar saying /coins/bitcoin.
+         The timeframe could then not be reloaded, bookmarked, shared or recovered with Back —
+         every one of those puts the reader back on the default. "I set it to 4H and it keeps
+         coming back to 1D" is the same page working exactly as written.
+         Nothing was gained by it. <link rel="canonical"> on every one of these pages already
+         points at the bare path (src/layouts/Base.astro), which is what tells a crawler that
+         ?tf= is not a separate page — a job an address bar was never doing. And a shared
+         ?tf=4h URL renders on the server for all sixty pages and both views, so the link works
+         for whoever receives it, script or no script.
+         The whole URL is carried rather than rebuilt, so a campaign parameter or a fragment
+         someone arrived with is not quietly dropped along the way. */
+      try {
+        const u = new URL(location.href);
+        u.searchParams.set("tf", tf);
+        if (hasModes && mode) u.searchParams.set("view", mode);
+        history.replaceState(null, "", u.pathname + u.search + u.hash);
+      } catch {}
     };
 
     group.querySelectorAll("[data-tf], [data-mode]").forEach((btn) => {
@@ -419,9 +436,20 @@ const { paysClass, paysLabel, carryCost, spreadOf, pct, changeWords, ageWords, n
         e.preventDefault();
         if (btn.dataset.tf) tf = btn.dataset.tf; else mode = btn.dataset.mode;
         const label = btn.dataset.tf ? btn.textContent.trim() : null;
+        /* ACKNOWLEDGE THE PRESS BEFORE THE PANEL ARRIVES. aria-pressed was only moved inside
+           apply(), which runs after the fetch resolves — so on anything slower than a warm
+           prefetch the button stayed unpressed and the old chart stayed on screen, with no
+           indication that anything had been asked for. A panel is 35-90KB; on a phone that is
+           long enough to read as "the button does nothing". The state is corrected by apply()
+           either way, and the fetch failure path navigates, so an optimistic press cannot end
+           up lying about what is shown. */
+        const sel = btn.dataset.tf ? "[data-tf]" : "[data-mode]";
+        group.querySelectorAll(sel).forEach((b) => b.setAttribute("aria-pressed", String(b === btn)));
+        group.setAttribute("aria-busy", "true");
         /* If the panel is already here — prefetched, or seen before — this resolves in the same
            task and the switch is indistinguishable from the old class toggle. */
-        fetchPanel(tf, mode).then(() => apply(label)).catch(() => {
+        fetchPanel(tf, mode).then(() => { group.removeAttribute("aria-busy"); apply(label); }).catch(() => {
+          group.removeAttribute("aria-busy");
           /* The server render is the fallback that always works: navigate the way the form
              would have, so a failed fetch degrades to the no-JS path rather than to nothing. */
           location.href = panelUrl(tf, mode);

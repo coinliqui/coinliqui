@@ -29,7 +29,7 @@ import {
   basisSelfConsistent, uncoveredRoutes, staleDerivedCells, botPolicyReasons,
   undefinedClasses, undefinedVars, unreadableText, colourLegend, colourLanguageDrift,
   chartAgreement, duplicateRuleImplementations, fixtureGaps, requestedLeverageLabels, phantomInlineElements, malformedAttributes, uncitedPermissionClaims, unconditionalCadenceClaims,
-  staleCalculatorFigures, MEASUREMENT_EXPORTS,
+  staleCalculatorFigures, controlGroupOverflow, MEASUREMENT_EXPORTS,
 } from "./checks.mjs";
 
 /* Enough page for a check to have something to read. Deliberately minimal: a fixture that is
@@ -197,6 +197,12 @@ const cases = [
       `<div data-when="liq">the entire <b>{usd(marginAtRisk, 2)}</b> of margin goes with it</div>`]]),
     quiet: () => staleCalculatorFigures([["fixture.astro",
       `<div data-when="liq">the entire <b id="v-margin1">{usd(marginAtRisk, 2)}</b> of margin goes with it</div>`]]),
+  },
+  {
+    check: "controlGroupOverflow",
+    why: "a flex row of options that neither wraps nor scrolls loses its last options off the edge of a phone — measured live at 371px, the 442px timeframe group put 1W and 1M off-screen on all sixty chart pages",
+    fire: () => controlGroupOverflow(`.tf { display: inline-flex; gap: var(--seg-gap); padding: 2px; }`),
+    quiet: () => controlGroupOverflow(`.tf { display: inline-flex; flex-wrap: wrap; gap: var(--seg-gap); padding: 2px; }`),
   },
   {
     check: "botPolicyReasons",

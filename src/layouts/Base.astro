@@ -806,7 +806,20 @@ const schema = {
       .magnitude__fill { transition: background .14s var(--ease), width .3s var(--ease); }
 
       /* --- timeframe group: the active control has depth, the rest are quiet --- */
-      .tf { display: inline-flex; gap: var(--seg-gap); padding: var(--seg-inset); background: var(--surface-2); border: 1px solid var(--border-soft); border-radius: var(--r-pill); }
+      /* IT WRAPS, BECAUSE ON A PHONE IT DID NOT FIT AND NOTHING SAID SO.
+         Measured on the live site at innerWidth 371: the eight-button group was 442px wide with
+         nowrap and overflow-x: visible, so 1W sat at x=366 and 1M at x=420 — both past the right
+         edge, with no scrollbar, no fade and no affordance. The whole document scrolled sideways
+         instead (scrollWidth 472 against a 371 viewport), on all sixty chart pages.
+         The cause was a correct fix: the mobile block below widens each pill to a 44px touch
+         target, which is right, and pushed the row 71px past the screen, which nobody measured.
+         A reader on a phone could reach 15m through 1D and not the two beyond it — and 1D is the
+         default, so the page reads as though it only has one timeframe.
+         WRAP RATHER THAN SCROLL. A table scrolls here because a table is bigger than a phone by
+         nature; a control group is a set of options, and an option a reader cannot see is an
+         option they do not have. Unconditional rather than inside a media query: it never wraps
+         where there is room, so there is no breakpoint to get wrong. */
+      .tf { display: inline-flex; flex-wrap: wrap; gap: var(--seg-gap); padding: var(--seg-inset); background: var(--surface-2); border: 1px solid var(--border-soft); border-radius: var(--r-pill); }
       .tf button {
         appearance: none; border: 0; background: none; cursor: pointer;
         font: 600 var(--fs-sm)/1 var(--sans); color: var(--text-dim);

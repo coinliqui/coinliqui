@@ -62,6 +62,7 @@ const NOMINAL_MS = { "15m": 9e5, "30m": 1.8e6, "1h": 3.6e6, "4h": 1.44e7, "12h":
 const REFRESH_MS = { "15m": 2 * 3.6e6, "30m": 2 * 3.6e6, "1h": 2 * 3.6e6, "4h": 2 * 3.6e6, "12h": 2 * 3.6e6, "1d": 12 * 3.6e6, "1w": 12 * 3.6e6, "1m": 12 * 3.6e6 };
 const SLACK_MS = 3.6e6;
 const DEFAULT_TF = "1d";        // what an unparseable timeframe must resolve to
+const DEFAULT_VIEW = "candle";  // and what a page offering a view control must default to
 
 let failures = 0;
 const bad = (m) => { failures++; console.log("   FAIL  " + m); };
@@ -102,8 +103,27 @@ export function parsePage(html) {
     .find((t) => /^[\d,]+\s+\S+.*\bbars?\b/i.test(t));
   let points = null;
   if (jsonM.length === 1) { try { points = JSON.parse(jsonM[0][2]); } catch { points = "unparseable"; } }
+  /* THE VIEW AXIS, WHICH NOTHING HERE HAD EVER LOOKED AT.
+     Every one of these pages offers Candles and Line, so a page has sixteen panels and this
+     sweep exercised eight. Half of what a reader can reach was unmeasured — and the half that
+     is harder to eyeball, because a line chart drawn from the wrong series still looks like a
+     line chart. */
+  const modes = [...html.matchAll(/<button[^>]*data-mode="([^"]+)"[^>]*aria-pressed="(true|false)"/g)]
+    .map((m) => ({ mode: m[1], pressed: m[2] === "true" }));
+  /* THE PANEL KEY IS A CONTRACT WITH THE CLIENT, not decoration. public/interact.js caches and
+     reveals panels by the literal string `${tf}.${view}` — `have(key)`, `p.dataset.tfpanel ===
+     key`. If the server ever emitted a different shape the fetch would succeed, the panel would
+     be appended, nothing would match, and the reader would keep the chart they already had with
+     no error anywhere. That is precisely "the chart only ever shows one timeframe", and it
+     would pass every assertion in this file as it stood. */
+  const panelKeys = [...html.matchAll(/data-tfpanel="([^"]+)"/g)].map((m) => m[1]);
+  const activePanel = (/data-tfpanel="([^"]+)"[^>]*\sdata-on/.exec(html) ?? [, null])[1];
   return {
     buttons,
+    modes,
+    activeMode: modes.find((m) => m.pressed)?.mode ?? null,
+    panelKeys,
+    activePanel,
     active: buttons.find((b) => b.pressed)?.tf ?? null,
     svgTfs: svgs,
     prange: rangeM ? [Number(rangeM[1]), Number(rangeM[2])] : null,
@@ -117,7 +137,7 @@ export function parsePage(html) {
 
 /* One pure function, so the blind cases exercise the same code the live sweep does. Returns a
    list of complaints; empty means the chart on that page at that timeframe is a chart. */
-export function chartFaults(p, wantTf, now = Date.now(), expected = EXPECTED_TFS) {
+export function chartFaults(p, wantTf, now = Date.now(), expected = EXPECTED_TFS, wantView = null) {
   const f = [];
   const T = 1, H = 3, L = 4, C = 5;
 
@@ -128,6 +148,25 @@ export function chartFaults(p, wantTf, now = Date.now(), expected = EXPECTED_TFS
   if (extra.length) f.push(`timeframe button(s) offered that no series can serve: ${extra.join(", ")}`);
   if (p.buttons.filter((b) => b.pressed).length !== 1) f.push(`${p.buttons.filter((b) => b.pressed).length} timeframes marked active — exactly one must be`);
   if (p.active !== wantTf) f.push(`asked for tf=${wantTf}, page rendered tf=${p.active} — the switch did not switch`);
+
+  /* THE VIEW, AND THE KEY THE CLIENT MATCHES ON. Only checked when a view was asked for, so a
+     page with no Candles/Line control is not held to a control it does not have. */
+  /* THE PANEL KEY IS CHECKED EITHER WAY. With a view control the client keys panels `tf.view`;
+     without one, by the bare timeframe. Both are contracts with public/interact.js, and the
+     failure is identical and silent in both cases. */
+  const wantKey = wantView ? `${wantTf}.${wantView}` : wantTf;
+  if (p.activePanel !== undefined) {
+    if (p.activePanel !== wantKey) f.push(`the live panel is keyed "${p.activePanel}", and public/interact.js reveals panels by the literal "${wantKey}" — a reader clicking this would keep the chart they already had`);
+    if (p.panelKeys.filter((k) => k === wantKey).length !== 1) f.push(`${p.panelKeys.filter((k) => k === wantKey).length} panels keyed "${wantKey}" — exactly one must be`);
+  }
+  if (wantView) {
+    const offeredModes = p.modes.map((m) => m.mode);
+    if (!offeredModes.includes(wantView)) f.push(`no "${wantView}" control: offers ${offeredModes.join(", ") || "none"}`);
+    if (p.modes.filter((m) => m.pressed).length !== 1) f.push(`${p.modes.filter((m) => m.pressed).length} views marked active — exactly one must be`);
+    if (p.activeMode !== wantView) f.push(`asked for view=${wantView}, page rendered view=${p.activeMode}`);
+  }
+  /* And a page that offers no view control must not be silently serving one. */
+  if (!wantView && p.modes.length) f.push(`no view was asked for, but the page offers ${p.modes.map((m) => m.mode).join(", ")} — the sweep and the page disagree about what this page is`);
 
   if (p.svgTfs.length !== 1) f.push(`${p.svgTfs.length} chart panels rendered — exactly one must be`);
   else if (p.svgTfs[0] !== p.active) f.push(`panel is ${p.svgTfs[0]} while the active timeframe is ${p.active}`);
@@ -224,6 +263,10 @@ if (BLIND) {
     /* lows 99..122, highs 101..124 -> span 25, padded 4.5% each side */
     prange: [99 - 25 * 0.045, 124 + 25 * 0.045],
     stat: "24 hourly bars",
+    modes: [{ mode: "candle", pressed: true }, { mode: "line", pressed: false }],
+    activeMode: "candle",
+    panelKeys: ["1h.candle", "4h.candle"],
+    activePanel: "1h.candle",
   };
   const NOW = t0 + 24 * 3.6e6;
   const clone = (o) => JSON.parse(JSON.stringify(o));
@@ -264,14 +307,54 @@ if (BLIND) {
     ["points outside the plot box", (() => { const c = clone(clean); c.points[0][0] = -50; return c; })(), /outside the plot box/],
     ["a point past the right edge", (() => { const c = clone(clean); c.points[c.points.length - 1][0] = 1200; return c; })(), /outside the plot box/],
   ];
+  /* THE VIEW AXIS. Only asserted when a view was asked for, so these run with wantView set —
+     the clean fixture must stay silent under both callers, which is the first case. */
+  const viewCases = [
+    ["the clean fixture stays silent with a view asked for", clean, null],
+    ["asked for line, served candles", clean, /asked for view=line/, "line"],
+    ["no view control at all", (() => { const c = clone(clean); c.modes = []; c.activeMode = null; return c; })(), /no "candle" control/],
+    ["both views marked active", (() => { const c = clone(clean); c.modes[1].pressed = true; return c; })(), /views marked active/],
+    /* THE ONE THAT WOULD HAVE PASSED EVERYTHING ELSE. Right timeframe, right view, right chart,
+       and a panel key the client cannot match — so the fetch succeeds, the panel is appended,
+       nothing is revealed, and the reader keeps the chart they already had. Silent everywhere. */
+    ["the panel key the client matches on is wrong", (() => { const c = clone(clean); c.panelKeys = ["1h", "4h.candle"]; c.activePanel = "1h"; return c; })(), /reveals panels by the literal "1h.candle"/],
+    ["two panels share the live key", (() => { const c = clone(clean); c.panelKeys = ["1h.candle", "1h.candle"]; return c; })(), /2 panels keyed/],
+  ];
+  /* THE CONTRACT-PAGE SHAPE: no view control, panels keyed by the bare timeframe. Fifty of the
+     sixty pages are this, and asserting the coin shape against them is what produced 3,980
+     failures on a site where every chart was fine. */
+  const bare = clone(clean);
+  bare.modes = []; bare.activeMode = null;
+  bare.panelKeys = ["1h", "4h"]; bare.activePanel = "1h";
+  const bareCases = [
+    ["a page with no view control is silent when none is asked for", bare, null],
+    ["...and its panel key is still checked", (() => { const c = clone(bare); c.activePanel = "1h.candle"; c.panelKeys = ["1h.candle"]; return c; })(), /reveals panels by the literal "1h"/],
+    ["...and a view control appearing where none is expected is a finding", (() => { const c = clone(bare); c.modes = [{ mode: "line", pressed: true }]; return c; })(), /the sweep and the page disagree/],
+  ];
   let blind = 0;
   for (const [name, fixture, want] of cases) {
-    const f = chartFaults(fixture, "1h", NOW);
+    /* The clean fixture models a COIN page, which carries a Candles/Line control, so the whole
+       base suite is asked for a view. Contract pages are the other shape and get their own
+       cases below — running the base suite with no view asked for would be modelling neither. */
+    const f = chartFaults(fixture, "1h", NOW, EXPECTED_TFS, "candle");
     const hit = want ? f.some((m) => want.test(m)) : f.length === 0;
     if (!hit) { blind++; console.log(`  BLIND  ${name}`); console.log(`         got: ${f.length ? f.join(" | ") : "(silent)"}`); }
     else console.log(`  ok     ${want ? "FIRES  " : "SILENT "} ${name}`);
   }
-  console.log(blind ? `\n  ${blind} BLIND SPOT(S)\n` : `\n  ${cases.length} cases: every assertion fires on its fault and the clean fixture stays silent\n`);
+  for (const [name, fixture, want, view] of viewCases) {
+    const f = chartFaults(fixture, "1h", NOW, EXPECTED_TFS, view ?? "candle");
+    const hit = want ? f.some((m) => want.test(m)) : f.length === 0;
+    if (!hit) { blind++; console.log(`  BLIND  ${name}`); console.log(`         got: ${f.length ? f.join(" | ") : "(silent)"}`); }
+    else console.log(`  ok     ${want ? "FIRES  " : "SILENT "} ${name}`);
+  }
+  for (const [name, fixture, want] of bareCases) {
+    const f = chartFaults(fixture, "1h", NOW, EXPECTED_TFS, null);
+    const hit = want ? f.some((m) => want.test(m)) : f.length === 0;
+    if (!hit) { blind++; console.log(`  BLIND  ${name}`); console.log(`         got: ${f.length ? f.join(" | ") : "(silent)"}`); }
+    else console.log(`  ok     ${want ? "FIRES  " : "SILENT "} ${name}`);
+  }
+  const total = cases.length + viewCases.length + bareCases.length;
+  console.log(blind ? `\n  ${blind} BLIND SPOT(S)\n` : `\n  ${total} cases: every assertion fires on its fault and the clean fixture stays silent\n`);
   process.exit(blind ? 1 : 0);
 }
 
@@ -320,28 +403,44 @@ const FAMILIES = [
 
 console.log(`1. what each page offers (${coins.length} coin + ${syms.length} contract pages)\n`);
 const offered = {};
+/* WHICH VIEWS, READ FROM THE PAGE RATHER THAN ASSUMED. The first version of the view sweep took
+   ["candle","line"] as given and produced 3,980 failures — every contract page, every timeframe.
+   The charts were fine: only the ten coin pages carry a Candles/Line control, and the fifty
+   contract pages key their panels by the bare timeframe because there is no second axis to name.
+   Assuming a fixed set instead of reading what the page offers is the same mistake this file
+   already carries two comments about. */
+const views = {};
 for (const fam of FAMILIES) {
-  const got = await pool(fam.ids, 6, async (id) => parsePage((await get(`${fam.base}${id}`)).body).buttons.map((b) => b.tf));
-  fam.ids.forEach((id, k) => { offered[`${fam.name}:${id}`] = got[k]; });
+  const got = await pool(fam.ids, 6, async (id) => {
+    const p = parsePage((await get(`${fam.base}${id}`)).body);
+    return [p.buttons.map((b) => b.tf), p.modes.map((m) => m.mode)];
+  });
+  fam.ids.forEach((id, k) => { offered[`${fam.name}:${id}`] = got[k][0]; views[`${fam.name}:${id}`] = got[k][1]; });
 }
+const viewCounts = [...new Set(Object.values(views).map((v) => v.join("+") || "none"))];
+console.log(`   ---   view controls offered: ${viewCounts.join(" / ")}`);
 const allOffer = Object.values(offered).every((o) => o.length === EXPECTED_TFS.length);
 console.log(allOffer
   ? `   ok    every one of the ${Object.keys(offered).length} pages offers all ${EXPECTED_TFS.length} timeframes`
   : `   ---   coverage is uneven; see the matrix in section 3`);
 
+/* BOTH VIEWS. Every page carries a Candles/Line control and this sweep only ever asked for the
+   default, so half of what a reader can reach — the half where a wrong series still looks like a
+   plausible chart — was never rendered by anything. */
 const jobs = [];
-for (const fam of FAMILIES) for (const id of fam.ids) for (const tf of offered[`${fam.name}:${id}`]) jobs.push({ fam, id, tf });
-console.log(`\n2. ${jobs.length} renders — every page against every timeframe it offers\n`);
+for (const fam of FAMILIES) for (const id of fam.ids) for (const tf of offered[`${fam.name}:${id}`])
+  for (const view of (views[`${fam.name}:${id}`].length ? views[`${fam.name}:${id}`] : [null])) jobs.push({ fam, id, tf, view });
+console.log(`\n2. ${jobs.length} renders — every page against every timeframe it offers, in both views\n`);
 
-const rows = await pool(jobs, 6, async ({ fam, id, tf }) => {
-  const path = `${fam.base}${id}?tf=${tf}`;
+const rows = await pool(jobs, 6, async ({ fam, id, tf, view }) => {
+  const path = `${fam.base}${id}?tf=${tf}${view ? `&view=${view}` : ""}`;
   const r = await get(path);
-  if (r.status !== 200) return { fam: fam.name, id, tf, n: 0, faults: [`returned ${r.status}`], path };
+  if (r.status !== 200) return { fam: fam.name, id, tf, view, n: 0, faults: [`returned ${r.status}`], path };
   const p = parsePage(r.body);
   const exp = offered[`${fam.name}:${id}`];
-  const f = chartFaults(p, tf, Date.now(), exp);
+  const f = chartFaults(p, tf, Date.now(), exp, view);
   const g = Array.isArray(p.points) && p.points.length > 1 ? gapReport(p.points, tf) : null;
-  return { fam: fam.name, id, tf, path, stat: p.stat, faults: f, gaps: g,
+  return { fam: fam.name, id, tf, view, path, stat: p.stat, faults: f, gaps: g,
            n: Array.isArray(p.points) ? p.points.length : 0,
            newestH: Array.isArray(p.points) && p.points.length ? (Date.now() - p.points[p.points.length - 1][1]) / 3.6e6 : NaN };
 });
@@ -382,10 +481,14 @@ else for (const r of short) {
 
 console.log("\n6. an unparseable timeframe falls back honestly");
 for (const fam of FAMILIES) for (const id of fam.ids.slice(0, 2)) {
+  const key = `${fam.name}:${id}`;
+  /* The view a page falls back to is part of the same question, and only pages that HAVE a view
+     control are asked it — the fifty contract pages have none. */
+  const wantView = views[key].length ? DEFAULT_VIEW : null;
   const p = parsePage((await get(`${fam.base}${id}?tf=bogus`)).body);
   if (p.active !== DEFAULT_TF) bad(`${fam.base}${id}?tf=bogus rendered ${p.active}, expected ${DEFAULT_TF}`);
-  else if (chartFaults(p, DEFAULT_TF, Date.now(), offered[`${fam.name}:${id}`]).length) bad(`${fam.base}${id}?tf=bogus fell back but drew a broken chart`);
-  else ok(`${fam.base}${id}?tf=bogus -> ${DEFAULT_TF}, a real chart`);
+  else if (chartFaults(p, DEFAULT_TF, Date.now(), offered[key], wantView).length) bad(`${fam.base}${id}?tf=bogus fell back but drew a broken chart: ${chartFaults(p, DEFAULT_TF, Date.now(), offered[key], wantView).join(" | ")}`);
+  else ok(`${fam.base}${id}?tf=bogus -> ${DEFAULT_TF}${wantView ? `/${wantView}` : ""}, a real chart`);
 }
 
 console.log(failures ? `\n${failures} FAILURES\n` : `\nall checks passed — ${rows.length} renders across ${Object.keys(byId).length} pages\n`);

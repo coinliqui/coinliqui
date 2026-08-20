@@ -1540,3 +1540,42 @@ export function staleCalculatorFigures(sources) {
   }
   return [...new Set(out)];
 }
+
+/**
+ * A SET OF OPTIONS A READER CANNOT SEE IS A SET OF OPTIONS THEY DO NOT HAVE.
+ *
+ * Measured on the live site at innerWidth 371 — an ordinary phone — the eight-button timeframe
+ * group was 442px wide with `flex-wrap: nowrap` and `overflow-x: visible`. 1W sat at x=366 and
+ * 1M at x=420: both past the right edge, with no scrollbar, no fade and no affordance. The
+ * document scrolled sideways instead, 472px against a 371px viewport, on all sixty chart pages.
+ * The last button a reader could reach was 1D, which is also the default — so the page read as
+ * though it had one timeframe.
+ *
+ * The cause was a correct fix. The mobile block widens each pill to a 44px touch target, which
+ * is right, and made the row 71px too long, which nobody measured.
+ *
+ * WHAT THIS CAN AND CANNOT SEE. It is a source assertion: it reads the stylesheet and requires
+ * every segmented control group to declare a wrap or a scroll, because a flex row of unknown
+ * length that does neither is one added option away from this defect. It cannot measure layout —
+ * only a browser can, and this was found in one. So it is a floor rather than a proof, and the
+ * comment is here so the next person knows which.
+ */
+export function controlGroupOverflow(css) {
+  const out = [];
+  /* The segmented groups on this site: .tf is the timeframe and view control. Named rather than
+     inferred, because "is this element a control group" is not a question a regex can answer —
+     and an inferred rule that fires on every flex row would be turned off within a week. */
+  const GROUPS = [".tf"];
+  for (const sel of GROUPS) {
+    const rule = new RegExp(`\\${sel}\\s*\\{([^}]*)\\}`).exec(css);
+    if (!rule) { out.push(`the stylesheet has no \`${sel}\` rule — the control group this check exists for is gone or renamed, so the check is no longer looking at anything`); continue; }
+    const body = rule[1];
+    if (!/display:\s*(inline-)?flex/.test(body)) continue;   // not a flex row; nothing to overflow
+    const wraps = /flex-wrap:\s*wrap/.test(body);
+    const scrolls = /overflow-x:\s*(auto|scroll)/.test(body);
+    if (!wraps && !scrolls) {
+      out.push(`\`${sel}\` is a flex row that neither wraps nor scrolls — on a narrow screen its last options fall off the edge of the page, and the page scrolls sideways instead of the group`);
+    }
+  }
+  return out;
+}

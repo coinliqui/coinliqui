@@ -35,7 +35,7 @@
 import { spawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { readdirSync, readFileSync } from "node:fs";
-import { cssFor, undefinedClasses, undefinedVars, rawEnums, searchIndexGaps, unnamedUpstreams, duplicateRuleImplementations, uncoveredRoutes, unreadableText, chartAgreement, requestedLeverageLabels, inlineScriptSyntax, flipTableColour, colourPalettes, colourLanguageDrift, colourLegend, publishesAPerson, fixtureGaps, staleDerivedCells, basisSelfConsistent, sitemapLastmodHonesty, breadcrumbAgreement, founderAgreement, readmeCounts, botPolicyReasons, contradictoryStates, hiddenFromEveryone, pageWeight, weightFaults, dateModifiedAgreement, phantomInlineElements, malformedAttributes, uncitedPermissionClaims, unconditionalCadenceClaims, staleCalculatorFigures} from "./checks.mjs";
+import { cssFor, undefinedClasses, undefinedVars, rawEnums, searchIndexGaps, unnamedUpstreams, duplicateRuleImplementations, uncoveredRoutes, unreadableText, chartAgreement, requestedLeverageLabels, inlineScriptSyntax, flipTableColour, colourPalettes, colourLanguageDrift, colourLegend, publishesAPerson, fixtureGaps, staleDerivedCells, basisSelfConsistent, sitemapLastmodHonesty, breadcrumbAgreement, founderAgreement, readmeCounts, botPolicyReasons, contradictoryStates, hiddenFromEveryone, pageWeight, weightFaults, dateModifiedAgreement, phantomInlineElements, malformedAttributes, uncitedPermissionClaims, unconditionalCadenceClaims, staleCalculatorFigures, controlGroupOverflow} from "./checks.mjs";
 
 /* The SERVER side of each duplicated formatter, transcribed from the file that owns it and
    named here so the pairing is explicit. Transcription is the honest cost of having no bundler:
@@ -171,6 +171,11 @@ try {
   /* The same shape one mechanism over: a calculator repaints its cards from the form and leaves
      the sentence explaining them at its first-byte value. Source invariant for the same reason —
      a rendered page shows the two agreeing until somebody types. */
+  /* The stylesheet lives in the layout, so the control-group rule is read from there. */
+  const overflow = controlGroupOverflow(readFileSync("src/layouts/Base.astro", "utf8"));
+  if (overflow.length) { failures++; console.log(`\n  FAIL  ${overflow.length} control group(s) can run off a narrow screen:`); for (const l of overflow) console.log(`          ${l}`); }
+  else console.log("  ok            every segmented control group wraps or scrolls rather than leaving the page");
+
   const frozen = staleCalculatorFigures(walkAstro("src/pages").map((f) => [f, readFileSync(f, "utf8")]));
   if (frozen.length) { failures++; console.log(`\n  FAIL  ${frozen.length} figure(s) in a verdict never repaint:`); for (const l of frozen) console.log(`          ${l}`); }
   else console.log("  ok            every figure inside a verdict branch is repainted with its cards");
