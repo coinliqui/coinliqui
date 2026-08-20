@@ -106,9 +106,31 @@ interface KVLike {
 }
 
 /**
- * Same contract as getSnapshot: production reads KV and nothing else, so an upstream
- * outage can only make the data older. Returns null when nothing has been written yet —
- * the caller degrades the section rather than the page.
+ * Same contract as getSnapshot: production reads KV and nothing else, so an upstream outage can
+ * only make the data older. Returns null when nothing readable has been written — the caller
+ * degrades the section rather than the page.
+ *
+ * THE DEPTH RULE MOVED OUT, AND IT USED TO WIN ARGUMENTS IT SHOULD NOT HAVE BEEN IN.
+ *
+ * These four readers each carried their own "enough to be worth returning" floor — 20 daily,
+ * 24 fifteen-minute, 24 hourly, 24 funding — under the reasoning that a handful of bars is not
+ * a chart. That reasoning is right and it belongs to the CONSUMER, which is the only thing that
+ * knows how much it needs. Every consumer already has one, and every one is more precise:
+ * MIN_CHART_BARS = 6 on the AGGREGATED count for the charts, `series.length > 40` for the
+ * liquidation density map, `closedDays.length > hold + 12` for the survival backtest.
+ *
+ * So the floor here was a second, blunter copy of a decision made properly elsewhere — and
+ * where the two disagreed, this one silently won. A contract listed four hours ago with 20
+ * fifteen-minute bars has 20 bars at 15m and 10 at 30m, both far above MIN_CHART_BARS; this
+ * returned null for all of it, and the page told the reader "Candles not collected yet" about
+ * candles that were collected. Reachable by any contract that crosses the open-interest floor
+ * within a few hours of listing.
+ *
+ * The comment above this function said "returns null when nothing has been written yet", which
+ * described the rule the code no longer had. It describes it again.
+ *
+ * What stays here is SHAPE: is this a candle array with anything in it. That is the reader's
+ * business, because a caller cannot check it without doing the read itself.
  */
 export async function getCandles(kv: KVLike | undefined, symbol: string, devReadThrough = false): Promise<CandleSet | null> {
   // A MISSING binding is not the same as an empty one — see getSnapshot. In production it
@@ -117,7 +139,7 @@ export async function getCandles(kv: KVLike | undefined, symbol: string, devRead
   if (kv) {
     try {
       const v = (await kv.get(`candles:${symbol}`, "json")) as CandleSet | null;
-      if (v && Array.isArray(v.d) && v.d.length > 20) return v;
+      if (v && Array.isArray(v.d) && v.d.length > 0) return v;
     } catch {
       /* fall through */
     }
@@ -216,15 +238,15 @@ export function survivalGrid(opts: {
   };
 }
 
-/** Reads the 15-minute series. Same contract as getHourly: production reads KV and nothing
- *  else, so an upstream outage can only make the data older, never absent-then-wrong.
- *  The `> 24` floor is deliberately the same shape — a handful of bars is not a chart. */
+/** Reads the 15-minute series. Same contract as getHourly, and the same reason for holding no
+ *  depth policy of its own — see getCandles. This one is where the mismatch bit: 24 here against
+ *  MIN_CHART_BARS = 6 there, on the series that arrives first for a new contract. */
 export async function getM15(kv: KVLike | undefined, symbol: string, devReadThrough = false): Promise<{ u: number; d: HourCandle[] } | null> {
   if (!kv && !devReadThrough) return null;
   if (kv) {
     try {
       const v = (await kv.get(`m15:${symbol}`, "json")) as { u: number; d: HourCandle[] } | null;
-      if (v && Array.isArray(v.d) && v.d.length > 24) return v;
+      if (v && Array.isArray(v.d) && v.d.length > 0) return v;
     } catch { /* fall through */ }
     if (!devReadThrough) return null;
   }
@@ -240,7 +262,7 @@ export async function getHourly(kv: KVLike | undefined, symbol: string, devReadT
   if (kv) {
     try {
       const v = (await kv.get(`hourly:${symbol}`, "json")) as { u: number; d: HourCandle[] } | null;
-      if (v && Array.isArray(v.d) && v.d.length > 24) return v;
+      if (v && Array.isArray(v.d) && v.d.length > 0) return v;
     } catch {
       /* fall through */
     }
@@ -310,7 +332,7 @@ export async function getFunding(kv: KVLike | undefined, symbol: string, devRead
   if (kv) {
     try {
       const v = (await kv.get(`funding:${symbol}`, "json")) as FundingPoint[] | null;
-      if (Array.isArray(v) && v.length > 24) return v;
+      if (Array.isArray(v) && v.length > 0) return v;
     } catch {
       /* fall through */
     }

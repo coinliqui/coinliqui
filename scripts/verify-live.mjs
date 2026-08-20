@@ -17,6 +17,23 @@ const CRAWLERS = [
 ];
 const KEY_PATHS = ["/", "/funding/btc", "/robots.txt", "/sitemap-index.xml"];
 
+/**
+ * DID THE DOCUMENT FINISH? One definition, because there were two.
+ *
+ * Astro streams. A throw partway through a template flushes the status and everything rendered
+ * so far, then stops — the error goes to the log, never into the body. So a mid-render TypeError
+ * does not arrive as a 500. It arrives as **200 text/html with a truncated body**: measured at 0
+ * bytes locally, where wrangler pages dev buffers, and at 9,159 bytes in production, where it
+ * does not. A crawler stores the amputated page rather than skipping it.
+ *
+ * The self-test in section 0 used to carry its own copy of this predicate and prove that the
+ * COPY could tell the two apart, which is the one-fact-two-implementations shape this project
+ * keeps finding — in, of all places, the instrument that guards the class. Section 0, section 5
+ * and section 7 all call this now.
+ */
+const isDocument = (b) => /^\s*<!doctype html/i.test(b);
+const rendersToEnd = (b) => isDocument(b) && /<\/html>\s*$/i.test(b);
+
 let failures = 0;
 const bad = (m) => { failures++; console.log("   FAIL  " + m); };
 const ok = (m) => console.log("   ok    " + m);
@@ -147,10 +164,10 @@ console.log("0. the instruments");
      both and require it to disagree with itself. */
   const done = "<!doctype html><html><body>x</body></html>";
   const cut = "<!doctype html><html><body>x";
-  const complete = (b) => /^\s*<!doctype html/i.test(b) && /<\/html>\s*$/i.test(b);
-  complete(done) && !complete(cut)
-    ? ok("completeness test separates a finished document from a truncated one")
-    : bad("the completeness test cannot tell a truncated document from a whole one — section 7 is meaningless");
+  const notADoc = "OK";
+  rendersToEnd(done) && !rendersToEnd(cut) && !rendersToEnd(notADoc)
+    ? ok("completeness test separates a finished document from a truncated one, and from a non-document")
+    : bad("the completeness test cannot tell a truncated document from a whole one — sections 5 and 7 are meaningless");
 
   if (failures) {
     console.log(`\n  INSTRUMENTS FAILED — stopping rather than reporting numbers taken with them.\n`);
@@ -231,11 +248,25 @@ console.log("\n5. sitemap");
   }
   const offOrigin = urls.filter((u) => !u.startsWith(ORIGIN + "/") && u !== ORIGIN);
   offOrigin.length ? bad(`${offOrigin.length} URLs off-origin`) : ok(`${maps.length} sitemaps, ${urls.length} URLs, all on ${ORIGIN}`);
-  let broken = [], thin = [], hollow = [], gone = [];
+  let broken = [], thin = [], hollow = [], gone = [], cut = [];
   for (const u of urls) {
     const r = await fetchAs(pathOf(u) || "/", "GPTBot/1.1");
     if (r.status !== 200) broken.push(`${u} ${r.status}`);
     else if (!/Coinliqui/.test(r.body)) thin.push(u);
+    /* THE BRAND IS NOT A COMPLETENESS TEST, AND IT WAS BEING USED AS ONE.
+       "Coinliqui" is in the <title> and the topbar, inside the first two kilobytes of every
+       document. A template that throws halfway still flushes all of that, so `thin` above is
+       satisfied by the header of a page whose body never arrived.
+       And the arriving thing is not a 500. Astro streams: the status is committed before the
+       throw, so a mid-render TypeError reaches a crawler as 200 text/html with a truncated
+       body — measured at 0 bytes locally, where wrangler buffers, and at 9,159 bytes in
+       production, where it does not. Googlebot stores the amputated page rather than skipping
+       it, which is worse than an error.
+       Section 7 tests this on eight hand-picked paths. This loop already has every URL in the
+       sitemaps in its hand, so the same assertion costs nothing here and covers all of them. */
+    if (r.status === 200 && isDocument(r.body) && !rendersToEnd(r.body)) {
+      cut.push(`${u} (${r.body.length}b, no closing tag)`);
+    }
     /* 200 IS NOT COMPLETE. /funding/uni returned 200, carried the brand, and rendered a
        timeframe bar above an empty space where the chart should have been — this check
        passed for every hour that page was broken. A contract page promises a chart; if the
@@ -261,6 +292,8 @@ console.log("\n5. sitemap");
   }
   broken.length ? bad(`non-200: ${broken.join(", ")}`) : ok("every sitemap URL 200 as GPTBot");
   thin.length ? bad(`missing brand: ${thin.join(", ")}`) : ok("every sitemap URL carries the brand");
+  cut.length ? bad(`TRUNCATED — 200 with no </html>, the render threw mid-stream: ${cut.join(", ")}`)
+             : ok(`every sitemap URL renders to </html> — ${urls.length} documents, not a sample`);
   hollow.length ? bad(`contract page with no chart panel: ${hollow.join(", ")}`) : ok("every contract page renders a chart, or says why it cannot yet");
 
   /* Withdrawn URLs must stay withdrawn. A 410 that silently becomes a 200 or a 301 puts a
@@ -398,9 +431,8 @@ console.log("\n7. documents render to completion");
 for (const p of ["/", "/funding/btc", "/coins/bitcoin", "/watchlist", "/404",
                  "/funding/notacoin", "/coins/notacoin", "/tools/leverage"]) {
   const r = await fetchAs(p, "Mozilla/5.0");
-  const isDoc = /^\s*<!doctype html/i.test(r.body);
-  if (!isDoc) { bad(`${p} did not return an HTML document (${r.status}, ${r.body.length}b)`); continue; }
-  /<\/html>\s*$/i.test(r.body)
+  if (!isDocument(r.body)) { bad(`${p} did not return an HTML document (${r.status}, ${r.body.length}b)`); continue; }
+  rendersToEnd(r.body)
     ? ok(`${p.padEnd(20)} ${String(r.status)} complete, ${r.body.length}b`)
     : bad(`${p} TRUNCATED — ${r.status} with ${r.body.length}b and no </html>; the render threw mid-stream`);
 }

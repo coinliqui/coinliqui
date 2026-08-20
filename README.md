@@ -186,6 +186,63 @@ curl -s $URL/ | grep -c SearchAction   # must be 0
 # every sitemap URL resolves and is on the canonical origin
 ```
 
+## A mid-render throw is a 200, not a 500
+
+**This was wrong in our heads for the whole class, and it changes what the failure costs.**
+
+Astro streams. A throw partway through a template flushes the status and everything rendered so
+far, then stops — the error goes to the log, never into the body. So a TypeError in a template
+does not reach a reader as a 500. It reaches them as **200 text/html with a truncated body**:
+measured at 0 bytes under `wrangler pages dev`, which buffers, and at 9,159 bytes in production,
+which does not.
+
+A crawler **stores the amputated page** rather than skipping it. An error page is retried; a
+successful empty one is indexed.
+
+Two of this project's defects presented exactly this way — an unimported `SYMBOL_CAP` in
+`404.astro`, and the margin-table lookup that hands `undefined` to `tierFor`. Neither showed a
+non-200 anywhere.
+
+So completeness is asserted, not assumed:
+
+- `scripts/smoke.mjs` — every one of its 45 routes, cold and warm
+- `scripts/verify-live.mjs` §5 — **every URL in the sitemaps**, 79 documents. It used to be
+  eight hand-picked paths in §7, while §5 walked all 79 and used the brand string as its
+  "did it render" test. `Coinliqui` is in the `<title>`, inside the first two kilobytes, so it
+  is satisfied by the header of a page whose body never arrived.
+- `scripts/degraded.mjs` — the same assertion with the data deliberately removed
+
+The predicate is defined once (`rendersToEnd`) and the self-test exercises **that** function.
+It used to carry its own copy and prove the copy could tell the two apart.
+
+## A fix can make a failure unreachable instead of impossible
+
+They look identical from inside the gate, and this project keeps producing them.
+
+`seed-smoke-kv.mjs` was written because the warm fixture was a point-in-time capture: features
+added after it read keys that were not there, the gate rendered the empty branch, and the defect
+shipped — twice. Seeding every key fixed that, and made **all ten of the site's empty states
+unreachable** in the same stroke. Correct fix, and it removed the ability to observe its own
+counterpart. `scripts/degraded.mjs` is the answer: exercise the degraded path deliberately
+rather than by accident.
+
+The same shape, found by looking for it:
+
+- **Four depth floors in `src/lib/candles.ts`** — 20 daily, 24 m15, 24 hourly, 24 funding — a
+  second copy of a decision every consumer already makes better (`MIN_CHART_BARS = 6` on the
+  aggregated count, `series.length > 40`, `closedDays.length > hold + 12`). Where they disagreed
+  the blunt one won, invisibly: a contract listed four hours ago holds 20 fifteen-minute bars —
+  20 at 15m, 10 at 30m, both far above the chart floor — and the page said *"Candles not
+  collected yet"* about candles that were collected. The reader judges shape now; the consumer
+  judges sufficiency. `scripts/read-floor-cases.mjs` fails if a floor regrows in either place.
+- **`getM15`/`getHourly`/`getCandles`/`getFunding`/`getLive` collapse three states into one** —
+  KV threw, the key is absent, or the value is unreadable. All become `null`, all render the same
+  sentence, and no instrument downstream can recover which. Documented rather than fixed: the
+  reader-facing behaviour is right, and distinguishing them needs a channel the read path does
+  not have. Named here so it is a known limit rather than a surprise.
+
+**The question to ask of any fix: did this make the failure impossible, or just unobservable?**
+
 ## Before wiring a check in: what does it fire on today?
 
 Two questions, asked of every new check **before** it goes in the gate:
