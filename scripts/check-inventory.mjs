@@ -85,9 +85,28 @@ const MANUAL_BY_DESIGN = {
   "gsc-report.mjs": "reads Search Console with a key that lives only in a worker secret; the worker produces the standing report instead",
 };
 const npmCmds = Object.values(JSON.parse(readFileSync("package.json", "utf8")).scripts).join(" && ");
+/* "CAN FAIL" MEANT "CONTAINS THE LITERAL STRING process.exit(1)", AND THAT IS NOT WHAT IT MEANS.
+ *
+ * Most verifiers in this directory compute their exit code — `process.exit(bad ? 1 : 0)` is the
+ * house style — and the literal match saw none of them. SEVEN were invisible, including
+ * smoke.mjs, which is the gate. So the line this file prints, "scripts that can fail: 24", was a
+ * count of the ones written in one particular way, and its unwired analysis was a claim about
+ * that subset rather than about the directory.
+ *
+ * This is the exact defect this file exists to catch — a check that passes because it is blind —
+ * living in the check that catches it. Found while wiring in a new probe and noticing the total
+ * had not moved.
+ *
+ * The predicate now asks the real question: is there any exit path whose status is not literally
+ * zero. That admits `exit(1)`, `exit(bad ? 1 : 0)` and `exit(130)`, and still excludes a script
+ * whose only exit is `exit(0)`. */
 const canFail = readdirSync("scripts")
   .filter((f) => /\.(mjs|ts)$/.test(f) && f !== "checks.mjs")
-  .filter((f) => /process\.exit\(1\)|process\.exitCode = 1/.test(readFileSync(`scripts/${f}`, "utf8")));
+  .filter((f) => {
+    const src = readFileSync(`scripts/${f}`, "utf8");
+    if (/process\.exitCode\s*=\s*(?!0\b)/.test(src)) return true;
+    return [...src.matchAll(/process\.exit\(([^)]*)\)/g)].some((m) => m[1].trim() !== "0");
+  });
 const unwired = canFail.filter((f) => !npmCmds.includes(f));
 const undocumented = unwired.filter((f) => !MANUAL_BY_DESIGN[f]);
 

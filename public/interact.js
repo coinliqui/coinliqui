@@ -11,7 +11,7 @@
    changes whenever either does, and passing it along keeps the two halves of one deploy
    together. */
 const __v = new URL(import.meta.url).searchParams.get("v");
-const { paysClass, paysLabel, paysArrow, carryCost, spreadOf, pct, changeWords, ageWords, nf, qty, compact: compactUsd, usd } =
+const { paysClass, paysLabel, carryCost, spreadOf, pct, changeWords, ageWords, nf, qty, compact: compactUsd, usd } =
   await import("./shared.js" + (__v ? `?v=${__v}` : ""));
 
 /* =========================================================================================

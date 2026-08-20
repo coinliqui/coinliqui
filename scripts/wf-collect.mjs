@@ -28,7 +28,7 @@
  *   node scripts/wf-collect.mjs <dir> <expectedCount> [--quiet]
  *   node scripts/wf-collect.mjs --blind
  */
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 
 export function collect(entries, expected) {
   const problems = [];
