@@ -281,6 +281,58 @@ The fix was to narrow the **input**, not the rule: containers whose children com
 exemptions. **Narrowing the input is almost always the answer; lengthening the exemption list
 almost never is.**
 
+## Every instrument here reads our own origin
+
+Thirty-eight verifiers, every chart render, every sitemap URL asserted complete — and all of it fetches
+`coinliqui.com`. The one claim that mattered most was about somewhere else.
+
+`https://github.com/coinliqui/coinliqui` was published in the JSON-LD `sameAs` on every page,
+as a visible link on `/about` under the heading *"The site's own history, which you can read"*,
+and in the provenance line of `llms.txt`. It was the site's only external corroboration. The
+repository is public — `gh api repos/coinliqui/coinliqui` returns `"private": false`. **An
+anonymous GET returns 404**, because the owning account is under a spam flag and GitHub hides a
+flagged account's pages from everyone but its owner.
+
+So the sentence a sceptical reader was invited to check was the one that failed, and every gate
+was green throughout, because none of them looked outside.
+
+Measured, not assumed: asked to assess the domain from `/about` alone, an extraction model named
+*"examining the public GitHub repository ... showing actual code and commit history"* as the
+**first** of three ways a reader could verify the site. The one link an agent follows to check us
+was the broken one.
+
+**Section 17 of `verify-live.mjs`** fetches every URL the site publishes and fails on one that
+does not answer a signed-out reader. It separates two classes, because the first draft did not
+and reported three failures of which one was ours:
+
+| class | what it is | fails on |
+|---|---|---|
+| **self-claim** | `sameAs`, `llms.txt` — a URL published *as evidence about us* | anything but 2xx, a 403 included: a reader who cannot reach it cannot verify us |
+| **editorial** | an outbound link to somebody's docs or terms | 404 and 410 only — a 403 from `coinbase.com` is that host's robot policy, not our defect |
+
+Six URLs, zero exemptions. An empty self-claim set is printed as a **stated absence**, not a
+pass, so this never reads as "the corroboration checks out" when there is none.
+
+## A generated file nobody regenerates is stale, not absent
+
+`src/data/lastmod.json` is written by `gen-lastmod.mjs` from git and committed, because Cloudflare
+Pages shallow-clones and cannot run `git log` at build time. Nothing ran it. Measured the first
+time anyone looked: **seven of eleven routes were publishing a lastmod one to two days behind the
+commit that changed them**, and `/about` and `/terms` were not in the list at all, so the two
+pages carrying the site's identity and its disclaimer published no date on any surface.
+
+The sitemap comment already explains why a fabricated lastmod is expensive — a host that lies
+about dates gets its dates disregarded. A stale one is a smaller lie in a safer direction and the
+same kind. `gen-lastmod.mjs --check` runs in `deploy:site` beside the margin-table check that
+exists for exactly this reason. This is the third generated artefact here to need one; the
+pattern is now: **anything generated and committed gets a `--check` in the gate on the day it is
+written, not after it drifts.**
+
+And the check found an error in its own fix within one run. `/about` looks like prose and reads
+the live store — it prints the covered-contract count and the open-interest floor from
+`getSnapshot` — so it cannot carry a commit date. The test for that list is not *"is it mostly
+words"* but **"can anything except a commit change what it shows"**.
+
 ## Reachability: verify at a phone width, as a reader
 
 **Every check in this repository reads one moment, in one viewport, at one width.** The worst
