@@ -186,6 +186,29 @@ curl -s $URL/ | grep -c SearchAction   # must be 0
 # every sitemap URL resolves and is on the canonical origin
 ```
 
+## Before wiring a check in: what does it fire on today?
+
+Two questions, asked of every new check **before** it goes in the gate:
+
+1. **What does this fire on today?** Run it against the current tree and read every finding.
+2. **Is that list shorter than its exemption list?** If not, the check is wrong, not the code.
+
+A check with more exemptions than findings is not strict — it is a list of things somebody
+decided not to fix, wearing a check's clothes. It gets ignored, then deleted, and the defect it
+was written for comes back unnoticed.
+
+This is recorded because recording it was not enough. `scripts/checks.mjs` already carried the
+sentence *"an inferred rule that fires on every flex row would be turned off within a week"*, and
+the first version of `controlGroupOverflow` did exactly that: it asked every flex rule in the
+stylesheet to wrap or be exempted and fired on ten — `.btn`, `.verdict`, `.empty`, `.nav-item`,
+both topbar clusters — every one a fixed arrangement of two or three children that cannot grow.
+Ten findings, ten exemptions, zero defects.
+
+The fix was to narrow the **input**, not the rule: containers whose children come from a
+`.map()`, because that is the set whose size nobody chose. It now fires on nothing and needs no
+exemptions. **Narrowing the input is almost always the answer; lengthening the exemption list
+almost never is.**
+
 ## Reachability: verify at a phone width, as a reader
 
 **Every check in this repository reads one moment, in one viewport, at one width.** The worst

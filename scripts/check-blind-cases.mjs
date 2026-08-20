@@ -329,6 +329,38 @@ for (const c of cases) {
    on the day it was typed. Adding a check printed "30 of 25 finding-returning checks now have a
    standing fixture" and, underneath it, "-5 still report green that has never been falsified".
    A coverage line that can go negative is not measuring coverage. */
+/* ---------------------------------------------------------------------------------------------
+   THE QUESTION TO ASK BEFORE WIRING A CHECK IN, and it is not "does it pass".
+
+   Two of them: what does this fire on TODAY, and is that list shorter than its exemptions?
+
+   Written down because having it written down was not enough. checks.mjs already carried the
+   sentence "an inferred rule that fires on every flex row would be turned off within a week",
+   and the first version of controlGroupOverflow asked every flex rule in the stylesheet to wrap
+   or be exempted. It fired on ten — .btn, .verdict, .empty, .nav-item, both topbar clusters —
+   every one a fixed arrangement of two or three children that cannot grow. Ten findings, ten
+   exemptions, zero defects. That check would have been deleted or ignored within a month, and
+   the real defect it was written for would have come back unnoticed.
+
+   The rewrite narrowed the INPUT rather than the rule: containers whose children come from a
+   .map(). It fires on nothing today and needs no exemptions, because the question it asks is
+   the one that matters.
+
+   A check with more exemptions than findings is not a strict check, it is a list of things
+   somebody decided not to fix, wearing a check's clothes. The ratio is recorded below so it is
+   visible rather than remembered.
+   --------------------------------------------------------------------------------------------- */
+const EXEMPTION_COUNTS = {
+  /* check name -> how many named exemptions it carries. A check absent from this map carries
+     none, which is the state to aim for. */
+  "check-inventory: MANUAL_BY_DESIGN": 3,
+  "coin-charts: EXPECTED_TFS": 0,
+  "controlGroupOverflow": 0,
+};
+for (const [name, n] of Object.entries(EXEMPTION_COUNTS)) {
+  if (n > 3) console.log(`  note  ${name} carries ${n} exemptions — ask what it fires on today`);
+}
+
 const PROVEN_ELSEWHERE = ["flipTableColour", "inlineScriptSyntax", "sitemapLastmodHonesty", "weightFaults"];
 const TOTAL_CHECKS = [...readFileSync(new URL("./checks.mjs", import.meta.url), "utf8")
   .matchAll(/^export function (\w+)/gm)].map((m) => m[1])
