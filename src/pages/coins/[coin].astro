@@ -178,8 +178,14 @@ const description = `Live ${coin.name} (${coin.symbol}) perpetual price from Hyp
   )}
 
   <div class="hero">
-    <span class="hero__price" data-spot="last" data-sym={coin.symbol} data-dp={dp}>{Number.isFinite(price) ? px(price) : "—"}</span>
-    <span class:list={["hero__chg"]} data-spot="chg" data-sym={coin.symbol}>
+    {/* `mark` AND `chgmark`, NOT `last` AND `chg`. These carried the spot kinds until the page was
+        re-based onto the perpetual, and the attribute names are a contract with interact.js: the
+        spot branches require a `spot` block that /api/live.json no longer sends, so the overlay
+        went inert here — price, change, mark and the page clock all frozen — while /funding
+        pages, which already used `mark`, kept updating. Nothing in the markup looked wrong and no
+        check reads overlay behaviour; it was found by watching a live page for two pulls. */}
+    <span class="hero__price" data-spot="mark" data-sym={coin.symbol} data-dp={dp}>{Number.isFinite(price) ? px(price) : "—"}</span>
+    <span class:list={["hero__chg"]} data-spot="chgmark" data-sym={coin.symbol} data-prev={perp?.prevDayPx}>
       {Number.isFinite(chg24) ? `${arrow(chg24)} ${(Math.abs(chg24) * 100).toFixed(2)}%` : "—"}
     </span>
     <span class="hero__span">24-hour change · Hyperliquid perpetual</span>

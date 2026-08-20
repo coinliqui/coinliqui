@@ -28,7 +28,7 @@ import {
   contradictoryStates, rawEnums, founderAgreement, readmeCounts,
   basisSelfConsistent, uncoveredRoutes, staleDerivedCells, botPolicyReasons,
   undefinedClasses, undefinedVars, unreadableText, colourLegend, colourLanguageDrift,
-  chartAgreement, formatterDrift, fixtureGaps, requestedLeverageLabels, phantomInlineElements, malformedAttributes, uncitedPermissionClaims, unconditionalCadenceClaims,
+  chartAgreement, duplicateRuleImplementations, fixtureGaps, requestedLeverageLabels, phantomInlineElements, malformedAttributes, uncitedPermissionClaims, unconditionalCadenceClaims,
 } from "./checks.mjs";
 
 /* Enough page for a check to have something to read. Deliberately minimal: a fixture that is
@@ -257,13 +257,20 @@ const cases = [
     ],
   },
   {
-    check: "formatterDrift",
-    why: "the server and the client must format one number the same way, or the value changes when JS lands",
-    /* extractFn looks for `const NAME = (`, the shape interact.js actually uses — my first
-       fixture wrote `function usd(v)` and the check reported that it could not find it, which is
-       the check being right about a fixture that was wrong. */
-    fire: () => formatterDrift('const usd = (v) => "$" + (v * 2).toFixed(2);', { usd: (v) => `$${v.toFixed(2)}` }),
-    quiet: () => formatterDrift('const usd = (v) => "$" + v.toFixed(2);', { usd: (v) => `$${v.toFixed(2)}` }),
+    check: "duplicateRuleImplementations",
+    why: "one fact implemented twice drifts, and comparing the copies is how you get a third",
+    /* The fire fixture is the real shape: shared.js defines the rule and a second file defines it
+       again. The quiet fixture is the design — one definition, and re-exports elsewhere, because
+       funding.ts and chart.ts both re-export so callers keep their import paths and a re-export
+       must never read as a duplicate. */
+    fire: () => duplicateRuleImplementations([
+      ["public/shared.js", "export function usd(x) { return `$${x}`; }\nexport const pct = (x) => `${x}%`;\nexport function paysClass(a){return a>=0?'pays-l':'pays-s';}\nexport const paysLabel=(a)=>a>=0?'l':'s';\nexport const paysArrow=(a)=>a>=0?'u':'d';\nexport const carryCost=(n,a,d)=>n*a*d;\nexport function spreadOf(x){return x;}\nexport function changeWords(x){return `${x}`;}\nexport function ageWords(m){return `${m}`;}\nexport const minutesSince=(a)=>a;\nexport const nf=(n,d)=>`${n}`;\nexport function qty(n){return `${n}`;}\nexport function compact(v){return `$${v}`;}\nexport function aprSpread(x){return x;}"],
+      ["public/interact.js", "const usd = (x) => `$${x}`;"],
+    ]),
+    quiet: () => duplicateRuleImplementations([
+      ["public/shared.js", "export function usd(x) { return `$${x}`; }\nexport const pct = (x) => `${x}%`;\nexport function paysClass(a){return a>=0?'pays-l':'pays-s';}\nexport const paysLabel=(a)=>a>=0?'l':'s';\nexport const paysArrow=(a)=>a>=0?'u':'d';\nexport const carryCost=(n,a,d)=>n*a*d;\nexport function spreadOf(x){return x;}\nexport function changeWords(x){return `${x}`;}\nexport function ageWords(m){return `${m}`;}\nexport const minutesSince=(a)=>a;\nexport const nf=(n,d)=>`${n}`;\nexport function qty(n){return `${n}`;}\nexport function compact(v){return `$${v}`;}\nexport function aprSpread(x){return x;}"],
+      ["src/lib/funding.ts", 'export { usd, pct, compact } from "../../public/shared.js";'],
+    ]),
   },
   {
     check: "fixtureGaps",

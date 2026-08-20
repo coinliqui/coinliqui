@@ -65,16 +65,11 @@ export const SNAP_STALE_MIN = 15;
  * scripts/freshness-cases.mjs now parses the ladder out of interact.js and asserts the two
  * implementations agree across the whole range, so this cannot silently split again.
  */
-export function ageWords(min: number): string {
-  const m = Math.max(0, Math.round(min));
-  if (m === 0) return "just now";
-  if (m < 60) return `${m} min ago`;
-  if (m < 48 * 60) return `${Math.round(m / 60)} h ago`;
-  return `${Math.round(m / 1440)} d ago`;
-}
-
-/** Minutes since a stamp, floored at zero — the input every caller was computing by hand. */
-export const minutesSince = (at: number, now = Date.now()) => Math.max(0, Math.round((now - at) / 60_000));
+/* ageWords and minutesSince MOVED TO public/shared.js and are re-exported here unchanged.
+   They existed in three places — Base.astro, interact.js, and three templates that printed raw
+   minutes — and the split only showed when the data was old, which is the failure mode this
+   single-sourced site is most exposed to. One file now, imported by all of them. */
+export { ageWords, minutesSince } from "../../public/shared.js";
 
 export interface Freshness {
   /** Whole minutes since the fastest clock this page depends on last advanced. */
@@ -86,8 +81,9 @@ export interface Freshness {
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
-/** Minutes, then hours, then days — the same ladder Base.astro uses for the freshness pill, so a
- *  page cannot describe one age two ways. */
+/** PROSE form of the same ladder — "5 days", not "5 d ago" — for use mid-sentence. Deliberately
+ *  a separate function rather than a second ladder: the thresholds below must match ageWords in
+ *  public/shared.js, and scripts/freshness-cases.mjs asserts they agree at every boundary. */
 export function readableAge(min: number): string {
   if (min < 60) return plural(min, "minute", "minutes");
   if (min < 48 * 60) return plural(Math.round(min / 60), "hour", "hours");

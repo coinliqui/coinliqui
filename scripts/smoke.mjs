@@ -35,7 +35,7 @@
 import { spawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { readdirSync, readFileSync } from "node:fs";
-import { cssFor, undefinedClasses, undefinedVars, rawEnums, searchIndexGaps, unnamedUpstreams, formatterDrift, uncoveredRoutes, unreadableText, chartAgreement, requestedLeverageLabels, inlineScriptSyntax, flipTableColour, colourPalettes, colourLanguageDrift, colourLegend, publishesAPerson, fixtureGaps, staleDerivedCells, basisSelfConsistent, sitemapLastmodHonesty, breadcrumbAgreement, founderAgreement, readmeCounts, botPolicyReasons, contradictoryStates, hiddenFromEveryone, pageWeight, weightFaults, dateModifiedAgreement, phantomInlineElements, malformedAttributes, uncitedPermissionClaims, unconditionalCadenceClaims } from "./checks.mjs";
+import { cssFor, undefinedClasses, undefinedVars, rawEnums, searchIndexGaps, unnamedUpstreams, duplicateRuleImplementations, uncoveredRoutes, unreadableText, chartAgreement, requestedLeverageLabels, inlineScriptSyntax, flipTableColour, colourPalettes, colourLanguageDrift, colourLegend, publishesAPerson, fixtureGaps, staleDerivedCells, basisSelfConsistent, sitemapLastmodHonesty, breadcrumbAgreement, founderAgreement, readmeCounts, botPolicyReasons, contradictoryStates, hiddenFromEveryone, pageWeight, weightFaults, dateModifiedAgreement, phantomInlineElements, malformedAttributes, uncitedPermissionClaims, unconditionalCadenceClaims } from "./checks.mjs";
 
 /* The SERVER side of each duplicated formatter, transcribed from the file that owns it and
    named here so the pairing is explicit. Transcription is the honest cost of having no bundler:
@@ -43,16 +43,12 @@ import { cssFor, undefinedClasses, undefinedVars, rawEnums, searchIndexGaps, unn
    ladder sweep is what stops them from becoming a third divergent copy.
      qty        <- src/pages/funding/[symbol].astro `compact` (token quantities, no currency)
      compactUsd <- src/lib/chart.ts `compact`        (money at chart scale) */
-const SERVER_FORMATTERS = {
-  qty: (n) => (Math.abs(n) >= 1e9 ? (n / 1e9).toFixed(2) + "B" : Math.abs(n) >= 1e6 ? (n / 1e6).toFixed(2) + "M" : Math.abs(n) >= 1e3 ? (n / 1e3).toFixed(2) + "K" : n.toFixed(2)),
-  compactUsd: (v) => {
-    const a = Math.abs(v);
-    if (a >= 1e9) return `$${(v / 1e9).toFixed(2)}B`;
-    if (a >= 1e6) return `$${(v / 1e6).toFixed(1)}M`;
-    if (a >= 1e3) return `$${Math.round(v / 1e3)}K`;
-    return `$${Math.round(v)}`;
-  },
-};
+/* SERVER_FORMATTERS WAS DELETED, AND THAT DELETION IS THE POINT. It held hand-written copies of
+   the quantity and money rules so formatterDrift could sweep a ladder through them against
+   public/interact.js — which meant the harness compared the client against a FOURTH copy rather
+   than against the server's. Three implementations kept in step by comparing two of them to a
+   fourth. The rules now live once, in public/shared.js, read by the Astro build, the worker
+   bundle and the browser; duplicateRuleImplementations asserts they stay singular. */
 
 /* Read out of the source, never transcribed here — see colourPalettes(). */
 const PALETTE = colourPalettes(readFileSync("src/lib/chart.ts", "utf8"), readFileSync("src/layouts/Base.astro", "utf8"));
@@ -381,13 +377,17 @@ for (const path of ROUTES) {
       console.log(`  FAIL          README audit failed: ${e.message}`);
     }
     try {
-      const drift = formatterDrift(await readFile("public/interact.js", "utf8"), SERVER_FORMATTERS);
-      if (drift.length) {
+      const walkAll = (d) => readdirSync(d, { withFileTypes: true }).flatMap((e) =>
+        e.isDirectory() ? (e.name === "node_modules" ? [] : walkAll(`${d}/${e.name}`))
+          : /\.(astro|ts|js)$/.test(e.name) ? [`${d}/${e.name}`] : []);
+      const dup = duplicateRuleImplementations(
+        ["src", "public", "worker"].flatMap(walkAll).map((f) => [f, readFileSync(f, "utf8")]));
+      if (dup.length) {
         bad++;
-        console.log(`  FAIL  ${String(drift.length).padStart(4)}         server and client format the same number differently`);
-        for (const line of drift) console.log(`          ${line}`);
+        console.log(`  FAIL  ${String(dup.length).padStart(4)}         a shared rule is implemented more than once`);
+        for (const line of dup) console.log(`          ${line}`);
       } else {
-        console.log(`  ok            server and client formatters agree across the ladder`);
+        console.log(`  ok            every shared rule is implemented exactly once`);
       }
     } catch (e) {
       bad++;

@@ -41,7 +41,7 @@ import { readFileSync } from "node:fs";
 
 const DAY = 86_400_000;
 
-export function overdue(docs, reviewEveryDays, asOf) {
+export function overdue(docs, defaultDays, asOf) {
   const out = [];
   for (const d of docs) {
     const missing = ["id", "url", "readAt", "finding", "watchFor"].filter((k) => !d[k] || String(d[k]).trim() === "");
@@ -49,8 +49,12 @@ export function overdue(docs, reviewEveryDays, asOf) {
     const read = Date.parse(`${d.readAt}T00:00:00Z`);
     if (!Number.isFinite(read)) { out.push({ id: d.id, days: null, why: `readAt "${d.readAt}" is not a date` }); continue; }
     const days = Math.floor((asOf - read) / DAY);
+    /* PER DOCUMENT, BECAUSE THE INTERVAL IS AN EXPOSURE WINDOW RATHER THAN A GUESS AT CHURN.
+       Hyperliquid's terms are the whole legal basis for the site and get 30 days; the other two
+       are documents we do not currently depend on and get 90. See intervalReason on each. */
+    const every = Number.isInteger(d.reviewEveryDays) ? d.reviewEveryDays : defaultDays;
     if (days < 0) out.push({ id: d.id, days, why: `readAt is in the future — a clock is wrong` });
-    else if (days > reviewEveryDays) out.push({ id: d.id, days, why: `last read ${days} days ago, review is due every ${reviewEveryDays}` });
+    else if (days > every) out.push({ id: d.id, days, why: `last read ${days} days ago, review is due every ${every}` });
   }
   return out;
 }
@@ -68,6 +72,11 @@ if (process.argv.includes("--blind")) {
     ["an unparseable readAt", [{ ...base, readAt: "soon" }], 90, NOW, /is not a date/],
     ["a readAt in the future", [{ ...base, readAt: "2027-01-01" }], 90, NOW, /clock is wrong/],
     ["one stale among three fresh", [base, base, { ...base, readAt: "2020-01-01" }], 90, NOW, /last read/],
+    /* THE PER-DOCUMENT OVERRIDE, both directions. A document with a shorter window must go
+       overdue while the default would still clear it, and one with a longer window must clear
+       while the default would flag it — otherwise the field is decoration. */
+    ["a 30-day document at 45 days, default 90", [{ ...base, readAt: "2026-07-05", reviewEveryDays: 30 }], 90, NOW, /due every 30/],
+    ["a 180-day document at 100 days, default 90", [{ ...base, readAt: "2026-05-11", reviewEveryDays: 180 }], 90, NOW, null],
   ];
   let bad = 0;
   for (const [name, docs, every, now, want] of cases) {
@@ -83,13 +92,13 @@ if (process.argv.includes("--blind")) {
 const argAsOf = process.argv.indexOf("--asOf");
 const asOf = argAsOf > -1 ? Date.parse(`${process.argv[argAsOf + 1]}T00:00:00Z`) : Date.now();
 const base = JSON.parse(readFileSync(new URL("../src/data/terms-baseline.json", import.meta.url), "utf8"));
-const late = overdue(base.documents, base.reviewEveryDays, asOf);
+const late = overdue(base.documents, base.reviewEveryDaysDefault, asOf);
 
-console.log(`\n  ${base.documents.length} document(s) this site depends on, reviewed every ${base.reviewEveryDays} days\n`);
+console.log(`\n  ${base.documents.length} document(s) this site depends on\n`);
 for (const d of base.documents) {
   const days = Math.floor((asOf - Date.parse(`${d.readAt}T00:00:00Z`)) / DAY);
   const flag = late.find((l) => l.id === d.id);
-  console.log(`  ${flag ? "DUE " : "ok  "}  ${d.id.padEnd(22)} read ${Number.isFinite(days) ? `${days}d ago` : d.readAt} · document dated ${d.lastUpdatedOnDocument}`);
+  console.log(`  ${flag ? "DUE " : "ok  "}  ${d.id.padEnd(22)} read ${Number.isFinite(days) ? `${days}d ago` : d.readAt} of ${d.reviewEveryDays ?? base.reviewEveryDaysDefault}d · document dated ${d.lastUpdatedOnDocument}`);
   console.log(`         ${d.url}`);
 }
 if (late.length) {
@@ -100,4 +109,4 @@ if (late.length) {
   console.log(`  and finding in src/data/terms-baseline.json when you have actually read it.\n`);
   process.exit(1);
 }
-console.log(`\n  every document has been read by a person within ${base.reviewEveryDays} days\n`);
+console.log(`\n  every document has been read by a person inside its own review window\n`);

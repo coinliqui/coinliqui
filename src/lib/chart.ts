@@ -197,13 +197,10 @@ export function line(x1: number, y1: number, x2: number, y2: number, stroke: str
 
 /** Integer money with thousands separators. Charts never show cents. */
 export const fint = (v: number) => Math.round(v).toLocaleString("en-US");
-export function compact(v: number): string {
-  const a = Math.abs(v);
-  if (a >= 1e9) return `$${(v / 1e9).toFixed(2)}B`;
-  if (a >= 1e6) return `$${(v / 1e6).toFixed(1)}M`;
-  if (a >= 1e3) return `$${Math.round(v / 1e3)}K`;
-  return `$${Math.round(v)}`;
-}
+/* compact() MOVED TO public/shared.js. It was implemented here and again in interact.js as
+   compactUsd, and the client version was `"$" + qty(n)` — one formatter answering to two rules,
+   matching neither. One implementation now, read by the server, the worker and the browser. */
+export { compact } from "../../public/shared.js";
 
 /**
  * Crosshair furniture. Emitted hidden; the interaction layer moves it and fills in the

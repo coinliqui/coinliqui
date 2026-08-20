@@ -12,6 +12,16 @@
  * Identical cost of carry; the raw figures differ 4x.
  */
 
+/* THE SIGN CONVENTIONS, THE CARRY ARITHMETIC AND THE PERCENTAGE FORMAT LIVE IN public/shared.js
+   AND ARE RE-EXPORTED HERE UNCHANGED.
+
+   They were implemented twice — once here and once in public/interact.js — which is the shape
+   that has produced five separate defects on this project, each found by accident. The copies
+   were the defect, so there is now one file and both sides import it. Callers keep importing
+   these names from this module; only the implementation moved. See public/shared.js. */
+export { paysClass, paysLabel, paysArrow, carryCost, pct, changeWords, ageWords, minutesSince, usd, nf, qty, compact, spreadOf } from "../../public/shared.js";
+import { spreadOf } from "../../public/shared.js";
+
 export const HOURS_PER_YEAR = 24 * 365; // 8760
 
 export type Venue = "HlPerp" | "BinPerp" | "BybitPerp";
@@ -86,21 +96,12 @@ export function settlementsPerYear(intervalHours: number): number {
  * normalisation, which is why nobody else displays it correctly.
  */
 export function aprSpread(venues: VenueFunding[]): number | null {
-  const aprs = venues.map((v) => v.apr).filter(Number.isFinite);
-  if (aprs.length < 2) return null;
-  return Math.max(...aprs) - Math.min(...aprs);
+  return spreadOf(venues.map((v) => v.apr));
 }
 
-/** Cost of holding a notional position for N days at a given APR. Sign follows the APR. */
-export function carryCost(notionalUsd: number, apr: number, days: number): number {
-  return notionalUsd * apr * (days / 365);
-}
 
-/** Format a rate as a percentage string with a fixed number of decimals. */
-export function pct(x: number, decimals = 2): string {
-  if (!Number.isFinite(x)) return "—";
-  return `${(x * 100).toFixed(decimals)}%`;
-}
+
+
 
 /** Format a raw per-interval rate, which is a very small number. */
 export function rawRate(x: number): string {
@@ -114,9 +115,7 @@ export function rawRate(x: number): string {
  * price change, venue spread, open interest, volume — is ever tinted, because tinting a
  * neutral quantity implies a judgement the data does not support.
  */
-export const paysClass = (apr: number) => (apr >= 0 ? "pays-l" : "pays-s");
-export const paysLabel = (apr: number) => (apr >= 0 ? "longs pay shorts" : "shorts pay longs");
-export const paysArrow = (apr: number) => (apr >= 0 ? "▲" : "▼");
+
 export const LEGEND = "▲ longs pay shorts · ▼ shorts pay longs";
 /**
  * TWO COLOUR LANGUAGES NOW EXIST AND EVERY PAGE THAT USES ONE MUST NAME IT.
@@ -133,21 +132,6 @@ export const LEGEND = "▲ longs pay shorts · ▼ shorts pay longs";
 export const LEGEND_PAYS = "amber = longs pay shorts · cyan = shorts pay longs";
 export const LEGEND_CANDLE = "hollow green candle = price up · filled red = price down";
 
-export function usd(x: number, decimals = 0): string {
-  if (!Number.isFinite(x)) return "—";
-  const abs = Math.abs(x);
-  /* NO RUNG ABOVE B, AND NO CEILING, meant the mantissa noise of a double was printed verbatim
-     as currency: /tools/leverage?notional=1e30 rendered "$50000000000000008192.00B". Above 1e15
-     a double no longer represents integers exactly, so every digit past the first ~16 is an
-     artefact of the format rather than a quantity. Nothing honest on this site exceeds it —
-     total open interest across all fifty coins is order 1e10 — so beyond that the truthful
-     output is the same em-dash used for every other figure that cannot be stated. */
-  if (abs >= 1e15) return "—";
-  if (abs >= 1e9) return `$${(x / 1e9).toFixed(2)}B`;
-  if (abs >= 1e6) return `$${(x / 1e6).toFixed(2)}M`;
-  if (abs >= 1e3 && decimals === 0) return `$${Math.round(x).toLocaleString("en-US")}`;
-  return `$${x.toLocaleString("en-US", { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}`;
-}
 
 /**
  * A QUERY PARAMETER THAT IS ACTUALLY A NUMBER.

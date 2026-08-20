@@ -8,6 +8,7 @@ import { TIMEFRAMES, DEFAULT_TF, aggregate, buildPriceChart, shortDate, CHART_H 
 import { CH } from "../../lib/chart.ts";
 import tables from "../../data/margin-tables.json";
 import { COINS, isLive } from "../../lib/coins.ts";
+import { qty } from "../../lib/funding.ts";
 import { freshness, ageWords, minutesSince } from "../../lib/freshness.ts";
 
 const env = (Astro.locals as any)?.runtime?.env;
@@ -147,7 +148,10 @@ const SPAN: Record<string, string> = {
 const span = (k: string) => SPAN[k] ?? `${(TIMEFRAMES.find((t) => t.key === k)?.label ?? k)} bars`;
 
 const arrow = (n: number) => (n >= 0 ? "▲" : "▼");
-const compact = (n: number) => (Math.abs(n) >= 1e9 ? (n / 1e9).toFixed(2) + "B" : Math.abs(n) >= 1e6 ? (n / 1e6).toFixed(2) + "M" : Math.abs(n) >= 1e3 ? (n / 1e3).toFixed(2) + "K" : n.toFixed(2));
+/* THE TOKEN-QUANTITY RULE WAS IMPLEMENTED INLINE HERE — a third copy, and the one interact.js
+   was swept against by the gate. It is qty() in public/shared.js now, the same function the
+   browser calls, and the call sites below name it directly rather than aliasing it: an alias
+   is a second name for one thing, which is the smaller version of the problem this fixed. */
 /* STATS NO LONGER TRAVEL AS PRE-COMPUTED ATTRIBUTES. They used to be emitted as data-v1h,
    data-v4h … on every stat element, one value per timeframe, so a switch could rewrite them
    without a request. With one panel in the page there is nothing to precompute from — the
@@ -192,7 +196,7 @@ const description = `What a ${p.symbol} perpetual costs to hold: ${venuePhrase},
   <div class="hero__meta">
     <div>Period high<b data-tfstat data-group="px" {...stat((c) => px(c.chart!.high))}>{active ? px(active.chart.high) : "—"}</b></div>
     <div>Period low<b data-tfstat data-group="px" {...stat((c) => px(c.chart!.low))}>{active ? px(active.chart.low) : "—"}</b></div>
-    <div>Period volume<b data-tfstat data-group="px" {...stat((c) => compact(c.chart!.volume) + " " + p.symbol)}>{active ? compact(active.chart.volume) + " " + p.symbol : "—"}</b></div>
+    <div>Period volume<b data-tfstat data-group="px" {...stat((c) => qty(c.chart!.volume) + " " + p.symbol)}>{active ? qty(active.chart.volume) + " " + p.symbol : "—"}</b></div>
     <div>Oracle index <span class="scope">Hyperliquid</span><b>{p.oraclePx > 0 ? px(p.oraclePx) : "—"}</b></div>
     <div>Open interest <span class="scope">Hyperliquid</span><b>{usd(p.oiNotional)}</b></div>
     <div>Max leverage<b>{p.maxLeverage}×</b></div>
@@ -285,7 +289,7 @@ const description = `What a ${p.symbol} perpetual costs to hold: ${venuePhrase},
                   <td class="num">{px(q[3])}</td>
                   <td class="num">{px(q[4])}</td>
                   <td class="num">{px(q[5])}</td>
-                  <td class="num">{compact(q[6])}</td>
+                  <td class="num">{qty(q[6])}</td>
                   <td class:list={["num", Number.isFinite(q[7]) ? paysClass(q[7]) : "faint"]}>{Number.isFinite(q[7]) ? pct(q[7]) : "—"}</td>
                 </tr>
               ))}

@@ -22,6 +22,8 @@
  *   C. CRAWLERS   Cloudflare token with Analytics:Read in CF_ANALYTICS_TOKEN.
  */
 
+import TERMS from "../src/data/terms-baseline.json" with { type: "json" };
+
 export interface ReportEnv {
   SNAPSHOT: {
     get(key: string, type: "json"): Promise<unknown>;
@@ -90,7 +92,10 @@ const b64url = (bytes: ArrayBuffer | Uint8Array) => {
   return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 };
 const b64urlStr = (s: string) => b64url(new TextEncoder().encode(s));
-const pct = (a: number, b: number) => (b ? `${((a / b) * 100).toFixed(0)}%` : "—");
+/* A SHARE OF A TOTAL, not the rate formatter of the same name in public/shared.js. Two
+   arguments, no decimals, a different question. Renamed because a colliding name is its own
+   hazard: a reader who knows pct() from the site would read this as that. */
+const share = (a: number, b: number) => (b ? `${((a / b) * 100).toFixed(0)}%` : "—");
 
 /**
  * A Google service-account access token, signed in the Worker.
@@ -337,7 +342,7 @@ export async function stepReport(env: ReportEnv, force = false): Promise<string 
         for (const t of st.templates) {
           const q = t.tally ?? { PASS: 0, NEUTRAL: 0, FAIL: 0, other: 0 };
           t.indexed = q.PASS;
-          say(`| \`${t.name}\` | ${q.PASS}/${t.urls.length} (${pct(q.PASS, t.urls.length)}) | ${q.NEUTRAL} | ${q.FAIL} | ${q.other} |`);
+          say(`| \`${t.name}\` | ${q.PASS}/${t.urls.length} (${share(q.PASS, t.urls.length)}) | ${q.NEUTRAL} | ${q.FAIL} | ${q.other} |`);
         }
         const missing = st.templates.flatMap((t) => (t.notIndexed ?? []).map((n) => [t.name, ...n] as [string, string, string, string]));
         if (missing.length) {
@@ -511,6 +516,45 @@ export async function stepReport(env: ReportEnv, force = false): Promise<string 
     say("Setup for this section is in DEPLOY.md.");
   }
 
+  /* ---------------------------------------------------------------------------------------
+     SECTION D — HOW OLD IS OUR READING OF THE DOCUMENTS THE SITE DEPENDS ON.
+
+     scripts/terms-watch.mjs counts these days and fails the gate when one is overdue, which is
+     the right enforcement and the wrong surface: it is a file somebody has to remember to open.
+     The one failure mode a single-sourced site cannot detect technically — Hyperliquid adding an
+     API-scoped clause — has no symptom except a human noticing, so the counter belongs where the
+     owner already looks once a week.
+
+     NO NETWORK CALL, deliberately, for the reason written at length in terms-watch.mjs: fetching
+     app.hyperliquid.xyz/terms from this worker would have the service making automated recurring
+     requests to the Interface, which is the one act that document binds on. This reads a
+     committed JSON file and subtracts two dates.
+     --------------------------------------------------------------------------------------- */
+  say("\n## D. Legal reading age\n");
+  {
+    const DAY = 86_400_000;
+    const rows = (TERMS.documents as any[]).map((d) => {
+      const read = Date.parse(`${d.readAt}T00:00:00Z`);
+      const every = Number.isInteger(d.reviewEveryDays) ? d.reviewEveryDays : TERMS.reviewEveryDaysDefault;
+      const days = Number.isFinite(read) ? Math.floor((Date.now() - read) / DAY) : null;
+      return { id: d.id, days, every, due: days === null || days > every, dated: d.lastUpdatedOnDocument };
+    });
+    const oldest = rows.reduce((a, b) => ((b.days ?? 1e9) > (a.days ?? 1e9) ? b : a), rows[0]);
+    const due = rows.filter((r) => r.due);
+    say(`**Oldest reading: ${oldest.days === null ? "never" : `${oldest.days} days`} (${oldest.id}).** ` +
+        `${due.length ? `${due.length} document(s) overdue.` : "Nothing overdue."}\n`);
+    say("| Document | Read | Window | Dated on the document |");
+    say("|---|---:|---:|---|");
+    for (const r of rows) {
+      say(`| ${r.due ? "**" : ""}${r.id}${r.due ? "**" : ""} | ${r.days === null ? "never" : `${r.days}d`} | ${r.every}d | ${r.dated} |`);
+    }
+    if (due.length) {
+      say("\nOpen each in a browser and update `src/data/terms-baseline.json`. A plain fetch is not a");
+      say("reading: both documents that matter here served a shell or a 403 to one, and an automated");
+      say("watcher would have reported no change indefinitely.");
+    }
+  }
+
   say("\n## What to read first\n");
   say("1. **Section A must be all green.** A URL a crawler cannot fetch is not an indexing problem.");
   say("2. **Indexed share by template, not by page.** One template stuck in *Discovered — currently");
@@ -519,6 +563,9 @@ export async function stepReport(env: ReportEnv, force = false): Promise<string 
   say("   average position per template moves earlier and more honestly.");
   say("4. **Crawler fetches are the leading indicator.** If they are zero, nothing downstream can");
   say("   move, and the cause is access rather than quality.");
+  say("5. **Section D is the one nothing else can catch.** Every other failure on this site has a");
+  say("   technical symptom. A change to the terms this site depends on has none — the pages keep");
+  say("   rendering perfectly — so the only detector is somebody re-reading the document.");
 
   const doc = { week: st.week, at: Date.now(), tookMs: Date.now() - st.startedAt, md: st.lines.join("\n") + "\n" };
   await env.SNAPSHOT.put(`report:${st.week}`, JSON.stringify(doc));

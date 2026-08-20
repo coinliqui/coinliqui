@@ -1,3 +1,19 @@
+/* THE SHARED FACTS COME FROM ONE FILE, AND THE VERSION TRAVELS WITH THE IMPORT.
+   public/shared.js holds every rule this script and the server both need — the funding sign
+   convention, the carry arithmetic, the percentage format, the age ladder. They used to be
+   implemented here as well, which is the shape that has produced five separate defects on this
+   project. Now there is one implementation and no second copy to drift.
+
+   `?v=` IS FORWARDED DELIBERATELY. Pages serves public/ with max-age=14400, so a bare
+   `import "./shared.js"` would let a browser run today's interact.js against a four-hour-old
+   shared.js — the precise failure scripts/gen-assets.mjs exists to prevent, one import deeper.
+   gen-assets hashes this file over its own bytes PLUS shared.js, so the version in our own URL
+   changes whenever either does, and passing it along keeps the two halves of one deploy
+   together. */
+const __v = new URL(import.meta.url).searchParams.get("v");
+const { paysClass, paysLabel, paysArrow, carryCost, spreadOf, pct, changeWords, ageWords, nf, qty, compact: compactUsd, usd } =
+  await import("./shared.js" + (__v ? `?v=${__v}` : ""));
+
 /* =========================================================================================
    Interaction layer. Vanilla, no dependencies.
 
@@ -21,39 +37,11 @@
   const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
   const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   const p2 = (n) => String(n).padStart(2, "0");
-  const nf = (n, dp) => n.toLocaleString("en-US", { minimumFractionDigits: dp, maximumFractionDigits: dp });
-  /* MUST MATCH the server's `compact` in src/pages/funding/[symbol].astro exactly. The two are
-     separate implementations of one rule — there is no bundler here, interact.js is served raw
-     — so scripts/checks.mjs sweeps a magnitude ladder through both and fails the gate on any
-     disagreement.
-
-     It had already drifted: this K branch used toFixed(1) where the server uses toFixed(2), so
-     clicking any timeframe button rewrote all 200 volume cells from "23.37K" to "23.4K" —
-     rounding the number the reader was looking at, silently, on a click that changed nothing
-     else. Every other cell of 200 rows x 6 columns matched byte for byte, which is what made
-     the one that did not so easy to miss. */
-  const qty = (n) => {
-    const a = Math.abs(n);
-    if (a >= 1e9) return (n / 1e9).toFixed(2) + "B";
-    if (a >= 1e6) return (n / 1e6).toFixed(2) + "M";
-    if (a >= 1e3) return (n / 1e3).toFixed(2) + "K";
-    return n.toFixed(2);
-  };
-  /* MONEY at chart scale. This is a DIFFERENT rule from qty() above and must match a different
-     server function — src/lib/chart.ts `compact`, which draws the heatmap legend — so the
-     legend and the tooltip over it agree about the same dollars.
-
-     It used to be `"$" + qty(n)`, i.e. the token-quantity rule with a dollar sign glued on,
-     which made one client formatter answer to two different server ones. It could not match
-     both, and it matched neither: the legend printed "≥ $29.6M" while the tooltip over the same
-     cell printed "$29.65M". Two renderings of one number, a pixel apart. */
-  const compactUsd = (n) => {
-    const a = Math.abs(n);
-    if (a >= 1e9) return "$" + (n / 1e9).toFixed(2) + "B";
-    if (a >= 1e6) return "$" + (n / 1e6).toFixed(1) + "M";
-    if (a >= 1e3) return "$" + Math.round(n / 1e3) + "K";
-    return "$" + Math.round(n);
-  };
+  /* nf, qty and compactUsd ALL CAME FROM public/shared.js NOW. They were three separate
+     implementations of rules the server also implements, kept in step by a magnitude sweep in
+     scripts/checks.mjs — and two of them had already drifted in production before that sweep
+     existed. The sweep stays as a guard against a fourth copy appearing; it no longer has two
+     implementations to compare, because there are not two. */
   const stamp = (t, withTime) => {
     const d = new Date(t);
     return `${d.getUTCDate()} ${MON[d.getUTCMonth()]} ${d.getUTCFullYear()}` +
@@ -203,9 +191,9 @@
         `<span>Low</span><b>$${nf(a[4], dp)}</b>` +
         `<span>Close</span><b>$${nf(a[5], dp)}</b>` +
         `<span>Volume</span><b>${qty(a[6])} ${unit}</b>` +
-        (Number.isFinite(apr) ? `<span>Funding</span><b class="${apr >= 0 ? "pays-l" : "pays-s"}">${(apr * 100).toFixed(2)}% APR</b>` : "") +
+        (Number.isFinite(apr) ? `<span>Funding</span><b class="${paysClass(apr)}">${pct(apr)} APR</b>` : "") +
         `</div><div class="tip__f">${up ? "▲" : "▼"} ${nf(Math.abs((a[5] - a[2]) / (a[2] || 1)) * 100, 2)}% on the bar` +
-        (Number.isFinite(apr) ? ` · ${apr >= 0 ? "longs paying shorts" : "shorts paying longs"}` : "") + `</div>`,
+        (Number.isFinite(apr) ? ` · ${paysLabel(apr)}` : "") + `</div>`,
         cx, cy, touch,
       );
     });
@@ -346,7 +334,7 @@
           `<td class="num">${money(q[2])}</td><td class="num">${money(q[3])}</td>` +
           `<td class="num">${money(q[4])}</td><td class="num">${money(q[5])}</td>` +
           `<td class="num">${qty(q[6])}</td>` +
-          `<td class="num ${f ? (q[7] >= 0 ? "pays-l" : "pays-s") : "faint"}">${f ? (q[7] * 100).toFixed(2) + "%" : "—"}</td>` +
+          `<td class="num ${f ? paysClass(q[7]) : "faint"}">${f ? pct(q[7]) : "—"}</td>` +
           "</tr>";
       }).join("");
       table.querySelector("[data-tflabel]").textContent = label;
@@ -449,12 +437,9 @@
      attribute every tick, because the live layer rewrites them when it pulls. */
   const clocks = [...document.querySelectorAll("[data-fresh]")];
   if (clocks.length) {
-    const say = (m) =>
-      m === 0 ? "just now"
-      : m === 1 ? "1 min ago"
-      : m < 60 ? `${m} min ago`
-      : m < 48 * 60 ? `${Math.round(m / 60)} h ago`
-      : `${Math.round(m / 1440)} d ago`;
+    /* The ladder is ageWords() in public/shared.js — the same function the server renders with.
+       It was a second implementation here, and the split only appeared when the data was old. */
+    const say = ageWords;
     const tick = () => {
       for (const el of clocks) {
         const m = Math.max(0, Math.round((Date.now() - +el.dataset.fresh) / 60000));
@@ -470,23 +455,15 @@
   if (liveEls.length) {
     const dpOf = (el) => +(el.dataset.dp || 2);
     const money = (v, dp) => "$" + nf(v, dp);
-    const pctOf = (v) => (v * 100).toFixed(2) + "%";
     let last = {};
 
-    /* SPOT LEFT THE LIVE FEED, AND MARK HAD TO STOP WITH IT ON THE PAGES THAT PRINT BOTH.
-       /api/live.json no longer carries Coinbase spot — see the note in that file for why. The
-       three spot-derived kinds below simply stop repainting, which is the intended cost. What
-       is NOT acceptable is the second-order effect: `mark` comes from Hyperliquid and is still
-       served, so without this it would keep moving beside a frozen spot, and the `basis`
-       printed between them would be the gap between a live number and a stale one. That is
-       three figures on two clocks presented as one moment — the exact defect the comment forty
-       lines below records fixing, arriving from the other direction.
-       So: any symbol with a spot-derived cell on this page has its mark frozen too, for as long
-       as the payload carries no spot. Nothing here is conditional on a build flag or a version;
-       it keys off what the response actually contains, so restoring spot server-side restores
-       every one of these with no client change. */
-    const SPOT_KINDS = new Set(["last", "chg", "basis"]);
-    const spotSyms = new Set(liveEls.filter((el) => SPOT_KINDS.has(el.dataset.spot)).map((el) => el.dataset.sym));
+    /* THE SPOT FREEZE MACHINERY IS GONE WITH THE SPOT BRANCHES. It suppressed `mark` on any page
+       carrying a spot-derived cell, so that a live mark could not sit beside a pinned spot with a
+       basis between them. That was right while the payload could carry spot. It became a trap the
+       moment /coins was re-based onto the perpetual and kept the old attribute names: every coin
+       page still declared spot cells, nothing served spot, so the guard fired permanently and
+       froze the whole overlay — price, change, mark and the page clock — on the ten pages it was
+       supposed to protect. No page emits a spot kind now, and none can: they are not handled. */
 
     /* THE CHART'S PRICE MARKER MOVES TOO.
        It used to show the last CANDLE close — up to two hours old, because the candle feed is
@@ -523,43 +500,21 @@
     };
 
     const paint = (d) => {
-      /* `d.spot` is ABSENT, not empty, in the current payload. `d.spot[sym]` threw a TypeError
-         on the first render after it was removed and took the whole overlay down with it —
-         including the APR repaint, which has nothing to do with spot. Read defensively. */
-      const spot = d.spot ?? {};
-      const spotServed = Object.keys(spot).length > 0;
-      const frozen = (sym) => !spotServed && spotSyms.has(sym);
       for (const el of liveEls) {
         const sym = el.dataset.sym;
-        const s = spot[sym];
-        const mk = frozen(sym) ? undefined : d.mark[sym];
+        const mk = d.mark[sym];
         const kind = el.dataset.spot;
         let next = null;
-        if (kind === "last" && s) next = money(s.last, dpOf(el));
-        else if (kind === "mark" && Number.isFinite(mk)) next = money(mk, dpOf(el));
-        else if (kind === "chg" && s && s.open24h > 0) {
-          const c = s.last / s.open24h - 1;
-          next = `${c >= 0 ? "▲" : "▼"} ${(Math.abs(c) * 100).toFixed(2)}%`;
-        } else if (kind === "basis" && s && Number.isFinite(mk) && s.last > 0) {
-          /* THE UNIT IS THE SERVER'S TO DECIDE, and it says so in data-unit.
-             This used to read `el.classList.contains("card__value")` and append " bps" only
-             then — a guess about presentation from a layout class. Three call-sites render
-             basis; two carry that class and one does not, so on every contract page the hero
-             read "+7.6 bps" at first byte and became a bare "+7.6" about 300ms later, beside a
-             label saying only "Basis". Nothing threw, and the unit was gone from the number
-             this page exists to explain. A class name is a styling decision; it must not be
-             load-bearing for what a number MEANS. */
-          const b = (mk / s.last - 1) * 1e4;
-          next = `${b >= 0 ? "+" : ""}${b.toFixed(1)}${el.dataset.unit ?? ""}`;
-        } else if (kind === "apr") {
+        if (kind === "mark" && Number.isFinite(mk)) next = money(mk, dpOf(el));
+        else if (kind === "apr") {
           const a = d.apr[sym] && d.apr[sym][el.dataset.venue];
           if (Number.isFinite(a)) {
-            next = pctOf(a);
+            next = pct(a);
             /* Colour on this site means the DIRECTION OF A FUNDING PAYMENT and nothing else,
                so when the sign flips the class has to flip with the number. Leaving it would
                print a positive rate in the colour that means shorts are paying. */
-            el.classList.toggle("pays-l", a >= 0);
-            el.classList.toggle("pays-s", a < 0);
+            el.classList.toggle("pays-l", paysClass(a) === "pays-l");
+            el.classList.toggle("pays-s", paysClass(a) === "pays-s");
           }
         } else if (kind === "carry" || kind === "dir" || kind === "spread") {
           /* EVERYTHING DERIVED FROM A REPAINTED RATE MUST BE REPAINTED WITH IT.
@@ -576,27 +531,27 @@
           const vs = d.apr[sym];
           if (vs) {
             if (kind === "spread") {
-              const xs = Object.values(vs).filter(Number.isFinite);
-              if (xs.length > 1) next = pctOf(Math.max(...xs) - Math.min(...xs));
+              const xs = Object.values(vs);
+              const sp = spreadOf(xs);
+              if (sp !== null) next = pct(sp);
             } else {
               const a = vs[el.dataset.venue];
               if (Number.isFinite(a)) {
                 if (kind === "dir") {
                   next = a >= 0 ? (el.dataset.pay ?? "longs pay") : (el.dataset.recv ?? "longs receive");
-                  el.classList.toggle("pays-l", a >= 0);
-                  el.classList.toggle("pays-s", a < 0);
+                  el.classList.toggle("pays-l", paysClass(a) === "pays-l");
+                  el.classList.toggle("pays-s", paysClass(a) === "pays-s");
                 } else {
                   const notional = +el.dataset.notional || 10000;
                   const days = +el.dataset.days || 7;
-                  const v = Math.abs(a) * notional * (days / 365);
+                  const v = Math.abs(carryCost(notional, a, days));
                   next = "$" + v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                 }
               }
             }
           }
         } else if (kind === "chgmark" && Number.isFinite(mk) && +el.dataset.prev > 0) {
-          const c = mk / +el.dataset.prev - 1;
-          next = `${c >= 0 ? "▲" : "▼"} ${(Math.abs(c) * 100).toFixed(2)}%`;
+          next = changeWords(mk / +el.dataset.prev - 1);
         }
         if (next === null || el.textContent === next) continue;
         const key = kind + sym + (el.dataset.venue || "");
@@ -608,23 +563,19 @@
           setTimeout(() => el.removeAttribute("data-moved"), 700);
         }
       }
-      for (const sym in spot) moveMark(sym, "spot", spot[sym].last);
       /* Same rule for the picture as for the numbers: a marker that tracks the mark while the
          spot marker beside it is pinned to page load would put two "now"s on one chart. */
-      for (const sym in d.mark) if (!frozen(sym)) moveMark(sym, "mark", d.mark[sym]);
+      for (const sym in d.mark) moveMark(sym, "mark", d.mark[sym]);
 
       /* Each figure carries its own clock. The page-wide pill tracks the fastest thing on the
          page, and anything slower prints its own age beside it — a single timestamp would be
          true of some numbers and a lie about the rest. */
-      /* AND THE PAGE-WIDE CLOCK IS LEFT ALONE WHERE SPOT IS SHOWN AND NOT REFRESHED.
-         The server renders that pill from oldestStamp(...) — the age of the STALEST figure on
-         the page, deliberately — and `at` in the payload is the newest. Repainting it here
-         while the spot price is pinned to page load would advance the one label a reader uses
-         to decide whether to trust the numbers, on behalf of a figure that is genuinely ageing.
-         Left alone it counts up, which is the truth. */
-      const spotShownAndStale = spotSyms.size > 0 && !spotServed;
+      /* THE PAGE-WIDE CLOCK ADVANCES AGAIN. It was suppressed on any page showing a spot cell,
+         so that a pill would not claim freshness for a price pinned at page load. With no spot
+         cells left anywhere, that guard only ever fired on the coin pages it was meant to
+         protect — freezing their clock permanently. Every figure the overlay repaints is now
+         from one feed on one tick, so the clock is simply true. */
       document.querySelectorAll("[data-clock]").forEach((el) => {
-        if (spotShownAndStale && el.dataset.clock === "at") return;
         const at = d[el.dataset.clock];
         if (at) { el.dataset.fresh = String(at); el.setAttribute("datetime", new Date(at).toISOString()); }
       });

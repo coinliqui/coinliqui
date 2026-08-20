@@ -45,6 +45,22 @@ const ACCEPT = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif
    The only defence is that it fails LOUDLY and uniformly, which this did. */
 const EXPECTED_TFS = ["15m", "30m", "1h", "4h", "12h", "1d", "1w", "1m"];
 const NOMINAL_MS = { "15m": 9e5, "30m": 1.8e6, "1h": 3.6e6, "4h": 1.44e7, "12h": 4.32e7, "1d": 8.64e7, "1w": 6.048e8, "1m": 2.592e9 };
+/* HOW OFTEN THE SERIES BEHIND EACH TIMEFRAME IS ACTUALLY REFETCHED, from worker/ingest.ts:
+   M15_REFRESH_HOURS and HOURLY_REFRESH_HOURS are 2, CANDLE_REFRESH_HOURS is 12.
+
+   THE STALENESS BOUND HAS TO INCLUDE THIS AND DID NOT. It was nominal + 3h, which held while the
+   coin pages drew Coinbase candles on a 2-hour sweep, and failed 46 renders the moment they were
+   re-based onto Hyperliquid's 12-hour daily sweep — the newest daily bar opened 28.7h ago against
+   a 27h limit. Measured rather than assumed: at 04:40 UTC the series had last been written 722
+   minutes earlier, which was before the current day's bar existed upstream. That is the pipeline
+   working exactly as designed.
+
+   A bar cannot be newer than the last sweep, and the last sweep can be a full interval old, so
+   the honest ceiling is bar duration + refresh interval + slack. Writing it as a guess would have
+   meant relaxing a threshold until the red went away; writing it from the ingest's own constants
+   means it moves when the cadence moves and not otherwise. */
+const REFRESH_MS = { "15m": 2 * 3.6e6, "30m": 2 * 3.6e6, "1h": 2 * 3.6e6, "4h": 2 * 3.6e6, "12h": 2 * 3.6e6, "1d": 12 * 3.6e6, "1w": 12 * 3.6e6, "1m": 12 * 3.6e6 };
+const SLACK_MS = 3.6e6;
 const DEFAULT_TF = "1d";        // what an unparseable timeframe must resolve to
 
 let failures = 0;
@@ -143,9 +159,11 @@ export function chartFaults(p, wantTf, now = Date.now()) {
 
   const ts = p.points.map((q) => q[T]);
   if (!ts.every((v, i) => i === 0 || v > ts[i - 1])) f.push("timestamps are not strictly increasing — bars are out of order or duplicated");
-  const nominal = NOMINAL_MS[p.active] ?? NOMINAL_MS[wantTf];
+  const tf = p.active ?? wantTf;
+  const nominal = NOMINAL_MS[tf] ?? NOMINAL_MS[wantTf];
+  const limit = nominal + (REFRESH_MS[tf] ?? 2 * 3.6e6) + SLACK_MS;
   const age = now - ts[ts.length - 1];
-  if (age > nominal + 3 * 3.6e6) f.push(`newest bar opened ${(age / 3.6e6).toFixed(1)}h ago — stale for a ${p.active} chart`);
+  if (age > limit) f.push(`newest bar opened ${(age / 3.6e6).toFixed(1)}h ago — over the ${(limit / 3.6e6).toFixed(0)}h ceiling for a ${tf} chart (${(nominal / 3.6e6).toFixed(0)}h bar + ${((REFRESH_MS[tf] ?? 7.2e6) / 3.6e6).toFixed(0)}h sweep + 1h)`);
   if (age < -60_000) f.push(`newest bar is ${(-age / 6e4).toFixed(0)} min in the future`);
 
   const xs = p.points.map((q) => q[0]);
@@ -223,7 +241,11 @@ if (BLIND) {
     ["data-axx disagrees with the plot box", (() => { const c = clone(clean); c.axx = 1164; return c; })(), /disagrees with the plot box/],
     ["no axis range", (() => { const c = clone(clean); c.prange = null; return c; })(), /declares no price range/],
     ["bars out of order", (() => { const c = clone(clean); const t = c.points[3][1]; c.points[3][1] = c.points[9][1]; c.points[9][1] = t; return c; })(), /not strictly increasing/],
-    ["a stale newest bar", (() => { const c = clone(clean); c.points.forEach((q) => { q[1] -= 9 * 3.6e6; }); return c; })(), /stale for a 1h chart/],
+    /* 9h was enough when the limit was nominal+3h. With the sweep interval in the ceiling a 1h
+       chart tolerates 1+2+1 = 4h, so the fixture has to clear that and does — but it is written
+       relative to the limit rather than as a magic number, so relaxing the ceiling cannot
+       silently relax the case with it. */
+    ["a stale newest bar", (() => { const c = clone(clean); c.points.forEach((q) => { q[1] -= 9 * 3.6e6; }); return c; })(), /over the 4h ceiling for a 1h chart/],
     ["a bar in the future", (() => { const c = clone(clean); c.points[c.points.length - 1][1] = NOW + 2 * 3.6e6; return c; })(), /in the future/],
     ["x coordinates not increasing", (() => { const c = clone(clean); c.points[7][0] = 5; return c; })(), /x coordinates are not increasing/],
     ["points outside the plot box", (() => { const c = clone(clean); c.points[0][0] = -50; return c; })(), /outside the plot box/],

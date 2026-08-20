@@ -429,44 +429,56 @@ const LADDER = [
   1e9, 1_050_000_000, 2_409_939_735,
 ];
 
-/** Pull a `const NAME = (…) => {…};` or `const NAME = (…) => expr;` body out of a source file. */
-function extractFn(src, name) {
-  const start = src.indexOf(`const ${name} = (`);
-  if (start < 0) throw new Error(`${name} not found in interact.js`);
-  // Walk from the arrow to the end of the function, balancing braces or stopping at the
-  // statement's semicolon for expression bodies.
-  const arrow = src.indexOf("=>", start);
-  let i = src.indexOf("{", arrow);
-  const semi = src.indexOf(";", arrow);
-  if (i < 0 || (semi >= 0 && semi < i)) return src.slice(start, semi + 1);
-  let depth = 0;
-  for (; i < src.length; i++) {
-    if (src[i] === "{") depth++;
-    else if (src[i] === "}" && --depth === 0) return src.slice(start, i + 1) + ";";
-  }
-  throw new Error(`${name}: unbalanced braces`);
-}
+/**
+ * ONE RULE, ONE IMPLEMENTATION — CHECKED BY COUNTING, NOT BY COMPARING.
+ *
+ * THIS REPLACED formatterDrift, AND THE REASON IT REPLACED IT IS THE FINDING. That check took
+ * public/interact.js and a `SERVER_FORMATTERS` object in scripts/smoke.mjs and swept a magnitude
+ * ladder through both. It worked — it caught the toFixed(1)/toFixed(2) split that rewrote 200
+ * volume cells on a click. But SERVER_FORMATTERS was a hand-written copy of the rules living in
+ * the test harness, so the check compared the client against a FOURTH implementation rather than
+ * against the server's. Three copies were being kept in step by comparing two of them to a
+ * fourth.
+ *
+ * Comparison is the wrong tool for this shape. Five defects on this project have been one fact
+ * implemented twice and evaluated at different moments — the quantity formatter, compactUsd, the
+ * SQL-versus-JS gapMin rounding, the age ladder in three places, and the crosshair saying "longs
+ * paying shorts" where every other surface said "longs pay shorts". Each was fixed by aligning
+ * the copies, and aligning copies is how you get the next one.
+ *
+ * So the rules moved to public/shared.js, which the Astro build, the esbuild worker bundle and
+ * the browser all read as the same bytes, and this asserts the property that keeps it true:
+ * each named rule is DEFINED exactly once in the repository. A re-export is not a definition; a
+ * second `function usd(` or `const pct = (` anywhere is.
+ *
+ * Deliberately not a general duplicate-code detector. It is a named list, because the value is
+ * in the naming: each entry is a rule that has already drifted or that renders on both sides of
+ * hydration, and adding to the list is a decision somebody makes on purpose.
+ */
+const SHARED_RULES = ["paysClass", "paysLabel", "paysArrow", "carryCost", "aprSpread", "pct",
+                      "changeWords", "ageWords", "minutesSince", "nf", "qty", "compact", "usd"];
 
-export function formatterDrift(interactSrc, serverImpls) {
+export function duplicateRuleImplementations(sources) {
   const out = [];
-  for (const [name, serverFn] of Object.entries(serverImpls)) {
-    let clientFn;
-    try {
-      // eslint-disable-next-line no-new-func
-      clientFn = new Function(`${extractFn(interactSrc, name)} return ${name};`)();
-    } catch (e) {
-      out.push(`${name}: could not evaluate the client implementation — ${e.message}`);
-      continue;
+  for (const rule of SHARED_RULES) {
+    const defs = [];
+    for (const [file, src] of sources) {
+      /* A re-export names the symbol without defining it, and is the whole point of the design —
+         funding.ts and chart.ts both do it so callers keep their import paths. */
+      const body = src.replace(/export\s*\{[^}]*\}\s*from\s*["'][^"']+["'];?/g, "");
+      const patterns = [
+        new RegExp(`\\bfunction\\s+${rule}\\s*\\(`),
+        new RegExp(`\\bconst\\s+${rule}\\s*[:=][^=]*[=(]`),
+        new RegExp(`\\blet\\s+${rule}\\s*=`),
+      ];
+      if (patterns.some((re) => re.test(body))) defs.push(file);
     }
-    for (const v of LADDER) {
-      for (const n of [v, -v]) {
-        const a = serverFn(n);
-        const b = clientFn(n);
-        if (a !== b) {
-          out.push(`${name}(${n}): server "${a}" vs client "${b}"`);
-          break;
-        }
-      }
+    if (defs.length > 1) {
+      out.push(`${rule} is implemented ${defs.length} times — ${defs.join(", ")}. One fact, one implementation; see public/shared.js`);
+    } else if (defs.length === 0) {
+      /* A rule that vanished is as broken as a rule that doubled, and it would otherwise read as
+         a pass. This check must not be able to report green by looking at nothing. */
+      out.push(`${rule} is not defined anywhere — the shared source has lost a rule this check is meant to guard`);
     }
   }
   return out;

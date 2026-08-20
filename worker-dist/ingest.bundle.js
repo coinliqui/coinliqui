@@ -473,6 +473,50 @@ function feedFromEvents(events, since, now, hours) {
   return { status: "ready", rows: rows.slice(0, 25), since, total: rows.length };
 }
 
+// src/data/terms-baseline.json
+var terms_baseline_default = {
+  note: "What a human last read, and when. See scripts/terms-watch.mjs for why this is a clock rather than a fetcher. The weekly report surfaces the oldest read so the counter is a number the owner sees rather than a file they have to remember to open.",
+  documents: [
+    {
+      id: "hyperliquid-tou",
+      what: "Hyperliquid Terms of Use \u2014 the document the entire site now depends on",
+      url: "https://app.hyperliquid.xyz/terms",
+      lastUpdatedOnDocument: "2026-06-15",
+      readAt: "2026-08-19",
+      readHow: "browser; the page is a JS application and a plain fetch returns only the shell",
+      finding: "Scoped by its own first sentence to the Interface at app.hyperliquid.xyz. Binds on accessing and using that Interface. Twelve sections, none of them IP, data or licence. The words API, redistribute, republish and scrape do not appear. Section 1.1: 'The Interface is not the exclusive means of accessing Hyperliquid.'",
+      watchFor: "any API-scoped or data-scoped instrument; any IP or database-right clause; any change to the first sentence's definition of Interface; any AI/ML clause",
+      reviewEveryDays: 30,
+      intervalReason: "THIRTY DAYS, AND THE INTERVAL IS SET BY STAKES RATHER THAN BY OBSERVED CHURN. This document is the entire legal basis for every figure the site publishes; if it acquires an API-scoped or data-scoped clause, nothing breaks, nothing looks wrong, and the site is operating with no basis at all until someone notices. The interval is the exposure window, so it is the one that should be short. Observed churn is moderate \u2014 the copy read on 2026-08-19 was dated 2026-06-15, about two months old."
+    },
+    {
+      id: "coinbase-market-data",
+      what: "Coinbase Market Data Terms of Use \u2014 the reason the spot layer was removed",
+      url: "https://www.coinbase.com/legal/market_data",
+      lastUpdatedOnDocument: "2026-08-07",
+      readAt: "2026-08-19",
+      readHow: "browser; three plain fetches returned 403 and were wrongly recorded as unreadable",
+      finding: "Binds on access alone. Licence limited to personal or research purposes and not for an application intended for end users. Forbids redistributing, displaying or disseminating the data or any Derived Works to third parties outside your organisation. Separate AI/ML training prohibition.",
+      watchFor: "any relaxation that would permit third-party display, which would reopen the spot layer",
+      reviewEveryDays: 90,
+      intervalReason: "NINETY DAYS. Highest observed churn of the three \u2014 the copy read on 2026-08-19 was dated 2026-08-07, twelve days old \u2014 but the lowest stakes now that nothing on the site touches it. The only reason to re-read is to catch a relaxation that would make a spot layer possible again, and being three months late to good news costs nothing."
+    },
+    {
+      id: "bybit-api",
+      what: "Bybit API Terms \u2014 relevant because the site displays Bybit funding rates received via Hyperliquid",
+      url: "https://www.bybit.com/en/help-center/article/Bybit-API-Terms-and-Conditions",
+      lastUpdatedOnDocument: "2026-01-16",
+      readAt: "2026-08-19",
+      readHow: "agent fetch, HTTP 200",
+      finding: "Bars providing access to Bybit's platform to a third party and bars automated retrieval. We make no request to Bybit; the position is that we are not party to it. Untested.",
+      watchFor: "any clause reaching downstream recipients of data republished by others",
+      reviewEveryDays: 90,
+      intervalReason: "NINETY DAYS. Lowest observed churn \u2014 read 2026-08-19, dated 2026-01-16, seven months old. Middling stakes: the site displays Bybit funding rates, but the position is that we are not party to this document at all, and that question is with a lawyer rather than with this clock. A change here would sharpen a question already open rather than open a new one."
+    }
+  ],
+  reviewEveryDaysDefault: 90
+};
+
 // worker/report.ts
 var UA = "GPTBot/1.1 (+https://coinliqui.com/status/indexation; coinliqui-selfcheck)";
 var SLICE = 20;
@@ -489,7 +533,7 @@ var b64url = (bytes) => {
   return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 };
 var b64urlStr = (s) => b64url(new TextEncoder().encode(s));
-var pct = (a, b) => b ? `${(a / b * 100).toFixed(0)}%` : "\u2014";
+var share = (a, b) => b ? `${(a / b * 100).toFixed(0)}%` : "\u2014";
 async function gscToken(rawKey) {
   const key = JSON.parse(rawKey);
   const pem = key.private_key.replace(/-----[^-]+-----/g, "").replace(/\s+/g, "");
@@ -675,7 +719,7 @@ ${origin} \xB7 started ${now.toISOString().slice(0, 16).replace("T", " ")} UTC
         for (const t of st.templates) {
           const q = t.tally ?? { PASS: 0, NEUTRAL: 0, FAIL: 0, other: 0 };
           t.indexed = q.PASS;
-          say(`| \`${t.name}\` | ${q.PASS}/${t.urls.length} (${pct(q.PASS, t.urls.length)}) | ${q.NEUTRAL} | ${q.FAIL} | ${q.other} |`);
+          say(`| \`${t.name}\` | ${q.PASS}/${t.urls.length} (${share(q.PASS, t.urls.length)}) | ${q.NEUTRAL} | ${q.FAIL} | ${q.other} |`);
         }
         const missing = st.templates.flatMap((t) => (t.notIndexed ?? []).map((n2) => [t.name, ...n2]));
         if (missing.length) {
@@ -823,6 +867,30 @@ ${pct1}% of the requests carrying a crawler's name were verified as that crawler
 `);
     say("Setup for this section is in DEPLOY.md.");
   }
+  say("\n## D. Legal reading age\n");
+  {
+    const DAY = 864e5;
+    const rows = terms_baseline_default.documents.map((d) => {
+      const read = Date.parse(`${d.readAt}T00:00:00Z`);
+      const every = Number.isInteger(d.reviewEveryDays) ? d.reviewEveryDays : terms_baseline_default.reviewEveryDaysDefault;
+      const days = Number.isFinite(read) ? Math.floor((Date.now() - read) / DAY) : null;
+      return { id: d.id, days, every, due: days === null || days > every, dated: d.lastUpdatedOnDocument };
+    });
+    const oldest = rows.reduce((a, b) => (b.days ?? 1e9) > (a.days ?? 1e9) ? b : a, rows[0]);
+    const due = rows.filter((r) => r.due);
+    say(`**Oldest reading: ${oldest.days === null ? "never" : `${oldest.days} days`} (${oldest.id}).** ${due.length ? `${due.length} document(s) overdue.` : "Nothing overdue."}
+`);
+    say("| Document | Read | Window | Dated on the document |");
+    say("|---|---:|---:|---|");
+    for (const r of rows) {
+      say(`| ${r.due ? "**" : ""}${r.id}${r.due ? "**" : ""} | ${r.days === null ? "never" : `${r.days}d`} | ${r.every}d | ${r.dated} |`);
+    }
+    if (due.length) {
+      say("\nOpen each in a browser and update `src/data/terms-baseline.json`. A plain fetch is not a");
+      say("reading: both documents that matter here served a shell or a 403 to one, and an automated");
+      say("watcher would have reported no change indefinitely.");
+    }
+  }
   say("\n## What to read first\n");
   say("1. **Section A must be all green.** A URL a crawler cannot fetch is not an indexing problem.");
   say("2. **Indexed share by template, not by page.** One template stuck in *Discovered \u2014 currently");
@@ -831,6 +899,9 @@ ${pct1}% of the requests carrying a crawler's name were verified as that crawler
   say("   average position per template moves earlier and more honestly.");
   say("4. **Crawler fetches are the leading indicator.** If they are zero, nothing downstream can");
   say("   move, and the cause is access rather than quality.");
+  say("5. **Section D is the one nothing else can catch.** Every other failure on this site has a");
+  say("   technical symptom. A change to the terms this site depends on has none \u2014 the pages keep");
+  say("   rendering perfectly \u2014 so the only detector is somebody re-reading the document.");
   const doc = { week: st.week, at: Date.now(), tookMs: Date.now() - st.startedAt, md: st.lines.join("\n") + "\n" };
   await env.SNAPSHOT.put(`report:${st.week}`, JSON.stringify(doc));
   await env.SNAPSHOT.put("report:latest", JSON.stringify(doc));
@@ -886,7 +957,7 @@ async function stepProbe(env) {
 }
 
 // worker/build-stamp.ts
-var WORKER_BUILD = "daadcae9a2de";
+var WORKER_BUILD = "5eacf5634702";
 
 // worker/ingest.ts
 var RETAIN_HOURS = 72;

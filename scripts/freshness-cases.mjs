@@ -88,32 +88,29 @@ check("no bare minute counts above an hour", readableAge(361).includes("minute")
    whole range. Comparing behaviour rather than trusting that two copies were kept in step is the
    same technique checks.mjs formatterDrift uses for numbers.
    ------------------------------------------------------------------------------------------ */
-console.log("\n  the server ladder and the browser ladder are the same ladder");
+console.log("\n  there is no second ladder to compare against, and that is the assertion");
 {
+  /* THIS BLOCK USED TO PARSE say() OUT OF interact.js AND SWEEP A RANGE THROUGH BOTH LADDERS.
+     It failed the gate the moment the ladders were merged — "could not find say() in
+     public/interact.js — this assertion is reading nothing" — which is exactly the message it
+     was written to produce, arriving for the happy reason rather than the sad one.
+
+     A comparison is the right tool while two implementations exist and the wrong tool once they
+     do not: it can only report that two things agree, and the stronger property is that there is
+     only one thing. So this now asserts the singularity directly — interact.js must import the
+     ladder rather than define one — and checks.mjs duplicateRuleImplementations enforces the
+     same rule across the whole repository for every shared function. */
   const js = readFileSync(new URL("../public/interact.js", import.meta.url), "utf8");
-  const m = js.match(/const say = \(m\) =>([\s\S]*?);\n/);
-  if (!m) { bad++; console.log("  FAIL   could not find say() in public/interact.js — this assertion is reading nothing"); }
-  else {
-    const say = new Function("m", `return (${m[1].trim()});`);
-    const sample = [0, 1, 2, 30, 59, 60, 61, 90, 119, 120, 600, 1439, 1440, 2879, 2880, 4321, 7230, 20000, 100000];
-    const drift = sample.filter((n) => say(n) !== ageWords(n));
-    if (drift.length) {
-      bad++;
-      console.log(`  FAIL   ${drift.length} age(s) render differently on the server and in the browser`);
-      for (const n of drift.slice(0, 6)) console.log(`         ${n} min: server "${ageWords(n)}" vs browser "${say(n)}"`);
-    } else console.log(`  ok     ${sample.length} ages, from 0 to ${sample[sample.length - 1]} minutes, render identically`);
-    /* AND THE COMPARISON ITSELF MUST BE ABLE TO FAIL. A drift detector that reports "identical"
-       because it compared nothing is the failure it exists to catch, wearing a green tick. Run it
-       against a ladder that IS wrong — the raw-minutes form the templates actually shipped — and
-       require it to notice. */
-    const rawLadder = (n) => `${n} min ago`;
-    const wouldCatch = sample.filter((n) => rawLadder(n) !== ageWords(n));
-    check("the drift comparison notices a ladder that is wrong", wouldCatch.length > 0, true);
-    check("  ...and it is the raw-minutes form that it notices", wouldCatch.includes(7230), true);
-    /* The defect verbatim: the raw form three templates used before the ladder was applied. */
-    check("7230 minutes is never printed as raw minutes", ageWords(7230), /^5 d ago$/);
-    check("  ...which is what the templates used to send a crawler", `${7230} min ago`, /^7230 min ago$/);
-  }
+  check("interact.js imports the shared source", /from\s*["']\.\/shared\.js|import\(\s*["']\.\/shared\.js/.test(js), true);
+  check("interact.js pulls ageWords out of it", /\bageWords\b/.test(js), true);
+  check("interact.js defines no ladder of its own", /const\s+say\s*=\s*\(m\)\s*=>/.test(js), false);
+  check("  ...and no bare minute rung either", /`\$\{m\} min ago`/.test(js), false);
+  /* The ladder's own boundaries, from the one implementation. */
+  check("59 -> minutes", ageWords(59), /^59 min ago$/);
+  check("60 -> hours", ageWords(60), /^1 h ago$/);
+  check("2879 -> hours", ageWords(2879), /^48 h ago$/);
+  check("2880 -> days", ageWords(2880), /^2 d ago$/);
+  check("7230 -> days, never raw minutes", ageWords(7230), /^5 d ago$/);
 }
 
 console.log(bad ? `\n  ${bad} FAILURE(S)\n` : `\n  the cadence claim holds inside the boundary and stops outside it, on every case\n`);

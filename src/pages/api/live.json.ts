@@ -61,9 +61,15 @@ export const GET: APIRoute = async ({ locals }) => {
      a mark that moves beside a spot that does not is two prices for one asset both looking
      current, which is a defect this codebase has already fixed once.
 
-     TO REVERSE, if Coinbase's Market Data Terms turn out to permit it: restore the getSpot
-     call, the `spot` key, `spotAt`, and the spot entry in `sources`. interact.js needs no
-     change — it already paints spot when the payload carries it and freezes when it does not.
+     THERE IS NO CHEAP REVERSAL ANY MORE, and the note that stood here claiming one was wrong in
+     a way worth recording. It said interact.js "needs no change — it already paints spot when
+     the payload carries it and freezes when it does not". That client-side spot handling has
+     since been deleted, along with the freeze guard that went with it, because keeping it did
+     active harm: the coin pages were re-based onto the perpetual and kept the old `data-spot`
+     attribute names, so the guard fired permanently and froze their entire overlay. Dead code
+     kept for a reversal is not free, and this one cost the ten pages it was meant to protect.
+     Restoring spot would now mean the ingest, the payload, the client branches and the guard —
+     and it would first mean a licence this project has established it does not have.
 
      ATTRIBUTION STAYS IN THE PAYLOAD for what is left. The HTML footer credits our sources and
      reaches nothing that reads JSON, so until `sources` existed the one representation a third
