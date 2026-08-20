@@ -188,11 +188,11 @@ export function unconditionalCadenceClaims(sources) {
     /* Template body only. A claim inside a JS/JSX comment has not reached a reader, and the
        comments in this repo quote the defect they fixed — flagging those would make the check
        fire on its own documentation, which is how a check gets switched off. */
-    const body = src
-      .replace(/^---[\s\S]*?^---/m, "")            // Astro frontmatter
-      .replace(/\{\/\*[\s\S]*?\*\/\}/g, "")      // {/* ... */}
-      .replace(/\/\*[\s\S]*?\*\//g, "")           // /* ... */
-      .replace(/^\s*\/\/.*$/gm, "");               // // ...
+    /* Comments are gone before this sees the file — scripts/lib/source.mjs. This used to carry
+       three replaces of its own, which is the habit that let the same defect land three times
+       in one session. Only the frontmatter strip is this check's own business: it is code, not
+       comment, and a cadence sentence in it has not reached a reader. */
+    const body = src.replace(/^---[\s\S]*?^---/m, "");
     for (const m of body.matchAll(CADENCE)) {
       /* Inside an interpolation the sentence is a value, which is the whole point — freshness()
          decides whether to say it. Walk back to the nearest unbalanced brace to tell. */
@@ -1520,7 +1520,10 @@ export function staleCalculatorFigures(sources) {
       const when = /data-when="([^"]*)"/.exec(m[0])[1];
       for (const i of branch.matchAll(/\{/g)) {
         const rest = branch.slice(i.index);
-        if (/^\{"\s*"\}/.test(rest) || /^\{\/\*/.test(rest)) continue;
+        /* `{" "}` is a spacer and `{/* … *␣/}` is a comment. Since the reader strips comments
+           before this runs, an Astro comment arrives as `{}` — empty braces, which would
+           otherwise read as a figure with no id. All three are absences, not figures. */
+        if (/^\{"\s*"\}/.test(rest) || /^\{\/\*/.test(rest) || /^\{\s*\}/.test(rest)) continue;
         /* What sits between the previous `>` and this `{`. Only whitespace means the
            interpolation is the first child of that tag, so the tag's attributes decide. */
         const before = branch.slice(0, i.index);
@@ -1575,7 +1578,8 @@ export function staleCalculatorFigures(sources) {
  */
 export function controlGroupOverflow(css, sources = []) {
   const out = [];
-  const bare = css.replace(/\/\*[\s\S]*?\*\//g, " ");
+  /* Already stripped by the reader; kept as a local name for what follows. */
+  const bare = css;
   /* Containers whose controls are generated rather than written out one by one. */
   const generated = new Map();
   for (const [file, src] of sources) {
@@ -1593,7 +1597,7 @@ export function controlGroupOverflow(css, sources = []) {
     /* THE RULE MAY BE IN EITHER PLACE. Most live in the layout's stylesheet; a page with its own
        <style> block styles its own containers, and looking only at the layout reported those as
        "no rule in the stylesheet" — an instrument saying it cannot see rather than a finding. */
-    const find = (text) => new RegExp(`(^|[},])\\s*\\.${cls}\\s*\\{([^}]*)\\}`, "m").exec(text.replace(/\/\*[\s\S]*?\*\//g, " "));
+    const find = (text) => new RegExp(`(^|[},])\\s*\\.${cls}\\s*\\{([^}]*)\\}`, "m").exec(text);
     const rule = find(bare) ?? find(own);
     if (!rule) { out.push(`\`.${cls}\` in ${file} renders a variable number of controls and has no rule in either the layout stylesheet or its own page — nothing here can say whether it wraps`); continue; }
     const body = rule[2];

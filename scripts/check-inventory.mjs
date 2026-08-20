@@ -17,6 +17,7 @@
  * while proving nothing, so every entry is required to resolve to a real export.
  */
 import { readFileSync, readdirSync, existsSync } from "node:fs";
+import { readSource } from "./lib/source.mjs";
 import { execFileSync } from "node:child_process";
 
 const SRC = "scripts/checks.mjs";
@@ -35,11 +36,11 @@ const walk = (d) => { for (const e of readdirSync(d, { withFileTypes: true })) {
 } };
 walk("./scripts"); walk("./worker"); walk("./src");
 
-const bodies = new Map(files.map((f) => [f, readFileSync(f, "utf8")]));
+/* COMMENTS ARE ALREADY GONE. readSource strips them — see scripts/lib/source.mjs for why that
+   is a property of reading here rather than two lines every check has to remember. */
+const bodies = new Map(files.map((f) => [f, readSource(f)]));
 const callersOf = (name) => files.filter((f) => {
   const b = bodies.get(f)
-    .replace(/\/\*[\s\S]*?\*\//g, " ")        // block comments are not call sites
-    .replace(/(^|[^:])\/\/.*$/gm, "$1")       // nor are line comments
     /* AND NOR IS AN IMPORT, which is what made this whole check decorative.
        Comments were stripped and imports were not, while scripts/smoke.mjs imports all 34
        checks on a single line. So every check had a "caller" by construction and
@@ -108,7 +109,7 @@ for (const n of dead) console.log(`    ${n}  <-- only its own fixture calls it; 
 const WORKER_EXPORT = /^export (?:async )?(?:function|const) (\w+)/gm;
 const workerDead = [];
 for (const f of files.filter((x) => x.startsWith("./worker/"))) {
-  for (const m of readFileSync(f, "utf8").matchAll(WORKER_EXPORT)) {
+  for (const m of readSource(f).matchAll(WORKER_EXPORT)) {
     const n = m[1];
     const callers = callersOf(n).filter((c) => !f.endsWith(c) && `./${c}` !== f);
     if (!callers.length) workerDead.push([n, f.replace("./", "")]);

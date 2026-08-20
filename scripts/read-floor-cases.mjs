@@ -23,6 +23,7 @@
  */
 import { getCandles, getM15, getHourly, getFunding } from "../src/lib/candles.ts";
 import { TIMEFRAMES, MIN_CHART_BARS, aggregate } from "../src/lib/series.ts";
+import { readSource } from "./lib/source.mjs";
 
 /** A KV that holds exactly what it is given. */
 const kvWith = (entries) => ({
@@ -85,13 +86,11 @@ console.log("\n  the consumers that need depth still refuse what is too short");
 
 /* AND THE FLOOR MUST NOT COME BACK. A depth policy in the reader is invisible to every one of
    the consumers above, so it cannot be argued with — it can only be discovered. */
-const raw = await (await import("node:fs/promises")).readFile("src/lib/candles.ts", "utf8");
 /* COMMENTS ARE NOT CODE, and the first version of this guard did not know that: it read the
    paragraph above quoting `series.length > 40` — the consumer's rule, named as the reason this
-   file holds none — and reported the file had re-grown a floor. The same mistake check-inventory
-   made and fixed. Strip them first, and look only at the four readers rather than the whole
-   file, so an internal that legitimately counts something is not mistaken for a policy. */
-const src = raw.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/(^|[^:])\/\/.*$/gm, "$1");
+   file holds none — and reported the file had re-grown a floor. That was the third time in one
+   session, so stripping stopped being each check's job: readSource() is the reader now. */
+const src = readSource("src/lib/candles.ts");
 const readers = [...src.matchAll(/export async function (getCandles|getM15|getHourly|getFunding)\b([\s\S]*?)\n}/g)];
 if (readers.length !== 4) { bad++; console.log(`\n  FAIL  found ${readers.length} readers, expected 4 — this guard is looking at the wrong thing`); }
 const floors = readers.flatMap(([, name, body]) =>

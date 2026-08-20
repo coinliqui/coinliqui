@@ -11,7 +11,7 @@
    changes whenever either does, and passing it along keeps the two halves of one deploy
    together. */
 const __v = new URL(import.meta.url).searchParams.get("v");
-const { paysClass, paysLabel, carryCost, spreadOf, pct, changeWords, ageWords, nf, qty, compact: compactUsd, usd } =
+const { paysClass, paysLabel, carryCost, spreadOf, pct, changeWords, ageWords, nf, qty, compact: compactUsd, usd, visiblePanel } =
   await import("./shared.js" + (__v ? `?v=${__v}` : ""));
 
 /* =========================================================================================
@@ -381,10 +381,31 @@ const { paysClass, paysLabel, carryCost, spreadOf, pct, changeWords, ageWords, n
       return job;
     };
 
+    /* WHICH CLICK IS STILL THE READER'S. Every click starts a fetch and every fetch calls
+       apply() when it lands, but `tf` and `mode` are shared by the whole group — so a fetch
+       that resolves after a LATER click applied the later value. See the guard on `seq` below;
+       this counter is what the two of them agree on. */
+    let seq = 0;
+
     const apply = (label) => {
       const key = hasModes && mode ? `${tf}.${mode}` : tf;
       panels = document.querySelectorAll(`[data-tfpanel][data-group="${id}"]`);
-      panels.forEach((p) => p.toggleAttribute("data-on", p.dataset.tfpanel === key));
+      /* NEVER LEAVE THE READER WITH NO CHART.
+         This was `panels.forEach(p => p.toggleAttribute("data-on", p.dataset.tfpanel === key))`,
+         which hides everything when no panel matches — and no panel matches whenever apply()
+         runs for a timeframe whose fetch has not landed yet. Measured on the live site:
+         click 4H then 1W in the same task on a cold page and the 4H response calls apply() with
+         `tf` already advanced to "1w", so every panel is hidden until the 1W response arrives.
+         Blank for 13ms when both are fast; 4 SECONDS with 1.5s of latency on the second.
+         That is the reported symptom exactly — the chart disappears rather than the new one
+         appearing — and a serial sweep cannot produce it, because it waits for each panel
+         before clicking the next.
+         The guard on `seq` below is the fix for the cause. This is the invariant: a switch may
+         show the wrong chart for a moment, never no chart. Keeping the outgoing panel up is
+         also the better thing to look at while the next one loads. */
+      const shownNow = [...panels].find((p) => p.hasAttribute("data-on"))?.dataset.tfpanel ?? null;
+      const show = visiblePanel([...panels].map((p) => p.dataset.tfpanel), key, shownNow);
+      if (show) panels.forEach((p) => p.toggleAttribute("data-on", p.dataset.tfpanel === show));
       group.querySelectorAll("[data-tf]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.tf === tf)));
       group.querySelectorAll("[data-mode]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.mode === mode)));
       const carryTf = group.querySelector('[data-tfcarry="tf"]');
@@ -436,6 +457,11 @@ const { paysClass, paysLabel, carryCost, spreadOf, pct, changeWords, ageWords, n
         e.preventDefault();
         if (btn.dataset.tf) tf = btn.dataset.tf; else mode = btn.dataset.mode;
         const label = btn.dataset.tf ? btn.textContent.trim() : null;
+        /* ONLY THE LATEST CLICK MAY APPLY. Two clicks in flight means two fetches, and the
+           first to land is usually the first requested — which is no longer what the reader
+           asked for. Applying it toggled panels against a `tf` that had already moved on.
+           Discarding the stale response is the fix; the invariant in apply() is the net. */
+        const mine = ++seq;
         /* ACKNOWLEDGE THE PRESS BEFORE THE PANEL ARRIVES. aria-pressed was only moved inside
            apply(), which runs after the fetch resolves — so on anything slower than a warm
            prefetch the button stayed unpressed and the old chart stayed on screen, with no
@@ -448,7 +474,12 @@ const { paysClass, paysLabel, carryCost, spreadOf, pct, changeWords, ageWords, n
         group.setAttribute("aria-busy", "true");
         /* If the panel is already here — prefetched, or seen before — this resolves in the same
            task and the switch is indistinguishable from the old class toggle. */
-        fetchPanel(tf, mode).then(() => { group.removeAttribute("aria-busy"); apply(label); }).catch(() => {
+        fetchPanel(tf, mode).then(() => {
+          if (mine !== seq) return;                 // a later click owns the group now
+          group.removeAttribute("aria-busy");
+          apply(label);
+        }).catch(() => {
+          if (mine !== seq) return;
           group.removeAttribute("aria-busy");
           /* The server render is the fallback that always works: navigate the way the form
              would have, so a failed fetch degrades to the no-JS path rather than to nothing. */

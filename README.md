@@ -241,7 +241,22 @@ The same shape, found by looking for it:
   reader-facing behaviour is right, and distinguishing them needs a channel the read path does
   not have. Named here so it is a known limit rather than a surprise.
 
-**The question to ask of any fix: did this make the failure impossible, or just unobservable?**
+### The standing question at the end of every fix
+
+**Did this make the failure impossible, or just unobservable?**
+
+Not only when going looking for the pattern — every time. The two are indistinguishable from
+inside the gate, and the second one is worse than no fix, because it also removes the evidence.
+
+A fix passes when you can say which:
+
+- what state used to produce the failure
+- what now happens in that state instead
+- what would go red if the fix were reverted
+
+If the third has no answer, the failure was made unobservable. The reverting is not rhetorical —
+`degraded.mjs` found its own blind spot only when the guard it tests was actually deleted, and
+`read-floor-cases.mjs` only counts because putting the 24 back turns it red.
 
 ## Before wiring a check in: what does it fire on today?
 

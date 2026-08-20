@@ -177,3 +177,27 @@ export function stopVerdict(side, entry, stop, liquidationPrice) {
   if (!adverse) return "wrongside";
   return (long ? liquidationPrice > stop : liquidationPrice < stop) ? "liq" : "stop";
 }
+
+/**
+ * WHICH PANEL A TIMEFRAME GROUP SHOULD SHOW — and the answer is never "none".
+ *
+ * public/interact.js toggled `data-on` with
+ * `panels.forEach(p => p.toggleAttribute("data-on", p.dataset.tfpanel === key))`, which hides
+ * every panel when none matches the key. None matches whenever apply() runs for a timeframe
+ * whose fetch has not landed, and that happens on any two clicks in flight at once: `tf` is
+ * shared by the group, so the first response applies the SECOND click's key.
+ *
+ * Measured on the live site — click 4H then 1W in one task on a cold page: blank for 13ms with
+ * both fetches fast, and 4 SECONDS with 1.5s of latency on the second. The reported symptom
+ * exactly: the chart disappears instead of the new one appearing. A serial sweep cannot produce
+ * it, because it waits for each panel before clicking the next.
+ *
+ * The decision lives here, away from the DOM, so it can be exercised without a browser —
+ * scripts/panel-cases.mjs. Showing the outgoing chart a moment longer is also simply better
+ * than showing a hole while the next one loads.
+ */
+export function visiblePanel(keys, want, current) {
+  if (keys.includes(want)) return want;
+  if (current && keys.includes(current)) return current;
+  return keys.length ? keys[0] : null;
+}

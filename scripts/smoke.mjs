@@ -35,6 +35,9 @@
 import { spawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { readdirSync, readFileSync } from "node:fs";
+/* Source is read as CODE by default — see scripts/lib/source.mjs. The two checks below that
+   want the prose say so at their call site, with the reason. */
+import { readSource, readRaw } from "./lib/source.mjs";
 import { cssFor, undefinedClasses, undefinedVars, rawEnums, searchIndexGaps, unnamedUpstreams, duplicateRuleImplementations, uncoveredRoutes, unreadableText, chartAgreement, requestedLeverageLabels, inlineScriptSyntax, flipTableColour, colourPalettes, colourLanguageDrift, colourLegend, publishesAPerson, fixtureGaps, staleDerivedCells, basisSelfConsistent, sitemapLastmodHonesty, breadcrumbAgreement, founderAgreement, readmeCounts, botPolicyReasons, contradictoryStates, hiddenFromEveryone, pageWeight, weightFaults, dateModifiedAgreement, phantomInlineElements, malformedAttributes, uncitedPermissionClaims, unconditionalCadenceClaims, staleCalculatorFigures, controlGroupOverflow} from "./checks.mjs";
 
 /* The SERVER side of each duplicated formatter, transcribed from the file that owns it and
@@ -51,7 +54,7 @@ import { cssFor, undefinedClasses, undefinedVars, rawEnums, searchIndexGaps, unn
    bundle and the browser; duplicateRuleImplementations asserts they stay singular. */
 
 /* Read out of the source, never transcribed here — see colourPalettes(). */
-const PALETTE = colourPalettes(readFileSync("src/lib/chart.ts", "utf8"), readFileSync("src/layouts/Base.astro", "utf8"));
+const PALETTE = colourPalettes(readSource("src/lib/chart.ts"), readSource("src/layouts/Base.astro"));
 
 const PORT = 8791;
 const ROUTES = [
@@ -130,7 +133,9 @@ try {
   const walk = (d) => readdirSync(d, { withFileTypes: true }).flatMap((e) =>
     e.isDirectory() ? walk(`${d}/${e.name}`) : e.name.endsWith(".astro") ? [`${d}/${e.name}`] : []);
   const syn = walk("src/pages").concat(["src/layouts/Base.astro"])
-    .flatMap((p) => { try { return inlineScriptSyntax(readFileSync(p, "utf8"), p); } catch { return []; } });
+    /* NOT stripped: this hands the body to new Function(), and a comment is legal input there.
+       Stripping would parse something the browser never sees. */
+    .flatMap((p) => { try { return inlineScriptSyntax(readRaw(p, "the parser must see exactly what the browser will"), p); } catch { return []; } });
   if (syn.length) { failures++; console.log(`\n  FAIL  ${syn.length} inline script(s) do not parse:`); for (const l of syn) console.log(`          ${l}`); }
 
   /* THE TWO PALETTES MUST NOT COLLIDE, checked before a single page renders — a shared hue is
@@ -153,7 +158,7 @@ try {
         } catch { /* not a KV store */ } finally { db.close(); }
         if (keys.length) break;
       }
-      const libs = readdirSync("src/lib").filter((f) => f.endsWith(".ts")).map((f) => [`src/lib/${f}`, readFileSync(`src/lib/${f}`, "utf8")]);
+      const libs = readdirSync("src/lib").filter((f) => f.endsWith(".ts")).map((f) => [`src/lib/${f}`, readSource(`src/lib/${f}`)]);
       const gaps = fixtureGaps(libs, keys);
       if (gaps.length) { failures++; console.log(`\n  FAIL  the warm fixture cannot render ${gaps.length} feature(s):`); for (const g of gaps) console.log(`          ${g}`); }
       else console.log(`\n  ok    the warm fixture covers every KV series the code reads (${keys.length} keys)`);
@@ -165,7 +170,7 @@ try {
 
   /* Source invariant: a cell computed from a live rate must be repainted with it. The overlay
      shipped this defect once and a rendered page cannot reveal a MISSING attribute. */
-  const stale = staleDerivedCells(walkAstro("src/pages").map((f) => [f, readFileSync(f, "utf8")]));
+  const stale = staleDerivedCells(walkAstro("src/pages").map((f) => [f, readSource(f)]));
   if (stale.length) { failures++; console.log(`\n  FAIL  ${stale.length} cell(s) derived from a live rate are never repainted:`); for (const l of stale) console.log(`          ${l}`); }
 
   /* The same shape one mechanism over: a calculator repaints its cards from the form and leaves
@@ -175,13 +180,13 @@ try {
      each one wraps is a fact about the stylesheet. Both are passed in, and components are
      included because a container can be declared in one. */
   const overflow = controlGroupOverflow(
-    readFileSync("src/layouts/Base.astro", "utf8"),
-    [...walkAstro("src/pages"), ...walkAstro("src/components")].map((f) => [f, readFileSync(f, "utf8")]),
+    readSource("src/layouts/Base.astro"),
+    [...walkAstro("src/pages"), ...walkAstro("src/components")].map((f) => [f, readSource(f)]),
   );
   if (overflow.length) { failures++; console.log(`\n  FAIL  ${overflow.length} control group(s) can run off a narrow screen:`); for (const l of overflow) console.log(`          ${l}`); }
   else console.log("  ok            every segmented control group wraps or scrolls rather than leaving the page");
 
-  const frozen = staleCalculatorFigures(walkAstro("src/pages").map((f) => [f, readFileSync(f, "utf8")]));
+  const frozen = staleCalculatorFigures(walkAstro("src/pages").map((f) => [f, readSource(f)]));
   if (frozen.length) { failures++; console.log(`\n  FAIL  ${frozen.length} figure(s) in a verdict never repaint:`); for (const l of frozen) console.log(`          ${l}`); }
   else console.log("  ok            every figure inside a verdict branch is repainted with its cards");
 
@@ -191,14 +196,14 @@ try {
      sentence twice, so this reads the library and the docs as well as the templates. */
   const perm = uncitedPermissionClaims(
     [...walkAstro("src/pages"), ...walkTs("src/lib"), ...walkTs("worker"), "README.md", "DEPLOY.md"]
-      .map((f) => [f, readFileSync(f, "utf8")]));
+      .map((f) => [f, readRaw(f, "the claim this hunts regrew inside a comment — prose is the point")]));
   if (perm.length) { failures++; console.log(`\n  FAIL  ${perm.length} uncited claim(s) about what a third party permits:`); for (const l of perm) console.log(`          ${l}`); }
 
   /* Source invariant, and it exists because the site is single-sourced: every way Hyperliquid can
      fail reaches the reader as quietly stale data, so a sentence promising a cadence is the one
      thing on the page that can be flatly false while everything around it is honest. */
   const cad = unconditionalCadenceClaims(
-    [...walkAstro("src/pages"), "src/layouts/Base.astro"].map((f) => [f, readFileSync(f, "utf8")]));
+    [...walkAstro("src/pages"), "src/layouts/Base.astro"].map((f) => [f, readSource(f)]));
   if (cad.length) { failures++; console.log(`\n  FAIL  ${cad.length} unconditional cadence claim(s):`); for (const l of cad) console.log(`          ${l}`); }
 
   const un = uncoveredRoutes(await readFile(`${dir}/${manifest}`, "utf8"), ROUTES);
@@ -398,7 +403,7 @@ for (const path of ROUTES) {
         e.isDirectory() ? (e.name === "node_modules" ? [] : walkAll(`${d}/${e.name}`))
           : /\.(astro|ts|js)$/.test(e.name) ? [`${d}/${e.name}`] : []);
       const dup = duplicateRuleImplementations(
-        ["src", "public", "worker"].flatMap(walkAll).map((f) => [f, readFileSync(f, "utf8")]));
+        ["src", "public", "worker"].flatMap(walkAll).map((f) => [f, readSource(f)]));
       if (dup.length) {
         bad++;
         console.log(`  FAIL  ${String(dup.length).padStart(4)}         a shared rule is implemented more than once`);
