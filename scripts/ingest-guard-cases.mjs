@@ -114,3 +114,67 @@ if (orphans(FIFTY, scope).length !== 0) { console.log("  MISS  a collapsed tick 
 
 if (bad) { console.error(`\n  ${bad} case(s) wrong`); process.exit(1); }
 console.log("\n  a collapsed tick refuses the write AND keeps the scope, so no live page loses its series");
+
+/* ---------------------------------------------------------------------------------------- *
+ * SHAPES THE UPSTREAM HAS NEVER SENT US.
+ *
+ * info() checks the HTTP status and then trusts the body, and every branch below is reached by
+ * a 200. The floor above catches a response that is EMPTY or SHRUNKEN; none of it looks at a
+ * response that is the right size and the wrong shape.
+ *
+ * Run against the real fetchSnapshot with a stubbed fetch, because a transcription of what the
+ * parser does is a transcription of what somebody thought it did. Two outcomes are acceptable
+ * and one is not: it may return a snapshot that survives every downstream assumption, or it may
+ * throw — worker/ingest.ts catches, records the message on the run row and keeps the previous
+ * snapshot, which is the designed refusal. What it must never do is return a contract that
+ * looks fine and breaks a page.
+ *
+ * The third case is the one that did. A universe entry with no marginTableId publishes a
+ * contract whose table id is `undefined`; String(undefined) is "undefined", which is not a key
+ * in src/data/margin-tables.json, and tierFor() reads table.marginTiers unguarded. That is a
+ * TypeError thrown mid-render — and because Astro streams, it reaches a reader or a crawler as
+ * a 200 with a truncated body, not as a 500. Measured: 0 bytes. pickPerp declines such a
+ * contract now, and this case is what keeps that true.
+ * ---------------------------------------------------------------------------------------- */
+const { fetchSnapshot } = await import("../src/lib/hyperliquid.ts");
+const U = [{ name: "BTC", maxLeverage: 40, szDecimals: 5, marginTableId: 51 }];
+const C = [{ funding: "0.00001", openInterest: "100000", prevDayPx: "100000", dayNtlVlm: "1e9", premium: "0", oraclePx: "100000", markPx: "100000", midPx: "100000" }];
+const P = [["BTC", [["HlPerp", { fundingRate: "0.00001", nextFundingTime: 1, fundingIntervalHours: 1 }]]]];
+const TABLES = JSON.parse(await (await import("node:fs/promises")).readFile("src/data/margin-tables.json", "utf8"));
+
+const shapes = [
+  ["the healthy shape, so the rest mean something", [{ universe: U }, C], P, "one usable contract"],
+  ["ctxs shorter than universe", [{ universe: [...U, { name: "NEW", maxLeverage: 5, szDecimals: 2, marginTableId: 99 }] }, C], P, "one usable contract"],
+  ["a universe entry with no marginTableId", [{ universe: [{ name: "BTC", maxLeverage: 40, szDecimals: 5 }] }, C], P, "no usable contract"],
+  ["markPx is the string n/a", [{ universe: U }, [{ ...C[0], markPx: "n/a" }]], P, "no usable contract"],
+  ["openInterest is null", [{ universe: U }, [{ ...C[0], openInterest: null }]], P, "no usable contract"],
+  ["fundingIntervalHours is 0", [{ universe: U }, C], [["BTC", [["HlPerp", { fundingRate: "0.00001", nextFundingTime: 1, fundingIntervalHours: 0 }]]]], "one usable contract"],
+  ["meta is an object rather than a pair", { universe: U, ctxs: C }, P, "refused"],
+  ["ctxs missing entirely", [{ universe: U }], P, "refused"],
+  ["universe missing", [{}, C], P, "refused"],
+  ["predictedFundings is an object", [{ universe: U }, C], { BTC: [] }, "refused"],
+];
+
+console.log("\n  shapes the upstream has never sent, against the real parser:");
+let sbad = 0;
+const realFetch = globalThis.fetch;
+for (const [name, meta, pred, want] of shapes) {
+  globalThis.fetch = async (_u, o) =>
+    new Response(JSON.stringify(JSON.parse(o.body).type === "metaAndAssetCtxs" ? meta : pred),
+      { status: 200, headers: { "content-type": "application/json" } });
+  let got, detail = "";
+  try {
+    const snap = await fetchSnapshot(["BTC"]);
+    /* USABLE means every downstream assumption holds — which for these pages means a committed
+       tier table, because five templates compute a liquidation price from one. */
+    const usable = snap.perps.filter((p) => Object.prototype.hasOwnProperty.call(TABLES, String(p.marginTableId)));
+    got = usable.length ? "one usable contract" : "no usable contract";
+    detail = `perps=${snap.perps.length} usable=${usable.length}`;
+  } catch (e) { got = "refused"; detail = e.constructor.name; }
+  const ok = got === want;
+  if (!ok) sbad++;
+  console.log(`  ${ok ? "ok   " : "MISS "}  ${got.padEnd(20)} ${name.padEnd(42)} ${detail}`);
+}
+globalThis.fetch = realFetch;
+if (sbad) { console.error(`\n  ${sbad} shape(s) behaved unexpectedly`); process.exit(1); }
+console.log("\n  every unseen shape either yields a contract that survives its pages, or is refused outright");
