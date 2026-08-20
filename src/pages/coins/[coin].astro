@@ -53,38 +53,38 @@ if (!coin || !isLive(coin)) return Astro.rewrite(`/404?symbol=${encodeURICompone
 const snap = await getSnapshot(env?.SNAPSHOT, import.meta.env.DEV);
 if (!snap.available) return coldStart();
 
-const [dayset, hourset, m15set] = await Promise.all([
+/* `live` IS FETCHED WITH THE CANDLES, not after the figures are computed. It used to be awaited
+   forty lines below, which meant `price` and `chg24` were derived from the five-minute snapshot
+   while the one-minute value was fetched, assigned to `markNow`, and then used by nothing at all.
+   The headline price on ten pages was up to five minutes staler than the value already in hand.
+   Introduced when this page was re-based off spot: the old line read `q?.last`, and replacing it
+   with `perp?.markPx` looked right and skipped the faster clock. */
+const [dayset, hourset, m15set, live] = await Promise.all([
   getCandles(env?.SNAPSHOT, coin.symbol, import.meta.env.DEV),
   getHourly(env?.SNAPSHOT, coin.symbol, import.meta.env.DEV),
   getM15(env?.SNAPSHOT, coin.symbol, import.meta.env.DEV),
+  getLive(env?.SNAPSHOT),
 ]);
 const perp = findPerp(snap.perps, coin.symbol);
 
-const price = perp?.markPx ?? NaN;
+/* THE ONE CLOCK THAT MATTERS HERE. `live` is written by the one-minute cron; the snapshot is
+   five-minutely. Preferring live.mark puts the headline price and the funding beside it on the
+   same tick, and the fallback keeps a just-deployed page working one clock slower. */
+const markNow = live?.mark?.[coin.symbol] ?? perp?.markPx ?? NaN;
+const price = markNow;
 const dp = price >= 100 ? 2 : price >= 1 ? 3 : price >= 0.01 ? 5 : 7;
 const px = (v: number) => usd(v, dp);
-/* 24h CHANGE FROM THE VENUE'S OWN PREVIOUS-DAY PRICE, not from a candle we aggregated. The
-   snapshot already carries prevDayPx and change24h for every contract, computed by Hyperliquid
-   against its own clock, so deriving it here would be a second answer to a question that
-   already has one. */
-const chg24 = perp && perp.prevDayPx > 0 ? perp.markPx / perp.prevDayPx - 1 : NaN;
+/* 24h CHANGE AGAINST THE VENUE'S OWN PREVIOUS-DAY PRICE — but against the LIVE mark, not the
+   snapshot's. Both halves on one clock is the same rule the basis used to need, and it outlived
+   the basis: a numerator five minutes older than the page's own headline price would make this
+   percentage disagree with the number printed directly above it. */
+const chg24 = perp && perp.prevDayPx > 0 && Number.isFinite(markNow) ? markNow / perp.prevDayPx - 1 : NaN;
 /* 24h HIGH AND LOW COME FROM THE HOURLY SERIES, because the snapshot does not carry them. The
    last 24 closed hourly bars of the same Hyperliquid feed the chart is drawn from, so the
    figures beside the chart and the figures in it cannot disagree. */
 const last24 = (hourset?.d ?? []).slice(-24);
 const high24 = last24.length ? Math.max(...last24.map((c) => c[2])) : NaN;
 const low24 = last24.length ? Math.min(...last24.map((c) => c[3])) : NaN;
-/* THE LIVE MARK, and the one clock that still matters here.
-   `live` is written by the one-minute cron; the snapshot is five-minutely. Preferring live.mark
-   means the headline price and the funding beside it are read off the same tick, and falling
-   back to the snapshot keeps a just-deployed page working one clock slower.
-
-   This block used to compute the basis, and the long note that stood here argued — correctly —
-   that a difference of two large nearly-equal prices puts any clock skew into the answer at
-   full size. The argument outlived the number: spot is gone, so there is no subtraction left to
-   get wrong. What survives is the reason to prefer live.mark, which is the same reason. */
-const live = await getLive(env?.SNAPSHOT);
-const markNow = live?.mark?.[coin.symbol] ?? perp?.markPx ?? NaN;
 /* 24h VOLUME IS HYPERLIQUID'S OWN NOTIONAL, already in USD on the snapshot. The old figure was
    spot base-units times the spot price; this one is the venue's published dollar turnover, so
    the open-interest ratio beneath it is now perp OI against perp volume — the same market on
@@ -271,7 +271,7 @@ const description = `Live ${coin.name} (${coin.symbol}) perpetual price from Hyp
   ) : (
     <div class="empty">
       <div class="empty__body">
-        <p class="empty__title">Spot candles not collected yet</p>
+        <p class="empty__title">Candles not collected yet</p>
         <p class="empty__text">Hyperliquid candles are refreshed every two hours, and a series that is missing entirely is filled on the next five-minute tick rather than waiting for that. Every figure above and below is unaffected.</p>
       </div>
     </div>

@@ -28,9 +28,12 @@ export const TIMEFRAMES: Timeframe[] = [
      Measured: the hourly series retains 1,081 bars (45 days) and the daily series 801 bars
      (800 days). So 12H can offer 90 bars and no more without inventing history, and 1M gets 26
      — two years of monthly closes, which is the longest honest view this data supports.
-     Nothing shorter than 1H is listed, because nothing shorter is collected: a 15m timeframe
-     needs a new upstream series, not a new row here, and a button for data that does not exist
-     is the defect this bar already had once. */
+     THAT LAST PARAGRAPH USED TO SAY "nothing shorter than 1H is listed, because nothing shorter
+     is collected", eight lines below the 15m and 30m rows it was contradicting. The m15 series
+     was added and this note was not. Both are collected now, both are listed, and the warning it
+     ended on still stands: a button for data that does not exist is the defect this bar has had
+     once, and availability is therefore tested on the aggregated bar count rather than on the
+     base series — see MIN_CHART_BARS below. */
   { key: "12h", label: "12H", base: "hour", factor: 12, bars: 90, hours: 12 },
   { key: "1d", label: "1D", base: "day", factor: 1, bars: 220, hours: 24 },
   { key: "1w", label: "1W", base: "day", factor: 7, bars: 130, hours: 168 },

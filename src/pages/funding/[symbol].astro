@@ -428,7 +428,8 @@ const description = `What a ${p.symbol} perpetual costs to hold: ${venuePhrase},
       <a class="chip-link" href={`/funding/${x.symbol.toLowerCase()}`}>{x.symbol}</a>
     ))}
     <a class="chip-link" href="/funding">All {snap.perps.length} →</a>
-    {coin && <a class="chip-link" href={`/coins/${coin.slug}`}>{coin.name} spot →</a>}
+    {/* "spot" WAS THIS CHIP'S LABEL, pointing at a page that now explicitly refuses to show one. */}
+    {coin && <a class="chip-link" href={`/coins/${coin.slug}`}>{coin.name} price →</a>}
   </p>
 
   {/* NO define:vars HERE. Astro implements it by stamping the variable onto every element
