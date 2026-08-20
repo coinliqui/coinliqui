@@ -8,6 +8,7 @@ import { freshness, ageWords, minutesSince } from "../../lib/freshness.ts";
 import { TIMEFRAMES, DEFAULT_TF, MIN_CHART_BARS, aggregate, buildPriceChart, CHART_H, type ChartMode } from "../../lib/series.ts";
 import { CH } from "../../lib/chart.ts";
 
+import { priceDp } from "../../lib/funding.ts";
 /* =========================================================================================
    ONE COIN.
 
@@ -72,7 +73,7 @@ const perp = findPerp(snap.perps, coin.symbol);
    same tick, and the fallback keeps a just-deployed page working one clock slower. */
 const markNow = live?.mark?.[coin.symbol] ?? perp?.markPx ?? NaN;
 const price = markNow;
-const dp = price >= 100 ? 2 : price >= 1 ? 3 : price >= 0.01 ? 5 : 7;
+const dp = priceDp(price);
 const px = (v: number) => usd(v, dp);
 /* 24h CHANGE AGAINST THE VENUE'S OWN PREVIOUS-DAY PRICE — but against the LIVE mark, not the
    snapshot's. Both halves on one clock is the same rule the basis used to need, and it outlived

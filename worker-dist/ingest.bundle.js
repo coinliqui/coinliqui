@@ -39,7 +39,7 @@ async function fetchSnapshot(published = []) {
     const markPx = n(c.markPx);
     const openInterest = n(c.openInterest);
     const prevDayPx = n(c.prevDayPx);
-    const venues = (predictedBySymbol.get(u.name) ?? []).filter(([, v]) => v && Number.isFinite(Number(v.fundingRate))).map(([venue, v]) => {
+    const venues = (predictedBySymbol.get(u.name) ?? []).filter(([, v]) => v && Number.isFinite(Number(v.fundingRate)) && Number.isFinite(Number(v.fundingIntervalHours)) && Number(v.fundingIntervalHours) > 0).map(([venue, v]) => {
       const rate = Number(v.fundingRate);
       const intervalHours = v.fundingIntervalHours;
       return {
@@ -355,13 +355,14 @@ async function stepIndexNow(env, current) {
     if (!list.length) continue;
     const b = backoff[name];
     if (b && b.nextAt > now) {
+      pending[name] = list;
       held.push(`${name} in backoff for ${Math.round((b.nextAt - now) / 6e4)}m`);
       continue;
     }
     owed.set(e, list);
   }
   if (!owed.size) {
-    if (fresh.length) await env.SNAPSHOT.put(STATE_KEY, JSON.stringify({ known: current, pending, backoff }));
+    if (fresh.length || held.length) await env.SNAPSHOT.put(STATE_KEY, JSON.stringify({ known: current, pending, backoff }));
     if (held.length) return `indexnow: nothing sent \u2014 ${held.join(", ")}`;
     return `indexnow: nothing new (${current.length} URLs published, all previously submitted and accepted)`;
   }
@@ -957,7 +958,7 @@ async function stepProbe(env) {
 }
 
 // worker/build-stamp.ts
-var WORKER_BUILD = "57f6dbb2516a";
+var WORKER_BUILD = "d2efcaa366e1";
 
 // worker/ingest.ts
 var RETAIN_HOURS = 72;

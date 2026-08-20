@@ -114,8 +114,13 @@ export function liquidationPrice(input: LiquidationInput): LiquidationResult {
     liquidationPrice: correct,
     naivePrice: naive,
     differenceAbs: Math.abs(naive - correct),
-    differencePct: Math.abs(naive - correct) / correct,
-    distancePct: Math.abs(correct - entryPrice) / entryPrice,
+    /* THE DENOMINATOR IS DERIVED, NOT SUPPLIED, AND IT REACHES ZERO. `correct` is computed four
+       lines up, and at leverage 1 the factor (1 - 1/1) is exactly 0 in IEEE754, so both prices
+       are 0 and this was 0/0 = NaN. Every input was validated; the value actually divided by was
+       not. /tools/position-size accepts leverage=1 from its own dropdown, so the page whose job
+       is to quantify the gap printed an em dash in the middle of the sentence saying so. */
+    differencePct: correct > 0 ? Math.abs(naive - correct) / correct : 0,
+    distancePct: entryPrice > 0 ? Math.abs(correct - entryPrice) / entryPrice : 0,
     notional,
     tier,
     tierIndex: index,

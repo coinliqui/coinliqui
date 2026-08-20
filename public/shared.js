@@ -129,3 +129,21 @@ export function usd(x, decimals = 0) {
   if (abs >= 1e3 && decimals === 0) return `$${Math.round(x).toLocaleString("en-US")}`;
   return `$${nf(x, decimals)}`;
 }
+
+/**
+ * HOW MANY DECIMALS A PRICE NEEDS, and the axis variant that shows fewer.
+ *
+ * This ladder existed NINE times across the templates and the chart library — `px >= 100 ? 2 :
+ * px >= 1 ? 3 : px >= 0.01 ? 5 : 7` in seven places, and an `axisDp` variant in two more. One
+ * fact, nine implementations, which is the shape this file exists to end.
+ *
+ * It was not merely duplicated, it was IGNORED. /liquidations computed axisDp correctly and then
+ * called paintHeatMap, which formatted every y-axis tick and the live price pill with fint() —
+ * integer dollars, unconditionally. On a sub-dollar contract the entire price axis of the
+ * liquidation map rendered "0", with the live pill reading "0" on top of it. Verified on the
+ * deployed page for DOGE before this was changed.
+ */
+export const priceDp = (px) => (px >= 100 ? 2 : px >= 1 ? 3 : px >= 0.01 ? 5 : 7);
+/** Fewer decimals for an axis, where the label has to stay short — but never zero on a coin
+ *  whose whole price is below a dollar, which is what fint() did. */
+export const axisDp = (px) => (px >= 100 ? 0 : px >= 1 ? 2 : priceDp(px));

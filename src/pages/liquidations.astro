@@ -11,6 +11,7 @@ import { aggregate } from "../lib/series.ts";
 import tables from "../data/margin-tables.json";
 
 import Advisory from "../components/Advisory.astro";
+import { priceDp, axisDp as axisDpOf } from "../lib/funding.ts";
 const env = (Astro.locals as any)?.runtime?.env;
 const snap = await getSnapshot(env?.SNAPSHOT, import.meta.env.DEV);
 if (!snap.available) return coldStart();
@@ -24,9 +25,9 @@ const mark = perp.markPx;
 const mmf = maintenanceMarginFraction(tier1.maxLeverage);
 const nextTier = nextTierBoundary(table, tier1.lowerBound);
 
-const dp = mark >= 100 ? 2 : mark >= 1 ? 3 : mark >= 0.01 ? 5 : 7;
+const dp = priceDp(mark);
 const px = (v: number) => usd(v, dp);
-const axisDp = mark >= 100 ? 0 : mark >= 1 ? 2 : dp;
+const axisDp = axisDpOf(mark);
 const axisPx = (v: number) => usd(v, axisDp);
 
 /* MODEL INPUTS. Chosen by the reader, printed beside the picture, applied here.

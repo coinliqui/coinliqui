@@ -19,7 +19,7 @@
    that has produced five separate defects on this project, each found by accident. The copies
    were the defect, so there is now one file and both sides import it. Callers keep importing
    these names from this module; only the implementation moved. See public/shared.js. */
-export { paysClass, paysLabel, paysArrow, carryCost, pct, changeWords, ageWords, minutesSince, usd, nf, qty, compact, spreadOf } from "../../public/shared.js";
+export { paysClass, paysLabel, paysArrow, carryCost, pct, changeWords, ageWords, minutesSince, usd, nf, qty, compact, spreadOf, priceDp, axisDp } from "../../public/shared.js";
 import { spreadOf } from "../../public/shared.js";
 
 export const HOURS_PER_YEAR = 24 * 365; // 8760

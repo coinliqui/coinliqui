@@ -1,5 +1,6 @@
 import type { LiqMap } from "./liqmap.ts";
 import { CH, INK, RAMP, transfer, rampIndex, rampValue, niceTicks, timeTicks, text, rect, line, fint, compact, crosshair, n2, MONO, FS_AXIS, FS_MICRO, PILL_GAP } from "./chart.ts";
+import { axisDp, nf } from "../../public/shared.js";
 
 /* =========================================================================================
    Painting the density field.
@@ -120,8 +121,14 @@ export function paintHeatMap(m: LiqMap, opts: { height?: number; mid?: number; m
     s.push(text(lx + lw / 2 + 1, plotY + 20, opts.mark.label, "#e9edf2", FS_MICRO, "middle", 600, MONO));
   }
 
+  /* BY MAGNITUDE, NOT ALWAYS INTEGERS. fint() rounds to whole dollars, so on a sub-dollar
+     contract every tick on this axis printed "0" — three distinct price levels, all labelled
+     zero, on the page whose whole subject is where price sits relative to those levels.
+     Verified on the deployed /liquidations?symbol=DOGE before this changed. */
+  const tickDp = axisDp(m.hiPrice);
+  const tick = (v: number) => (tickDp === 0 ? fint(v) : nf(v, tickDp));
   s.push(`<g data-ax="y">${niceTicks(m.loPrice, m.hiPrice, 5)
-    .map((v) => text(axisX + PILL_GAP, yOf(v) + 3.5, fint(v), INK.dim, FS_AXIS)).join("")}</g>`);
+    .map((v) => text(axisX + PILL_GAP, yOf(v) + 3.5, tick(v), INK.dim, FS_AXIS)).join("")}</g>`);
   s.push(`<g data-ax="x">${timeTicks(m.candles.map((c) => c[0]), 10)
     .map(({ i, label }) => text(plotX + slot * (i + 0.5), h - 9, label, INK.faint, FS_AXIS, "middle")).join("")}</g>`);
 
@@ -151,7 +158,7 @@ export function paintHeatMap(m: LiqMap, opts: { height?: number; mid?: number; m
     const ly = yOf(opts.live.px);
     s.push(line(plotX, ly, axisX, ly, INK.acc, 1, ' stroke-dasharray="2 5" opacity=".8"'));
     s.push(rect(axisX + 5, ly - 10, 74, 20, INK.acc, ' rx="5"'));
-    s.push(text(axisX + 42, ly + 4, fint(opts.live.px), INK.accInk, 11.5, "middle", 600));
+    s.push(text(axisX + 42, ly + 4, tick(opts.live.px), INK.accInk, 11.5, "middle", 600));
   }
 
   s.push(crosshair(plotX, plotY, plotW, plotH, axisX));

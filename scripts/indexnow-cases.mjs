@@ -179,11 +179,21 @@ await check("a contract retires below the floor", base, fewer, (s) => s.length =
   const skippedBoth = !hosts.includes("bing.com") && !hosts.includes("api.indexnow.org");
   const othersSent = hosts.includes("yandex.com") && hosts.includes("search.seznam.cz") && hosts.includes("searchadvisor.naver.com");
   const st = store.read();
-  const stillOwed = (st.pending?.["bing.com"] ?? []).length > 0 && (st.backoff?.["bing.com"]?.nextAt ?? 0) === far;
+  /* THE NEW URL SPECIFICALLY, NOT "THE BACKLOG IS NON-EMPTY".
+     This read `.length > 0`, and the store above is SEEDED with pending: {"bing.com": [.../terms]}
+     — so the assertion was satisfied by its own fixture and would have passed whether or not the
+     new URL was carried. It was not being carried: the backoff branch in worker/indexnow.ts
+     `continue`d without writing the list, while `known` advanced, so a URL that first appeared
+     during a backoff window was never announced to that endpoint at all. The test asserted a
+     proxy for the property, the property was false, and the gate was green for both.
+     Assert the thing: sol must be in bing's backlog, and the seeded url must still be there too. */
+  const bingOwes = st.pending?.["bing.com"] ?? [];
+  const stillOwed = bingOwes.includes(`${O}/funding/sol`) && bingOwes.includes(`${O}/terms`)
+    && (st.backoff?.["bing.com"]?.nextAt ?? 0) === far;
   const named = /backoff/.test(line);
   const ok = skippedBoth && othersSent && stillOwed && named;
   console.log(`  ${ok ? "ok  " : "FAIL"}  ${"two endpoints in backoff are skipped, three still sent".padEnd(52)} sent to ${hosts.join(",") || "nobody"}`);
-  if (!ok) { bad++; console.log(`        line: ${line}\n        state: ${JSON.stringify(st.backoff)}`); }
+  if (!ok) { bad++; console.log(`        line: ${line}\n        backoff: ${JSON.stringify(st.backoff)}\n        bing owes: ${JSON.stringify(bingOwes)}`); }
 }
 
 {

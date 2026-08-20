@@ -135,7 +135,14 @@ export async function fetchSnapshot(published: string[] = []): Promise<Snapshot>
     const prevDayPx = n(c.prevDayPx);
 
     const venues: VenueFunding[] = (predictedBySymbol.get(u.name) ?? [])
-      .filter(([, v]) => v && Number.isFinite(Number(v.fundingRate)))
+      /* BOTH INPUTS TO toApr(), NOT JUST THE RATE. This filtered on fundingRate alone and then
+         annualised with `v.fundingIntervalHours`, unchecked — so an upstream row carrying a
+         finite rate and a missing or zero interval produced apr: NaN, which reaches the reader
+         as the literal string "NaN" in the Settlements/year column of the page whose entire
+         subject is how that annualisation is done. The condition tested one value and the code
+         acted on two. */
+      .filter(([, v]) => v && Number.isFinite(Number(v.fundingRate))
+        && Number.isFinite(Number(v.fundingIntervalHours)) && Number(v.fundingIntervalHours) > 0)
       .map(([venue, v]) => {
         const rate = Number(v!.fundingRate);
         const intervalHours = v!.fundingIntervalHours;

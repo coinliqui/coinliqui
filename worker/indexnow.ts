@@ -202,16 +202,31 @@ export async function stepIndexNow(env: IndexNowEnv, current: string[]): Promise
     if (!list.length) continue;
     /* IN BACKOFF, AND SKIPPED EVEN IF SOMETHING NEW ARRIVED. Bundling a new URL in as an
        excuse to retry early is how a decaying rate becomes no rate at all — the new URL will
-       still be owed when the window opens, because the backlog is what carries it. */
+       still be owed when the window opens, because the backlog is what carries it.
+
+       THE BACKLOG DID NOT CARRY IT. That last clause described the intent and the code did the
+       opposite: it `continue`d without writing `list` into pending[name], while `known` advanced
+       to `current` a few lines below. So a URL that first appeared while an endpoint was in
+       backoff was dropped from that endpoint's backlog AND was no longer new on the next pass —
+       never announced to it, permanently, with no symptom anywhere. Every coin page that crossed
+       the coverage floor during a Bing backoff window is in that category.
+       The assignment below is the sentence above, actually performed. */
     const b = backoff[name];
-    if (b && b.nextAt > now) { held.push(`${name} in backoff for ${Math.round((b.nextAt - now) / 60_000)}m`); continue; }
+    if (b && b.nextAt > now) {
+      pending[name] = list;
+      held.push(`${name} in backoff for ${Math.round((b.nextAt - now) / 60_000)}m`);
+      continue;
+    }
     owed.set(e, list);
   }
 
   if (!owed.size) {
     /* `known` still advances: a URL that appeared and vanished between passes must not be
        treated as new when it returns without having been announced. */
-    if (fresh.length) await env.SNAPSHOT.put(STATE_KEY, JSON.stringify({ known: current, pending, backoff } satisfies IndexNowState));
+    /* WRITE WHENEVER EITHER HALF MOVED, not only when something was fresh. With the backoff
+       branch now filling pending[], a pass that produces no fresh URLs can still have changed
+       the backlog — and dropping that write would put the URL back where it just came from. */
+    if (fresh.length || held.length) await env.SNAPSHOT.put(STATE_KEY, JSON.stringify({ known: current, pending, backoff } satisfies IndexNowState));
     if (held.length) return `indexnow: nothing sent — ${held.join(", ")}`;
     return `indexnow: nothing new (${current.length} URLs published, all previously submitted and accepted)`;
   }

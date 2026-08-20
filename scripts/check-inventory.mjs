@@ -38,12 +38,32 @@ walk("./scripts"); walk("./worker"); walk("./src");
 const bodies = new Map(files.map((f) => [f, readFileSync(f, "utf8")]));
 const callersOf = (name) => files.filter((f) => {
   const b = bodies.get(f)
-    .replace(/\/\*[\s\S]*?\*\//g, " ")   // block comments are not call sites
-    .replace(/(^|[^:])\/\/.*$/gm, "$1"); // nor are line comments
+    .replace(/\/\*[\s\S]*?\*\//g, " ")        // block comments are not call sites
+    .replace(/(^|[^:])\/\/.*$/gm, "$1")       // nor are line comments
+    /* AND NOR IS AN IMPORT, which is what made this whole check decorative.
+       Comments were stripped and imports were not, while scripts/smoke.mjs imports all 34
+       checks on a single line. So every check had a "caller" by construction and
+       "GROUP 3 — no call site anywhere: 0" was a guaranteed output rather than a finding.
+       Proven by mutation: delete the only call of chartAgreement, leave the import, and the
+       gate still printed "every export is invoked" and exited 0. That is precisely the
+       extractionRatio class this file was written to catch, alive inside it. */
+    .replace(/^\s*import\s[\s\S]*?from\s*["'][^"']+["'];?/gm, " ")
+    .replace(/^\s*export\s*\{[^}]*\}\s*from\s*["'][^"']+["'];?/gm, " ");
   return new RegExp(`\\b${name}\\b`).test(b);
 }).map((f) => f.replace("./scripts/", "").replace("./", ""));
 
-const dead = all.filter((n) => callersOf(n).length === 0);
+/* A CHECK CALLED ONLY BY ITS OWN FIXTURE IS NOT WIRED INTO ANYTHING.
+   GROUP 3 could never be non-empty, for two compounding reasons. Imports counted as call sites
+   (fixed above), and scripts/check-blind-cases.mjs calls every check by design — so "called
+   nowhere" was unreachable even after the import fix. Proven by mutation: deleting the only
+   real call of chartAgreement from smoke.mjs still left the gate green, because its fixture
+   still referenced it.
+   The question worth asking is not "is this name mentioned somewhere" but "does anything run it
+   on REAL DATA". So the fixture files are excluded from the caller set: a check whose only
+   caller is its own blind case is dead in exactly the sense this group exists to name. */
+const FIXTURE_ONLY = ["check-blind-cases.mjs"];
+const realCallersOf = (n) => callersOf(n).filter((f) => !FIXTURE_ONLY.some((x) => f.endsWith(x)));
+const dead = all.filter((n) => realCallersOf(n).length === 0);
 
 /* Which checks have a standing fixture proving they fire. Read from the suite rather than
    duplicated here, so the two cannot disagree. */
@@ -66,9 +86,9 @@ console.log(`  ${checks.length} finding-returning checks, ${MEASUREMENTS.length}
 console.log(`GROUP 1 — proven to fire by a standing fixture: ${claimed.length}`);
 for (const n of claimed.sort()) console.log(`    ${n}`);
 console.log(`\nGROUP 2 — called every gate, never shown to fire: ${unfalsified.length}`);
-for (const n of unfalsified.sort()) console.log(`    ${n.padEnd(26)} called by ${callersOf(n).join(", ")}`);
+for (const n of unfalsified.sort()) console.log(`    ${n.padEnd(26)} called by ${realCallersOf(n).join(", ") || "(fixture only)"}`);
 console.log(`\nGROUP 3 — no call site anywhere: ${dead.length}`);
-for (const n of dead) console.log(`    ${n}  <-- exported and never invoked`);
+for (const n of dead) console.log(`    ${n}  <-- only its own fixture calls it; nothing runs it on real data`);
 
 /* ---------------------------------------------------------------------------------------------
    PROVEN ONCE IS NOT PROVEN.
