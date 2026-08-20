@@ -26,17 +26,21 @@ import { writeFileSync, readFileSync } from "node:fs";
 
 const CHECK = process.argv.includes("--check");
 
-/* /about AND /terms WERE MISSING FROM THIS LIST AND ARE IN THE SITEMAP.
-   Both are code routes with a source file, both are edited, and both were emitted with no
-   lastmod at all — which the sitemap comment above calls "the correct way to say I do not
-   know", and it is, but we DO know. The list was written once and never revisited, so the two
-   pages that carry the site's identity and its disclaimer were the two publishing no date.
-   Found by comparing the sitemap against the structured data after Base.astro started taking
-   its dateModified from this same file. Both name src/lib/site.ts as a source, because
-   IDENTITY is most of what a reader sees on either one. */
+/* /terms WAS MISSING FROM THIS LIST AND IS IN THE SITEMAP. It is prose with a source file, it
+   gets edited, and it was emitted with no lastmod at all — which the sitemap comment above
+   calls "the correct way to say I do not know", and it is, but we DO know. The list was
+   written once and never revisited, so the page carrying the site's disclaimer was publishing
+   no date on any surface. It names src/lib/site.ts as a source too, because IDENTITY is a good
+   part of what a reader sees on it.
+
+   /about WAS ADDED HERE IN THE SAME PASS AND TAKEN OUT AGAIN. It looks like prose and is not:
+   it prints the covered-contract count and the open-interest floor from the live store, so it
+   changes without a commit. The gate measures that rather than trusting a list, and refused
+   the git date within one run. It takes a data stamp now — see PAGES_DATA in src/lib/routes.ts.
+   A route belongs here because nothing but a commit can change what it shows, which is a
+   narrower test than "it is mostly words". */
 /** route -> the sources that genuinely determine what a reader sees on it */
 const ROUTES = {
-  "/about": ["src/pages/about.astro", "src/lib/site.ts"],
   "/terms": ["src/pages/terms.astro", "src/lib/site.ts"],
   "/methodology": ["src/pages/methodology/index.astro"],
   "/methodology/liquidations": ["src/pages/methodology/liquidations.astro"],

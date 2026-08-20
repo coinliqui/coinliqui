@@ -21,8 +21,15 @@
  */
 
 /** Prose and the homepage. Split by how each is dated — see src/pages/sitemaps/pages.xml.ts. */
-export const PAGES_DATA = ["/", "/methodology"] as const;
-export const PAGES_CODE = ["/about", "/methodology/liquidations", "/data-sources", "/privacy", "/terms"] as const;
+/* /about MOVED ACROSS THE LINE ON 20 AUGUST 2026, the same way /methodology did, and for the
+   same reason: it reads the live store. It prints how many perpetual contracts are covered
+   today and what the open-interest floor is, both from `getSnapshot`, so its text changes when
+   a coin crosses the floor and no commit is involved. It was listed as CODE and given a git
+   date, and the gate — which measures store dependence rather than trusting this list —
+   refused it within one run. Its own structured data had been taking a data stamp from
+   `fetchedAt` the whole time, so the two surfaces disagreed until now. */
+export const PAGES_DATA = ["/", "/methodology", "/about"] as const;
+export const PAGES_CODE = ["/methodology/liquidations", "/data-sources", "/privacy", "/terms"] as const;
 
 /** The calculators. /tools/liquidation-price is deliberately absent: it serves 410 Gone. */
 export const TOOLS = ["/tools", "/tools/position-size", "/tools/leverage", "/tools/funding-cost", "/tools/funding-arbitrage"] as const;
