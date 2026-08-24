@@ -399,7 +399,10 @@ const description = `What a ${p.symbol} perpetual costs to hold, against ${usd(p
       is the difference between a link and a detour. */}
   <p class="section-note">
     The quoted column is what each venue publishes. Those numbers are not comparable to each other; the annualised column is.
-    {" "}<a class="link" href={`/tools/funding-cost?symbol=${p.symbol}`}>Cost of holding {p.symbol}, at your size and horizon →</a>
+    {/* SEPARATED, BECAUSE TWO OFFERS RAN TOGETHER AS ONE. At 375px both links wrap and the pair
+        reads as a single run of blue with an arrow in the middle. The dot is the separator this
+        site already uses between distinct items. */}
+    {" "}<a class="link" href={`/tools/funding-cost?symbol=${p.symbol}`}>Cost of holding {p.symbol}, at your size and horizon →</a> ·
     {/* A second question arising from the same table, not a second link for its own sake: the
         annualised column is what makes venues comparable, and whether the difference between
         them is worth anything is the next thing a reader asks. */}
@@ -464,7 +467,7 @@ const description = `What a ${p.symbol} perpetual costs to hold, against ${usd(p
         volume: the paragraph states a tier-correct liquidation price and the gap against the
         common formula, which is precisely what one calculator sizes against and the other
         explains. */}
-    {" "}<a class="link" href={`/tools/position-size?symbol=${p.symbol}`}>Size a position against this liquidation price →</a>
+    {" "}<a class="link" href={`/tools/position-size?symbol=${p.symbol}`}>Size a position against this liquidation price →</a> ·
     {" "}<a class="link" href={`/tools/leverage?symbol=${p.symbol}`}>What {p.symbol} allows at your notional →</a>
   </p>
   <div class="panel" style="max-width:620px">
