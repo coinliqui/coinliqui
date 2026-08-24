@@ -34,7 +34,25 @@ export type FlipsResult =
      last 24 hours" above 25 rows while 104 contracts had flipped. */
   | { status: "ready"; rows: Flip[]; since: number; total: number }
   | { status: "no-store" }
-  | { status: "warming"; since: number; hours: number };
+  | { status: "warming"; since: number; hours: number }
+  /**
+   * THE FEED IS OLD, WHICH IS NOT THE SAME AS SHORT, AND IT USED TO BE REPORTED AS SHORT.
+   *
+   * A cache older than FLIPS_MAX_AGE_MS means the ingest has stopped writing `flips:24h`. That
+   * was returned as `{ status: "warming", since, hours: 0 }` — `since` carried over from a
+   * result that had been READY, so necessarily at least 24 hours old, and `hours` a hardcoded
+   * zero measuring nothing. Rendered, with a cache 25 minutes stale and a first snapshot three
+   * days back, the homepage printed:
+   *
+   *     0% progress bar
+   *     0 of 24 hours collected · started 2026-08-21 06:26 UTC · first flips appear after
+   *     2026-08-22 06:26 UTC          (today being 2026-08-24)
+   *
+   * A reader takes that as a site still filling up. The truth is a stalled ingest, and the two
+   * want opposite responses: wait, versus go and look at the run log. `hours: 0` was the label
+   * asserting elapsed coverage over a value that was a placeholder for a different condition.
+   */
+  | { status: "stale"; since: number; computedAt: number };
 
 export interface D1Like {
   prepare(sql: string): {
@@ -246,7 +264,7 @@ export async function readCachedFlips(kv: KVLike | undefined): Promise<FlipsResu
     /* Stale is not the same as missing, and printing a day-old event feed as current would be
        the exact defect this codebase keeps finding elsewhere. Report it as what it is. */
     const since = cached.result.status === "ready" ? cached.result.since : 0;
-    return { status: "warming", since, hours: 0 };
+    return { status: "stale", since, computedAt: cached.computedAt };
   }
   return cached.result;
 }
@@ -257,6 +275,9 @@ export async function writeCachedFlips(kv: KVLike, result: FlipsResult, now: num
 }
 
 export function describeCoverage(r: FlipsResult): string {
+  if (r.status === "stale") {
+    return `The flip feed is computed once per ingest pass and has not been rewritten since ${new Date(r.computedAt).toISOString().slice(0, 16).replace("T", " ")} UTC. That is a stalled ingest rather than a gap in the history.`;
+  }
   if (r.status === "no-store") {
     return "The flip feed reads the funding-history database, and it is not answering here.";
   }

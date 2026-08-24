@@ -171,10 +171,10 @@ const cases = [
     /* 100.00 vs 50.00 is +10,000 bps. Printing 12.0 is a contradiction far outside the
        display-rounding tolerance the check derives from the decimal places themselves. */
     fire: () => basisSelfConsistent(doc(
-      `<td data-spot="mark">$100.00</td><td data-spot="last">$50.00</td><td data-spot="basis">12.0</td>`)),
+      `<td data-repaint="mark">$100.00</td><td data-repaint="last">$50.00</td><td data-repaint="basis">12.0</td>`)),
     /* 100.05 against 100.00 is +5.0 bps, printed as such — inside tolerance, so silent. */
     quiet: () => basisSelfConsistent(doc(
-      `<td data-spot="mark">$100.05</td><td data-spot="last">$100.00</td><td data-spot="basis">5.0</td>`)),
+      `<td data-repaint="mark">$100.05</td><td data-repaint="last">$100.00</td><td data-repaint="basis">5.0</td>`)),
   },
   {
     check: "uncoveredRoutes",
@@ -184,11 +184,11 @@ const cases = [
   },
   {
     check: "staleDerivedCells",
-    why: "a cell computed from a live APR without data-spot keeps its render-time value after the overlay repaints the rate",
+    why: "a cell computed from a live APR without data-repaint keeps its render-time value after the overlay repaints the rate",
     fire: () => staleDerivedCells([["fixture.astro",
-      `<tr><td data-spot={x + "apr"}>5%</td><td>{carryCost(10000, apr, 7)}</td></tr>`]]),
+      `<tr><td data-repaint={x + "apr"}>5%</td><td>{carryCost(10000, apr, 7)}</td></tr>`]]),
     quiet: () => staleDerivedCells([["fixture.astro",
-      `<tr><td data-spot={x + "apr"}>5%</td><td data-spot="carry">{carryCost(10000, apr, 7)}</td></tr>`]]),
+      `<tr><td data-repaint={x + "apr"}>5%</td><td data-repaint="carry">{carryCost(10000, apr, 7)}</td></tr>`]]),
   },
   {
     check: "staleCalculatorFigures",

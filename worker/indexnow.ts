@@ -59,7 +59,18 @@ const ENDPOINTS = [
 /* One submission may carry many URLs; the protocol caps a batch at 10,000 and this site will
    never approach it. Capped anyway so a bug that invents URLs cannot become a flood. */
 const MAX_URLS = 200;
-const STATE_KEY = "indexnow:submitted";
+/* THE KEY WAS CALLED indexnow:submitted AND HOLDS NOTHING OF THE SORT. Its value is
+   { known, pending, backoff, sentAt } — and `known`, the field an operator would read as the
+   submitted set, carries its own comment saying "Every URL ever seen published. Advances
+   unconditionally; it is a record, not a receipt." The name was the last copy of the same claim
+   the quiet-pass log line used to make.
+
+   Renamed rather than annotated, and migrated rather than reset: a rename that dropped the
+   state would re-baseline, and re-baselining is precisely the condition that used to print
+   "all previously submitted and accepted" after zero submissions. So the old key is still read
+   when the new one is absent, and only the new one is ever written. */
+const STATE_KEY = "indexnow:state";
+const LEGACY_STATE_KEY = "indexnow:submitted";
 
 export interface IndexNowEnv {
   /* Structural, matching ReportEnv rather than the Cloudflare KVNamespace global — the worker's
@@ -184,8 +195,17 @@ export async function stepIndexNow(env: IndexNowEnv, current: string[]): Promise
   const host = new URL(origin).host;
 
   let st: IndexNowState | null;
+  /* The migration has to be a REASON TO WRITE, not merely a successful read. The quiet path
+     below writes only when something moved, so on a site with no new URLs the new key would
+     never appear and the rename would be cosmetic for ever. Measured: the first version read
+     the legacy key correctly and left the store holding only `indexnow:submitted`. */
+  let fromLegacy = false;
   try {
     st = readState(await env.SNAPSHOT.get(STATE_KEY, "json"));
+    if (!st) {
+      st = readState(await env.SNAPSHOT.get(LEGACY_STATE_KEY, "json"));
+      if (st) fromLegacy = true;
+    }
   } catch {
     /* An unreadable state file must not cause a resubmission of everything. Treating it as
        "everything already sent" fails closed: the worst case is a genuinely new URL going
@@ -247,7 +267,7 @@ export async function stepIndexNow(env: IndexNowEnv, current: string[]): Promise
     /* WRITE WHENEVER EITHER HALF MOVED, not only when something was fresh. With the backoff
        branch now filling pending[], a pass that produces no fresh URLs can still have changed
        the backlog — and dropping that write would put the URL back where it just came from. */
-    if (fresh.length || held.length) await env.SNAPSHOT.put(STATE_KEY, JSON.stringify({ known: current, pending, backoff, ...(sentAt ? { sentAt } : {}) } satisfies IndexNowState));
+    if (fresh.length || held.length || fromLegacy) await env.SNAPSHOT.put(STATE_KEY, JSON.stringify({ known: current, pending, backoff, ...(sentAt ? { sentAt } : {}) } satisfies IndexNowState));
     if (held.length) return `indexnow: nothing sent — ${held.join(", ")}`;
     /* WHAT owed.size === 0 ACTUALLY MEANS: no endpoint has a backlog and nothing is fresh. It
        says nothing about whether anything was ever sent, which is why the sentence no longer

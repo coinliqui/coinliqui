@@ -589,7 +589,19 @@ const { paysClass, paysLabel, carryCost, spreadOf, pct, changeWords, ageWords, n
     setInterval(tick, 20000);
   }
 
-  const liveEls = [...document.querySelectorAll("[data-spot]")];
+  /* THE ATTRIBUTE WAS CALLED data-spot ON A SITE THAT PUBLISHES NO SPOT PRICE.
+   Its values are mark, chgmark and apr — a perpetual mark, a 24h change against prevDayPx, and
+   an annualised funding rate. Not one is a spot price, and Coinbase spot was removed from this
+   site entirely on 19 August after its market-data terms were read. So the markup asserted, on
+   every page and twenty times over, the one thing the editorial layer works hardest to deny —
+   /funding/{symbol} carries a comment headed "THE HERO NUMBER ON THIS TEMPLATE IS A PERPETUAL
+   MARK, AND IT SAID SO NOWHERE" about precisely this confusion.
+
+   data-live was the obvious replacement and is already taken: the chart SVG marks its
+   live-price parts [data-live="line"|"pill"|"txt"], and renaming onto it made this selector
+   match three marker elements whose kind is "pill". Caught before it shipped by checking what
+   the name already meant, which is the check worth remembering. */
+const liveEls = [...document.querySelectorAll("[data-repaint]")];
   if (liveEls.length) {
     const dpOf = (el) => +(el.dataset.dp || 2);
     const money = (v, dp) => "$" + nf(v, dp);
@@ -647,7 +659,7 @@ const { paysClass, paysLabel, carryCost, spreadOf, pct, changeWords, ageWords, n
       for (const el of liveEls) {
         const sym = el.dataset.sym;
         const mk = d.mark[sym];
-        const kind = el.dataset.spot;
+        const kind = el.dataset.repaint;
         let next = null;
         if (kind === "mark" && Number.isFinite(mk)) next = money(mk, dpOf(el));
         else if (kind === "apr") {

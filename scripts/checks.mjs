@@ -1042,7 +1042,7 @@ export function fixtureGaps(sources, fixtureKeys) {
 /**
  * A CELL DERIVED FROM A LIVE RATE MUST BE LIVE TOO.
  *
- * The one-minute overlay repaints elements carrying data-spot. It repainted the APR cell and
+ * The one-minute overlay repaints elements carrying data-repaint. It repainted the APR cell and
  * left everything computed FROM that rate at the value the server rendered five minutes
  * earlier, so a row contradicted itself a minute after load. Measured on /coins/bitcoin: one
  * row read 0.90% APR beside $2.30, and $2.30 is the weekly cost of the 1.20% that cell held
@@ -1061,13 +1061,13 @@ export function staleDerivedCells(sources) {
   for (const [file, src] of sources) {
     /* Rows/blocks that contain a live APR. Split coarsely on the element that carries it and
        look at what follows within the same table row or card. */
-    for (const m of src.matchAll(/data-spot=\{?[^}]*?"apr"/g)) {
+    for (const m of src.matchAll(/data-repaint=\{?[^}]*?"apr"/g)) {
       const after = src.slice(m.index, m.index + 900);
       const block = after.slice(0, after.search(/<\/tr>|<\/div>\s*<\/div>/) + 1 || 900);
-      /* Anything computing from an apr in that block must carry its own data-spot. */
+      /* Anything computing from an apr in that block must carry its own data-repaint. */
       for (const d of block.matchAll(/<(td|div|span)\b([^>]*)>\{[^}]*?\b(week\(|carryCost\(|aprSpread|\.apr\s*>=\s*0)/g)) {
-        if (!/data-spot/.test(d[2])) {
-          out.push(`${file}: a cell derived from a live APR carries no data-spot — it will hold the render-time value after the overlay repaints the rate (${d[0].slice(0, 70).replace(/\s+/g, " ")}…)`);
+        if (!/data-repaint/.test(d[2])) {
+          out.push(`${file}: a cell derived from a live APR carries no data-repaint — it will hold the render-time value after the overlay repaints the rate (${d[0].slice(0, 70).replace(/\s+/g, " ")}…)`);
         }
       }
     }
@@ -1107,9 +1107,9 @@ export function basisSelfConsistent(html) {
     if (!Number.isFinite(v)) return null;
     return { v, dp: (raw.split(".")[1] || "").length };
   };
-  const mark = grab(/data-spot="mark"[^>]*>\s*\$?([\d,]+\.?\d*)/);
-  const spot = grab(/data-spot="last"[^>]*>\s*\$?([\d,]+\.?\d*)/);
-  const basis = grab(/data-spot="basis"[^>]*>\s*([+-]?[\d.]+)/);
+  const mark = grab(/data-repaint="mark"[^>]*>\s*\$?([\d,]+\.?\d*)/);
+  const spot = grab(/data-repaint="last"[^>]*>\s*\$?([\d,]+\.?\d*)/);
+  const basis = grab(/data-repaint="basis"[^>]*>\s*([+-]?[\d.]+)/);
   if (!mark || !spot || !basis || spot.v <= 0 || mark.v <= 0) return out;
 
   const derived = (mark.v / spot.v - 1) * 10_000;

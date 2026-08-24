@@ -68,7 +68,7 @@ const maxOi = Math.max(...snap.perps.map((p) => p.oiNotional || 0), 1);
             </td>
             <td class="sym"><a href={`/funding/${p.symbol.toLowerCase()}`}>{p.symbol}</a></td>
             <td class:list={["num", paysClass(p.hlApr)]}>{paysArrow(p.hlApr)} {pct(p.hlApr)}</td>
-            <td class="num" data-spot={p.aprSpread != null ? "spread" : undefined} data-sym={p.symbol}>{p.aprSpread != null ? pct(p.aprSpread) : <span class="faint">—</span>}</td>
+            <td class="num" data-repaint={p.aprSpread != null ? "spread" : undefined} data-sym={p.symbol}>{p.aprSpread != null ? pct(p.aprSpread) : <span class="faint">—</span>}</td>
             <td class="num">
               <span class="magnitude">
                 <span class="magnitude__track"><span class="magnitude__fill" style={`width:${Math.max(3, Math.round((p.oiNotional / maxOi) * 100))}%`}></span></span>

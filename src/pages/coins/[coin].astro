@@ -195,8 +195,8 @@ const description = `Live ${coin.name} (${coin.symbol}) perpetual price from Hyp
         went inert here — price, change, mark and the page clock all frozen — while /funding
         pages, which already used `mark`, kept updating. Nothing in the markup looked wrong and no
         check reads overlay behaviour; it was found by watching a live page for two pulls. */}
-    <span class="hero__price" data-spot="mark" data-sym={coin.symbol} data-dp={dp}>{Number.isFinite(price) ? px(price) : "—"}</span>
-    <span class:list={["hero__chg"]} data-spot="chgmark" data-sym={coin.symbol} data-prev={perp?.prevDayPx}>
+    <span class="hero__price" data-repaint="mark" data-sym={coin.symbol} data-dp={dp}>{Number.isFinite(price) ? px(price) : "—"}</span>
+    <span class:list={["hero__chg"]} data-repaint="chgmark" data-sym={coin.symbol} data-prev={perp?.prevDayPx}>
       {Number.isFinite(chg24) ? `${arrow(chg24)} ${(Math.abs(chg24) * 100).toFixed(2)}%` : "—"}
     </span>
     <span class="hero__span">24-hour change · Hyperliquid perpetual</span>
@@ -321,7 +321,7 @@ const description = `Live ${coin.name} (${coin.symbol}) perpetual price from Hyp
     </div>
     <div class="card">
       <div class="card__label">Cost to hold $10,000 long</div>
-      <div class="card__value" data-spot={hl ? "carry" : undefined} data-sym={coin.symbol} data-venue="HlPerp"
+      <div class="card__value" data-repaint={hl ? "carry" : undefined} data-sym={coin.symbol} data-venue="HlPerp"
            data-notional="10000" data-days="7">{hl ? usd(Math.abs(week(hl.apr)), 2) : "—"}</div>
       <div class="card__meta">{hl ? `per week · ${hl.apr >= 0 ? "you pay" : "you receive"}` : "—"}</div>
     </div>
@@ -349,14 +349,14 @@ const description = `Live ${coin.name} (${coin.symbol}) perpetual price from Hyp
               <td>{VENUE_LABEL[v]}</td>
               <td class="num">{f && Number.isFinite(f.intervalHours) ? `${f.intervalHours}h` : <span class="faint">—</span>}</td>
               <td class:list={["num", ok && paysClass(f!.apr)]} style="font-weight:600"
-                  data-spot={ok ? "apr" : undefined} data-sym={coin.symbol} data-venue={v}>{ok ? pct(f!.apr) : "—"}</td>
+                  data-repaint={ok ? "apr" : undefined} data-sym={coin.symbol} data-venue={v}>{ok ? pct(f!.apr) : "—"}</td>
               {/* Both cells are DERIVED FROM THE SAME f.apr the cell before them carries, so
                   they must be repainted with it or the row contradicts itself one minute after
                   load. notional and days travel as attributes so the overlay applies this
                   page's rule rather than carrying its own copy of it. */}
-              <td class="num" data-spot={ok ? "carry" : undefined} data-sym={coin.symbol} data-venue={v}
+              <td class="num" data-repaint={ok ? "carry" : undefined} data-sym={coin.symbol} data-venue={v}
                   data-notional="10000" data-days="7">{ok ? usd(Math.abs(week(f!.apr)), 2) : "—"}</td>
-              <td data-spot={ok ? "dir" : undefined} data-sym={coin.symbol} data-venue={v}
+              <td data-repaint={ok ? "dir" : undefined} data-sym={coin.symbol} data-venue={v}
                   data-pay="longs pay" data-recv="longs receive">{ok ? (f!.apr >= 0 ? "longs pay" : "longs receive") : <span class="faint">—</span>}</td>
             </tr>
           );
@@ -406,9 +406,9 @@ const description = `Live ${coin.name} (${coin.symbol}) perpetual price from Hyp
     }
     .chip-link:hover { background: var(--surface-3); color: var(--accent); }
     /* The live layer only ever changes the TEXT of these, never their box. */
-    [data-spot] { transition: color .35s var(--ease); }
-    [data-spot][data-moved="up"] { color: var(--accent); }
-    [data-spot][data-moved="down"] { color: var(--accent); }
+    [data-repaint] { transition: color .35s var(--ease); }
+    [data-repaint][data-moved="up"] { color: var(--accent); }
+    [data-repaint][data-moved="down"] { color: var(--accent); }
     @media (max-width: 700px) { .hero__meta { gap: var(--gap-cluster) 20px; } }
   </style>
 </Base>

@@ -87,12 +87,12 @@ const description = "Perpetual futures prices for the major coins on Hyperliquid
               {r.live ? <a href={`/coins/${r.slug}`}>{r.name}</a> : <span class="dim">{r.name}</span>}
               <span class="tick">{r.symbol}</span>
             </td>
-            <td class="num" data-spot="mark" data-sym={r.symbol} data-dp={Number.isFinite(r.mark) ? dp(r.mark) : 2}>
+            <td class="num" data-repaint="mark" data-sym={r.symbol} data-dp={Number.isFinite(r.mark) ? dp(r.mark) : 2}>
               {Number.isFinite(r.mark) ? usd(r.mark, dp(r.mark)) : "—"}
             </td>
             {/* chgmark, not chg — see the note on the coin page hero. The spot kinds require a
                 payload block that no longer exists, so this cell never repainted. */}
-            <td class="num" data-spot="chgmark" data-sym={r.symbol} data-prev={r.perp?.prevDayPx}>
+            <td class="num" data-repaint="chgmark" data-sym={r.symbol} data-prev={r.perp?.prevDayPx}>
               {Number.isFinite(r.chg) ? `${arrow(r.chg)} ${(Math.abs(r.chg) * 100).toFixed(2)}%` : "—"}
             </td>
             <td class="num">{Number.isFinite(r.ntl) ? usd(r.ntl) : "—"}</td>

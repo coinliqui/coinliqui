@@ -44,7 +44,7 @@ const ageBars = (POSITION_LIFE_DAYS * 24) / FACTOR;
 
 const map = buildLiqMap({
   candles: series, start, cols, mmf, maxLeverage: frozen.maxLeverage,
-  openInterest: frozen.oiNotional, profile, rows: 150, ageBars, minSpan: 0.16,
+  oiNotional: frozen.oiNotional, profile, rows: 150, ageBars, minSpan: 0.16,
 });
 const WICK_AT = Date.parse("2026-02-06T00:00:00Z");
 /* aggregate() chunks backwards from the end, so a 2-hour bar does not necessarily start on an
@@ -111,7 +111,15 @@ const description =
           at 5 Feb 01:00 UTC and the $60,000 low prints at 6 Feb 00:00 — 23 hours. "Thirty" is
           the width of the WINDOW this page examines (5 Feb 00:00 to 6 Feb 06:00), which is a
           different quantity that happened to sit in the same sentence. */}
-      twenty-three hours on {(eventVol / typicalOverSameSpan).toFixed(0)}× the volume a stretch that long normally carries. Below is the modelled field
+      {/* "A STRETCH THAT LONG" MEANT TWENTY-THREE HOURS AND THE RATIO IS COMPUTED OVER THE
+          WINDOW. The comment above corrected the FALL from thirty hours to twenty-three, and
+          the volume clause one line to the right kept comparing `event` — every bar of the
+          window this page examines — against the median total over the same number of bars.
+          Both halves are right on their own; the sentence attached the second to the span named
+          by the first. The same window-versus-fall confusion the note above is about, surviving
+          the fix that named it, because it moved rather than went away. The span is now read
+          from the series instead of being implied. */}
+      twenty-three hours, on {(eventVol / typicalOverSameSpan).toFixed(0)}× the volume this {event.length}-hour window normally carries. Below is the modelled field
       for that window with the observed price drawn over it. Watch the bright bands under the price
       end where the candles reach them.
     </p>

@@ -65,7 +65,7 @@ export const GET: APIRoute = async ({ locals }) => {
      a way worth recording. It said interact.js "needs no change — it already paints spot when
      the payload carries it and freezes when it does not". That client-side spot handling has
      since been deleted, along with the freeze guard that went with it, because keeping it did
-     active harm: the coin pages were re-based onto the perpetual and kept the old `data-spot`
+     active harm: the coin pages were re-based onto the perpetual and kept the old `data-repaint`
      attribute names, so the guard fired permanently and froze their entire overlay. Dead code
      kept for a reversal is not free, and this one cost the ten pages it was meant to protect.
      Restoring spot would now mean the ingest, the payload, the client branches and the guard —

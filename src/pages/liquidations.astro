@@ -54,7 +54,7 @@ const map =
   start > 4 && series.length > 40
     ? buildLiqMap({
         candles: series, start, cols: win.cols, mmf, maxLeverage: tier1.maxLeverage,
-        openInterest: perp.oiNotional, profile, rows: 150, ageBars, minSpan: 0.16,
+        oiNotional: perp.oiNotional, profile, rows: 150, ageBars, minSpan: 0.16,
       })
     : null;
 const paint = map ? paintHeatMap(map, { live: { px: mark, at: snap.fetchedAt } }) : null;
@@ -64,7 +64,20 @@ const totalClustered = map ? map.clusters.reduce((s, c) => s + c.notional, 0) : 
 /* The same renormalised mix the model uses, so the table below and the picture above cannot
    describe two different weight vectors. See mixUsed() in src/lib/liqmap.ts. */
 const mix = mixUsed(profile, tier1.maxLeverage);
-const offAxis = profile.weights.filter(([L]) => L <= tier1.maxLeverage && map && (mark * (1 - 1 / L)) / (1 - mmf) < map.loPrice);
+/* IT TESTED ONE SIDE AGAINST ONE BOUND. The map places BOTH a long and a short level at every
+   leverage — buildLiqMap iterates [[longLiq, true], [shortLiq, false]] — and this filter checked
+   only the long level against only the lower bound. The axis is not symmetric about the mark: it
+   is the traded range plus headroom, so after a hard fall loPrice sits far below and hiPrice
+   close above, and a 3x SHORT level can be off the top of the picture while the 3x long level is
+   still on it. The sentence beneath says which leverages "fall off the picture"; it was naming
+   the ones that fall off the bottom. Row 8's clipped figure was always the honest aggregate —
+   it counts both halves — so this list was the only place the asymmetry showed. */
+const offAxis = profile.weights.filter(([L]) => {
+  if (L > tier1.maxLeverage || !map) return false;
+  const longLiq = (mark * (1 - 1 / L)) / (1 - mmf);
+  const shortLiq = (mark * (1 + 1 / L)) / (1 + mmf);
+  return longLiq < map.loPrice || shortLiq > map.hiPrice;
+});
 const sweptTotal = map ? map.swept.reduce((a, b) => a + b, 0) : 0;
 
 /* --- corridor ladder: derived, not modelled --- */

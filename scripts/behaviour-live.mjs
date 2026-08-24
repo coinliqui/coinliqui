@@ -18,7 +18,7 @@
  * question. Instead it checks the two halves that together make the overlay work, from ordinary
  * HTTP:
  *
- *   THE CONTRACT — every `data-spot` kind the live HTML declares must be satisfiable by the live
+ *   THE CONTRACT — every `data-repaint` kind the live HTML declares must be satisfiable by the live
  *   payload. That is exactly what broke: markup said `last`, payload had no `spot`. The kinds are
  *   read from the RENDERED page rather than from templates, because three of the six are emitted
  *   through expressions and a source grep undercounts them.
@@ -72,7 +72,7 @@ export function kindsAgree(interactSrc, declared) {
 /** Every live cell the page declares, from the rendered HTML. */
 export function declaredCells(html) {
   const out = [];
-  for (const m of html.matchAll(/<[a-z]+\b[^>]*\bdata-spot="([a-z]+)"[^>]*>/g)) {
+  for (const m of html.matchAll(/<[a-z]+\b[^>]*\bdata-repaint="([a-z]+)"[^>]*>/g)) {
     const tag = m[0];
     const sym = (tag.match(/\bdata-sym="([^"]*)"/) ?? [])[1];
     const venue = (tag.match(/\bdata-venue="([^"]*)"/) ?? [])[1];
@@ -128,19 +128,19 @@ if (process.argv.includes("--blind")) {
   };
 
   console.log("\n  the contract between markup and payload");
-  check("a clean page", unsatisfiable(declaredCells('<b data-spot="mark" data-sym="BTC">x</b>'), base), null);
+  check("a clean page", unsatisfiable(declaredCells('<b data-repaint="mark" data-sym="BTC">x</b>'), base), null);
   /* THE DEFECT VERBATIM: the coin pages declared spot kinds after the payload stopped carrying
      spot, and every cell went inert. This is that page against that payload. */
   check("markup declares a kind the payload cannot serve",
-        unsatisfiable(declaredCells('<b data-spot="last" data-sym="BTC">x</b>'), base), /no rule for this kind/);
+        unsatisfiable(declaredCells('<b data-repaint="last" data-sym="BTC">x</b>'), base), /no rule for this kind/);
   check("a symbol the payload does not carry",
-        unsatisfiable(declaredCells('<b data-spot="mark" data-sym="DOGE">x</b>'), base), /mark:DOGE/);
+        unsatisfiable(declaredCells('<b data-repaint="mark" data-sym="DOGE">x</b>'), base), /mark:DOGE/);
   check("an apr cell whose venue is absent",
-        unsatisfiable(declaredCells('<b data-spot="apr" data-sym="BTC" data-venue="BybitPerp">x</b>'), base), /apr:BTC@BybitPerp/);
+        unsatisfiable(declaredCells('<b data-repaint="apr" data-sym="BTC" data-venue="BybitPerp">x</b>'), base), /apr:BTC@BybitPerp/);
   check("a spread cell with only one venue quoting",
-        unsatisfiable(declaredCells('<b data-spot="spread" data-sym="ETH">x</b>'), base), /spread:ETH/);
+        unsatisfiable(declaredCells('<b data-repaint="spread" data-sym="ETH">x</b>'), base), /spread:ETH/);
   check("a cell with no symbol is not a live cell",
-        unsatisfiable(declaredCells('<b data-spot="mark">x</b>'), base), null);
+        unsatisfiable(declaredCells('<b data-repaint="mark">x</b>'), base), null);
 
   console.log("\n  what must move");
   check("a healthy pair", compare(base, P(2000, { BTC: 101, ETH: 50 })).moved, null);

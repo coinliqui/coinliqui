@@ -136,7 +136,14 @@ export function buildLiqMap(opts: {
   cols: number;
   mmf: number;
   maxLeverage: number;
-  openInterest: number;
+  /* THE NAME WAS `openInterest` AND THE VALUE IS USD NOTIONAL. src/lib/hyperliquid.ts:38
+     declares `openInterest: number; // base units` on the perp itself, and the only caller
+     passes `perp.oiNotional` — two fields, one name, different units, in one codebase. The
+     value this function RETURNS was already called `totalNotional`, which is the same fact
+     admitted at the other end. A future caller passing the base-units field would scale the
+     whole map by the price of the asset — 71,000x on BTC — and produce a plausible picture
+     nothing would flag, because both are numbers. */
+  oiNotional: number;
   profile: LevProfile;
   rows?: number;
   /** assumed position life, in bars of this series */
@@ -209,7 +216,7 @@ export function buildLiqMap(opts: {
   let clipped = 0, placed = 0;
 
   for (let i = 0; i < NC; i++) {
-    const base = (opts.openInterest * vol[i]) / Math.max(1e-9, trail[i]) / LIFE;
+    const base = (opts.oiNotional * vol[i]) / Math.max(1e-9, trail[i]) / LIFE;
     if (!(base > 0)) continue;
     const close = all[i][4];
     for (const { L: Lv, share: w } of lev) {
@@ -288,7 +295,7 @@ export function buildLiqMap(opts: {
     clusters,
     clipped: clipped / Math.max(1e-9, clipped + placed),
     tradedLo, tradedHi,
-    totalNotional: opts.openInterest,
+    totalNotional: opts.oiNotional,
     ageBars, spanRule, warmBars: warm,
   };
 }

@@ -65,7 +65,7 @@ const description =
                 <td class="num">
                   {f ? (
                     <>
-                      <span class={paysClass(f.apr)} data-spot="apr" data-sym={p.symbol} data-venue={v}>{pct(f.apr)}</span>
+                      <span class={paysClass(f.apr)} data-repaint="apr" data-sym={p.symbol} data-venue={v}>{pct(f.apr)}</span>
                       <span class="raw">{rawRate(f.rate)} / {f.intervalHours}h</span>
                     </>
                   ) : (
@@ -74,7 +74,7 @@ const description =
                 </td>
               );
             })}
-            <td class="num" data-spot={spread != null ? "spread" : undefined} data-sym={p.symbol}>{spread != null ? pct(spread) : <span class="faint">—</span>}</td>
+            <td class="num" data-repaint={spread != null ? "spread" : undefined} data-sym={p.symbol}>{spread != null ? pct(spread) : <span class="faint">—</span>}</td>
             <td class="num">{usd(p.oiNotional)}</td>
             <td class="num">{usd(p.dayNtlVlm)}</td>
           </tr>

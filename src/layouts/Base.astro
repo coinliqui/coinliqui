@@ -496,8 +496,8 @@ const schema = {
 
       /* A figure that just changed gets one quiet pulse. Never a colour that means something
          else on this site, and never a size or weight change, which would reflow the row. */
-      [data-spot][data-moved] { color: var(--accent); }
-      [data-spot] { transition: color .4s var(--ease); }
+      [data-repaint][data-moved] { color: var(--accent); }
+      [data-repaint] { transition: color .4s var(--ease); }
 
       /* Per-figure age, printed next to anything not on the page's fastest clock. */
       .clock { font-size: var(--fs-xs); color: var(--text-faint); font-variant-numeric: tabular-nums; }

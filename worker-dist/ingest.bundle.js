@@ -317,7 +317,8 @@ var ENDPOINTS = [
   "https://searchadvisor.naver.com/indexnow"
 ];
 var MAX_URLS = 200;
-var STATE_KEY = "indexnow:submitted";
+var STATE_KEY = "indexnow:state";
+var LEGACY_STATE_KEY = "indexnow:submitted";
 function publishedUrls(origin, symbols, now = Date.now()) {
   return [
     ...STATIC_ROUTES.map((r) => `${origin}${r === "/" ? "/" : r}`),
@@ -331,8 +332,13 @@ async function stepIndexNow(env, current) {
   const origin = env.SITE_ORIGIN || "https://coinliqui.com";
   const host = new URL(origin).host;
   let st;
+  let fromLegacy = false;
   try {
     st = readState(await env.SNAPSHOT.get(STATE_KEY, "json"));
+    if (!st) {
+      st = readState(await env.SNAPSHOT.get(LEGACY_STATE_KEY, "json"));
+      if (st) fromLegacy = true;
+    }
   } catch {
     return "indexnow: state unreadable, skipped";
   }
@@ -363,7 +369,7 @@ async function stepIndexNow(env, current) {
     owed.set(e, list);
   }
   if (!owed.size) {
-    if (fresh.length || held.length) await env.SNAPSHOT.put(STATE_KEY, JSON.stringify({ known: current, pending, backoff, ...sentAt ? { sentAt } : {} }));
+    if (fresh.length || held.length || fromLegacy) await env.SNAPSHOT.put(STATE_KEY, JSON.stringify({ known: current, pending, backoff, ...sentAt ? { sentAt } : {} }));
     if (held.length) return `indexnow: nothing sent \u2014 ${held.join(", ")}`;
     return sentAt ? `indexnow: nothing new (${current.length} URLs published, none owed to any endpoint; last accepted ${new Date(sentAt).toISOString().slice(0, 16).replace("T", " ")} UTC)` : `indexnow: nothing new (${current.length} URLs published, none owed \u2014 but nothing has ever been accepted by any endpoint, so this is a recorded baseline rather than a completed submission)`;
   }
@@ -1049,7 +1055,7 @@ async function stepCorroborate(env, now = Date.now()) {
 }
 
 // worker/build-stamp.ts
-var WORKER_BUILD = "e52c1b84f257";
+var WORKER_BUILD = "9be2e398a920";
 
 // worker/ingest.ts
 var RETAIN_HOURS = 72;

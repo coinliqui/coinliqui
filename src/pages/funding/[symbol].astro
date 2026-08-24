@@ -205,7 +205,7 @@ const description = `What a ${p.symbol} perpetual costs to hold, against ${usd(p
   </div>
 
   <div class="hero">
-    <span class="hero__price" data-spot="mark" data-sym={p.symbol} data-dp={dp}>{px(markNow)}</span>
+    <span class="hero__price" data-repaint="mark" data-sym={p.symbol} data-dp={dp}>{px(markNow)}</span>
     <span class="hero__chg" data-tfstat="change" data-group="px" {...stat((c) => `${arrow(c.chart!.change)} ${(Math.abs(c.chart!.change) * 100).toFixed(2)}%`)}>
       {/* THE FALLBACK BRANCH HAD NO FINITENESS GUARD, and it is the branch that only runs on a
           contract with no chart yet — i.e. one that just entered coverage, which is exactly when
@@ -357,7 +357,7 @@ const description = `What a ${p.symbol} perpetual costs to hold, against ${usd(p
       <div class="card__label">Spread between venues</div>
       {/* max-min over the venue cells below, so it must be recomputed from the SAME numbers
           after a live pull — otherwise the card describes a set the table no longer shows. */}
-      <div class="card__value" data-spot={p.aprSpread != null ? "spread" : undefined} data-sym={p.symbol}>{p.aprSpread != null ? pct(p.aprSpread) : "—"}</div>
+      <div class="card__value" data-repaint={p.aprSpread != null ? "spread" : undefined} data-sym={p.symbol}>{p.aprSpread != null ? pct(p.aprSpread) : "—"}</div>
       <div class="card__meta">annualised difference</div>
     </div>
     <div class="card">
@@ -406,7 +406,7 @@ const description = `What a ${p.symbol} perpetual costs to hold, against ${usd(p
               <td class="num">{iv ? `${iv}h` : dash}</td>
               <td class="num">{iv ? Math.round(settlementsPerYear(iv)).toLocaleString("en-US") : dash}</td>
               <td class:list={["num", f && Number.isFinite(f.apr) && paysClass(f.apr)]} style="font-weight:600"
-                  data-spot={f ? "apr" : undefined} data-sym={p.symbol} data-venue={v}>{f ? pct(f.apr) : "—"}</td>
+                  data-repaint={f ? "apr" : undefined} data-sym={p.symbol} data-venue={v}>{f ? pct(f.apr) : "—"}</td>
             </tr>
           );
         })}

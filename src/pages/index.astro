@@ -187,6 +187,23 @@ const description =
         <a class="link" href="/data-sources">How often each figure is refreshed →</a>
       </p>
       </>
+    ) : flips.status === "stale" ? (
+      /* A STALLED INGEST, NOT A WARM-UP. This used to arrive here as "warming" with hours: 0,
+         so the panel below drew a 0% bar and "0 of 24 hours collected" beside a start date days
+         old — a reader waits, when the thing to do is look at the run log. */
+      <div class="empty">
+        <div class="empty__icon" aria-hidden="true">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 6.5v4" /><path d="M10 13.4h.01" /><circle cx="10" cy="10" r="7.25" /></svg>
+        </div>
+        <div>
+          <p class="empty__text">{describeCoverage(flips)}</p>
+          <p class="empty__meta">
+            Last written <b>{utc(flips.computedAt)}</b>
+            {flips.since > 0 ? <> · history since <b>{utc(flips.since)}</b></> : null}
+            {" "}· <a class="link" href="/status">the ingest run log →</a>
+          </p>
+        </div>
+      </div>
     ) : flips.status === "warming" ? (
       <div class="empty">
         <div class="empty__icon" aria-hidden="true">
