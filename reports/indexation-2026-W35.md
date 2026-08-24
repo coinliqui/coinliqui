@@ -18,6 +18,12 @@ What exists, and whether a crawler can still fetch it. No credentials — this s
 | `unlocks` | 1 | 1/1 |
 | **total** | **79** | **79/79** |
 
+> **The URL list on this reading was reconstructed, not captured.** Section A gained a
+> covered-set diff after this run finished, so W35 had no list of its own. It was rebuilt
+> on 2026-08-24 from the live sitemap, whose per-template counts match the table above
+> exactly. W36 will diff against it; anything that changed between 07:02 and the rebuild
+> is invisible to that comparison and will surface a week late.
+
 ## B. Search Console
 
 ### Indexed share, per template
