@@ -95,7 +95,16 @@ export function unsatisfiable(cells, payload) {
 /** What must have moved, and what must have held, between two readings. */
 export function compare(a, b) {
   const moved = [], held = [];
-  if (!(b.at > a.at)) moved.push(`at did not advance (${a.at} -> ${b.at}) — the one-minute tick is not writing`);
+  /* IT WATCHED `at` AND SAID "THE ONE-MINUTE TICK". `at` was the newest of the two stores, so
+     while the live tick was the newer one it did advance every minute and the sentence was
+     accidentally true. `at` is now the OLDER of the two — the conservative page-wide clock the
+     server already renders — and it moves on the five-minute snapshot, so this failed a
+     181-second observation window on a perfectly healthy feed the first time it ran.
+     The payload publishes `liveAt` for exactly this: the one-minute tick's own clock, separate
+     from the snapshot's, so each can be observed without a proxy. Watching the field whose name
+     matches the claim is the fix, and it is a stricter check than the old one — `at` could have
+     advanced on the snapshot alone while the live tick was dead. */
+  if (!(b.liveAt > a.liveAt)) moved.push(`liveAt did not advance (${a.liveAt} -> ${b.liveAt}) — the one-minute tick is not writing`);
   const marksChanged = Object.keys(b.mark ?? {}).filter((s) => a.mark?.[s] !== undefined && a.mark[s] !== b.mark[s]).length;
   if (marksChanged === 0) moved.push("not one of the marks changed — the feed is being rewritten with identical values, or not at all");
   const ka = Object.keys(a).sort().join(","), kb = Object.keys(b).sort().join(",");
@@ -135,7 +144,13 @@ if (process.argv.includes("--blind")) {
 
   console.log("\n  what must move");
   check("a healthy pair", compare(base, P(2000, { BTC: 101, ETH: 50 })).moved, null);
-  check("the clock did not advance", compare(base, P(1000, { BTC: 101, ETH: 50 })).moved, /at did not advance/);
+  check("the one-minute tick's clock did not advance", compare(base, P(1000, { BTC: 101, ETH: 50 })).moved, /liveAt did not advance/);
+  /* THE BLIND CASE FOR THE FIELD SWAP: the snapshot clock moving must NOT satisfy a check about
+     the one-minute tick. Before this, `at` advancing was the whole test, and a dead live tick
+     beside a healthy snapshot would have read as green. */
+  check("the snapshot advanced while the one-minute tick stood still",
+        compare(P(1000, { BTC: 100, ETH: 50 }), { ...P(2000, { BTC: 101, ETH: 50 }), liveAt: 1000 }).moved,
+        /liveAt did not advance/);
   check("every mark identical", compare(base, P(2000, { BTC: 100, ETH: 50 })).moved, /not one of the marks changed/);
 
   console.log("\n  what must hold");
