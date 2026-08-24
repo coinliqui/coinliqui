@@ -78,6 +78,9 @@ const [dayset, hourset, m15set, funding] = await Promise.all([
   getM15(env?.SNAPSHOT, p.symbol, import.meta.env.DEV),
   getFunding(env?.SNAPSHOT, p.symbol, import.meta.env.DEV),
 ]);
+/* HOW FAR THE STORED FUNDING SERIES ACTUALLY GOES, read from the series rather than from
+   whichever bar of the current panel happens to carry the first funding value. */
+const fundingSeriesFrom = funding && funding.length ? Math.min(...funding.map((f) => f[0])) : null;
 /* THE HERO NUMBER ON THIS TEMPLATE IS A PERPETUAL MARK, AND IT SAID SO NOWHERE.
    Fifty pages, the site's highest-traffic template, and the biggest figure on each was
    p.markPx with nothing beside it naming what it is — while the sibling coin page put the
@@ -280,9 +283,18 @@ const description = `What a ${p.symbol} perpetual costs to hold, against ${usd(p
         pay longs</b>, deliberately not the candle colours, so one screen never says two things with
         one pair. It sits on the same time axis as the price, and it is the reason this chart is not
         the one everybody else draws.
-        {active!.chart.fundingFrom && (
-          <> Hyperliquid publishes its own funding hourly; this series reaches back to {shortDate(active!.chart.fundingFrom)},
-          and the shaded region to its left is the part of the window with no funding to show.</>
+        {/* "THIS SERIES REACHES BACK TO X" WAS A CLAIM ABOUT THE STORE AND X CAME FROM THE WINDOW.
+            chart.fundingFrom is candles[cov[0]][T] — the first bar OF THE PANEL BEING DRAWN that
+            carries funding — which is the right value for placing the shading and the wrong one
+            for stating how far the series goes. On any window funding covers completely, cov[0]
+            is 0, so the 15m panel said the series reached back two days while the store holds it
+            from 18 May. Two facts, one date, and the sentence claimed the one it did not have.
+            The depth now comes from the stored series; the shading is described in words, so it
+            needs no second date to be wrong with. */}
+        {fundingSeriesFrom && (
+          <> Hyperliquid publishes its own funding hourly; the stored series begins {shortDate(fundingSeriesFrom)},
+          and where a window reaches back further than that the band is shaded to mark the part
+          with no funding to show.</>
         )}
         {active!.chart.fundingClipped > 0 && (
           <> The band is scaled to ±{(active!.chart.fundingMax * 100).toFixed(0)}% APR, the 96th percentile —
