@@ -258,6 +258,45 @@ If the third has no answer, the failure was made unobservable. The reverting is 
 `degraded.mjs` found its own blind spot only when the guard it tests was actually deleted, and
 `read-floor-cases.mjs` only counts because putting the 24 back turns it red.
 
+## A name that asserts what the value does not measure
+
+Distinct from drift, and worse. Drift is two implementations of one fact growing apart, and you
+find it by comparing the copies. This is **one** value whose label states something the
+expression producing it does not compute — there is no second copy to compare against, the code
+is internally consistent, and the only way to see it is to read the derivation and the words
+side by side.
+
+The instance that named the class: `worker/report.ts` printed a table headed *Crawled, not
+indexed | Discovered, not crawled* and filled those columns with Google's **verdict** enum. The
+verdict says whether indexing succeeded; it carries nothing about crawling. The live report said
+"8 crawled, not indexed" about eight URLs of which seven were *Discovered — currently not
+indexed*. Those prescribe opposite work — crawled-not-indexed means change the page, discovered
+means wait — so acting on the summary meant rewriting fifty pages Google had never fetched.
+
+**The test for a finding is not "is the wording loose" but "would a competent reader, acting on
+the label alone, do something different from what the data justifies".** A sweep across six
+lenses produced 23 candidates and nine that met that bar. Two are worth remembering:
+
+- `/liquidations` printed the **raw** profile weight under a note reading *"the exact weight
+  vector behind the picture"*, while `buildLiqMap` renormalises over the rungs a contract's
+  leverage cap leaves in play. Nine of the ten committed margin tables cap below 40×. On the 3×
+  contract the table said 9% of open interest sat at 2× where the model put 100% of it — an
+  eleven-fold understatement, and a direct contradiction of the assumption row forty lines above
+  stating that total modelled notional equals open interest.
+- `verify-live` §5 printed *"every sitemap URL renders to </html> — 79 documents, not a sample"*
+  while gating the test on `isDocument()`. A 200 with a **zero-byte body** — the exact
+  presentation a mid-render throw produces, and the thing that section exists to catch — failed
+  `isDocument` and was skipped in silence.
+
+**Where the class does the most damage is in the instruments.** Four of the nine were green
+lines in this repository's own gate claiming more than the code checked: a hard-typed case count,
+a coverage claim over five of thirteen branches, a per-route `ok` printed after loops that had
+already failed, and a column headed "timeframes" holding a count of renders — which also made
+the filter beneath it structurally incapable of flagging a coin page.
+
+**Ask it of every success message, not only of UI labels.** Enumerate the clauses of the
+sentence and find the code establishing each one. A clause with no code behind it is this defect.
+
 ## Before wiring a check in: what does it fire on today?
 
 Two questions, asked of every new check **before** it goes in the gate:
