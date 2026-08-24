@@ -95,7 +95,13 @@ const px = (v: number) => usd(v, 0);
 const btc = (v: number) => Math.round(v).toLocaleString("en-US");
 const fetched = new Date(frozen.fetchedAt).toISOString().slice(0, 10);
 
-const title = "The 5 February 2026 BTC crash — liquidation model vs real candles";
+/* CUT MID-WORD, INSIDE THE PART THAT MATTERS. At 82 characters with the brand suffix this
+   rendered as "...liquidation model vs real ca" in a result — the comparison being made is the
+   whole point of the page and it broke inside the last word of it. Measured across every title
+   on the site: eight of ten over-long templates lose only the suffix, and this was one of the
+   two that lost meaning. Date, subject and the comparison all survive now.
+   The h1 is unchanged; this is the <title> only. */
+const title = "5 February 2026 BTC crash: model vs real candles";
 const description =
   "BTC fell from $73,139 to a $60,000 wick in twenty-three hours on 5–6 February 2026. Here is the modelled liquidation field for that window, with the price path drawn over it, so you can watch price run into the bands and clear them.";
 ---

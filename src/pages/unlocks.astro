@@ -75,7 +75,11 @@ const unfunded = (reg.emissions as any[]).filter((e) => e.state === "unfunded");
 const contractCount = schedules.length + reg.emissions.length;
 const overhangTotal = overhang.reduce((a, r) => a + (absorb(r.symbol, r.heldNow)?.usd ?? 0), 0);
 
-const title = "Token vesting contracts, read on-chain — and what each one still holds";
+/* THE OTHER ONE THAT LOST MEANING. 82 characters with the suffix, cut at "...and what each
+   one s" — and "what it still holds" is exactly the claim that separates this register from
+   every unlock calendar. Both differentiators kept, on-chain and still-holds, inside the
+   visible width. The h1 is unchanged. */
+const title = "On-chain vesting: what each contract still holds";
 const description =
   "A register of token vesting, lock and emission contracts read directly from Ethereum: what each holds right now, what it is still releasing, and which finished years ago with the tokens never withdrawn. One ENS lock holds 45.59% of supply, fully unlocked since November 2025.";
 ---
