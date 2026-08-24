@@ -29,7 +29,7 @@ import {
   basisSelfConsistent, uncoveredRoutes, staleDerivedCells, botPolicyReasons,
   undefinedClasses, undefinedVars, unreadableText, colourLegend, colourLanguageDrift,
   chartAgreement, duplicateRuleImplementations, fixtureGaps, requestedLeverageLabels, phantomInlineElements, malformedAttributes, uncitedPermissionClaims, unconditionalCadenceClaims,
-  staleCalculatorFigures, controlGroupOverflow, MEASUREMENT_EXPORTS,
+  staleCalculatorFigures, controlGroupOverflow, MEASUREMENT_EXPORTS, stampVerdict,
 } from "./checks.mjs";
 
 /* Enough page for a check to have something to read. Deliberately minimal: a fixture that is
@@ -43,6 +43,7 @@ const PALETTE = {
 
 const doc = (body, head = "") => `<!doctype html><html><head>${head}</head><body>${body}</body></html>`;
 
+let bad0 = 0;
 const cases = [
   {
     check: "hiddenFromEveryone",
@@ -314,9 +315,34 @@ const cases = [
       `const permitted = maxLeverage(table);\nconst effective = Math.min(requested, permitted);\n` +
       `const liq = liquidationPrice({ leverage: effective, table });\n<p>At {effective}x your liquidation price is {liq}</p>`),
   },
+  {
+    check: "stampVerdict",
+    why: "a worker behind the source tree and a site still serving the previous Pages version are opposite problems, and one message told the operator to fix the half that was already right",
+    fire: () => stampVerdict("ccc", "bbb", "aaa").state !== "current",
+    quiet: () => stampVerdict("aaa", "aaa", "aaa").state !== "current",
+  },
 ];
 
-let bad = 0;
+/* THE THREE-WAY SPLIT, WHICH THE PAIR ABOVE CANNOT PROVE. fire/quiet only establish that a
+   disagreement is noticed; the point of this check is WHICH half is behind, and getting that
+   backwards is what sends someone to re-deploy the component that is already current. */
+{
+  let vbad = 0;
+  for (const [name, d, e, l, want] of [
+    ["identical everywhere", "aaa", "aaa", "aaa", "current"],
+    ["deployed matches the source tree — the site is the lagging half", "aaa", "bbb", "aaa", "site-behind"],
+    ["deployed matches neither — the worker really is behind", "ccc", "bbb", "aaa", "worker-stale"],
+    ["deployed matches the site but not the tree — nothing to deploy yet", "bbb", "bbb", "aaa", "current"],
+    ["no local stamp readable — refuse to blame the site on no evidence", "aaa", "bbb", null, "worker-stale"],
+  ]) {
+    const got = stampVerdict(d, e, l).state;
+    if (got !== want) { vbad++; console.log(`  MISS  stampVerdict            ${name}: got ${got}, want ${want}`); }
+  }
+  if (!vbad) console.log(`  ok    stampVerdict             names which half is behind, on all five inputs`);
+  else bad0 += vbad;
+}
+
+let bad = bad0;
 for (const c of cases) {
   const f = c.fire(), q = c.quiet();
   const fires = Array.isArray(f) ? f.length > 0 : Boolean(f);

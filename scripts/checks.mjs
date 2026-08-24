@@ -1001,6 +1001,30 @@ export function founderAgreement(html) {
  * it. The worker stays out on purpose: the gate does not render the worker, so a key only the
  * worker reads is not a fixture gap.
  */
+/**
+ * WHICH OF THE TWO HALVES IS BEHIND, WHEN THE WORKER STAMP AND THE SITE DISAGREE.
+ *
+ * verify-live section 16 compared the deployed stamp against the one the SITE expects and
+ * reported every difference as `worker bundle stale`. Two conditions, one message, and the
+ * likelier one is the other: deploy:site runs verify-live immediately after `wrangler pages
+ * deploy` with no wait, so a request can still reach the previous Pages version. Measured on
+ * 24 August: it reported "deployed 8df809eceb41, expected 9be2e398a920", and the same check
+ * passed forty-five seconds later with nothing changed — 8df809eceb41 was the NEW stamp and
+ * the site had not propagated. The message told the operator to run deploy:worker, which was
+ * the one thing already done.
+ *
+ * The local build-stamp separates them: if the deployed worker matches the source tree, the
+ * worker is right and the site is the lagging half.
+ *
+ * Extracted from the inline form so all three verdicts can be exercised. Two of them had never
+ * run — a three-branch decision with one tested branch is the shape this whole pass removes.
+ */
+export function stampVerdict(deployed, expects, local) {
+  if (deployed === expects) return { state: "current", stamp: deployed };
+  if (local && deployed === local) return { state: "site-behind", deployed, expects };
+  return { state: "worker-stale", deployed, expects, local: local ?? null };
+}
+
 export function fixtureGaps(sources, fixtureKeys) {
   const wanted = new Map();
   const note = (key, file) => {

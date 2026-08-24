@@ -929,8 +929,39 @@ console.log("\n16. data");
     ["SNAPSHOT binding", /<td[^>]*>KV binding <code[^>]*>SNAPSHOT<\/code><\/td>\s*<td[^>]*>([^<]*)</],
     ["DB binding", /<td[^>]*>D1 binding <code[^>]*>DB<\/code><\/td>\s*<td[^>]*>([^<]*)</],
   ]) console.log(`   ---   ${lbl}: ${grab(re)}`);
+  /* "WORKER BUNDLE STALE" NAMED ONE CONDITION AND FIRED ON TWO.
+     It compares the deployed stamp against the one the SITE expects, and reports any difference
+     as a stale worker. The opposite happens just as often: deploy:site runs this immediately
+     after `wrangler pages deploy`, with no wait, so a request can still reach the previous
+     Pages version — the worker is current and the SITE is behind. Measured today: it reported
+     "deployed 8df809eceb41, expected 9be2e398a920" and forty-five seconds later the same check
+     passed with no change to anything, because 8df809eceb41 was the NEW stamp and the site had
+     not propagated. A false alarm that says "run deploy:worker" when deploy:worker is the one
+     thing that is already done.
+
+     The local build-stamp is what separates them, and it costs a file read: if the deployed
+     worker matches the source tree, the worker is right and the site is the lagging half. */
   const w = /Deployed <code[^>]*>([^<]*)<\/code>, site expects <code[^>]*>([^<]*)</.exec(r.body);
-  w && (w[1] === w[2] ? ok(`worker bundle current (${w[1]})`) : bad(`worker bundle stale: deployed ${w[1]}, expected ${w[2]}`));
+  if (w) {
+    const [, deployed, expects] = w;
+    const { readFileSync } = await import("node:fs");
+    const local = (/"([0-9a-f]{12})"/.exec(readFileSync("worker/build-stamp.ts", "utf8")) || [])[1] ?? null;
+    const { stampVerdict } = await import("./checks.mjs");
+    const v = stampVerdict(deployed, expects, local);
+    if (v.state === "current") ok(`worker bundle current (${deployed})`);
+    else {
+      if (v.state === "site-behind") {
+        /* One retry, because propagation is the likely cause and a check that cannot outlast it
+           will keep crying wolf on every worker-source change. */
+        await new Promise((res) => setTimeout(res, 20_000));
+        const again = /Deployed <code[^>]*>([^<]*)<\/code>, site expects <code[^>]*>([^<]*)</.exec((await fetchAs("/status", "Mozilla/5.0")).body);
+        if (again && again[1] === again[2]) ok(`worker bundle current (${again[1]}) — the site was still serving the previous Pages version 20s ago`);
+        else bad(`the SITE is behind, not the worker: the deployed worker ${deployed} matches worker/build-stamp.ts, and the site still expects ${expects} after a 20s retry. Re-run the Pages deploy rather than deploy:worker.`);
+      } else {
+        bad(`worker bundle stale: deployed ${deployed}, the site expects ${expects}, and worker/build-stamp.ts says ${local ?? "?"} — the worker is behind the source tree. Run: npm run deploy:worker`);
+      }
+    }
+  }
 }
 
 /* 17. THE URLS THIS SITE PUBLISHES ABOUT ITSELF MUST RESOLVE FOR A SIGNED-OUT READER.
