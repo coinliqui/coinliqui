@@ -1081,7 +1081,7 @@ async function stepCorroborate(env, now = Date.now()) {
 }
 
 // worker/build-stamp.ts
-var WORKER_BUILD = "9b850372c52c";
+var WORKER_BUILD = "abd866373f8e";
 
 // worker/ingest.ts
 var RETAIN_HOURS = 72;
@@ -1300,14 +1300,14 @@ async function run(env) {
         const have = new Set(m?.h ?? []);
         const room = Math.max(1, CHUNK - extra);
         let firstErr = "";
-        const run2 = async (slice) => {
+        const run2 = async (slice2) => {
           const done2 = [];
-          const oks = await Promise.all(slice.map((s) => write(s).catch((e) => {
+          const oks = await Promise.all(slice2.map((s) => write(s).catch((e) => {
             if (!firstErr) firstErr = `${s}: ${(e instanceof Error ? e.message : String(e)).slice(0, 90)}`;
             return false;
           })));
           oks.forEach((ok, i) => {
-            if (ok) done2.push(slice[i]);
+            if (ok) done2.push(slice2[i]);
           });
           return done2;
         };
@@ -1336,8 +1336,11 @@ async function run(env) {
         const due = !m?.u || Date.now() - m.u > hours * 36e5;
         if (!inCycle && !due) return void 0;
         const list = inCycle && m?.l?.length ? m.l : scope;
-        const done = await run2(list.slice(cursor, cursor + room));
+        const slice = list.slice(cursor, cursor + room);
+        const done = await run2(slice);
         for (const s of done) have.add(s);
+        const skipped = slice.filter((x) => !done.includes(x));
+        const skipAcc = cursor === 0 ? skipped : [.../* @__PURE__ */ new Set([...m?.skip ?? [], ...skipped])];
         const next = cursor + Math.min(room, Math.max(0, list.length - cursor));
         const wrapped = next >= list.length;
         if (wrapped) {
@@ -1353,6 +1356,11 @@ async function run(env) {
           l: wrapped ? void 0 : list,
           h: [...have],
           written: done.length,
+          /* Carried across the cycle and published WITH the stamp it qualifies, so "last full
+             refresh" and "and it skipped these" are read together or not at all. Cleared on the
+             wrap that stamps the next cycle, so it always describes the cycle `u` names. */
+          skip: skipAcc.length ? skipAcc : void 0,
+          skipAt: skipAcc.length ? Date.now() : void 0,
           e: done.length ? void 0 : firstErr || void 0
         }));
         return done.length;

@@ -127,7 +127,12 @@ const bindings = [
  * Each sweep records the symbols it has written in its own meta record, so the comparison is
  * three KV reads rather than one per contract.
  */
+/* THE TABLE IS HEADED "Series coverage" AND LISTED THREE OF THE FOUR SERIES. m15 drives every
+   15m and 30m chart on sixty pages and was not on it, so a stalled 15-minute sweep was invisible
+   on the one page whose whole job is making staleness visible — found on 24 August when 45 chart
+   renders breached the freshness ceiling while this table showed three green rows. */
 const SERIES = [
+  { key: "m15", label: "15-minute candles", gate: "2 h", drives: "the 15m and 30m charts" },
   { key: "hourly", label: "Hourly candles", gate: "2 h", drives: "the liquidation map and the 1H/4H charts" },
   { key: "candles", label: "Daily candles", gate: "12 h", drives: "the 1D/1W charts and leverage survival" },
   { key: "funding", label: "Funding history", gate: "6 h", drives: "the funding band under every price chart" },
@@ -137,17 +142,24 @@ const series = await Promise.all(
   SERIES.map(async (s) => {
     let have: string[] = [];
     let at = 0;
+    /* "Missing" means no data at all. A symbol the last cycle walked past keeps its old data and
+       is not missing — it is stale, which the row could not say until the sweep recorded it. */
+    let skipped: string[] = [];
     try {
-      const m = (await env?.SNAPSHOT?.get(`${s.key}:meta`, "json")) as { h?: string[]; u?: number } | null;
+      const m = (await env?.SNAPSHOT?.get(`${s.key}:meta`, "json")) as { h?: string[]; u?: number; skip?: string[] } | null;
       have = m?.h ?? [];
       at = m?.u ?? 0;
+      skipped = m?.skip ?? [];
     } catch { /* leave empty — reported as unknown, not as healthy */ }
     const set = new Set(have);
     const missing = covered.filter((c) => !set.has(c));
-    return { ...s, at, missing, known: have.length > 0 };
+    /* Only the ones still published: a symbol skipped just before it left coverage is not a gap
+       in anything a reader can reach. */
+    const stale = skipped.filter((c) => covered.includes(c) && set.has(c));
+    return { ...s, at, missing, stale, known: have.length > 0 };
   }),
 );
-const seriesGap = series.some((s) => s.known && s.missing.length > 0);
+const seriesGap = series.some((s) => s.known && (s.missing.length > 0 || s.stale.length > 0));
 const utc = (ms: number) => new Date(ms).toISOString().slice(0, 16).replace("T", " ") + " UTC";
 ---
 
@@ -282,16 +294,29 @@ const utc = (ms: number) => new Date(ms).toISOString().slice(0, 16).replace("T",
   </p>
   <div class="panel" style="max-width:860px">
     <table class="tbl">
-      <thead><tr><th>Series</th><th class="num">Covered</th><th>Refresh interval</th><th>Missing</th></tr></thead>
+      <thead><tr><th>Series</th><th class="num">Covered</th><th>Refresh interval</th><th>Missing or stale</th></tr></thead>
       <tbody>
         {series.map((s) => (
-          <tr class={s.known && s.missing.length ? "is-active" : undefined}>
+          <tr class={s.known && (s.missing.length || s.stale.length) ? "is-active" : undefined}>
             <td>{s.label}<div class="reason" style="margin-top:2px">drives {s.drives}</div></td>
-            <td class:list={["num", s.known ? (s.missing.length ? "is-bad" : "is-ok") : "dim"]} style="font-weight:600">
+            <td class:list={["num", s.known ? (s.missing.length || s.stale.length ? "is-bad" : "is-ok") : "dim"]} style="font-weight:600">
               {s.known ? `${covered.length - s.missing.length} / ${covered.length}` : "—"}
             </td>
             <td>{s.gate}{s.at ? <div class="reason" style="margin-top:2px">last full refresh {utc(s.at)}</div> : null}</td>
-            <td class="reason">{!s.known ? "unknown — no refresh has recorded coverage yet" : s.missing.length ? s.missing.join(", ") : "none"}</td>
+            <td class="reason">
+              {!s.known ? "unknown — no refresh has recorded coverage yet" : (
+                <>
+                  {s.missing.length ? <>missing: {s.missing.join(", ")}</> : null}
+                  {s.missing.length && s.stale.length ? <br /> : null}
+                  {/* THE ROW SAID "none" WHILE TWO STORES WERE THREE HOURS OLD. `u` above stamps
+                      when the cursor reached the end of the list, not when every symbol was
+                      written, so a symbol whose fetch threw keeps its old data and is not
+                      missing. The sweep records what it walked past; this is where it lands. */}
+                  {s.stale.length ? <>the last full cycle walked past <b>{s.stale.join(", ")}</b> without writing — their data is older than the interval, not absent</> : null}
+                  {!s.missing.length && !s.stale.length ? "none" : null}
+                </>
+              )}
+            </td>
           </tr>
         ))}
       </tbody>

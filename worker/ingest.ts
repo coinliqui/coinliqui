@@ -254,7 +254,13 @@ interface RunResult {
 
 /** The shape every sweep keeps in KV: last full cycle, cursor, frozen list, symbols with data,
  *  failure-backoff stamp, and the first error of a fruitless pass. */
-interface SweepMeta { u?: number; i?: number; l?: string[]; h?: string[]; f?: number; e?: string }
+interface SweepMeta {
+  u?: number; i?: number; l?: string[]; h?: string[]; f?: number; e?: string;
+  /** Symbols the cycle that `u` stamps walked past without writing. See the note at the sweep's
+   *  cursor: `u` means "the cursor reached the end", not "every symbol was refreshed". */
+  skip?: string[];
+  skipAt?: number;
+}
 
 /** Sentinel: not an error, just "this tick was spent on the report". */
 /** Contracts that have left coverage, and when. Read by the contract route to answer 410
@@ -697,8 +703,28 @@ async function run(env: Env): Promise<RunResult> {
         if (!inCycle && !due) return undefined;
 
         const list = inCycle && m?.l?.length ? m.l : scope;
-        const done = await run(list.slice(cursor, cursor + room));
+        const slice = list.slice(cursor, cursor + room);
+        const done = await run(slice);
         for (const s of done) have.add(s);
+
+        /* WHICH SYMBOLS THIS CYCLE SKIPPED, WHICH `u` DOES NOT SAY AND `h` CANNOT.
+           `u` is stamped when the cursor wraps — when the cycle reached the end of the list,
+           not when every symbol in it was written. A symbol whose fetch throws is caught inside
+           run(), left out of `done`, and the cursor moves past it; the cycle then wraps and
+           stamps "last full refresh" over a store that did not move. `have` cannot catch it
+           either: it records whether a symbol has data EVER, so a stale store is indistinguish-
+           able from a fresh one and the hole-fill path never revisits it.
+
+           Measured 24 August: m15:meta reported a full refresh at 10:12 while m15:SOL had been
+           written at 07:47 and m15:AERO at 07:52 — on a two-hour cadence — and 45 chart renders
+           breached this site's own freshness ceiling while /status showed the series green.
+
+           This records the skip rather than changing what the sweep does. Re-queueing a stale
+           symbol is the actual fix and it belongs in the hole-fill path, which carries a comment
+           about how a permanently failing symbol once stopped every other refresh; that wants
+           its own change with its own backoff, on evidence this field is what produces. */
+        const skipped = slice.filter((x) => !done.includes(x));
+        const skipAcc = cursor === 0 ? skipped : [...new Set([...(m?.skip ?? []), ...skipped])];
 
         const next = cursor + Math.min(room, Math.max(0, list.length - cursor));
         const wrapped = next >= list.length;
@@ -719,6 +745,11 @@ async function run(env: Env): Promise<RunResult> {
           l: wrapped ? undefined : list,
           h: [...have],
           written: done.length,
+          /* Carried across the cycle and published WITH the stamp it qualifies, so "last full
+             refresh" and "and it skipped these" are read together or not at all. Cleared on the
+             wrap that stamps the next cycle, so it always describes the cycle `u` names. */
+          skip: skipAcc.length ? skipAcc : undefined,
+          skipAt: skipAcc.length ? Date.now() : undefined,
           e: done.length ? undefined : firstErr || undefined,
         }));
         return done.length;

@@ -894,7 +894,14 @@ console.log("\n15. the ingest write budget still holds at today's coverage");
        count of SNAPSHOT.put call sites in the worker is asserted instead: add a write anywhere
        and this fails until somebody comes back here and decides what it costs. */
     const PUT_SITES = (src.match(/SNAPSHOT\.put\(/g) ?? []).length;
-    const PUT_SITES_KNOWN = 13;
+    /* 14 SINCE 24 AUGUST. The new one writes `published:retired`, and it is guarded twice: the
+       published set must have genuinely changed, and at least one symbol must have LEFT. A join
+       writes nothing. Observed frequency is a retirement every few days — FET on 24 August, and
+       MORPHO's arrival on the 21st wrote nothing here — so it is a handful of writes a month
+       against a million, and it does not enter the per-tick arithmetic below.
+       Raised deliberately, which is the whole point of this assertion: a write added anywhere
+       fails this until somebody comes back and decides what it costs. */
+    const PUT_SITES_KNOWN = 14;
     const PER_INGEST_TICK = 3;   // snapshot, flips LAST_KEY, flips EVENTS_KEY
     const PER_MINUTE_TICK = 1;   // live
 
@@ -947,20 +954,26 @@ console.log("\n16. data");
     const { readFileSync } = await import("node:fs");
     const local = (/"([0-9a-f]{12})"/.exec(readFileSync("worker/build-stamp.ts", "utf8")) || [])[1] ?? null;
     const { stampVerdict } = await import("./checks.mjs");
-    const v = stampVerdict(deployed, expects, local);
-    if (v.state === "current") ok(`worker bundle current (${deployed})`);
-    else {
-      if (v.state === "site-behind") {
-        /* One retry, because propagation is the likely cause and a check that cannot outlast it
-           will keep crying wolf on every worker-source change. */
-        await new Promise((res) => setTimeout(res, 20_000));
-        const again = /Deployed <code[^>]*>([^<]*)<\/code>, site expects <code[^>]*>([^<]*)</.exec((await fetchAs("/status", "Mozilla/5.0")).body);
-        if (again && again[1] === again[2]) ok(`worker bundle current (${again[1]}) — the site was still serving the previous Pages version 20s ago`);
-        else bad(`the SITE is behind, not the worker: the deployed worker ${deployed} matches worker/build-stamp.ts, and the site still expects ${expects} after a 20s retry. Re-run the Pages deploy rather than deploy:worker.`);
-      } else {
-        bad(`worker bundle stale: deployed ${deployed}, the site expects ${expects}, and worker/build-stamp.ts says ${local ?? "?"} — the worker is behind the source tree. Run: npm run deploy:worker`);
-      }
+
+    /* THE RETRY BELONGS BEFORE THE VERDICT, NOT ON ONE BRANCH OF IT. The first version retried
+       only when the deployed stamp matched the source tree, on the theory that Pages
+       propagation was the sole lag. There are TWO, and they read through the same value: the
+       "deployed" stamp is whatever the worker last wrote to KV on its tick, so a worker that
+       has just been deployed still reports the previous build for up to a minute. Measured
+       today: this returned "the worker is behind the source tree. Run: npm run deploy:worker"
+       about a worker that had been deployed ninety seconds earlier, and a single 20-second
+       wait cleared it. A verdict taken from a stale reading is a wrong verdict whichever
+       branch it lands on. */
+    let [deployedNow, expectsNow] = [deployed, expects];
+    if (deployedNow !== expectsNow) {
+      await new Promise((res) => setTimeout(res, 20_000));
+      const again = /Deployed <code[^>]*>([^<]*)<\/code>, site expects <code[^>]*>([^<]*)</.exec((await fetchAs("/status", "Mozilla/5.0")).body);
+      if (again) [, deployedNow, expectsNow] = again;
     }
+    const v = stampVerdict(deployedNow, expectsNow, local);
+    if (v.state === "current") ok(`worker bundle current (${deployedNow})${deployed !== expects ? " — one of the two was still lagging 20s ago" : ""}`);
+    else if (v.state === "site-behind") bad(`the SITE is behind, not the worker: the deployed worker ${deployedNow} matches worker/build-stamp.ts, and the site still expects ${expectsNow} after a 20s retry. Re-run the Pages deploy rather than deploy:worker.`);
+    else bad(`worker bundle stale: deployed ${deployedNow}, the site expects ${expectsNow}, and worker/build-stamp.ts says ${local ?? "?"} — the worker is behind the source tree after a 20s retry. Run: npm run deploy:worker`);
   }
 }
 
