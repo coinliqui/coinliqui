@@ -964,16 +964,23 @@ console.log("\n16. data");
        about a worker that had been deployed ninety seconds earlier, and a single 20-second
        wait cleared it. A verdict taken from a stale reading is a wrong verdict whichever
        branch it lands on. */
+    /* THE WINDOW HAS TO OUTLAST THE THING THAT REFRESHES THE VALUE, and one 20-second wait did
+       not. "Deployed" is whatever the worker last wrote to KV on its tick, and the tick that
+       writes it runs once a minute — so a freshly deployed worker reports its previous build
+       until the next tick lands. Measured on 24 August by polling: the pair took 120 SECONDS to
+       agree, twice the wait, and the check failed a deploy that was entirely correct.
+       Polled to 150s rather than slept once, so the ordinary case still costs nothing: it stops
+       the moment the two agree. */
     let [deployedNow, expectsNow] = [deployed, expects];
-    if (deployedNow !== expectsNow) {
+    for (let waited = 0; deployedNow !== expectsNow && waited < 150_000; waited += 20_000) {
       await new Promise((res) => setTimeout(res, 20_000));
       const again = /Deployed <code[^>]*>([^<]*)<\/code>, site expects <code[^>]*>([^<]*)</.exec((await fetchAs("/status", "Mozilla/5.0")).body);
       if (again) [, deployedNow, expectsNow] = again;
     }
     const v = stampVerdict(deployedNow, expectsNow, local);
-    if (v.state === "current") ok(`worker bundle current (${deployedNow})${deployed !== expects ? " — one of the two was still lagging 20s ago" : ""}`);
-    else if (v.state === "site-behind") bad(`the SITE is behind, not the worker: the deployed worker ${deployedNow} matches worker/build-stamp.ts, and the site still expects ${expectsNow} after a 20s retry. Re-run the Pages deploy rather than deploy:worker.`);
-    else bad(`worker bundle stale: deployed ${deployedNow}, the site expects ${expectsNow}, and worker/build-stamp.ts says ${local ?? "?"} — the worker is behind the source tree after a 20s retry. Run: npm run deploy:worker`);
+    if (v.state === "current") ok(`worker bundle current (${deployedNow})${deployed !== expects ? " — one of the two was still lagging when this check started" : ""}`);
+    else if (v.state === "site-behind") bad(`the SITE is behind, not the worker: the deployed worker ${deployedNow} matches worker/build-stamp.ts, and the site still expects ${expectsNow} after 150s of polling. Re-run the Pages deploy rather than deploy:worker.`);
+    else bad(`worker bundle stale: deployed ${deployedNow}, the site expects ${expectsNow}, and worker/build-stamp.ts says ${local ?? "?"} — the worker is behind the source tree after 150s of polling. Run: npm run deploy:worker`);
   }
 }
 

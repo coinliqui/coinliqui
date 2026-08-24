@@ -679,13 +679,30 @@ async function run(env: Env): Promise<RunResult> {
         const stalledSince = m?.f ?? 0;
         const stalled = stalledSince > 0 && Date.now() - stalledSince < FILL_BACKOFF_MS;
         if (!inCycle && !stalled) {
-          const missing = scope.filter((s) => !have.has(s));
+          /* A SKIPPED SYMBOL IS A HOLE TOO, AND IT WAS NOT TREATED AS ONE.
+             `missing` was "has no data at all". A symbol whose write threw keeps its previous
+             store, stays in `have`, and was never revisited — so it aged without limit while
+             every cycle stamped a full refresh over it. Measured across three hours on 24
+             August: m15:SOL sat at 07:47 and drifted from 3.6h to 3.9h stale while BTC and ETH
+             refreshed twice, and the chart gate failed further on each pass.
+
+             The skip list the cycle now records is exactly that set, so this costs no extra
+             reads. It joins `missing` and therefore inherits the protection the comment above
+             is about: a fill achieving nothing sets `f`, backs off for FILL_BACKOFF_MS and
+             falls through to the ordinary cycle, so one permanently failing symbol still cannot
+             stop everything else. That was the risk that kept this untouched, and it is the
+             existing mechanism rather than a new one. */
+          const stale = (m?.skip ?? []).filter((x) => scope.includes(x));
+          const missing = [...new Set([...scope.filter((x) => !have.has(x)), ...stale])];
           if (missing.length) {
             const done = await run(missing.slice(0, room));
             for (const s of done) have.add(s);
             /* On a genuinely cold store the fill IS the first full cycle, so stamp it rather
                than immediately re-fetching all of it under the ordinary gate. */
             const coldComplete = !m?.u && scope.every((s) => have.has(s));
+            /* Whatever this fill wrote is no longer stale, so it leaves the skip list. What it
+               could not write stays on it and is named on /status until it succeeds. */
+            const stillSkipped = (m?.skip ?? []).filter((x) => !done.includes(x));
             await env.SNAPSHOT.put(key, JSON.stringify({
               u: coldComplete ? Date.now() : (m?.u ?? 0),
               i: 0,
@@ -693,6 +710,8 @@ async function run(env: Env): Promise<RunResult> {
               h: [...have],
               f: done.length ? 0 : Date.now(),
               filled: done.length,
+              skip: stillSkipped.length ? stillSkipped : undefined,
+              skipAt: stillSkipped.length ? (m?.skipAt ?? Date.now()) : undefined,
               e: done.length ? undefined : firstErr || undefined,
             }));
             return done.length;

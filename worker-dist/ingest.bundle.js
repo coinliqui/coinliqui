@@ -1081,7 +1081,7 @@ async function stepCorroborate(env, now = Date.now()) {
 }
 
 // worker/build-stamp.ts
-var WORKER_BUILD = "abd866373f8e";
+var WORKER_BUILD = "a1f0063d7124";
 
 // worker/ingest.ts
 var RETAIN_HOURS = 72;
@@ -1316,11 +1316,13 @@ async function run(env) {
         const stalledSince = m?.f ?? 0;
         const stalled = stalledSince > 0 && Date.now() - stalledSince < FILL_BACKOFF_MS;
         if (!inCycle && !stalled) {
-          const missing = scope.filter((s) => !have.has(s));
+          const stale = (m?.skip ?? []).filter((x) => scope.includes(x));
+          const missing = [.../* @__PURE__ */ new Set([...scope.filter((x) => !have.has(x)), ...stale])];
           if (missing.length) {
             const done2 = await run2(missing.slice(0, room));
             for (const s of done2) have.add(s);
             const coldComplete = !m?.u && scope.every((s) => have.has(s));
+            const stillSkipped = (m?.skip ?? []).filter((x) => !done2.includes(x));
             await env.SNAPSHOT.put(key, JSON.stringify({
               u: coldComplete ? Date.now() : m?.u ?? 0,
               i: 0,
@@ -1328,6 +1330,8 @@ async function run(env) {
               h: [...have],
               f: done2.length ? 0 : Date.now(),
               filled: done2.length,
+              skip: stillSkipped.length ? stillSkipped : void 0,
+              skipAt: stillSkipped.length ? m?.skipAt ?? Date.now() : void 0,
               e: done2.length ? void 0 : firstErr || void 0
             }));
             return done2.length;

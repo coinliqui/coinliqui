@@ -33,14 +33,30 @@ if (!m) {
   console.log("\n  stamp skew: /status no longer prints the deployed/expected pair — this notice is blind, fix the selector.");
   process.exit(0);
 }
-const [, deployed, expected] = m;
+const [, deployedRaw, expectedRaw] = m;
+/* "THE WORKER NOW RUNNING IS X" WAS READ OFF A VALUE WRITTEN BEFORE THE DEPLOY.
+   That figure is whatever the worker last put in KV on its tick, and the tick runs once a
+   minute — so immediately after `wrangler deploy` it still names the PREVIOUS build. Measured
+   on 24 August: this printed "worker 9b850372c52c and the live site agree" seconds after
+   deploying abd866373f8e, which was wrong about both halves, and the pair took 120 seconds to
+   settle. It runs at the end of deploy:worker, which is exactly when the value is stalest.
+   Polled to the same 150s ceiling verify-live uses, and the wording no longer claims to know
+   what is running — it names the last stamp the worker wrote. */
+let [deployed, expected] = [deployedRaw, expectedRaw];
+for (let waited = 0; deployed !== expected && waited < 150_000; waited += 20_000) {
+  await new Promise((res) => setTimeout(res, 20_000));
+  const again = /Deployed <code[^>]*>([^<]*)<\/code>, site expects <code[^>]*>([^<]*)</.exec(
+    await fetch(`${ORIGIN}/status?cb=${Math.random()}`, { headers: { "user-agent": UA } }).then((x) => x.text()).catch(() => ""),
+  );
+  if (again) [, deployed, expected] = again;
+}
 if (deployed === expected) {
   console.log(`\n  stamp: worker ${deployed} and the live site agree.`);
   process.exit(0);
 }
 console.log(
   `\n  ─────────────────────────────────────────────────────────────────────────────\n` +
-  `  STAMP SKEW: the worker now running is ${deployed}, the LIVE site still expects ${expected}.\n` +
+  `  STAMP SKEW: the last stamp the worker wrote is ${deployed}, the LIVE site expects ${expected}.\n` +
   `  /status is correctly reporting a mismatch. It exists because a worker deploy re-stamps\n` +
   `  the site's source, and only the worker was deployed.\n\n` +
   `      npm run deploy:site\n\n` +
