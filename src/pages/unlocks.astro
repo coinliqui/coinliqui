@@ -80,8 +80,17 @@ const overhangTotal = overhang.reduce((a, r) => a + (absorb(r.symbol, r.heldNow)
    every unlock calendar. Both differentiators kept, on-chain and still-holds, inside the
    visible width. The h1 is unchanged. */
 const title = "On-chain vesting: what each contract still holds";
-const description =
-  "A register of token vesting, lock and emission contracts read directly from Ethereum: what each holds right now, what it is still releasing, and which finished years ago with the tokens never withdrawn. One ENS lock holds 45.59% of supply, fully unlocked since November 2025.";
+/* THE ONE FIGURE ONLY THIS PAGE HAS WAS TYPED IN, AND IT SAT PAST THE TRUNCATION.
+   "One ENS lock holds 45.59% of supply" was a string literal in a description 275 characters
+   long — the longest on the site — so a result snippet cut it off, and it would have gone on
+   asserting 45.59% after the balance moved, because nothing recomputed it. The page itself
+   derives that share live twelve lines below, from the same `overhang` list. It is derived
+   here now, and it leads: what gets dropped from the end is the generic register description,
+   not the number that makes the page worth citing. */
+const top = overhang[0];
+const description = top
+  ? `One ${top.symbol} lock holds ${pct(top.heldNow / top.supply)} of supply and finished vesting on ${fmt(top.end)} — nobody has moved it. A register of token vesting, lock and emission contracts read directly from Ethereum: what each holds now, what it is still releasing, and which finished years ago with the tokens never withdrawn.`
+  : "A register of token vesting, lock and emission contracts read directly from Ethereum: what each holds right now, what it is still releasing, and which finished years ago with the tokens never withdrawn.";
 ---
 
 <Base title={title} description={description} fetchedAt={snap.fetchedAt}>
