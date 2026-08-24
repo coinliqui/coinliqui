@@ -142,7 +142,7 @@ if (grid && grid.entries.length > 4) {
         `&lt;div class=&quot;tip__h&quot;&gt;${lv.L}× ${mapSide} opened ${dayLabel(grid.entries[ci][0])}&lt;/div&gt;` +
         `&lt;div class=&quot;tip__g&quot;&gt;&lt;span&gt;Outcome&lt;/span&gt;&lt;b&gt;${surv ? `survived ${hold}d` : `closed on day ${c.liqDay}`}&lt;/b&gt;` +
         `&lt;span&gt;Entry close&lt;/span&gt;&lt;b&gt;${px(grid.entries[ci][4])}&lt;/b&gt;&lt;/div&gt;` +
-        `&lt;div class=&quot;tip__f&quot;&gt;Derived from the real price path — nothing modelled&lt;/div&gt;`;
+        `&lt;div class=&quot;tip__f&quot;&gt;Real price path, one stated closing rule&lt;/div&gt;`;
       out.push(
         `<rect x="${(hpL + ci * colW).toFixed(1)}" y="${yy.toFixed(1)}" width="${(colW + 0.4).toFixed(1)}" height="${(rowH + 0.4).toFixed(1)}" ` +
         `fill="${surv ? SURVIVED : RAMP[b!.ramp]}" data-tip="${tip}">` +
@@ -158,7 +158,13 @@ if (grid && grid.entries.length > 4) {
 }
 
 const title = `${perp.symbol} leverage backtest: liquidated or survived`;
-const description = `Which leveraged ${perp.symbol} positions were liquidated and which survived — every entry day, every leverage, held ${hold} days. Derived from real traded candles and the published margin tiers, nothing modelled.`;
+/* "nothing modelled" IS A CLAIM THIS PAGE RETRACTS IN ITS OWN FIRST PARAGRAPH.
+   Three lines below, in bold: "The prices are real; the closing rule is a model." The rule has
+   six stated assumptions and the page lists them. The retracted version survived in the meta
+   description — the one string quoted without the page beside it to correct it — in the tooltip
+   under every one of ~1,000 cells, and in the anchor text pointing here from the flagship and
+   from the sweep. An overclaim on the single axis this site sells. */
+const description = `Which leveraged ${perp.symbol} positions were liquidated and which survived — every entry day, every leverage, held ${hold} days. The prices are real traded candles and the published margin tiers; the closing rule is a model, with its six assumptions listed on the page.`;
 ---
 
 <Base title={title} description={description} fetchedAt={snap.fetchedAt} crumb={{ href: "/liquidations", label: "Liquidations", current: "Survival" }}>
