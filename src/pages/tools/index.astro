@@ -1,7 +1,9 @@
 ---
 import Base from "../../layouts/Base.astro";
-import { getSnapshot, coldStart } from "../../lib/hyperliquid.ts";
-import { pct } from "../../lib/funding.ts";
+import { getSnapshot, coldStart, pickPerp } from "../../lib/hyperliquid.ts";
+import { pct, usd } from "../../lib/funding.ts";
+import { liquidationPrice, type MarginTable } from "../../lib/margin.ts";
+import tables from "../../data/margin-tables.json";
 const snap = await getSnapshot((Astro.locals as any)?.runtime?.env?.SNAPSHOT, import.meta.env.DEV);
 // Cold store: 503 + Retry-After rather than a page rendered from nothing.
 if (!snap.available) return coldStart();
@@ -38,6 +40,39 @@ const tools = [
     live: widest ? `${widest.symbol} spread ${pct(widest.aprSpread ?? 0)}` : "—",
   },
 ];
+
+/* THE PAGE SAID A FORMULA IN CIRCULATION IS WRONG AND NEVER SAID BY HOW MUCH.
+   /tools carries 191 words of extractable text, the thinnest page on this site, and it is a
+   hub — the comment above says each blurb "names the specific thing the common formula gets
+   wrong, because that is the only reason to use this calculator over the twenty that already
+   rank", and naming the KIND of error without its SIZE is the half that cannot be quoted or
+   ranked. /tools/position-size is one of the URLs Search Console still has as Discovered,
+   not indexed.
+
+   Both figures below come from the shared implementations rather than from a second copy:
+   liquidationPrice() already returns the naive price beside the correct one and the gap
+   between them, and the funding factor is the venue's own settlement interval against a day.
+   The cross-venue row states its mechanism and carries no number on purpose — computing a
+   naive spread here would be funding-arbitrage's logic implemented twice, which is the
+   drift this codebase keeps paying for. */
+const picked = pickPerp(snap.perps, "BTC", tables as Record<string, MarginTable>);
+const SIZE_USD = 10_000;
+const LEV = 10;
+const HOLD_DAYS = 30;
+const liq = picked && picked.perp.markPx > 0
+  ? liquidationPrice({
+      entryPrice: picked.perp.markPx,
+      positionSize: SIZE_USD / picked.perp.markPx,
+      leverage: LEV,
+      side: "long",
+      table: picked.table,
+    })
+  : null;
+/* Reading a quoted rate as if it were daily is wrong by exactly the number of settlements in a
+   day, which is the venue's interval and nothing else. Hyperliquid settles hourly, so 24x. */
+const dailyFactor = hl && hl.intervalHours > 0 ? 24 / hl.intervalHours : null;
+const realHold = hl ? SIZE_USD * hl.rate * (24 / hl.intervalHours) * HOLD_DAYS : null;
+const naiveHold = hl ? SIZE_USD * hl.rate * HOLD_DAYS : null;
 ---
 <Base
   title="Funding, leverage and position size calculators"
@@ -63,11 +98,66 @@ const tools = [
     ))}
   </div>
 
+  <h2 class="section">How far the common formula is from the published one</h2>
+  <p class="section-note">
+    Every row is {picked?.perp.symbol ?? "BTC"} at its current mark, computed on the server from the venue's own
+    published parameters. The sizes are stated so each figure can be reproduced rather than
+    taken on trust.
+  </p>
+  <div class="panel" style="max-width:900px">
+    <table class="tbl">
+      <thead><tr><th>What is being computed</th><th class="num">The formula in circulation</th><th class="num">The published parameters</th><th class="num">Gap</th></tr></thead>
+      <tbody>
+        {liq ? (
+          <tr>
+            {/* THE LEVERAGE THE CALCULATION USED, NOT THE ONE I ASKED FOR. liquidationPrice()
+                clamps to the tier maximum, and labelling a clamped number with the requested
+                figure has shipped here twice — the source check that names it fired on this
+                table within one gate run. */}
+            <td>Liquidation price, {liq.effectiveLeverage}× long on {usd(SIZE_USD)}{liq.leverageClamped ? <> — {LEV}× was requested and this contract's tier caps it</> : null}
+              <div class="reason" style="margin-top:2px">entry × (1 − 1/leverage), which ignores maintenance margin</div></td>
+            <td class="num">{usd(liq.naivePrice, 2)}</td>
+            <td class="num">{usd(liq.liquidationPrice, 2)}</td>
+            <td class="num">{pct(liq.differencePct)}</td>
+          </tr>
+        ) : null}
+        {hl && dailyFactor && realHold != null && naiveHold != null ? (
+          <tr>
+            <td>Funding on {usd(SIZE_USD)} held {HOLD_DAYS} days
+              <div class="reason" style="margin-top:2px">the quoted rate read as a daily number, on a venue settling every {hl.intervalHours}h</div></td>
+            <td class="num">{usd(Math.abs(naiveHold), 2)}</td>
+            <td class="num">{usd(Math.abs(realHold), 2)}</td>
+            <td class="num">{dailyFactor.toFixed(0)}×</td>
+          </tr>
+        ) : null}
+        <tr>
+          <td>Cross-venue funding spread
+            <div class="reason" style="margin-top:2px">quoted rates differenced as though the intervals matched</div></td>
+          <td class="num dim" colspan="3">
+            {/* NO NUMBER HERE ON PURPOSE. A naive spread computed on this page would be
+                funding-arbitrage's logic implemented a second time, and two implementations of
+                one figure is the drift this codebase keeps paying for. The calculator holds it. */}
+            depends on both legs — <a class="link" href="/tools/funding-arbitrage">the calculator shows both readings side by side →</a>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="section-note">
+    None of this is a claim that other calculators are careless. The simplified forms are fine
+    where the interval is one day and the position is inside the first margin tier; they stop
+    being fine exactly where a real position sits.
+  </p>
+
   <p class="section-note" style="margin-top:20px">
     <a class="link" href="/methodology">How every number here is produced →</a>
   </p>
 
   <style>
+    /* Defined here because it is defined per page — /status carries its own copy and this page
+       had none, so `class="reason"` styled nothing and the undefined-class check said so. */
+    .reason { color: var(--text-dim); white-space: normal; }
+
     .cards { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
     .tool { padding: var(--inset-panel); }
     .tool__name { font-weight: 600; letter-spacing: -.01em; margin-bottom: var(--gap-pair); }
