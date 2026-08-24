@@ -23,28 +23,12 @@ const raw = Astro.url.searchParams.get("symbol");
 const wanted = raw && /^[A-Za-z0-9._-]{1,20}$/.test(raw) ? raw : null;
 const covered = Boolean(findPerp(snap.perps, wanted));
 
-/* 404 AND 410 ARE DIFFERENT ANSWERS, AND THIS PAGE WAS GIVING THE FIRST TO BOTH QUESTIONS.
-   /funding/notacoin never existed. /funding/fet was "Submitted and indexed" in Search Console,
-   last crawled 21 August, and started answering 404 the moment its open interest fell under the
-   floor — the identical response, for a deliberate retirement. Google cannot separate them, so
-   it re-crawls the dead URL for months and files it under Not found, which tells nobody
-   anything. 410 is the signal for a removal we chose, and this site already uses it for
-   /tools/liquidation-price under a comment saying exactly that.
-   The worker records what left and when; see RETIRED_KEY in worker/ingest.ts. Read only on
-   this path, so a miss costs one KV read and a hit costs nothing anywhere else. */
-const retiredAt = await (async () => {
-  if (!wanted || covered) return null;
-  try {
-    const m = ((await env?.SNAPSHOT?.get("published:retired", "json")) ?? null) as Record<string, number> | null;
-    if (!m) return null;
-    const hit = Object.entries(m).find(([sym]) => sym.toLowerCase() === wanted.toLowerCase());
-    return hit && typeof hit[1] === "number" ? hit[1] : null;
-  } catch { return null; }
-})();
-if (retiredAt) Astro.response.status = 410;
-const retiredOn = retiredAt
-  ? new Date(retiredAt).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" })
-  : null;
+/* THE RETIREMENT CASE IS NOT HANDLED HERE, AND IT WAS, WRONGLY, FOR ONE DEPLOY.
+   Astro reserves src/pages/404.astro as the not-found route and the adapter serves it with a
+   404 whatever this file sets — measured: /404?symbol=FET rendered the full "answers 410 Gone"
+   wording under an HTTP 404. A page asserting a status code it does not have is worse than
+   either code on its own, and it was mine. The contract route sets the status itself now and
+   rewrites to /retired; see src/pages/funding/[symbol].astro. */
 const nearest = snap.perps.slice(0, 12);
 ---
 
@@ -54,17 +38,8 @@ const nearest = snap.perps.slice(0, 12);
   noindex
 >
   <div class="page-head">
-    <h1>{retiredAt ? `${wanted} is no longer published` : wanted && !covered ? `${wanted} is not published` : "That page does not exist"}</h1>
-    {retiredAt ? (
-      <p>
-        This page was published here until <b>{retiredOn}</b>, when {wanted}'s open interest fell
-        below the {usd(OI_NOTIONAL_FLOOR)} floor and the contract left coverage. It is not missing and it was not
-        moved: a page with nothing behind it is worse than no page, so it was retired.
-        {" "}This URL answers <b>410 Gone</b> rather than 404 — it existed, it is deliberately
-        gone, and search engines can stop asking. If {wanted} crosses the floor again the page
-        returns at the same address.
-      </p>
-    ) : wanted && !covered ? (
+    <h1>{wanted && !covered ? `${wanted} is not published` : "That page does not exist"}</h1>
+    {wanted && !covered ? (
       <p>
         A coin gets a page once its perpetual holds {usd(OI_NOTIONAL_FLOOR)} of open interest — a thin page is
         worse than no page, so nothing is generated below it. {snap.eligibleCount} of

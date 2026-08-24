@@ -36,7 +36,23 @@ if (p && wanted !== p.symbol.toLowerCase()) {
    handed to Astro's stock not-found page: unbranded, no navigation, no explanation, on a URL
    like /funding/crv that a real reader types. Rewritten to the site's own 404, which reads the
    requested symbol back off the request and says why it is not published. */
-if (!p) return Astro.rewrite(`/404?symbol=${encodeURIComponent(wanted)}`);
+/* A CONTRACT THAT LEFT COVERAGE IS NOT A URL THAT NEVER EXISTED, and both answered 404. The
+   worker records what left and when; this is the only place that knows which question is being
+   asked, so the status is decided here. /retired sets 410 — 404.astro cannot, because Astro
+   reserves that route and the adapter forces its status. */
+if (!p) {
+  const retiredAt = await (async () => {
+    try {
+      const m = ((await env?.SNAPSHOT?.get("published:retired", "json")) ?? null) as Record<string, number> | null;
+      if (!m) return null;
+      const hit = Object.entries(m).find(([sym]) => sym.toLowerCase() === wanted.toLowerCase());
+      return hit && typeof hit[1] === "number" ? hit[1] : null;
+    } catch { return null; }
+  })();
+  return retiredAt
+    ? Astro.rewrite(`/retired?symbol=${encodeURIComponent(wanted)}&at=${retiredAt}`)
+    : Astro.rewrite(`/404?symbol=${encodeURIComponent(wanted)}`);
+}
 
 /* THE SAME RULE AS THE COVERAGE FLOOR, for the same reason. A contract whose tier table is not
    in the committed file cannot have a liquidation price, a maintenance margin or a tier ladder —

@@ -1,0 +1,51 @@
+---
+import Base from "../layouts/Base.astro";
+import { OI_NOTIONAL_FLOOR } from "../lib/hyperliquid.ts";
+import { usd } from "../lib/funding.ts";
+
+/**
+ * 410 GONE FOR A CONTRACT THIS SITE USED TO PUBLISH, AND THE REASON IT IS NOT THE 404 PAGE.
+ *
+ * /funding/fet was "Submitted and indexed" in Search Console, last crawled 21 August, and began
+ * answering a bare 404 the moment its open interest fell under the floor — the same response
+ * /funding/notacoin gets, which is a URL that never existed. Google cannot separate a
+ * retirement from a typo, so it re-crawls the dead URL for months and files it under Not found.
+ *
+ * The first attempt put this on 404.astro. Astro reserves that route as the not-found page and
+ * the adapter serves it with a 404 whatever the file sets: measured, /404?symbol=FET rendered
+ * the whole "answers 410 Gone" paragraph under an HTTP 404. A page asserting a status it does
+ * not have is worse than either code alone. So the wording lives on an ordinary route, which
+ * can set its own status, and the contract route rewrites here.
+ *
+ * noindex as well as 410: the belt is the status, and the braces are for the window before a
+ * crawler acts on it.
+ */
+Astro.response.status = 410;
+const raw = Astro.url.searchParams.get("symbol");
+const symbol = raw && /^[A-Za-z0-9._-]{1,20}$/.test(raw) ? raw : null;
+const at = Number(Astro.url.searchParams.get("at"));
+const on = Number.isFinite(at) && at > 0
+  ? new Date(at).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" })
+  : null;
+---
+
+<Base title={symbol ? `${symbol} is no longer published` : "No longer published"} description="This contract left coverage and its page was retired." noindex>
+  <div class="page-head">
+    <h1>{symbol ?? "This page"} is no longer published</h1>
+    <p>
+      This page was published here{on ? <> until <b>{on}</b></> : null}, when {symbol ?? "the contract"}'s
+      open interest fell below the {usd(OI_NOTIONAL_FLOOR)} floor and it left coverage. It is not missing and it
+      was not moved: a page with nothing behind it is worse than no page, so it was retired.
+    </p>
+    <p>
+      This URL answers <b>410 Gone</b> rather than 404 — it existed, it is deliberately gone, and
+      a search engine can stop asking. If {symbol ?? "the contract"} crosses the floor again the page returns at
+      this same address.
+    </p>
+  </div>
+
+  <p class="prose">
+    <a class="link" href="/funding">Every contract covered today →</a>{" "}
+    <a class="link" href="/data-sources">How the coverage floor is applied →</a>
+  </p>
+</Base>

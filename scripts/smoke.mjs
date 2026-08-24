@@ -65,6 +65,14 @@ const ROUTES = [
   "/methodology/liquidations", "/data-sources", "/privacy", "/about", "/terms", "/llms.txt",
   "/.well-known/security.txt", "/watchlist", "/status",
   "/status/indexation", "/404",
+  /* THE RETIREMENT PAGE, AND THE STATUS IS THE POINT OF IT. A contract that leaves coverage
+     used to answer the same 404 as a URL that never existed; /retired answers 410. The first
+     attempt put that wording on 404.astro, where Astro reserves the route and the adapter
+     forces a 404 — so the page rendered "this URL answers 410 Gone" under an HTTP 404, which
+     is a page asserting a status it does not have. EXPECT pins the code, so that cannot come
+     back quietly. The warm fixture carries a retired FET; see seed-smoke-kv.mjs. */
+  "/retired?symbol=FET&at=1787500000000",
+  "/funding/fet",
   /* THE OTHER BRANCH OF /404, which is the one real people reach.
      404.astro renders two different pages: a generic "that page does not exist" when nothing
      rewrote to it, and "X is not published" when a contract or coin page did. The gate asked
@@ -87,7 +95,10 @@ const ROUTES = [
  *  unexpected method; it does NOT exercise the POST handler, and this comment says so rather
  *  than letting a green line imply otherwise. */
 const EXPECT = { "/tools/liquidation-price": 410, "/404": 404, "/rail": 404, "/sitemap.xml": 301,
-  "/funding/notacoin": 404, "/coins/notacoin": 404 };
+  "/funding/notacoin": 404, "/coins/notacoin": 404,
+  /* 410 for a contract this site published and retired; 404 for one it never did. The pair is
+     listed together because the whole defect was that they returned the same code. */
+  "/retired?symbol=FET&at=1787500000000": 410, "/funding/fet": 410 };
 
 const warmDir = process.argv.includes("--warm") ? process.argv[process.argv.indexOf("--warm") + 1] : null;
 const MODES = warmDir ? [{ name: "cold", args: [] }, { name: "warm", args: ["--kv", "SNAPSHOT", "--d1", "DB", "--persist-to", warmDir] }]

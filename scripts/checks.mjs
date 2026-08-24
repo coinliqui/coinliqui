@@ -511,12 +511,19 @@ const ASTRO_INTERNAL = new Set(["/_image", "/_server-islands/[name]"]);
 
 export function uncoveredRoutes(manifestSrc, routes) {
   const built = [...manifestSrc.matchAll(/"route":"([^"]*)"/g)].map((m) => m[1]);
+  /* A ROUTE IS A PATH AND THE GATE ASKS FOR URLS. Several entries in ROUTES carry a query,
+     because the query is what selects the branch worth rendering — /retired?symbol=FET&at=…
+     is the only way to reach the retirement page at all. Compared as raw strings, those
+     entries matched nothing and the route read as uncovered while the gate was requesting it
+     every run. The same shape as a link counter that dropped every href with a "?" in it,
+     found the same day: the query belongs to the request, not to the route. */
+  const paths = routes.map((x) => x.split("?")[0]);
   const covered = (r) => {
-    if (routes.includes(r)) return true;
+    if (paths.includes(r)) return true;
     if (!r.includes("[")) return false;
     // /funding/[symbol] is covered by /funding/btc
     const re = new RegExp("^" + r.replace(/\[[^\]]+\]/g, "[^/]+") + "$");
-    return routes.some((x) => re.test(x));
+    return paths.some((x) => re.test(x));
   };
   return [...new Set(built)].filter((r) => !ASTRO_INTERNAL.has(r) && !covered(r));
 }
