@@ -49,7 +49,11 @@ const grid =
     ? survivalGrid({ candles: closedDays, mmf, levels: gridLevels(tier1.maxLeverage, 12), holdDays: hold, side: mapSide, maxEntries: 90 })
     : null;
 
-const dayLabel = (ms: number) => new Date(ms).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
+/* THE YEAR WAS MISSING, SO EVERY RESULT ON THE PAGE WAS UNDATABLE ONCE EXTRACTED. The caption
+   read "Entry days 26 Apr to 24 Jul" — fine beside a live page, useless in a search snippet or
+   in anything that lifted the sentence, and every other date formatter in this repository passes
+   year. */
+const dayLabel = (ms: number) => new Date(ms).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
 
 /* Built as a string: 1,000 JSX vnodes is needless Worker CPU. Presentation attributes are
    INLINE — Astro scopes `.cls{}` to `.cls[data-astro-cid-x]`, and markup injected with
@@ -170,7 +174,7 @@ const description = `Which leveraged ${perp.symbol} positions were liquidated an
 <Base title={title} description={description} fetchedAt={snap.fetchedAt} crumb={{ href: "/liquidations", label: "Liquidations", current: "Survival" }}>
   <div class="page-head">
     <p class="crumb"><a href="/liquidations">Liquidations</a> › Survival</p>
-    <h1>Leverage survival</h1>
+    <h1>{perp.symbol} leverage survival</h1>
     <p>
       <strong>The prices are real; the closing rule is a model.</strong> Both come from
       <strong>Hyperliquid</strong> — its candles, and its margin table. Every cell asks one

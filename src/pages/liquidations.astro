@@ -115,7 +115,11 @@ const description = `Where ${perp.symbol} liquidation levels sit on Hyperliquid 
 
 <Base title={title} description={description} fetchedAt={snap.fetchedAt}>
   <div class="page-head">
-    <h1>Liquidation map</h1>
+    {/* THE TITLE NAMED THE COIN AND THE HEADING DID NOT. <title> is "BTC liquidation heatmap
+        (modelled)" while the h1 said "Liquidation map" for every contract — /coins/{coin} and
+        /funding/{symbol} both name theirs, and a heading that is constant across fifty distinct
+        renderings tells a reader and an extractor less than the tab does. */}
+    <h1>{perp.symbol} liquidation map</h1>
     <p>
       Where liquidation levels would sit if positions were opened the way the assumptions below
       describe — and, the part that matters, <strong>where price has already cleared them</strong>.
