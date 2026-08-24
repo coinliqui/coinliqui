@@ -285,8 +285,20 @@ console.log("\n5. sitemap");
        it, which is worse than an error.
        Section 7 tests this on eight hand-picked paths. This loop already has every URL in the
        sitemaps in its hand, so the same assertion costs nothing here and covers all of them. */
-    if (r.status === 200 && isDocument(r.body) && !rendersToEnd(r.body)) {
-      cut.push(`${u} (${r.body.length}b, no closing tag)`);
+    /* THE isDocument() GATE WAS EXCLUDING THE WORST CASE FROM THE CHECK WRITTEN FOR IT.
+       rendersToEnd already requires isDocument, so this said: of the 200s that ALREADY look
+       like an HTML document, do they end properly. A 200 with a zero-byte body — the exact
+       presentation a mid-render throw produces under `wrangler pages dev`, and the one this
+       whole section exists to catch — fails isDocument and was skipped silently, while the
+       success line below claimed "every sitemap URL renders to </html>, not a sample". So did
+       a 200 carrying an error page, a redirect body, or anything else that is not a document.
+       No gate now, and the three shapes are named apart, because "empty" and "truncated" want
+       different investigations. */
+    if (r.status === 200 && !rendersToEnd(r.body)) {
+      const why = r.body.length === 0 ? "empty body behind a 200"
+        : !isDocument(r.body) ? "200 but not an HTML document"
+        : "no closing tag";
+      cut.push(`${u} (${r.body.length}b, ${why})`);
     }
     /* 200 IS NOT COMPLETE. /funding/uni returned 200, carried the brand, and rendered a
        timeframe bar above an empty space where the chart should have been — this check
@@ -314,7 +326,7 @@ console.log("\n5. sitemap");
   broken.length ? bad(`non-200: ${broken.join(", ")}`) : ok("every sitemap URL 200 as GPTBot");
   thin.length ? bad(`missing brand: ${thin.join(", ")}`) : ok("every sitemap URL carries the brand");
   cut.length ? bad(`TRUNCATED — 200 with no </html>, the render threw mid-stream: ${cut.join(", ")}`)
-             : ok(`every sitemap URL renders to </html> — ${urls.length} documents, not a sample`);
+             : ok(`every one of the ${urls.length} sitemap URLs answered 200 with a complete HTML document — no empty bodies, no truncation, not a sample`);
   hollow.length ? bad(`contract page with no chart panel: ${hollow.join(", ")}`) : ok("every contract page renders a chart, or says why it cannot yet");
 
   /* Withdrawn URLs must stay withdrawn. A 410 that silently becomes a 200 or a 301 puts a

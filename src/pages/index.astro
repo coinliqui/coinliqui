@@ -77,12 +77,19 @@ const description =
         <div class="card__meta">{widest?.symbol ?? "—"} · across {widest ? widest.venues.filter((v) => Number.isFinite(v.apr)).length : 0} venues</div>
       </a>
       <a class="card" href={richest ? `/funding/${richest.symbol.toLowerCase()}` : "/funding"}>
-        <div class="card__label">Most expensive funding <span class="card__scope">Hyperliquid</span></div>
+        {/* THE LABEL ASSERTS A SIGN THE VALUE DOES NOT CARRY. `richest` is the MAXIMUM hlApr
+            and `cheapest` the MINIMUM, whatever either one's sign. Nothing conditions the
+            words on it. Funding is usually mixed across fifty contracts, so both labels have
+            been true every day so far — but on a day when every covered contract pays the same
+            way, "Most expensive" sits over a rate that pays the holder and "Most negative"
+            over a positive number. A branch waiting on a market condition rather than on a
+            bug, which is the class this project keeps finding late. */}
+        <div class="card__label">{richest && richest.hlApr > 0 ? "Most expensive funding" : "Highest funding"} <span class="card__scope">Hyperliquid</span></div>
         <div class:list={["card__value", richest && paysClass(richest.hlApr)]}>{richest ? pct(richest.hlApr) : "—"}</div>
         <div class="card__meta">{richest?.symbol ?? "—"} · {richest ? paysLabel(richest.hlApr) : ""}</div>
       </a>
       <a class="card" href={cheapest ? `/funding/${cheapest.symbol.toLowerCase()}` : "/funding"}>
-        <div class="card__label">Most negative funding <span class="card__scope">Hyperliquid</span></div>
+        <div class="card__label">{cheapest && cheapest.hlApr < 0 ? "Most negative funding" : "Lowest funding"} <span class="card__scope">Hyperliquid</span></div>
         <div class:list={["card__value", cheapest && paysClass(cheapest.hlApr)]}>{cheapest ? pct(cheapest.hlApr) : "—"}</div>
         <div class="card__meta">{cheapest?.symbol ?? "—"} · {cheapest ? paysLabel(cheapest.hlApr) : ""}</div>
       </a>

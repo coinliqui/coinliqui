@@ -110,7 +110,9 @@ if (process.argv.includes("--blind")) {
   const P = (at, mark, extra = {}) => ({ at, liveAt: at, snapAt: at, sources: { mark: "Hyperliquid" }, mark, apr: { BTC: { HlPerp: 0.1, BinPerp: 0.2 } }, ...extra });
   const base = P(1000, { BTC: 100, ETH: 50 });
   let bad = 0;
+  let ran = 0;
   const check = (name, got, want) => {
+    ran++;
     const hit = want === null ? got.length === 0 : got.some((g) => want.test(g));
     if (!hit) { bad++; console.log(`  BLIND  ${name}`); console.log(`         got: ${got.join(" | ") || "(clean)"}`); }
     else console.log(`  ok     ${want ? "FIRES " : "SILENT"} ${name}`);
@@ -147,7 +149,12 @@ if (process.argv.includes("--blind")) {
         compare(base, P(2000, { BTC: 101, ETH: 50 }, { sources: { mark: "Somebody else" } })).held, /attribution block changed/);
   check("coverage collapsed", compare(base, P(2000, { BTC: 101 })).held, /coverage fell from 2 to 1/);
 
-  console.log(bad ? `\n  ${bad} BLIND SPOT(S)\n` : `\n  15 cases: the contract and the movement both fail when they should\n`);
+  /* THE NUMBER WAS TYPED AND THE CASES WERE COUNTED BY HAND. It said 15; there are 13 check()
+     calls, and 15 corresponds to no quantity this file computes. A hand-typed count in a
+     success line is a claim about coverage that nothing maintains — add a case and the line
+     under-reports, delete two and it over-reports, and either way it reads as authoritative.
+     check() counts itself now. */
+  console.log(bad ? `\n  ${bad} BLIND SPOT(S)\n` : `\n  ${ran} cases: the contract and the movement both fail when they should\n`);
   process.exit(bad ? 1 : 0);
 }
 

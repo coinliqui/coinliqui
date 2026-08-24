@@ -113,6 +113,7 @@ if (!(await up())) { console.error("degraded: the worker never came up"); kill()
 
 let bad = 0;
 const fail = (m) => { bad++; console.log(`   FAIL  ${m}`); };
+let ran = CASES.length;
 for (const c of CASES) {
   let status = 0, body = "";
   try {
@@ -126,15 +127,31 @@ for (const c of CASES) {
      defect would have presented. The closing tag is the only thing that says it finished. */
   if (!/<\/html>\s*$/.test(body)) { fail(`${c.path} body is truncated (${body.length}B, no closing tag) — it threw mid-render`); continue; }
   if (!c.says.test(body)) { fail(`${c.path} does not say what is missing (expected ${c.says})`); continue; }
+  /* THE OK LINE USED TO PRINT WHATEVER THESE FOUND. The two loops below call fail() and do not
+     continue — deliberately, so one route reports every one of its problems rather than the
+     first — and the success line sat after them unconditionally. A route that lost a series or
+     rendered a NaN printed a FAIL and then "states the gap, keeps the rest, no decayed
+     figures" about itself. The run still exited non-zero, so this was never a false green
+     overall; it was a line asserting three clauses when only one had been established. */
+  const before = bad;
   for (const s of c.survives) if (!s.test(body)) fail(`${c.path} lost ${s} — a missing series must not take the rest of the page with it`);
   /* The decay a missing input produces if a figure is computed from it anyway. */
   const text = body.replace(/<script[\s\S]*?<\/script>/g, " ");
   for (const junk of [/\bNaN\b/, /\bundefined\b/, /\$\s*<|\$\s*$/, /Infinity/]) {
     if (junk.test(text)) fail(`${c.path} rendered ${junk} — a figure was computed from the series that is not there`);
   }
-  console.log(`   ok    ${c.path.padEnd(34)} states the gap, keeps the rest, no decayed figures — ${c.why}`);
+  if (bad === before) console.log(`   ok    ${c.path.padEnd(34)} states the gap, keeps the rest, no decayed figures — ${c.why}`);
+  else ran--;
 }
 
 kill();
-console.log(bad ? `\n  ${bad} degraded route(s) wrong\n` : `\n  every branch that says "not yet" was rendered, and every one degrades rather than throwing\n`);
+/* IT SAID "EVERY BRANCH" AND IT MEANT FIVE. CASES holds five routes against five removed keys;
+   this file's own header counts ten stated-degradation branches in the templates and a grep
+   finds more than that. Five is a good five — they are the ones a reader hits first — but a
+   line reading "every branch that says not yet was rendered" is a coverage claim the array
+   beneath it does not support, and it is the reason nobody went looking for the other eight.
+   The count is derived from CASES so it cannot drift, and the sentence no longer says every. */
+console.log(bad
+  ? `\n  ${bad} degraded route(s) wrong\n`
+  : `\n  ${ran} of ${CASES.length} route(s) rendered against a hole and degraded rather than throwing — not every "not yet" branch in the site, only these\n`);
 process.exit(bad ? 1 : 0);

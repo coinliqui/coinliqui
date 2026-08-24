@@ -78,8 +78,17 @@ export const GET: APIRoute = async ({ locals }) => {
     JSON.stringify({
       /* The clocks of what this payload actually delivers. `at` used to include the spot cron's
          stamp, which would now claim page-wide freshness for the one figure the overlay no
-         longer refreshes. */
-      at: Math.max(live?.at ?? 0, snap.fetchedAt),
+         longer refreshes.
+
+         IT WAS THE NEWEST OF THE TWO, AND THE PILL IT FEEDS IS PAGE-WIDE. The server renders
+         that pill from the snapshot's stamp; after the first live pull the client replaced it
+         with max(live, snap), so the same element meant "the snapshot is this old" before the
+         pull and "something on this page is this new" after it — the number moved without any
+         figure beside it changing. Two coin templates already pass oldestStamp() for exactly
+         this reason. The OLDER of the two is the conservative statement and the one the server
+         is already making, so client and server now agree on every page rather than on two.
+         Zero means the store is absent, not fresh, so it is excluded rather than minimised. */
+      at: Math.min(...[live?.at, snap.fetchedAt].filter((t): t is number => typeof t === "number" && t > 0)) || snap.fetchedAt,
       liveAt: live?.at ?? 0,
       snapAt: snap.fetchedAt,
       sources: { mark: "Hyperliquid", apr: "Hyperliquid (incl. Binance and Bybit rates it republishes)" },

@@ -523,7 +523,13 @@ console.log("\n4. the thinnest pages");
 const byId = {};
 for (const r of rows) { const k = `${r.fam}:${r.id}`; (byId[k] ??= []).push(r); }
 const thin = Object.entries(byId)
-  .map(([k, rs]) => ({ k, min: Math.min(...rs.map((r) => r.n)), tfs: rs.length }))
+  /* tfs COUNTED RENDERS, AND THE COLUMN IS HEADED "timeframes". A coin page offers a
+     Candles/Line control, so its eight timeframes produce sixteen renders and this reported
+     "16/8 timeframes" — and, worse, the filter below is `tfs < EXPECTED_TFS.length`, so a coin
+     page MISSING a timeframe still counts 14 and can never trip it. The thinnest-pages list
+     was structurally incapable of flagging a coin page for missing timeframes, which is half
+     the pages it covers. Distinct timeframes now, which is what the label says. */
+  .map(([k, rs]) => ({ k, min: Math.min(...rs.map((r) => r.n)), tfs: new Set(rs.map((r) => r.tf)).size }))
   .filter((x) => x.min < 60 || x.tfs < EXPECTED_TFS.length)
   .sort((a, b) => a.min - b.min);
 if (!thin.length) ok(`no page holds fewer than 60 bars on any timeframe it offers`);

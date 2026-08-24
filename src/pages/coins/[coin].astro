@@ -90,6 +90,9 @@ const low24 = last24.length ? Math.min(...last24.map((c) => c[3])) : NaN;
    spot base-units times the spot price; this one is the venue's published dollar turnover, so
    the open-interest ratio beneath it is now perp OI against perp volume — the same market on
    both sides of the fraction, which the old ratio never was. */
+/* WHEN THE HOURLY STORE WAS LAST WRITTEN, so the sentence beside the 24-hour high and low can
+   name their real clock instead of borrowing the snapshot's. */
+const hourAge = hourset?.u ? Math.max(0, Math.round((Date.now() - hourset.u) / 60000)) : null;
 const perpNtl = perp?.dayNtlVlm ?? NaN;
 const oiToVol = perp && Number.isFinite(perpNtl) && perpNtl > 0 ? perp.oiNotional / perpNtl : NaN;
 
@@ -206,11 +209,19 @@ const description = `Live ${coin.name} (${coin.symbol}) perpetual price from Hyp
     <div>Oracle index <span class="scope">Hyperliquid</span><b>{perp && perp.oraclePx > 0 ? px(perp.oraclePx) : "—"}</b></div>
     <div>Open interest <span class="scope">Hyperliquid</span><b>{perp ? usd(perp.oiNotional) : "—"}</b></div>
   </div>
+  {/* THREE CLOCKS, NOT TWO — the same correction the contract template already carries, which
+      had never been applied here. This sentence put "the 24-hour figures and open interest" on
+      one clock, the five-minute snapshot. Open interest and 24-hour volume do come from there.
+      The 24-hour HIGH and LOW do not: they are the extremes of the last 24 closed bars of the
+      hourly candle store, swept every two hours, so this page could print "taken 2 min ago"
+      over a low that was set up to two hours before the last sweep and had not been collected
+      yet. The figures were right; the sentence explaining where they came from was not, on a
+      template whose whole argument is that it names its sources. */}
   <p class="clock">
-    {fresh.note} The 24-hour figures and open interest come from
-    the snapshot taken
-    <b><time data-fresh={snap.fetchedAt} data-clock="snapAt">{ageWords(minutesSince(snap.fetchedAt))}</time></b>;
-    the candles are Hyperliquid's closed bars, refreshed every two hours.
+    {fresh.note} Open interest and 24-hour volume come from the snapshot taken
+    <b><time data-fresh={snap.fetchedAt} data-clock="snapAt">{ageWords(minutesSince(snap.fetchedAt))}</time></b>.
+    The 24-hour high and low are the extremes of the last 24 closed hourly bars, read from the
+    same candle series the chart is drawn from, collected every 2 hours{hourAge !== null ? <> and last written <b>{hourAge} min ago</b></> : null}.
   </p>
 
   {hasChart ? (

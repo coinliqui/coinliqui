@@ -104,6 +104,30 @@ export interface LiqMap {
   warmBars: number;
 }
 
+/**
+ * THE WEIGHTS THE MODEL ACTUALLY USES, WHICH ARE NOT THE WEIGHTS IN THE PROFILE.
+ *
+ * A profile is written for a 40x contract and sums to 1 there. On anything capped lower, the
+ * rungs above the cap are dropped and what remains is RENORMALISED — a 10x contract's positions
+ * are all at 10x or below, not 55% of an absent book. buildLiqMap has always divided by that
+ * sum; the table on /liquidations printed the raw weight beside a note reading "the exact
+ * weight vector behind the picture", and it was the vector for a contract the reader was not
+ * looking at.
+ *
+ * Measured over the ten committed margin tables: exactly one caps at 40x. The rest cap at 3x,
+ * 5x, 10x, 20x and 25x, where the Balanced profile's surviving weights sum to 0.09, 0.28, 0.55,
+ * 0.77 and 0.92. On the 3x contract the table printed 9% of open interest at 2x while the model
+ * placed 100% of it there, and the page's own assumption row says the total modelled notional
+ * equals open interest — so the page contradicted itself by a factor of eleven.
+ *
+ * Exported so the picture and the table it claims to describe cannot be computed two ways.
+ */
+export function mixUsed(profile: LevProfile, maxLeverage: number): { L: number; share: number }[] {
+  const kept = profile.weights.filter(([L]) => L <= maxLeverage);
+  const wsum = kept.reduce((a, [, w]) => a + w, 0) || 1;
+  return kept.map(([L, w]) => ({ L, share: w / wsum }));
+}
+
 export function buildLiqMap(opts: {
   /** full series INCLUDING the warm-up that precedes the drawn window */
   candles: Candle[];
@@ -175,8 +199,7 @@ export function buildLiqMap(opts: {
     sweepDn.push(dn); sweepUp.push(up);
   }
 
-  const lev = opts.profile.weights.filter(([L]) => L <= opts.maxLeverage);
-  const wsum = lev.reduce((a, [, w]) => a + w, 0) || 1;
+  const lev = mixUsed(opts.profile, opts.maxLeverage);
   const diff: Float64Array[] = Array.from({ length: rows }, () => new Float64Array(NC + 1));
   /* Cleared is an EVENT, not a range: it happens in one bar, at one price row, so it is
      accumulated directly rather than prefix-summed like the standing field. */
@@ -189,11 +212,11 @@ export function buildLiqMap(opts: {
     const base = (opts.openInterest * vol[i]) / Math.max(1e-9, trail[i]) / LIFE;
     if (!(base > 0)) continue;
     const close = all[i][4];
-    for (const [Lv, w] of lev) {
+    for (const { L: Lv, share: w } of lev) {
       const longLiq = (close * (1 - 1 / Lv)) / (1 - opts.mmf);
       const shortLiq = (close * (1 + 1 / Lv)) / (1 + opts.mmf);
       for (const [price, isLong] of [[longLiq, true], [shortLiq, false]] as [number, boolean][]) {
-        const half = (base * w) / wsum / 2;
+        const half = (base * w) / 2;
         if (price < loPrice || price > hiPrice) { clipped += half; continue; }
         const r0 = Math.floor((hiPrice - price) / band);
         const sw = isLong ? sweepDn : sweepUp;

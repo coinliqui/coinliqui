@@ -235,9 +235,18 @@ const description =
         <tr>
           <td>The ingest fails, and says so</td>
           <td class="reason">
+            {/* THIS ROW CLAIMED SOMETHING TRUE OF TWO PAGES ABOUT ALL OF THEM. oldestStamp()
+                — the function that implements "the slowest store behind it" — is called from
+                /coins and /coins/{coin} and nowhere else; every other template passes the
+                five-minute snapshot's own stamp. On a contract page the candle store can be
+                hours older than the pill, which is why that template names the candle clock
+                separately. The claim now says what is checkable, and the pages that draw on a
+                slower store are named rather than generalised over. */}
             No claim of perfection: <a class="link" href="/status">Status</a> renders the real
-            success rate from the run log, failures included, and the freshness indicator on
-            every page reports the age of the slowest store behind it rather than the newest.
+            success rate from the run log, failures included, and the freshness pill reports the
+            age of the market snapshot rather than of the newest figure on the page. Where a
+            page also draws on the slower candle store, the contract and coin pages name that
+            store's own age beside the figures it feeds.
             A status page that has only ever been green is evidence of nothing.
           </td>
         </tr>

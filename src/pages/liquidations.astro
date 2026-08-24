@@ -4,7 +4,7 @@ import { getSnapshot, coldStart, pickPerp } from "../lib/hyperliquid.ts";
 import { usd, pct } from "../lib/funding.ts";
 import { maintenanceMarginFraction, nextTierBoundary, type MarginTable } from "../lib/margin.ts";
 import { getHourly, type Candle } from "../lib/candles.ts";
-import { buildLiqMap, PROFILES } from "../lib/liqmap.ts";
+import { buildLiqMap, PROFILES , mixUsed } from "../lib/liqmap.ts";
 import { paintHeatMap } from "../lib/heatmap.ts";
 import { RAMP, CH, INK, MONO, FS_AXIS, compact, niceTicks } from "../lib/chart.ts";
 import { aggregate } from "../lib/series.ts";
@@ -61,6 +61,9 @@ const paint = map ? paintHeatMap(map, { live: { px: mark, at: snap.fetchedAt } }
 const warmBars = map ? map.warmBars : 0;
 const stepMs = win.factor * 3_600_000;
 const totalClustered = map ? map.clusters.reduce((s, c) => s + c.notional, 0) : 0;
+/* The same renormalised mix the model uses, so the table below and the picture above cannot
+   describe two different weight vectors. See mixUsed() in src/lib/liqmap.ts. */
+const mix = mixUsed(profile, tier1.maxLeverage);
 const offAxis = profile.weights.filter(([L]) => L <= tier1.maxLeverage && map && (mark * (1 - 1 / L)) / (1 - mmf) < map.loPrice);
 const sweptTotal = map ? map.swept.reduce((a, b) => a + b, 0) : 0;
 
@@ -199,13 +202,26 @@ const description = `Where ${perp.symbol} liquidation levels sit and which ones 
       </p>
 
       <h2 class="section">Leverage mix used: {profile.label}</h2>
-      <p class="section-note">The exact weight vector behind the picture. Every other profile is one form submission away.</p>
+      {/* THE SHARES ARE THE MODEL'S, NOT THE PROFILE'S, and until now they were the profile's.
+          A profile is written for a 40x contract and sums to 1 there; on anything capped lower
+          the rungs above the cap are dropped and buildLiqMap renormalises what is left, because
+          a 10x contract's positions are all at 10x or below. This table printed the RAW weight
+          under a note calling it "the exact weight vector behind the picture" — the vector for
+          a contract the reader was not looking at. Nine of the ten committed margin tables cap
+          below 40x; on the 3x one the table said 9% of open interest sat at 2x while the model
+          put 100% of it there, and the assumptions table forty lines above says the total
+          modelled notional equals open interest. mixUsed() is now the single implementation. */}
+      <p class="section-note">
+        The exact weight vector behind the picture{mix.length > 0 && mix.length < profile.weights.length
+          ? <>, renormalised over the {mix.length} rung{mix.length === 1 ? "" : "s"} this contract's {tier1.maxLeverage}× cap leaves in play</>
+          : ""}. Every other profile is one form submission away.
+      </p>
       <div class="panel" style="max-width:600px">
         <table class="tbl">
           <thead><tr><th class="num">Leverage</th><th class="num">Share of notional</th><th class="num">Modelled notional</th><th class="num">Long liquidation, % from mark</th></tr></thead>
           <tbody>
-            {profile.weights.filter(([L]) => L <= tier1.maxLeverage).map(([L, w]) => (
-              <tr><td class="num">{L}×</td><td class="num">{pct(w)}</td><td class="num">{usd(perp.oiNotional * w)}</td><td class="num">−{(((1 / L - mmf) / (1 - mmf)) * 100).toFixed(1)}%</td></tr>
+            {mix.map(({ L, share }) => (
+              <tr><td class="num">{L}×</td><td class="num">{pct(share)}</td><td class="num">{usd(perp.oiNotional * share)}</td><td class="num">−{(((1 / L - mmf) / (1 - mmf)) * 100).toFixed(1)}%</td></tr>
             ))}
           </tbody>
         </table>

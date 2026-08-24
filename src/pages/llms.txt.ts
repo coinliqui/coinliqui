@@ -77,7 +77,7 @@ ${base} is the only domain this project publishes. Any other site using this nam
 - Free. No advertising, no paid tier, no token, no fundraising, no referral programme.
 - No user accounts and no sign-up of any kind. No payment details and no personal
   information are collected: ${base}/privacy
-- No analytics run on the site: no third-party script executes on any page, and the Content-Security-Policy permits scripts from this origin only.
+- No analytics run on the site: no third-party script executes on any page, and the Content-Security-Policy names no off-origin host in any directive — script, fetch, image or font. It does still carry 'unsafe-inline' for script-src, which permits any inline script in the document rather than only ours, because several calculators render inline blocks; that is the largest remaining weakness in the header and is stated here rather than rounded off.
 - Every displayed number is server-rendered at first byte, so a crawler that runs no JavaScript
   sees exactly what a person sees.
 - Nothing on the site is financial advice, a signal, or a price forecast.
