@@ -722,6 +722,9 @@ async function run(env: Env): Promise<RunResult> {
         if (!inCycle && !due) return undefined;
 
         const list = inCycle && m?.l?.length ? m.l : scope;
+        /* The wrap test, needed before `wrapped` is computed below because the unvisited set is
+           only meaningful on the tick that ends the cycle. */
+        const wrappedNow = (c: number, r: number, l: string[]) => c + Math.min(r, Math.max(0, l.length - c)) >= l.length;
         const slice = list.slice(cursor, cursor + room);
         const done = await run(slice);
         for (const s of done) have.add(s);
@@ -743,7 +746,22 @@ async function run(env: Env): Promise<RunResult> {
            about how a permanently failing symbol once stopped every other refresh; that wants
            its own change with its own backoff, on evidence this field is what produces. */
         const skipped = slice.filter((x) => !done.includes(x));
-        const skipAcc = cursor === 0 ? skipped : [...new Set([...(m?.skip ?? []), ...skipped])];
+        /* AND THE SECOND WAY A SYMBOL GOES UNREFRESHED: it was never in the list at all.
+           A cycle carries its symbol list in `l` across ticks, deliberately, so the set cannot
+           shift underfoot mid-walk. A contract that joins coverage while a cycle is in flight is
+           therefore not in `l`, is never visited, and — because it arrives with data from before
+           it left, so `have` contains it — is not a hole either. The wrap then stamps a full
+           refresh over it.
+           Measured 24 August: MORPHO left coverage, returned, and its hourly store sat at 11:02
+           while the cycle wrapped at 13:17 with an empty skip list; the chart gate failed on
+           /funding/morpho at 4.1h, 7.1h and 15.1h over the ceiling. Three contracts rotated in
+           or out of coverage that day, so this is not a rare state.
+           Same mechanism, one more input: whatever this cycle could not have reached joins what
+           it reached and failed. */
+        const unvisited = wrappedNow(cursor, room, list) ? scope.filter((x) => !list.includes(x)) : [];
+        const skipAcc = cursor === 0
+          ? [...new Set([...skipped, ...unvisited])]
+          : [...new Set([...(m?.skip ?? []), ...skipped, ...unvisited])];
 
         const next = cursor + Math.min(room, Math.max(0, list.length - cursor));
         const wrapped = next >= list.length;

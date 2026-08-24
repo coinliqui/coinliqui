@@ -1081,7 +1081,7 @@ async function stepCorroborate(env, now = Date.now()) {
 }
 
 // worker/build-stamp.ts
-var WORKER_BUILD = "8a30f677e170";
+var WORKER_BUILD = "472ced22b9be";
 
 // worker/ingest.ts
 var RETAIN_HOURS = 72;
@@ -1340,11 +1340,13 @@ async function run(env) {
         const due = !m?.u || Date.now() - m.u > hours * 36e5;
         if (!inCycle && !due) return void 0;
         const list = inCycle && m?.l?.length ? m.l : scope;
+        const wrappedNow = (c, r, l) => c + Math.min(r, Math.max(0, l.length - c)) >= l.length;
         const slice = list.slice(cursor, cursor + room);
         const done = await run2(slice);
         for (const s of done) have.add(s);
         const skipped = slice.filter((x) => !done.includes(x));
-        const skipAcc = cursor === 0 ? skipped : [.../* @__PURE__ */ new Set([...m?.skip ?? [], ...skipped])];
+        const unvisited = wrappedNow(cursor, room, list) ? scope.filter((x) => !list.includes(x)) : [];
+        const skipAcc = cursor === 0 ? [.../* @__PURE__ */ new Set([...skipped, ...unvisited])] : [.../* @__PURE__ */ new Set([...m?.skip ?? [], ...skipped, ...unvisited])];
         const next = cursor + Math.min(room, Math.max(0, list.length - cursor));
         const wrapped = next >= list.length;
         if (wrapped) {
