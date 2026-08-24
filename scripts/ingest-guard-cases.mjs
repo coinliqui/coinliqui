@@ -178,3 +178,72 @@ for (const [name, meta, pred, want] of shapes) {
 globalThis.fetch = realFetch;
 if (sbad) { console.error(`\n  ${sbad} shape(s) behaved unexpectedly`); process.exit(1); }
 console.log("\n  every unseen shape either yields a contract that survives its pages, or is refused outright");
+
+/* =====================================================================================
+   THE CANARY'S ok COLUMN MEANT "NOTHING THREW".
+
+   migrations/0002_upstream_check.sql documents it as `ok : 1 only when usable rows were
+   written`. The minute tick wrote `liveErr ? 0 : 1`, and two paths write nothing without
+   throwing: `published:set` empty or absent — that key comes from the FIVE-minute ingest, which
+   fails about one run in six — and fetchLive() returning no marks, which it does without
+   throwing and which then overwrote a good `live` with an empty one.
+
+   Either way the table would have recorded 1,440 rows a day of ok=1 while the one-minute path
+   wrote nothing, and any success rate computed from it would have read 100%. That is precisely
+   the failure the function's own header was written about, reproduced one level up inside the
+   instrument built to catch it.
+
+   Three cases, and the third is what stops the other two being satisfied by a tick that never
+   reports success at all.
+   ===================================================================================== */
+let canary = 0;
+{
+  const { minute } = await import("../worker/ingest.ts");
+  const realFetch = globalThis.fetch;
+
+  const env = (published, universe) => {
+    const kv = new Map();
+    if (published) kv.set("published:set", published);
+    const rows = [];
+    globalThis.fetch = async (_u, opts) => {
+      const type = JSON.parse(opts.body).type;
+      const body = type === "metaAndAssetCtxs"
+        ? [{ universe: universe.map((name) => ({ name })) }, universe.map(() => ({ markPx: "100" }))]
+        : universe.map((name) => [name, [["HlPerp", { fundingRate: "0.00001", fundingIntervalHours: 1 }]]]);
+      return { ok: true, status: 200, json: async () => body };
+    };
+    return {
+      rows,
+      env: {
+        SNAPSHOT: { get: async (k) => kv.get(k) ?? null, put: async (k, v) => { kv.set(k, JSON.parse(v)); } },
+        DB: { prepare: () => ({ bind: (...a) => ({ run: async () => rows.push(a) }) }) },
+        wrote: () => kv.has("live"),
+        live: () => kv.get("live"),
+      },
+    };
+  };
+
+  const cases = [
+    ["published:set absent — nothing was fetched", null, ["BTC"], 0, false],
+    ["the upstream returned no marks for the published set", ["BTC"], [], 0, false],
+    ["marks written — the case that keeps the other two honest", ["BTC"], ["BTC"], 1, true],
+  ];
+  for (const [name, published, universe, wantOk, wantWrite] of cases) {
+    const { rows, env: e } = env(published, universe);
+    await minute(e);
+    const row = rows[0] ?? [];
+    const gotOk = row[4];
+    const note = (() => { try { return JSON.parse(row[5] ?? "{}"); } catch { return {}; } })();
+    const wrote = e.wrote();
+    const pass = gotOk === wantOk && wrote === wantWrite;
+    console.log(`  ${pass ? "ok  " : "FAIL"}  ${name.padEnd(56)} ok=${gotOk} wrote-live=${wrote} note=${JSON.stringify(note).slice(0, 62)}`);
+    if (!pass) { canary++; console.log(`        wanted ok=${wantOk} wrote-live=${wantWrite}`); }
+  }
+  globalThis.fetch = realFetch;
+}
+/* ITS OWN GATE. This file already exits at three points above, on `blind`, on `bad` and on
+   `sbad`, and every one of them had run by the time these cases did — so incrementing `bad`
+   here would have printed a FAIL and exited 0. A block appended after the last exit is a suite
+   that cannot fail, which is the shape this whole pass exists to remove; adding one while
+   removing them would have been funny in the wrong way. */
+if (canary) { console.error(`\n  ${canary} canary case(s) wrong`); process.exit(1); }

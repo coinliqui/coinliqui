@@ -152,6 +152,23 @@ export interface IndexNowState {
    * the retry rate decays: 5 minutes, then 10, 20, 40 … capped at 12 hours.
    */
   backoff?: Record<string, { fails: number; nextAt: number }>;
+  /**
+   * WHEN AN ENDPOINT LAST ACCEPTED ANYTHING. Absent means no endpoint ever has.
+   *
+   * `known` advances unconditionally — its own comment two fields up says "it is a record, not
+   * a receipt" — and the quiet-pass log line was printed from it and called it a receipt:
+   * "nothing new (N URLs published, all previously submitted and accepted)". Measured with a
+   * fresh state and no network: pass 1 returns "first run, recorded 3 URLs as the baseline
+   * WITHOUT SUBMITTING", pass 2 returns "all previously submitted and accepted", and zero POSTs
+   * were made across both. Two lines in one log, one tick apart, contradicting each other.
+   *
+   * It matters because of who reads it. An operator scanning the run log for why nothing is
+   * indexed sees "submitted and accepted" and looks elsewhere; the truth in that state is that
+   * no URL on this site has ever been announced to any endpoint. This field is the difference
+   * between the two, and it is one timestamp rather than a per-URL ledger because the question
+   * is "has this ever worked", not "which URL went where".
+   */
+  sentAt?: number;
 }
 
 /** 5 minutes doubling per consecutive refusal, capped at 12 hours. */
@@ -183,6 +200,10 @@ export async function stepIndexNow(env: IndexNowEnv, current: string[]): Promise
     return `indexnow: first run, recorded ${current.length} URLs as the baseline without submitting`;
   }
 
+  /* Carried through every write below. Absent on a state written before this field existed,
+     which reads as "never accepted" — the conservative direction, and self-correcting on the
+     first successful send. */
+  let sentAt = st.sentAt;
   const known = new Set(st.known);
   const fresh = current.filter((u) => !known.has(u));
   const pending = { ...(st.pending ?? {}) };
@@ -226,9 +247,14 @@ export async function stepIndexNow(env: IndexNowEnv, current: string[]): Promise
     /* WRITE WHENEVER EITHER HALF MOVED, not only when something was fresh. With the backoff
        branch now filling pending[], a pass that produces no fresh URLs can still have changed
        the backlog — and dropping that write would put the URL back where it just came from. */
-    if (fresh.length || held.length) await env.SNAPSHOT.put(STATE_KEY, JSON.stringify({ known: current, pending, backoff } satisfies IndexNowState));
+    if (fresh.length || held.length) await env.SNAPSHOT.put(STATE_KEY, JSON.stringify({ known: current, pending, backoff, ...(sentAt ? { sentAt } : {}) } satisfies IndexNowState));
     if (held.length) return `indexnow: nothing sent — ${held.join(", ")}`;
-    return `indexnow: nothing new (${current.length} URLs published, all previously submitted and accepted)`;
+    /* WHAT owed.size === 0 ACTUALLY MEANS: no endpoint has a backlog and nothing is fresh. It
+       says nothing about whether anything was ever sent, which is why the sentence no longer
+       claims it and reads `sentAt` for that half instead. */
+    return sentAt
+      ? `indexnow: nothing new (${current.length} URLs published, none owed to any endpoint; last accepted ${new Date(sentAt).toISOString().slice(0, 16).replace("T", " ")} UTC)`
+      : `indexnow: nothing new (${current.length} URLs published, none owed — but nothing has ever been accepted by any endpoint, so this is a recorded baseline rather than a completed submission)`;
   }
 
   const results: string[] = [];
@@ -246,6 +272,7 @@ export async function stepIndexNow(env: IndexNowEnv, current: string[]): Promise
          on it. */
       if (res.ok) {
         accepted++;
+        sentAt = now;
         delete pending[name];
         delete backoff[name];
         results.push(`${name} ${res.status}`);
@@ -263,7 +290,7 @@ export async function stepIndexNow(env: IndexNowEnv, current: string[]): Promise
     }
   }
 
-  await env.SNAPSHOT.put(STATE_KEY, JSON.stringify({ known: current, pending, backoff } satisfies IndexNowState));
+  await env.SNAPSHOT.put(STATE_KEY, JSON.stringify({ known: current, pending, backoff, ...(sentAt ? { sentAt } : {}) } satisfies IndexNowState));
   const owedTotal = Object.keys(pending).length;
   const head = fresh.length ? `submitted ${fresh.length} new URL(s)` : `retried a backlog`;
   return `indexnow: ${head} to ${accepted}/${owed.size} endpoints [${results.join(", ")}]` +

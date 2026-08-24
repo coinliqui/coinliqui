@@ -284,7 +284,7 @@ const SKIP_SWEEPS = Symbol("skip-sweeps");
  * Failures are still swallowed for the READER — that behaviour was correct — and now written
  * down for whoever is diagnosing.
  */
-async function minute(env: Env): Promise<void> {
+export async function minute(env: Env): Promise<void> {
   const started = Date.now();
   /* THE SPOT LEG IS GONE. This tick used to fetch Coinbase's /products/stats every minute and
      write it to KV; that source was removed on 19 August 2026 after its Market Data Terms
@@ -292,10 +292,40 @@ async function minute(env: Env): Promise<void> {
      of the data or anything derived from it. See the header of
      src/lib/coins.ts. The minute tick now exists solely for Hyperliquid marks and APRs, which
      is why it is still a minute tick — those are the figures that move at that scale. */
+  /* ok=1 MEANT "NOTHING THREW", AND THE SCHEMA SAYS IT MEANS "usable rows were written".
+     migrations/0002_upstream_check.sql documents the column as `ok : 1 only when usable rows
+     were written`. The write below was `liveErr ? 0 : 1`, and there were two non-throwing paths
+     that wrote nothing at all:
+
+       - `published:set` empty or absent, so the guard skipped the whole body. That key is
+         written by the FIVE-minute ingest, which fails on roughly one run in six and has had
+         429 storms; lose it, or start on a fresh namespace, and this tick writes 1,440 rows a
+         day of ok=1 while the `live` store goes stale for a day.
+       - fetchLive() returning no marks. It does not throw when the universe matches nothing:
+         it returns { mark: {}, apr: {} }, which then OVERWRITES a good `live` with an empty one.
+         getLive() rejects that shape, so the reader silently loses the overlay.
+
+     Both produce exactly the failure the comment above this function was written about — "a
+     page could have been serving a mark it labelled 'updates every minute' that had not updated
+     in an hour, and the only evidence would have been a number that looked plausible" — one
+     level up, in the instrument built to catch it. A success rate computed from these rows would
+     have read 100% throughout.
+
+     So the tick now records what it did rather than what it avoided, and an empty result is no
+     longer written over a good one: keeping the last good marks is the same choice the fallback
+     branch already makes for the reader. */
   let liveErr = "";
+  let marks = 0;
   try {
     const published = ((await env.SNAPSHOT.get("published:set", "json")) as string[] | null) ?? [];
-    if (published.length) await env.SNAPSHOT.put("live", JSON.stringify(await fetchLive(published)));
+    if (!published.length) {
+      liveErr = "published:set empty — nothing fetched";
+    } else {
+      const set = await fetchLive(published);
+      marks = Object.keys(set.mark ?? {}).length;
+      if (!marks) liveErr = `upstream returned no marks for ${published.length} published symbol(s)`;
+      else await env.SNAPSHOT.put("live", JSON.stringify(set));
+    }
   } catch (e) {
     liveErr = (e instanceof Error ? e.message : String(e)).slice(0, 60);
   }
@@ -321,8 +351,11 @@ async function minute(env: Env): Promise<void> {
       "INSERT INTO upstream_check (at, source, status, ms, ok, note) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
     )
       .bind(started, "minute", liveErr ? (m ? Number(m[1]) : 0) : 200, Date.now() - started,
-            liveErr ? 0 : 1,
-            JSON.stringify({ liveError: liveErr || undefined }))
+            /* The column's documented meaning, honoured: 1 only when marks were actually
+               written. `marks > 0` implies no liveErr, and stating both makes the invariant
+               visible at the call site rather than implied by control flow. */
+            !liveErr && marks > 0 ? 1 : 0,
+            JSON.stringify({ liveError: liveErr || undefined, marks: marks || undefined }))
       .run();
   } catch { /* swallowed on purpose — see above */ }
 }

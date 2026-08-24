@@ -215,5 +215,51 @@ await check("a contract retires below the floor", base, fewer, (s) => s.length =
   if (!ok) { bad++; console.log(`        line: ${line}\n        state: ${JSON.stringify(st)}`); }
 }
 
+/* =====================================================================================
+   "ALL PREVIOUSLY SUBMITTED AND ACCEPTED" WAS PRINTED AFTER ZERO SUBMISSIONS.
+
+   The quiet-pass line is reached when `owed.size === 0`, which means no endpoint has a backlog
+   and nothing is fresh. It says nothing whatever about whether anything was ever sent — and
+   `known`, the field it was reasoning from, carries a comment saying so in as many words: "it
+   is a record, not a receipt".
+
+   Measured, not argued: with a fresh state and a fetch stub that counts POSTs, pass 1 returns
+   "first run, recorded 3 URLs as the baseline WITHOUT SUBMITTING" and pass 2 returns "all
+   previously submitted and accepted", with zero POSTs across both. Two lines in one log, one
+   tick apart, flatly contradicting each other.
+
+   Who it misleads: an operator scanning /status for why nothing is indexed reads "submitted and
+   accepted" and looks somewhere else, when the truth is that no URL on this site has ever been
+   announced to any endpoint. `sentAt` is the difference, and these are its cases.
+   ===================================================================================== */
+{
+  const urls = ["/", "/funding/btc", "/funding/eth"].map((p) => `${O}${p}`);
+  let sent = 0;
+  globalThis.fetch = async () => { sent++; return { ok: true, status: 200 }; };
+  const store = kv();
+  await stepIndexNow({ SNAPSHOT: store, SITE_ORIGIN: O }, urls);      // baseline, sends nothing
+  const quiet = await stepIndexNow({ SNAPSHOT: store, SITE_ORIGIN: O }, urls);
+  const honest = sent === 0 && /never been accepted|recorded baseline/.test(quiet) && !/previously submitted and accepted/.test(quiet);
+  console.log(`  ${honest ? "ok  " : "FAIL"}  ${"a quiet pass after a baseline does not claim a submission".padEnd(52)} ${sent} POST(s), says: ${quiet.slice(20, 96)}`);
+  if (!honest) bad++;
+
+  /* THE OTHER HALF, so this is not satisfied by a line that never claims anything. Once an
+     endpoint has accepted, the quiet pass must say so and must carry the date. */
+  const withNew = [...urls, `${O}/funding/sol`];
+  await stepIndexNow({ SNAPSHOT: store, SITE_ORIGIN: O }, withNew);
+  const after = await stepIndexNow({ SNAPSHOT: store, SITE_ORIGIN: O }, withNew);
+  const claims = sent > 0 && /last accepted \d{4}-\d{2}-\d{2}/.test(after);
+  console.log(`  ${claims ? "ok  " : "FAIL"}  ${"and does claim one, with a date, once an endpoint accepts".padEnd(52)} ${sent} POST(s), says: ${after.slice(20, 96)}`);
+  if (!claims) bad++;
+
+  /* A state written before sentAt existed must read as "never accepted" rather than throwing or
+     silently claiming success — the conservative direction, self-correcting on the first send. */
+  const legacy = kv({ known: urls });
+  const line = await stepIndexNow({ SNAPSHOT: legacy, SITE_ORIGIN: O }, urls);
+  const safe = /never been accepted|recorded baseline/.test(line);
+  console.log(`  ${safe ? "ok  " : "FAIL"}  ${"a state predating sentAt reads as never-accepted".padEnd(52)} ${line.slice(20, 96)}`);
+  if (!safe) bad++;
+}
+
 console.log(bad ? `\n  ${bad} case(s) wrong` : "\n  submits only on a URL that did not exist before, never on a price tick, never forgets an endpoint that refused, and never hammers one that keeps refusing");
 process.exit(bad ? 1 : 0);

@@ -376,7 +376,19 @@ for (const path of ROUTES) {
       const un = unreadableText(css);
       if (un.length) {
         bad++;
-        console.log(`  FAIL  ${String(un.length).padStart(4)}         text colour below WCAG AA on a surface it is used on`);
+        /* "ON A SURFACE IT IS USED ON" WAS A CLAIM ABOUT THE STYLESHEET, AND NOTHING READ IT.
+           unreadableText() is an unconditional cross-product of three text tokens against four
+           surface tokens; no rule, no element and no cascade is consulted, so it cannot know
+           whether any pairing is rendered anywhere. It fires on nothing today, which is why the
+           wording has never cost anything — but the message is what a maintainer would act on,
+           and "it is used on" sends them hunting for an element that may not exist, or worse,
+           tempts a global token change to satisfy a pairing nothing renders.
+
+           The cross-product is deliberately kept: it is a SUPERSET of real usage, so twelve
+           passes means every actual pairing passes, and the alternative — deciding which text
+           token lands on which surface — is a full cascade analysis and a far better place to
+           be wrong. The message says superset now, which is the property the code has. */
+        console.log(`  FAIL  ${String(un.length).padStart(4)}         text/surface token pairing below WCAG AA — every combination is checked, whether or not the stylesheet renders it, so confirm the pairing is reachable before changing a token`);
         for (const l of un) console.log(`          ${l}`);
       } else {
         console.log(`  ok            every text token clears 4.5:1 on every surface`);

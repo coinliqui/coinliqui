@@ -340,6 +340,7 @@ async function stepIndexNow(env, current) {
     await env.SNAPSHOT.put(STATE_KEY, JSON.stringify({ known: current }));
     return `indexnow: first run, recorded ${current.length} URLs as the baseline without submitting`;
   }
+  let sentAt = st.sentAt;
   const known = new Set(st.known);
   const fresh = current.filter((u) => !known.has(u));
   const pending = { ...st.pending ?? {} };
@@ -362,9 +363,9 @@ async function stepIndexNow(env, current) {
     owed.set(e, list);
   }
   if (!owed.size) {
-    if (fresh.length || held.length) await env.SNAPSHOT.put(STATE_KEY, JSON.stringify({ known: current, pending, backoff }));
+    if (fresh.length || held.length) await env.SNAPSHOT.put(STATE_KEY, JSON.stringify({ known: current, pending, backoff, ...sentAt ? { sentAt } : {} }));
     if (held.length) return `indexnow: nothing sent \u2014 ${held.join(", ")}`;
-    return `indexnow: nothing new (${current.length} URLs published, all previously submitted and accepted)`;
+    return sentAt ? `indexnow: nothing new (${current.length} URLs published, none owed to any endpoint; last accepted ${new Date(sentAt).toISOString().slice(0, 16).replace("T", " ")} UTC)` : `indexnow: nothing new (${current.length} URLs published, none owed \u2014 but nothing has ever been accepted by any endpoint, so this is a recorded baseline rather than a completed submission)`;
   }
   const results = [];
   let accepted = 0;
@@ -378,6 +379,7 @@ async function stepIndexNow(env, current) {
       });
       if (res.ok) {
         accepted++;
+        sentAt = now;
         delete pending[name];
         delete backoff[name];
         results.push(`${name} ${res.status}`);
@@ -394,7 +396,7 @@ async function stepIndexNow(env, current) {
       results.push(`${name} ${e instanceof Error ? e.message.slice(0, 32) : "failed"}+${list.length} owed, next in ${Math.round(retryDelayMs(fails) / 6e4)}m`);
     }
   }
-  await env.SNAPSHOT.put(STATE_KEY, JSON.stringify({ known: current, pending, backoff }));
+  await env.SNAPSHOT.put(STATE_KEY, JSON.stringify({ known: current, pending, backoff, ...sentAt ? { sentAt } : {} }));
   const owedTotal = Object.keys(pending).length;
   const head = fresh.length ? `submitted ${fresh.length} new URL(s)` : `retried a backlog`;
   return `indexnow: ${head} to ${accepted}/${owed.size} endpoints [${results.join(", ")}]` + (held.length ? `, skipped: ${held.join(", ")}` : "") + (owedTotal ? `, ${owedTotal} endpoint(s) still owed` : "") + (fresh.length ? ` \u2014 ${fresh.slice(0, 3).join(", ")}${fresh.length > 3 ? " \u2026" : ""}` : "");
@@ -1047,7 +1049,7 @@ async function stepCorroborate(env, now = Date.now()) {
 }
 
 // worker/build-stamp.ts
-var WORKER_BUILD = "5f7bba2a1a54";
+var WORKER_BUILD = "e52c1b84f257";
 
 // worker/ingest.ts
 var RETAIN_HOURS = 72;
@@ -1124,9 +1126,17 @@ var SKIP_SWEEPS = /* @__PURE__ */ Symbol("skip-sweeps");
 async function minute(env) {
   const started = Date.now();
   let liveErr = "";
+  let marks = 0;
   try {
     const published = await env.SNAPSHOT.get("published:set", "json") ?? [];
-    if (published.length) await env.SNAPSHOT.put("live", JSON.stringify(await fetchLive(published)));
+    if (!published.length) {
+      liveErr = "published:set empty \u2014 nothing fetched";
+    } else {
+      const set = await fetchLive(published);
+      marks = Object.keys(set.mark ?? {}).length;
+      if (!marks) liveErr = `upstream returned no marks for ${published.length} published symbol(s)`;
+      else await env.SNAPSHOT.put("live", JSON.stringify(set));
+    }
   } catch (e) {
     liveErr = (e instanceof Error ? e.message : String(e)).slice(0, 60);
   }
@@ -1139,8 +1149,11 @@ async function minute(env) {
       "minute",
       liveErr ? m ? Number(m[1]) : 0 : 200,
       Date.now() - started,
-      liveErr ? 0 : 1,
-      JSON.stringify({ liveError: liveErr || void 0 })
+      /* The column's documented meaning, honoured: 1 only when marks were actually
+         written. `marks > 0` implies no liveErr, and stating both makes the invariant
+         visible at the call site rather than implied by control flow. */
+      !liveErr && marks > 0 ? 1 : 0,
+      JSON.stringify({ liveError: liveErr || void 0, marks: marks || void 0 })
     ).run();
   } catch {
   }
@@ -1390,5 +1403,6 @@ async function run(env) {
 }
 export {
   ingest_default as default,
+  minute,
   sameSecret
 };
