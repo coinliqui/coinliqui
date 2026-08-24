@@ -461,12 +461,28 @@ const description = `What a ${p.symbol} perpetual costs to hold, against ${usd(p
   </div>
 
   <h2 class="section">Funding rates for other coins</h2>
-  {/* Twenty-four rather than ten. A contract page's neighbours are the most useful links it
-      can carry — and a fifty-page template where every page links to ten of its siblings
-      leaves most of the set two or three hops from anywhere, which is the shape that gets a
-      template crawled slowly. Chips, so the density costs no visual weight. */}
+  {/* EVERY SIBLING, BECAUSE slice(0, 24) OFF A VOLUME-ORDERED LIST IS THE SAME 24 ON ALL FIFTY
+      PAGES. The comment this replaces reasoned correctly — "a fifty-page template where every
+      page links to ten of its siblings leaves most of the set two or three hops from anywhere,
+      which is the shape that gets a template crawled slowly" — and then took a window off the
+      TOP of the order, so the top 24 collected a link from all fifty pages and the bottom 25
+      collected none.
+
+      Measured on the live surface, 24 August, inbound editorial links per contract page:
+
+          indexed pages     (39)   median 50
+          NOT indexed pages (10)   median  3
+
+      Eight of the ten Google has not indexed sit at 2–4 inbound links. Of the 24 pages with
+      four or fewer, a third are unindexed; of the 25 with more, a twelfth. Links are not
+      sufficient — /funding/zro and /funding/vvv have 50 apiece and are still queued — but this
+      is the one lever here that is cheap, safe and pointed at exactly the pages that need it.
+
+      Every other contract now, not a window: the heading says "other coins" and the list is
+      finally that. Editorial links per page go from ~38 to ~63, and a ticker chip is about
+      sixty bytes. */}
   <p class="related">
-    {snap.perps.filter((x) => x.symbol !== p.symbol).slice(0, 24).map((x) => (
+    {snap.perps.filter((x) => x.symbol !== p.symbol).map((x) => (
       <a class="chip-link" href={`/funding/${x.symbol.toLowerCase()}`}>{x.symbol}</a>
     ))}
     <a class="chip-link" href="/funding">All {snap.perps.length} →</a>

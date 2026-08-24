@@ -1081,7 +1081,7 @@ async function stepCorroborate(env, now = Date.now()) {
 }
 
 // worker/build-stamp.ts
-var WORKER_BUILD = "8df809eceb41";
+var WORKER_BUILD = "9b850372c52c";
 
 // worker/ingest.ts
 var RETAIN_HOURS = 72;
@@ -1154,6 +1154,8 @@ var ingest_default = {
     });
   }
 };
+var RETIRED_KEY = "published:retired";
+var RETIRED_TTL_MS = 180 * 24 * 36e5;
 var SKIP_SWEEPS = /* @__PURE__ */ Symbol("skip-sweeps");
 async function minute(env) {
   const started = Date.now();
@@ -1213,6 +1215,16 @@ async function run(env) {
       if (!collapsed && nowPublished.slice().sort().join(",") !== prevPublished.slice().sort().join(",")) {
         await env.SNAPSHOT.put(publishedKey, JSON.stringify(nowPublished));
         result.coverageChanged = true;
+        const left = prevPublished.filter((sym) => !nowPublished.includes(sym));
+        if (left.length) {
+          const now = Date.now();
+          const prior = await env.SNAPSHOT.get(RETIRED_KEY, "json") ?? {};
+          for (const sym of left) prior[sym] = now;
+          for (const sym of nowPublished) delete prior[sym];
+          for (const [sym, at2] of Object.entries(prior)) if (now - at2 > RETIRED_TTL_MS) delete prior[sym];
+          await env.SNAPSHOT.put(RETIRED_KEY, JSON.stringify(prior));
+          result.retired = left.join(",");
+        }
       }
       return publishedSet(collapsed, prevPublished, nowPublished);
     })();

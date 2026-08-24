@@ -243,6 +243,9 @@ interface RunResult {
   sweepAgeMin?: Record<string, number>;
   /** The set of published contracts changed this run — a URL was added or retired. */
   coverageChanged?: boolean;
+  /** Which contracts left coverage this run, so a retirement is visible in the run log rather
+   *  than only inferable from a URL that started answering differently. */
+  retired?: string;
   /** A slice of the weekly indexation report ran instead of the bulk sweeps. */
   report?: string;
   /** The daily check of whether the site's published external link still resolves. */
@@ -254,6 +257,13 @@ interface RunResult {
 interface SweepMeta { u?: number; i?: number; l?: string[]; h?: string[]; f?: number; e?: string }
 
 /** Sentinel: not an error, just "this tick was spent on the report". */
+/** Contracts that have left coverage, and when. Read by the contract route to answer 410
+ *  rather than 404 for a URL this site used to publish. */
+const RETIRED_KEY = "published:retired";
+/** Long enough for Google to act on the 410 and drop the URL; short enough that the map stays
+ *  a few dozen entries. A contract that returns is removed from it immediately regardless. */
+const RETIRED_TTL_MS = 180 * 24 * 3_600_000;
+
 const SKIP_SWEEPS = Symbol("skip-sweeps");
 
 /**
@@ -421,6 +431,28 @@ async function run(env: Env): Promise<RunResult> {
       if (!collapsed && nowPublished.slice().sort().join(",") !== prevPublished.slice().sort().join(",")) {
         await env.SNAPSHOT.put(publishedKey, JSON.stringify(nowPublished));
         result.coverageChanged = true;
+        /* WHAT LEFT, AND WHEN. The note above is right that URLs are promises, and it guards the
+           transient case. A GENUINE retirement still broke one: FET was "Submitted and indexed"
+           in Search Console, last crawled 21 August, and began returning a bare 404 the moment
+           its open interest fell under the floor — the same response /funding/notacoin gets,
+           which is a URL that never existed. Google cannot tell those apart, so it re-crawls a
+           404 for months and the page sits in a Not-found report telling nobody anything.
+
+           410 is the signal for a deliberate removal, and this site already uses it for
+           /tools/liquidation-price with a comment saying so. The contract route needs to know
+           the difference, and only this line knows it, so it is written down here. */
+        const left = prevPublished.filter((sym) => !nowPublished.includes(sym));
+        if (left.length) {
+          const now = Date.now();
+          const prior = ((await env.SNAPSHOT.get(RETIRED_KEY, "json")) as Record<string, number> | null) ?? {};
+          for (const sym of left) prior[sym] = now;
+          /* A contract that comes back is not retired, and a retirement old enough that Google
+             has long since dropped the URL is not worth carrying either. */
+          for (const sym of nowPublished) delete prior[sym];
+          for (const [sym, at] of Object.entries(prior)) if (now - at > RETIRED_TTL_MS) delete prior[sym];
+          await env.SNAPSHOT.put(RETIRED_KEY, JSON.stringify(prior));
+          result.retired = left.join(",");
+        }
       }
       return publishedSet(collapsed, prevPublished, nowPublished);
     })();

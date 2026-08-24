@@ -203,6 +203,22 @@ for (const { key, blob_id } of rows) {
   }
 }
 
+/* THE 410 BRANCH, WHICH PRODUCTION SHOWS ONLY WHEN A CONTRACT HAS JUST LEFT.
+   /funding/{symbol} rewrites a miss to /404, and that page answers 410 with a "was published
+   until" explanation when the symbol is in this map. In the fixture the map is empty, so the
+   gate would render only the never-published branch and the retirement wording would ship
+   having never been rendered here — the same shape as the corroboration link above, and the
+   reason fixtureGaps flagged this key the moment 404.astro started reading it.
+   A symbol that is NOT in the fixture's snapshot, so it exercises retirement rather than
+   colliding with a live contract. */
+{
+  const rec = { FET: Date.now() - 6 * 3_600_000 };
+  const id = randomBytes(40).toString("hex");
+  writeFileSync(join(blobDir, id), JSON.stringify(rec));
+  put.run("published:retired", id);
+  console.log(`  published:retired  FET left 6h ago — the gate renders the 410 branch production shows only after a real retirement`);
+}
+
 db.close();
 console.log(wrote ? `seeded ${wrote} m15 series into the gate's fixture` : "nothing written");
 process.exit(wrote ? 0 : 1);
