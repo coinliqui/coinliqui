@@ -280,5 +280,53 @@ console.log("\n  the weekly report holding the ingest tick:");
   claim(!String(step).startsWith("report: abandoned"), `a 25-minute run is not abandoned (${step})`);
 }
 
+/* =====================================================================================
+   TWO READINGS BOTH SAID "50 funding-symbols" WHILE THE SET UNDERNEATH HAD ROTATED.
+
+   MORPHO crossed the open-interest floor on 21 August and something else fell below it, and
+   neither report could name either one — section A stored counts, and a count is stable
+   exactly when churn is invisible. A page then appears in the unindexed list reading like a
+   page that lost ground when it may simply be three days old.
+
+   The set is stored on the doc and diffed against the previous one. Three outcomes, and the
+   first is the one that matters: a previous reading with no list must NOT be reported as
+   "nothing changed", which is what an empty diff would say.
+   ===================================================================================== */
+{
+  const SITE = "https://coinliqui.com";
+  const sitemap = (paths) => ok200(`<urlset>${paths.map((x) => `<url><loc>${SITE}${x}</loc></url>`).join("")}</urlset>`);
+  const runWith = async (env, paths) => withFetch(
+    (pth) => pth === "/sitemap-index.xml"
+      ? ok200(`<sitemapindex><sitemap><loc>${SITE}/sitemaps/funding-symbols.xml</loc></sitemap></sitemapindex>`)
+      : pth === "/sitemaps/funding-symbols.xml" ? sitemap(paths) : ok200("<!doctype html><html><body>x</body></html>"),
+    () => drive(env),
+  );
+  const mdOf = (env) => JSON.parse(env.SNAPSHOT.store.get("report:latest")).md;
+  const A = ["/funding/btc", "/funding/eth", "/funding/ltc"];
+
+  const e1 = { SNAPSHOT: kv(), SITE_ORIGIN: SITE };
+  await runWith(e1, A);
+  const md1 = mdOf(e1);
+  claim(/carries no URL list, so there is nothing to compare/.test(md1) && !/No change against/.test(md1),
+    'a previous reading with no list says so, and does not report "no change"');
+
+  const e2 = { SNAPSHOT: kv(), SITE_ORIGIN: SITE };
+  await e2.SNAPSHOT.put("report:latest", JSON.stringify({ week: "2026-W01", urls: [...A].sort() }));
+  await runWith(e2, A);
+  claim(/No change against 2026-W01: the same 3 URLs, not merely the same count/.test(mdOf(e2)),
+    "an identical set is reported as the same URLs rather than the same count");
+
+  const e3 = { SNAPSHOT: kv(), SITE_ORIGIN: SITE };
+  await e3.SNAPSHOT.put("report:latest", JSON.stringify({ week: "2026-W34", urls: ["/funding/btc", "/funding/eth", "/funding/gone"].sort() }));
+  await runWith(e3, A);
+  const md3 = mdOf(e3);
+  claim(/\*\*Joined \(1\):\*\* `\/funding\/ltc`/.test(md3) && /\*\*Left \(1\):\*\* `\/funding\/gone`/.test(md3),
+    "a rotation at a constant count names both sides");
+  claim(/has not had time to be indexed/.test(md3),
+    "and says why a joiner shows as Discovered, so it is not read as a loss");
+  claim(JSON.parse(e3.SNAPSHOT.store.get("report:latest")).urls?.length === 3,
+    "the covered set is stored on the doc, so the next reading has something to compare");
+}
+
 if (rbad) { console.error(`\n  ${rbad} case(s) wrong`); process.exit(1); }
 console.log("\n  the report can no longer hold the ingest tick: not on a bad sitemap, not on anything else");

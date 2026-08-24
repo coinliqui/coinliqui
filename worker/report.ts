@@ -71,6 +71,9 @@ interface State {
   tokenAt?: number;
   /** WHEN the sitemap index was fetched — not what it returned. See the coverage phase. */
   sitemapsAt?: number;
+  /** Every URL this reading covered, sorted. Stored on the doc so the NEXT reading can name
+   *  what joined and what left instead of comparing two identical counts. */
+  urls?: string[];
   /** Kept only when that fetch produced no templates, so section A can say why. */
   indexStatus?: number;
   indexHead?: string;
@@ -265,7 +268,9 @@ export async function stepReport(env: ReportEnv, force = false): Promise<string 
     st.lines.push(`> A run holds the ingest tick — flips, IndexNow and all four candle sweeps`);
     st.lines.push(`> stand aside while it walks. It is ended here so they resume. Everything`);
     st.lines.push(`> above is what it completed before that.`);
-    const partial = { week: st.week, at: Date.now(), tookMs: Date.now() - st.startedAt, md: st.lines.join("\n") + "\n" };
+    /* An abandoned run carries its list too. Otherwise one stalled week silently resets the
+       comparison and the next reading reports "no previous list" as though the series began. */
+    const partial = { week: st.week, at: Date.now(), tookMs: Date.now() - st.startedAt, md: st.lines.join("\n") + "\n", urls: st.urls ?? [] };
     await env.SNAPSHOT.put(`report:${st.week}`, JSON.stringify(partial));
     await env.SNAPSHOT.put("report:latest", JSON.stringify(partial));
     await env.SNAPSHOT.delete("report:state");
@@ -355,6 +360,39 @@ export async function stepReport(env: ReportEnv, force = false): Promise<string 
       say(`| **total** | **${total}** | **${okAll}/${total}** |`);
       const dead = st.templates.filter((t) => t.urls.length === 0 && t.status !== 200);
       if (dead.length) say(`\n**${dead.length} sitemap${dead.length > 1 ? "s" : ""} could not be read**, so those templates are unmeasured, not empty.`);
+
+      /* WHICH URLS, NOT HOW MANY. Two consecutive readings both said "50 funding-symbols" while
+         the set underneath had rotated — MORPHO crossed the open-interest floor on 21 August
+         and something else fell below it — and neither report could say what. The count is
+         stable precisely when churn is invisible, so a page appearing in the unindexed list
+         reads as a page that lost ground when it may simply be three days old.
+         The list is stored on the doc and diffed against the previous one. */
+      const nowUrls = st.templates.flatMap((t) => t.urls.map((u) => u || "/")).sort();
+      st.urls = nowUrls;
+      const prevDoc = (await env.SNAPSHOT.get("report:latest", "json")) as { week?: string; urls?: string[] } | null;
+      const prevUrls = Array.isArray(prevDoc?.urls) ? prevDoc!.urls : null;
+      say("\n### What the covered set did since the last reading\n");
+      if (!prevUrls) {
+        /* ABSENCE IS NOT "NOTHING CHANGED", and an empty diff would say exactly that. The
+           previous reading predates this list, so there is nothing to compare and the report
+           says so rather than printing a reassuring blank. */
+        say(`The previous reading (${prevDoc?.week ?? "none on record"}) carries no URL list, so there is nothing to compare`);
+        say(`this one against. From the next reading on, this section names what joined and what left.`);
+      } else {
+        const prevSet = new Set(prevUrls);
+        const joined = nowUrls.filter((u) => !prevSet.has(u));
+        const nowSet = new Set(nowUrls);
+        const left = prevUrls.filter((u) => !nowSet.has(u));
+        if (!joined.length && !left.length) {
+          say(`No change against ${prevDoc?.week ?? "the previous reading"}: the same ${nowUrls.length} URLs, not merely the same count.`);
+        } else {
+          say(`Against ${prevDoc?.week ?? "the previous reading"} — ${prevUrls.length} URLs then, ${nowUrls.length} now.\n`);
+          if (joined.length) say(`**Joined (${joined.length}):** ${joined.map((u) => `\`${u}\``).join(", ")}`);
+          if (left.length) say(`\n**Left (${left.length}):** ${left.map((u) => `\`${u}\``).join(", ")}`);
+          say(`\nA URL that joined since the last reading has not had time to be indexed, and will`);
+          say(`appear below as *Discovered — currently not indexed* for reasons that are not about the page.`);
+        }
+      }
       }
       /* THE COUNT WAS THE WHOLE REPORT, AND THE COUNT IS NOT ACTIONABLE.
          The first run of this section said "1 URLs are not fetchable by a crawler. Nothing
@@ -669,7 +707,7 @@ export async function stepReport(env: ReportEnv, force = false): Promise<string 
   say("   technical symptom. A change to the terms this site depends on has none — the pages keep");
   say("   rendering perfectly — so the only detector is somebody re-reading the document.");
 
-  const doc = { week: st.week, at: Date.now(), tookMs: Date.now() - st.startedAt, md: st.lines.join("\n") + "\n" };
+  const doc = { week: st.week, at: Date.now(), tookMs: Date.now() - st.startedAt, md: st.lines.join("\n") + "\n", urls: st.urls ?? [] };
   await env.SNAPSHOT.put(`report:${st.week}`, JSON.stringify(doc));
   await env.SNAPSHOT.put("report:latest", JSON.stringify(doc));
   await env.SNAPSHOT.delete("report:state");

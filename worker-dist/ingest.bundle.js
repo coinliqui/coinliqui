@@ -647,7 +647,7 @@ ${origin} \xB7 started ${now.toISOString().slice(0, 16).replace("T", " ")} UTC
     st.lines.push(`> A run holds the ingest tick \u2014 flips, IndexNow and all four candle sweeps`);
     st.lines.push(`> stand aside while it walks. It is ended here so they resume. Everything`);
     st.lines.push(`> above is what it completed before that.`);
-    const partial = { week: st.week, at: Date.now(), tookMs: Date.now() - st.startedAt, md: st.lines.join("\n") + "\n" };
+    const partial = { week: st.week, at: Date.now(), tookMs: Date.now() - st.startedAt, md: st.lines.join("\n") + "\n", urls: st.urls ?? [] };
     await env.SNAPSHOT.put(`report:${st.week}`, JSON.stringify(partial));
     await env.SNAPSHOT.put("report:latest", JSON.stringify(partial));
     await env.SNAPSHOT.delete("report:state");
@@ -712,6 +712,32 @@ Every URL on this site is enumerated from that document. Until it parses, covera
         const dead = st.templates.filter((t) => t.urls.length === 0 && t.status !== 200);
         if (dead.length) say(`
 **${dead.length} sitemap${dead.length > 1 ? "s" : ""} could not be read**, so those templates are unmeasured, not empty.`);
+        const nowUrls = st.templates.flatMap((t) => t.urls.map((u) => u || "/")).sort();
+        st.urls = nowUrls;
+        const prevDoc = await env.SNAPSHOT.get("report:latest", "json");
+        const prevUrls = Array.isArray(prevDoc?.urls) ? prevDoc.urls : null;
+        say("\n### What the covered set did since the last reading\n");
+        if (!prevUrls) {
+          say(`The previous reading (${prevDoc?.week ?? "none on record"}) carries no URL list, so there is nothing to compare`);
+          say(`this one against. From the next reading on, this section names what joined and what left.`);
+        } else {
+          const prevSet = new Set(prevUrls);
+          const joined = nowUrls.filter((u) => !prevSet.has(u));
+          const nowSet = new Set(nowUrls);
+          const left = prevUrls.filter((u) => !nowSet.has(u));
+          if (!joined.length && !left.length) {
+            say(`No change against ${prevDoc?.week ?? "the previous reading"}: the same ${nowUrls.length} URLs, not merely the same count.`);
+          } else {
+            say(`Against ${prevDoc?.week ?? "the previous reading"} \u2014 ${prevUrls.length} URLs then, ${nowUrls.length} now.
+`);
+            if (joined.length) say(`**Joined (${joined.length}):** ${joined.map((u) => `\`${u}\``).join(", ")}`);
+            if (left.length) say(`
+**Left (${left.length}):** ${left.map((u) => `\`${u}\``).join(", ")}`);
+            say(`
+A URL that joined since the last reading has not had time to be indexed, and will`);
+            say(`appear below as *Discovered \u2014 currently not indexed* for reasons that are not about the page.`);
+          }
+        }
       }
       const failed = st.templates.flatMap((t) => (t.failures ?? []).map((f) => [t.name, ...f]));
       if (failed.length) {
@@ -961,7 +987,7 @@ ${pct1}% of the requests carrying a crawler's name were verified as that crawler
   say("5. **Section D is the one nothing else can catch.** Every other failure on this site has a");
   say("   technical symptom. A change to the terms this site depends on has none \u2014 the pages keep");
   say("   rendering perfectly \u2014 so the only detector is somebody re-reading the document.");
-  const doc = { week: st.week, at: Date.now(), tookMs: Date.now() - st.startedAt, md: st.lines.join("\n") + "\n" };
+  const doc = { week: st.week, at: Date.now(), tookMs: Date.now() - st.startedAt, md: st.lines.join("\n") + "\n", urls: st.urls ?? [] };
   await env.SNAPSHOT.put(`report:${st.week}`, JSON.stringify(doc));
   await env.SNAPSHOT.put("report:latest", JSON.stringify(doc));
   await env.SNAPSHOT.delete("report:state");
@@ -1055,7 +1081,7 @@ async function stepCorroborate(env, now = Date.now()) {
 }
 
 // worker/build-stamp.ts
-var WORKER_BUILD = "9be2e398a920";
+var WORKER_BUILD = "8df809eceb41";
 
 // worker/ingest.ts
 var RETAIN_HOURS = 72;
