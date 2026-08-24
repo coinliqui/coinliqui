@@ -400,6 +400,10 @@ const description = `What a ${p.symbol} perpetual costs to hold, against ${usd(p
   <p class="section-note">
     The quoted column is what each venue publishes. Those numbers are not comparable to each other; the annualised column is.
     {" "}<a class="link" href={`/tools/funding-cost?symbol=${p.symbol}`}>Cost of holding {p.symbol}, at your size and horizon →</a>
+    {/* A second question arising from the same table, not a second link for its own sake: the
+        annualised column is what makes venues comparable, and whether the difference between
+        them is worth anything is the next thing a reader asks. */}
+    {" "}<a class="link" href={`/tools/funding-arbitrage?symbol=${p.symbol}`}>Whether the spread between them is worth trading →</a>
   </p>
   <div class="panel">
     <table class="tbl">
@@ -451,6 +455,17 @@ const description = `What a ${p.symbol} perpetual costs to hold, against ${usd(p
       ? <> — {liq.effectiveLeverage}× being this contract's tier maximum, so 10× cannot be opened on it at all — </>
       : ", "}the tier-correct liquidation price is <strong style="color:var(--text)">{px(liq.liquidationPrice)}</strong> —
     {pct(liq.differencePct)} ({px(liq.differenceAbs)}) away from what the common <code>entry × (1 − 1/leverage)</code> formula returns.
+    {/* THE SAME DEFECT AS THE SIBLING BLOCK, ONE LEVEL UP. Measured on the live surface after the
+        contract pages were cross-linked: /tools/funding-cost went to 51 inbound editorial links
+        and the other three calculators sat at 2, 2 and 3 — /tools/leverage and
+        /tools/funding-arbitrage reachable only from the tools hub and from each other.
+        /tools/position-size is one of the URLs Search Console still has as Discovered, not
+        indexed. Both links below belong to THIS section rather than being distributed for
+        volume: the paragraph states a tier-correct liquidation price and the gap against the
+        common formula, which is precisely what one calculator sizes against and the other
+        explains. */}
+    {" "}<a class="link" href={`/tools/position-size?symbol=${p.symbol}`}>Size a position against this liquidation price →</a>
+    {" "}<a class="link" href={`/tools/leverage?symbol=${p.symbol}`}>What {p.symbol} allows at your notional →</a>
   </p>
   <div class="panel" style="max-width:620px">
     <table class="tbl">
