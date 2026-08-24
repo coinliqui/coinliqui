@@ -1,6 +1,6 @@
 ---
 import Base from "../../layouts/Base.astro";
-import { getSnapshot, coldStart, pickPerp } from "../../lib/hyperliquid.ts";
+import { getSnapshot, coldStart, requestedPerp } from "../../lib/hyperliquid.ts";
 import { usd, pct, queryNum } from "../../lib/funding.ts";
 import { liquidationPrice, tierFor, maintenanceMarginFraction, nextTierBoundary, type MarginTable, type Side } from "../../lib/margin.ts";
 import tables from "../../data/margin-tables.json";
@@ -15,8 +15,12 @@ if (!snap.available) return coldStart();
 const q = Astro.url.searchParams;
 /* The contract and its tier table are chosen together — see pickPerp in src/lib/hyperliquid.ts
    for why these were two lines and what the second one did when the first one won. */
-const picked = pickPerp(snap.perps, q.get("symbol"), tables as Record<string, MarginTable>);
-if (!picked) return coldStart();
+/* Pinned default, and an unknown symbol answers 404 instead of substituting the default.
+   See requestedPerp in src/lib/hyperliquid.ts for what each of those replaced. */
+const wantedSymbol = q.get("symbol");
+const picked = requestedPerp(snap.perps, wantedSymbol, tables as Record<string, MarginTable>);
+if (picked === null) return coldStart();
+if (picked === "unknown") return Astro.rewrite(`/404?symbol=${encodeURIComponent(wantedSymbol!)}`);
 const { perp, table } = picked;
 const side = (q.get("side") === "short" ? "short" : "long") as Side;
 

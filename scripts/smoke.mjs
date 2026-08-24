@@ -73,6 +73,13 @@ const ROUTES = [
      back quietly. The warm fixture carries a retired FET; see seed-smoke-kv.mjs. */
   "/retired?symbol=FET&at=1787500000000",
   "/funding/fet",
+  /* AN UNKNOWN SYMBOL ON A PARAMETERISED ROUTE. All four of these returned 200 with a complete
+     BTC page for any string at all — an unbounded set of URLs anyone can mint, each a full copy
+     of the default. Pinned here so the 404 cannot quietly become a 200 again. */
+  "/liquidations?symbol=NOTACOIN",
+  "/liquidations/survival?symbol=NOTACOIN",
+  "/tools/leverage?symbol=NOTACOIN",
+  "/tools/position-size?symbol=NOTACOIN",
   /* THE OTHER BRANCH OF /404, which is the one real people reach.
      404.astro renders two different pages: a generic "that page does not exist" when nothing
      rewrote to it, and "X is not published" when a contract or coin page did. The gate asked
@@ -98,7 +105,9 @@ const EXPECT = { "/tools/liquidation-price": 410, "/404": 404, "/rail": 404, "/s
   "/funding/notacoin": 404, "/coins/notacoin": 404,
   /* 410 for a contract this site published and retired; 404 for one it never did. The pair is
      listed together because the whole defect was that they returned the same code. */
-  "/retired?symbol=FET&at=1787500000000": 410, "/funding/fet": 410 };
+  "/retired?symbol=FET&at=1787500000000": 410, "/funding/fet": 410,
+  "/liquidations?symbol=NOTACOIN": 404, "/liquidations/survival?symbol=NOTACOIN": 404,
+  "/tools/leverage?symbol=NOTACOIN": 404, "/tools/position-size?symbol=NOTACOIN": 404 };
 
 const warmDir = process.argv.includes("--warm") ? process.argv[process.argv.indexOf("--warm") + 1] : null;
 const MODES = warmDir ? [{ name: "cold", args: [] }, { name: "warm", args: ["--kv", "SNAPSHOT", "--d1", "DB", "--persist-to", warmDir] }]

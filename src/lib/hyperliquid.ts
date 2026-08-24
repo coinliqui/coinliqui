@@ -374,6 +374,43 @@ export function pickPerp<T>(
   return perp ? { perp, table: tables[String(perp.marginTableId)] } : null;
 }
 
+/**
+ * THE CONTRACT A `?symbol=` PAGE SHOULD SHOW, AND WHETHER THE REQUEST NAMED ONE THAT DOES NOT EXIST.
+ *
+ * Two defects, one call, on four pages.
+ *
+ * THE DEFAULT WAS A LIVE SORT KEY. `pickPerp(perps, q.get("symbol"))` with no symbol falls back
+ * to `usable[0]`, and `perps` is sorted by open interest descending — so the page a reader gets
+ * at the bare URL is whichever contract happens to be largest. /liquidations is the site's
+ * highest-demand page: Search Console's top query cluster is "btc liquidation map", "bitcoin
+ * liquidation map", "btc liquidation heat map". Measured 24 August: BTC $3.36B, ETH $2.11B — a
+ * margin of 1.59x. If that closes, the URL Google indexed for those queries silently starts
+ * serving ETH, with an ETH title, on no deploy and with no notification. A flagship page's
+ * subject is not a ranking.
+ *
+ * AN UNKNOWN SYMBOL SILENTLY SERVED THE DEFAULT. `?symbol=NOTACOIN` returned 200 with a full
+ * BTC page on all six parameterised routes — an unbounded space of URLs anyone can mint, each
+ * a complete copy of the default page. Harmless only for as long as the canonical collapses
+ * them, which is a property of today's markup rather than a decision.
+ *
+ * `null` means the store is cold. `"unknown"` means the caller asked for something that is not
+ * published and should answer 404 rather than substituting.
+ */
+export function requestedPerp<T>(
+  perps: Perp[],
+  want: string | null | undefined,
+  tables: Record<string, T>,
+  fallback = "BTC",
+): { perp: Perp; table: T } | "unknown" | null {
+  const asked = (want ?? "").trim();
+  const picked = pickPerp(perps, asked || fallback, tables);
+  if (!picked) return null;
+  /* pickPerp falls back to the largest when it cannot match, which is right for an absent
+     request and wrong for a wrong one. The comparison is what separates them. */
+  if (asked && picked.perp.symbol.toLowerCase() !== asked.toLowerCase()) return "unknown";
+  return picked;
+}
+
 const EMPTY: Snapshot = { fetchedAt: 0, perps: [], eligibleCount: 0, universeCount: 0, available: false };
 
 /**
