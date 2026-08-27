@@ -73,3 +73,99 @@ export const STATIC_ROUTES: readonly string[] = [
   ...TOOLS, ...LIQUIDATIONS, ...UNLOCKS,
   ...LEARN,
 ];
+
+/**
+ * THE CONTRACT WHOSE LIQUIDATION MAP LIVES AT `/liquidations` RATHER THAN AT
+ * `/liquidations/{symbol}`, AND THE PATHS OF ALL THE OTHERS.
+ *
+ * Two files have to agree about this and they are not in the same runtime: the sitemap
+ * renders in a Pages function, the IndexNow announcer runs in the cron worker. That is the
+ * exact shape of the drift documented at the top of this file — two independent lists of
+ * what the site publishes, nothing comparing them, 22 URLs apart when somebody finally
+ * looked. So the rule is written once, here, and both import it.
+ *
+ * The default is PINNED rather than derived from open interest. `/liquidations` is the URL
+ * Google has indexed for the "btc liquidation map" cluster, and requestedPerp's header
+ * records what happened the last time a flagship page's subject was a live sort key:
+ * BTC $3.36B against ETH $2.11B is a 1.59x margin, and when it closes the indexed URL
+ * silently starts serving a different coin under a different title with no deploy.
+ * requestedPerp's fallback reads this constant, so there is one pin rather than two.
+ */
+export const MAP_DEFAULT = "BTC";
+
+/**
+ * `/liquidations/{symbol}` for every contract EXCEPT the default, which answers 301 to
+ * `/liquidations`. A sitemap or an announcement that includes a redirect is spending a
+ * crawler's fetch to teach it something the file already knew.
+ */
+export function liqMapPaths(symbols: readonly string[]): string[] {
+  return symbols
+    .filter((s) => s.toUpperCase() !== MAP_DEFAULT)
+    .map((s) => `/liquidations/${s.toLowerCase()}`);
+}
+
+/**
+ * WHERE ONE CONTRACT'S MAP ACTUALLY LIVES, for the pages that link to it.
+ *
+ * The default's map is at `/liquidations`, so `/funding/btc` linking to `/liquidations/btc`
+ * would send every reader and every crawler through a 301 on the site's most-linked internal
+ * edge. One function so no call site has to remember the exception.
+ */
+export const liqMapHref = (symbol: string) =>
+  symbol.toUpperCase() === MAP_DEFAULT ? "/liquidations" : `/liquidations/${symbol.toLowerCase()}`;
+
+/**
+ * EVERY ROUTE THAT RENDERS A DIFFERENT PAGE FOR `?symbol=`, AND WHETHER THAT PAGE HAS AN
+ * ADDRESS OF ITS OWN.
+ *
+ * THE DEFECT THIS EXISTS TO STOP HAPPENING AGAIN. `/liquidations` rendered fifty complete
+ * pages — its own <title>, <h1>, chart and every figure per contract — and served all fifty
+ * at one URL, while Base built the canonical tag from the pathname alone. So forty-nine
+ * finished pages told every crawler they were a page they were not. They were in no sitemap,
+ * announced to no index, and reachable only by submitting a <select>, which nothing that
+ * crawls does. The demand for them was in Search Console the whole time: seven coin-named
+ * liquidation-map queries in the week to 22 August 2026.
+ *
+ * Nobody decided that. It was what happened when a parameter was the easiest way to add a
+ * second contract, and it stayed true for as long as nothing looked. The point of this list
+ * is that looking is now automatic: scripts/smoke.mjs probes every route with a second real
+ * contract, and any route whose title changes must appear here with a verdict. An unrecorded
+ * one fails the gate.
+ *
+ * The list does not decide the verdict, because the verdict is a judgement about whether the
+ * content is worth an index entry and mechanical rules cannot make it. What it prevents is
+ * the judgement never being made.
+ *
+ *   `addressed`       — every value has its own URL, and `?symbol=` answers 301 to it.
+ *                       The gate re-checks that the redirect is still there.
+ *   `parameter-only`  — one URL on purpose. The gate re-checks that the page still varies,
+ *                       so an entry cannot quietly outlive the behaviour it describes.
+ */
+export const SYMBOL_PARAMETERISED: { path: string; verdict: "addressed" | "parameter-only"; why: string }[] = [
+  {
+    path: "/liquidations",
+    verdict: "addressed",
+    why: "Every contract's map is at /liquidations/{symbol} since 27 August 2026; the pinned default keeps this URL because it is the one with measured demand behind it. ?symbol= is a 301 to the real address.",
+  },
+  {
+    path: "/liquidations/survival",
+    verdict: "parameter-only",
+    why:
+      "Same shape as the map and a real per-contract backtest, so this is a candidate — but as of 2026-W35 Google has this template's one page as 'Discovered — currently not indexed', meaning it has never been crawled. Multiplying an uncrawled template by fifty is not how it gets crawled. Revisit when /liquidations/survival is indexed.",
+  },
+  {
+    path: "/tools/leverage",
+    verdict: "parameter-only",
+    why: "A calculator, and the symbol is a pre-filled input rather than a subject. Fifty near-identical calculator pages is the thin-template rule broken on purpose; /tools/position-size is already sitting in 'Discovered — currently not indexed' with five URLs.",
+  },
+  {
+    path: "/tools/funding-cost",
+    verdict: "parameter-only",
+    why: "As /tools/leverage: the contract is an input to the calculation, and the page it produces is the same page with different numbers in the boxes.",
+  },
+  {
+    path: "/tools/position-size",
+    verdict: "parameter-only",
+    why: "As /tools/leverage. This is the URL Google currently has as 'Discovered — currently not indexed', which is the direct evidence that the tools template does not want more URLs.",
+  },
+];

@@ -33,6 +33,10 @@ export const GET: APIRoute = async ({ locals, site }) => {
     { name: "open-interest", lastmod: data },
     { name: "tools", lastmod: data },
     { name: "liquidations", lastmod: newest([data, codeStamp("/liquidations/sweep")]) },
+    /* The per-contract maps are their own child so their indexation is separately
+       readable — see the header of sitemaps/liquidation-symbols.xml.ts. They move with
+       the market, like every other symbol template. */
+    { name: "liquidation-symbols", lastmod: data },
     { name: "unlocks", lastmod: new Date((register as { verifiedAt: string }).verifiedAt).toISOString() },
     // mixed, same split as `pages`: two explainers print live figures, two describe a method
     { name: "learn", lastmod: newest([data, ...["/learn/liquidation-heatmap", "/learn/liquidation-price"].map(codeStamp)]) },

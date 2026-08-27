@@ -38,7 +38,7 @@ import { readdirSync, readFileSync } from "node:fs";
 /* Source is read as CODE by default — see scripts/lib/source.mjs. The two checks below that
    want the prose say so at their call site, with the reason. */
 import { readSource, readRaw } from "./lib/source.mjs";
-import { cssFor, undefinedClasses, undefinedVars, rawEnums, searchIndexGaps, unnamedUpstreams, duplicateRuleImplementations, uncoveredRoutes, unreadableText, chartAgreement, requestedLeverageLabels, inlineScriptSyntax, flipTableColour, colourPalettes, colourLanguageDrift, colourLegend, publishesAPerson, fixtureGaps, staleDerivedCells, basisSelfConsistent, sitemapLastmodHonesty, breadcrumbAgreement, founderAgreement, readmeCounts, botPolicyReasons, contradictoryStates, hiddenFromEveryone, pageWeight, weightFaults, dateModifiedAgreement, phantomInlineElements, malformedAttributes, uncitedPermissionClaims, unconditionalCadenceClaims, staleCalculatorFigures, controlGroupOverflow, stampSurfacesAgree} from "./checks.mjs";
+import { cssFor, undefinedClasses, undefinedVars, rawEnums, searchIndexGaps, unnamedUpstreams, duplicateRuleImplementations, uncoveredRoutes, unreadableText, chartAgreement, requestedLeverageLabels, inlineScriptSyntax, flipTableColour, colourPalettes, colourLanguageDrift, colourLegend, publishesAPerson, fixtureGaps, staleDerivedCells, basisSelfConsistent, sitemapLastmodHonesty, breadcrumbAgreement, founderAgreement, readmeCounts, botPolicyReasons, contradictoryStates, hiddenFromEveryone, pageWeight, weightFaults, dateModifiedAgreement, phantomInlineElements, malformedAttributes, uncitedPermissionClaims, unconditionalCadenceClaims, staleCalculatorFigures, controlGroupOverflow, stampSurfacesAgree, symbolAddressing} from "./checks.mjs";
 
 /* The SERVER side of each duplicated formatter, transcribed from the file that owns it and
    named here so the pairing is explicit. Transcription is the honest cost of having no bundler:
@@ -65,6 +65,11 @@ const PAGE_STAMPS = new Map();
 const ROUTES = [
   "/", "/coins", "/coins/bitcoin", "/funding", "/funding/btc", "/funding/kpepe",
   "/open-interest", "/liquidations", "/liquidations/survival", "/liquidations/sweep",
+  /* THE PER-CONTRACT MAPS, both branches. /liquidations/eth is the template; /liquidations/btc
+     is the pinned default's alias and must answer 301 to /liquidations, because the default
+     keeps the URL Google already indexed. A template covered only by its happy path is how the
+     404-vs-410 pair went unnoticed. */
+  "/liquidations/eth", "/liquidations/btc", "/liquidations/notacoin",
   "/unlocks", "/tools", "/tools/position-size", "/tools/leverage", "/tools/funding-cost",
   "/tools/funding-arbitrage", "/tools/liquidation-price", "/methodology",
   "/methodology/liquidations", "/data-sources", "/privacy", "/about", "/terms", "/llms.txt",
@@ -105,6 +110,7 @@ const ROUTES = [
   "/sitemaps/coins.xml", "/sitemaps/funding-symbols.xml", "/sitemaps/funding-hub.xml",
   "/sitemaps/liquidations.xml", "/sitemaps/open-interest.xml", "/sitemaps/pages.xml",
   "/sitemaps/tools.xml", "/sitemaps/unlocks.xml", "/sitemaps/learn.xml",
+  "/sitemaps/liquidation-symbols.xml",
 ];
 /** Routes whose correct answer is not 200.
  *  /rail exports POST only — the rail's collapsed state is decided server-side so there is no
@@ -117,7 +123,10 @@ const EXPECT = { "/tools/liquidation-price": 410, "/404": 404, "/rail": 404, "/s
      listed together because the whole defect was that they returned the same code. */
   "/retired?symbol=FET&at=1787500000000": 410, "/funding/fet": 410,
   "/liquidations?symbol=NOTACOIN": 404, "/liquidations/survival?symbol=NOTACOIN": 404,
-  "/tools/leverage?symbol=NOTACOIN": 404, "/tools/position-size?symbol=NOTACOIN": 404 };
+  "/tools/leverage?symbol=NOTACOIN": 404, "/tools/position-size?symbol=NOTACOIN": 404,
+  /* The default's map is at /liquidations, so its own slug is an alias and answers 301.
+     A contract that was never covered answers 404, the same as /funding/notacoin. */
+  "/liquidations/btc": 301, "/liquidations/notacoin": 404 };
 
 const warmDir = process.argv.includes("--warm") ? process.argv[process.argv.indexOf("--warm") + 1] : null;
 const MODES = warmDir ? [{ name: "cold", args: [] }, { name: "warm", args: ["--kv", "SNAPSHOT", "--d1", "DB", "--persist-to", warmDir] }]
@@ -417,6 +426,88 @@ for (const path of ROUTES) {
     } catch (e) {
       bad++;
       console.log(`  FAIL          upstream comparison failed: ${e.message}`);
+    }
+    try {
+      /* ======================================================================================
+         A PAGE THAT CHANGES WHEN A PARAMETER CHANGES, AT A URL THAT SAYS IT DOES NOT.
+
+         /liquidations rendered fifty complete contract pages — its own <title>, <h1>, chart
+         and every figure — and published all fifty at one URL. Base builds the canonical tag
+         from the pathname alone, which is right everywhere else and was, here, forty-nine
+         finished pages instructing every crawler to discard them. They were in no sitemap and
+         announced to no index, because nothing that crawls submits a <select>. The demand was
+         in Search Console the whole time: seven coin-named liquidation-map queries in the
+         week to 22 August 2026, against a template with one URL.
+
+         THIS PROBES RATHER THAN READS THE SOURCE. A static scan would have to decide, from
+         the text of a .astro file, whether `title` transitively depends on a search parameter
+         — which is the kind of question that is answered wrongly once and then trusted. Two
+         GETs answer it exactly: fetch the bare route, fetch it with a second real contract
+         named, and see whether the document changed its own name.
+
+         THE CHECK DOES NOT DECIDE THE VERDICT. Whether fifty renderings deserve fifty URLs is
+         a judgement about whether the content earns an index entry, and the tools deliberately
+         say no — see SYMBOL_PARAMETERISED in src/lib/routes.ts. What fails here is a route
+         that varies and has NO recorded verdict, which is how /liquidations spent its whole
+         life, and a recorded verdict that no longer matches what the route does.
+         ====================================================================================== */
+      const { SYMBOL_PARAMETERISED } = await import("../src/lib/routes.ts");
+      const fundingSitemap = await (await fetch(`http://127.0.0.1:${PORT}/sitemaps/funding-symbols.xml`)).text();
+      const contracts = [...fundingSitemap.matchAll(/<loc>[^<]*\/funding\/([^<]+)<\/loc>/g)].map((m) => m[1]);
+      /* A SECOND real contract, taken from what the site itself publishes. A hardcoded "ETH"
+         would silently stop testing anything the day ETH left coverage — the probe would ask
+         for an unknown symbol, every route would answer 404, and every route would then look
+         unparameterised. */
+      const other = contracts.find((c) => c.toUpperCase() !== "BTC");
+      if (!other) throw new Error("no second contract in the funding sitemap to probe with");
+      const titleOf = (html) => (html.match(/<title>([\s\S]*?)<\/title>/) ?? [, ""])[1].trim();
+      /* THE DESCRIPTION COUNTS, AND LEAVING IT OUT MISSED A ROUTE. /tools/position-size has a
+         fixed <title> and a meta description that names the contract, so a title-only probe
+         reported it as unparameterised — and the entry recording the deliberate decision not
+         to give it fifty URLs would have been deleted as stale. Both tags are what a search
+         result is built from, so both are claims the canonical URL is making. The <h1> is
+         deliberately NOT counted: a calculator naming the selected contract in its heading is
+         the page talking to the reader in front of it, not to an index. */
+      const descOf = (html) => (html.match(/<meta name="description" content="([^"]*)"/) ?? [, ""])[1].trim();
+      const canonOf = (html) => (html.match(/<link rel="canonical" href="([^"]*)"/) ?? [, ""])[1];
+      const observed = [];
+      for (const path of ROUTES) {
+        if (path.startsWith("/sitemaps/") || path.startsWith("/api/") || /\.(xml|json|txt)$/.test(path)) continue;
+        /* MANUAL, and the first version of this was not. A bare fetch FOLLOWS redirects, so
+           /liquidations/btc — which 301s to /liquidations because the default keeps that URL —
+           came back 200 carrying /liquidations' body, was probed, redirected again, and was
+           reported as an undeclared addressed route. The bug was in the instrument, and the
+           only reason it was visible is that it named a route nobody had declared. */
+        const bare = await fetch(`http://127.0.0.1:${PORT}${path}`, { redirect: "manual" });
+        if (bare.status !== 200) continue;
+        const bareBody = await bare.text();
+        const t0 = titleOf(bareBody), d0 = descOf(bareBody);
+        const probed = await fetch(
+          `http://127.0.0.1:${PORT}${path}${path.includes("?") ? "&" : "?"}symbol=${encodeURIComponent(other.toUpperCase())}`,
+          { redirect: "manual" });
+        if (probed.status >= 300 && probed.status < 400) {
+          observed.push({ path, redirect: probed.headers.get("location"), identityVaries: false, canonicalQuery: "" });
+          continue;
+        }
+        if (probed.status !== 200) continue;
+        const body = await probed.text();
+        const canon = canonOf(body);
+        observed.push({
+          path, redirect: null, identityVaries: titleOf(body) !== t0 || descOf(body) !== d0,
+          canonicalQuery: canon ? new URL(canon).search : "",
+        });
+      }
+      const problems = symbolAddressing(observed, SYMBOL_PARAMETERISED);
+      if (problems.length) {
+        bad++;
+        console.log(`  FAIL  ${String(problems.length).padStart(4)}         a route varies by ?symbol= without a recorded verdict, or contradicts the one it has`);
+        for (const l of problems) console.log(`          ${l}`);
+      } else {
+        console.log(`  ok            every ?symbol=-parameterised route has a verdict that matches what it does (probed with ${other.toUpperCase()}, ${observed.length} route(s))`);
+      }
+    } catch (e) {
+      bad++;
+      console.log(`  FAIL          ?symbol= addressing check failed: ${e.message}`);
     }
     try {
       const css = await cssFor(await (await fetch(`http://127.0.0.1:${PORT}/`)).text(), `http://127.0.0.1:${PORT}`);

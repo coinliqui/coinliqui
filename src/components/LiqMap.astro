@@ -1,0 +1,418 @@
+---
+/* =========================================================================================
+   THE LIQUIDATION MAP, ONCE, FOR EVERY CONTRACT THAT HAS ONE.
+
+   WHY IT IS A COMPONENT AND NOT A PAGE. This markup rendered fifty different pages and
+   published all fifty at one URL. `/liquidations?symbol=ETH` produced a full ETH page —
+   its own <title>, its own <h1>, its own chart, its own numbers — and then, because
+   Base builds the canonical tag from the PATHNAME alone, told every crawler that the page
+   it had just read was `/liquidations`. Forty-nine renderings that a search engine could
+   not reach, could not link to, and was explicitly instructed to discard.
+
+   The demand for them is measured rather than assumed. Search Console for the week to
+   22 August 2026: `liquidations` drew 70 impressions from ONE indexed page, against 392
+   from the twenty-five `/funding/{symbol}` pages that have impressions — 70 per page
+   versus 16. The query log is coin-named throughout: "btc liquidation map" (8), "btc
+   liquidation heatmap", "btc liquidation heat map", "bitcoin liquidation map", "btc
+   liquidation chart", "btc liquidation heatmap all exchanges". Those are queries for a
+   URL per coin, answered by a site that had one.
+
+   So the body moved here and both routes render it: `/liquidations` for the pinned default
+   and `/liquidations/{symbol}` for the rest. ONE implementation, because the alternative —
+   copying 280 lines into a second file — is how the two sitemap lists in src/lib/routes.ts
+   came to disagree about 22 URLs.
+   ========================================================================================= */
+import { usd, pct } from "../lib/funding.ts";
+import { maintenanceMarginFraction, nextTierBoundary, corridorAt, type MarginTable } from "../lib/margin.ts";
+import { getHourly, type Candle } from "../lib/candles.ts";
+import { buildLiqMap, PROFILES , mixUsed } from "../lib/liqmap.ts";
+import { paintHeatMap } from "../lib/heatmap.ts";
+import { RAMP, CH, INK, MONO, FS_AXIS, compact, niceTicks } from "../lib/chart.ts";
+import { aggregate } from "../lib/series.ts";
+import type { Perp, Snapshot } from "../lib/hyperliquid.ts";
+
+import Advisory from "./Advisory.astro";
+import { priceDp, axisDp as axisDpOf } from "../lib/funding.ts";
+
+interface Props {
+  perp: Perp;
+  table: MarginTable;
+  snap: Snapshot;
+  /* The form's controls, read from whichever route is rendering. `symbol` is deliberately
+     NOT read here: the contract is decided by the route and passed in, so a stray
+     ?symbol= on a per-coin URL cannot make the page disagree with its own address. */
+  params: URLSearchParams;
+  /* The VISIBLE trail. Base's `crumb` prop emits the BreadcrumbList; this renders the two
+     lines a reader can actually see, and the gate compares them — markup may not claim a
+     position in a hierarchy that the page does not show. Absent on /liquidations, which is
+     the top of its own section and has nothing to point up at. */
+  crumb?: { href: string; label: string; current: string };
+}
+const { perp, table, snap, params: q, crumb } = Astro.props;
+const env = (Astro.locals as any)?.runtime?.env;
+const tiers = [...table.marginTiers].sort((a, b) => a.lowerBound - b.lowerBound);
+const tier1 = tiers[0];
+const mark = perp.markPx;
+const mmf = maintenanceMarginFraction(tier1.maxLeverage);
+const nextTier = nextTierBoundary(table, tier1.lowerBound);
+
+const dp = priceDp(mark);
+const px = (v: number) => usd(v, dp);
+const axisDp = axisDpOf(mark);
+const axisPx = (v: number) => usd(v, axisDp);
+
+/* MODEL INPUTS. Chosen by the reader, printed beside the picture, applied here.
+   Each window picks a bar size that gives ~180 columns, which is the density at which a
+   candle is still a candle rather than a hairline — the price path has to have presence. */
+const WINDOWS = [
+  { days: 7, label: "7 days", factor: 1, cols: 168 },
+  { days: 14, label: "14 days", factor: 2, cols: 168 },
+  { days: 30, label: "30 days", factor: 4, cols: 180 },
+];
+const win = WINDOWS.find((w) => String(w.days) === q.get("win")) ?? WINDOWS[2];
+const profile = PROFILES.find((p) => p.key === q.get("profile")) ?? PROFILES[1];
+/** Position life: how long a modelled position stays open before it is assumed closed. */
+const POSITION_LIFE_DAYS = 14;
+const ageBars = Math.round((POSITION_LIFE_DAYS * 24) / win.factor);
+
+const hourly = await getHourly(env?.SNAPSHOT, perp.symbol, import.meta.env.DEV);
+const series: Candle[] = hourly ? aggregate(hourly.d, win.factor) : [];
+const start = series.length - win.cols;
+const map =
+  start > 4 && series.length > 40
+    ? buildLiqMap({
+        candles: series, start, cols: win.cols, mmf, maxLeverage: tier1.maxLeverage,
+        oiNotional: perp.oiNotional, profile, rows: 150, ageBars, minSpan: 0.16,
+      })
+    : null;
+const paint = map ? paintHeatMap(map, { live: { px: mark, at: snap.fetchedAt } }) : null;
+const warmBars = map ? map.warmBars : 0;
+const stepMs = win.factor * 3_600_000;
+const totalClustered = map ? map.clusters.reduce((s, c) => s + c.notional, 0) : 0;
+/* The same renormalised mix the model uses, so the table below and the picture above cannot
+   describe two different weight vectors. See mixUsed() in src/lib/liqmap.ts. */
+const mix = mixUsed(profile, tier1.maxLeverage);
+/* IT TESTED ONE SIDE AGAINST ONE BOUND. The map places BOTH a long and a short level at every
+   leverage — buildLiqMap iterates [[longLiq, true], [shortLiq, false]] — and this filter checked
+   only the long level against only the lower bound. The axis is not symmetric about the mark: it
+   is the traded range plus headroom, so after a hard fall loPrice sits far below and hiPrice
+   close above, and a 3x SHORT level can be off the top of the picture while the 3x long level is
+   still on it. The sentence beneath says which leverages "fall off the picture"; it was naming
+   the ones that fall off the bottom. Row 8's clipped figure was always the honest aggregate —
+   it counts both halves — so this list was the only place the asymmetry showed. */
+const offAxis = profile.weights.filter(([L]) => {
+  if (L > tier1.maxLeverage || !map) return false;
+  const { longLiq, shortLiq } = corridorAt(mark, L, mmf);
+  return longLiq < map.loPrice || shortLiq > map.hiPrice;
+});
+const sweptTotal = map ? map.swept.reduce((a, b) => a + b, 0) : 0;
+
+/* --- corridor ladder: derived, not modelled --- */
+const CHART_FRACTIONS = [1, 0.75, 0.6, 0.5, 0.4, 0.3, 0.25];
+const rung = (L: number) => corridorAt(mark, L, mmf);
+const rungs = [...new Set(CHART_FRACTIONS.map((f) => Math.max(2, Math.round(tier1.maxLeverage * f))))]
+  .filter((l) => l <= tier1.maxLeverage && l >= 2)
+  .sort((a, b) => b - a)
+  .map(rung);
+const CW = 1000, CHT = 440, cpL = 20, cpR = 96, cpT = 20, cpB = 62;
+const cPlotW = CW - cpL - cpR, cPlotH = CHT - cpT - cpB;
+const cLo = Math.min(...rungs.map((r) => r.longLiq)), cHi = Math.max(...rungs.map((r) => r.shortLiq));
+const cGap = (cHi - cLo) * 0.06;
+const yMin = cLo - cGap, yMax = cHi + cGap;
+const cy = (p: number) => cpT + ((yMax - p) / (yMax - yMin)) * cPlotH;
+const groupW = Math.min(cPlotW, rungs.length * 132);
+const groupX = cpL + (cPlotW - groupW) / 2;
+const colW2 = groupW / rungs.length;
+const cx = (i: number) => groupX + (i + 0.5) * colW2;
+const barW = Math.min(72, colW2 * 0.58);
+// round tick values here too — one scale for every chart on the site
+const gridPrices = niceTicks(yMin, yMax, 5);
+---
+  <div class="page-head">
+    {crumb && <p class="crumb"><a href={crumb.href}>{crumb.label}</a> › {crumb.current}</p>}
+    {/* THE TITLE NAMED THE COIN AND THE HEADING DID NOT. <title> is "BTC liquidation heatmap
+        (modelled)" while the h1 said "Liquidation map" for every contract — /coins/{coin} and
+        /funding/{symbol} both name theirs, and a heading that is constant across fifty distinct
+        renderings tells a reader and an extractor less than the tab does. */}
+    <h1>{perp.symbol} liquidation map</h1>
+    <p>
+      Where liquidation levels would sit if positions were opened the way the assumptions below
+      describe — and, the part that matters, <strong>where price has already cleared them</strong>.
+      The dark corridor the price path carves through the field is not empty space; it is the
+      levels the market has already taken out. This is a model, and it is labelled as one inside
+      the picture, not only underneath it.
+      {/* THE PAGE NEVER NAMED ITS VENUE. Measured: "Hyperliquid" appeared exactly once in
+          &lt;main&gt;, in the shared footer credit that names three venues — so the open-interest
+          figure the whole model is scaled from read as the market's. It is one venue's book.
+          /open-interest states that scope in its first sentence and /data-sources states it
+          again; this page, which is the one with the search demand behind it, did not. */}
+      Every figure here is scaled from <strong>Hyperliquid's</strong> open interest in {perp.symbol}, which is
+      one venue's book rather than the whole market's.
+      <a class="link" href="/learn/liquidation-heatmap"> What a liquidation heatmap actually shows →</a>
+    </p>
+    <Advisory />
+  </div>
+
+  {/* ACTION IS PINNED TO /liquidations ON EVERY RENDERING, INCLUDING THE PER-COIN ONES.
+      A GET form submits to its own URL by default, so on /liquidations/eth changing the coin
+      to BTC would have produced /liquidations/eth?symbol=BTC — a page whose address says one
+      contract and whose content says another, which is the defect this whole split exists to
+      remove. /liquidations reads ?symbol= and answers 301 to the clean per-coin URL, so the
+      parameter form is a mechanism the reader passes through rather than a place they land.
+      No JavaScript is involved: one extra hop, always correct, works with scripting off. */}
+  <form method="GET" action="/liquidations" class="calc" style="margin-bottom:16px">
+    <label>Coin
+      <select name="symbol">{snap.perps.map((p) => <option value={p.symbol} selected={p.symbol === perp.symbol}>{p.symbol}</option>)}</select>
+    </label>
+    <label>Assumed leverage mix
+      <select name="profile">{PROFILES.map((p) => <option value={p.key} selected={p.key === profile.key}>{p.label}</option>)}</select>
+    </label>
+    <label>Window
+      <select name="win">{WINDOWS.map((w) => <option value={w.days} selected={w.days === win.days}>{w.label}</option>)}</select>
+    </label>
+    <button class="btn btn--primary" type="submit">Redraw the map</button>
+  </form>
+
+  {map && paint ? (
+    <>
+      <div class="chart" style={`--mapRatio: ${CH.w} / 576`}>
+        <Fragment set:html={paint.svg.replace("<svg ",
+          `<svg data-heat="1" data-ramp="${RAMP.join(",")}" data-scale="${paint.scale}" data-gamma="${paint.gamma}" ` +
+          `data-plot="${paint.plot.join(",")}" data-prange="${map.loPrice},${map.hiPrice}" data-axx="${paint.axisX}" ` +
+          `data-taxis="${map.candles[0][0]},${stepMs}" data-taxisy="${paint.timeAxisY}" data-rows="${map.rows}" data-cols="${map.cols}" `)} />
+      </div>
+
+      <div class="scalebar">
+        <Fragment set:html={paint.legend} />
+        <p class="scalebar__note">
+          Modelled notional standing at a price, at a moment. Colour tops out at the busiest 0.5% of the map
+          so one dominant cluster cannot drag everything else to the floor; the most crowded spot holds
+          {" "}{compact(map.peak)}. A band ends where price trades through it — drawn in white,
+          both as scars on the field and as the strip beneath — or fades out in four steps as the
+          positions behind it age past the {POSITION_LIFE_DAYS}-day position life. Hover any point for
+          the value band it sits in.
+        </p>
+      </div>
+
+      <p class="datanote">
+        Hourly candles to <b>{hourly ? new Date(hourly.d[hourly.d.length - 1][0]).toISOString().slice(11, 16) : "—"} UTC</b>,
+        refreshed every 2 hours and drawn here in {win.factor}-hour steps. The dashed line is the
+        <b>live mark, {axisPx(mark)}</b>, from a snapshot
+        {" "}{Math.max(0, Math.round((Date.now() - snap.fetchedAt) / 60000))} minutes old. Two
+        different ages, so neither is allowed to stand for the other.
+      </p>
+
+      <div class="reads">
+        <div><b>{compact(sweptTotal)}</b><span>modelled notional price traded through inside this window</span></div>
+        <div><b>{pct(map.clipped)}</b><span>of modelled notional sits outside the drawn price range</span></div>
+        <div><b>{axisPx(map.tradedLo)} – {axisPx(map.tradedHi)}</b><span>the range that actually traded in this window</span></div>
+      </div>
+
+      <div class="verdict verdict--warn">
+        <div>
+          <b>This surface is a model, and the assumptions below drive it.</b> No venue publishes
+          the distribution of open positions by leverage and entry price, so nobody can observe
+          this — not us, and not anyone shipping a similar picture. Change the leverage mix in the
+          form above and the bands move: that is the honest version of being handed someone else's
+          Model 1, 2 and 3. What is <em>not</em> modelled is the price path drawn over the field, and
+          the claim the picture actually supports is a checkable one — that price traded through
+          where the model puts levels. <a class="link" href="/liquidations/sweep">See it happen on
+          5 February 2026 →</a>
+        </div>
+      </div>
+
+      <h2 class="section">The assumptions, in full</h2>
+      <div class="panel" style="max-width:940px">
+        <table class="tbl">
+          <thead><tr><th class="num">#</th><th>Assumption</th><th>Value used</th><th class="num">Observed or assumed</th></tr></thead>
+          <tbody>
+            <tr><td class="num">1</td><td>Total notional modelled</td><td>Equal to <a class="link" href="/open-interest">Hyperliquid's open interest</a> in {perp.symbol}, {usd(perp.oiNotional)} — one venue's book, not the market's</td><td class="num">observed</td></tr>
+            <tr><td class="num">2</td><td>When positions were opened</td><td>Spread over the bars of the window in proportion to each bar's traded volume</td><td class="num">observed</td></tr>
+            <tr class="is-active"><td class="num">3</td><td>Leverage mix</td><td><strong>{profile.label}</strong> — {profile.note}</td><td class="num">assumed</td></tr>
+            <tr><td class="num">4</td><td>Direction</td><td>Half long, half short at every leverage</td><td class="num">assumed</td></tr>
+            <tr><td class="num">5</td><td>How long a position stays open</td><td>A bounded life of {POSITION_LIFE_DAYS} days, decaying in four tranches. Removed earlier if price trades through its level.</td><td class="num">assumed</td></tr>
+            <tr><td class="num">6</td><td>Maintenance margin</td><td>{pct(mmf, 3)} at tier 1, from the published table</td><td class="num">observed</td></tr>
+            <tr><td class="num">7</td><td>Positions before the window opens</td><td>{warmBars} bars before the chart starts are modelled off-screen{warmBars >= ageBars
+                ? <>, so the first drawn column already holds a full position-life window of positions</>
+                : <>. That is short of the {ageBars} bars a full set needs, so the left of the picture is still filling up</>}</td><td class="num">assumed</td></tr>
+            <tr><td class="num">8</td><td>Drawn price range</td><td>{map.spanRule === "traded"
+                ? <>Fitted to the traded range, {axisPx(map.tradedLo)}–{axisPx(map.tradedHi)}, plus headroom.</>
+                : <>The traded range was quieter than the ±8% minimum, so the <strong>minimum</strong> set the axis — not the traded range.</>}
+              {" "}{pct(map.clipped)} of modelled notional liquidates further away than this and is not drawn.</td><td class="num">observed</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="section-note" style="max-width:88ch">
+        Row 8 is the one most worth reading twice. Tying the axis to what actually traded is
+        what gives the price path presence — the previous version spanned a third of the price
+        to accommodate 2× levels half a market away, and flattened real movement into a
+        squiggle. A minimum of ±8% stops a very quiet window from zooming into noise, and in a
+        quiet window it is that minimum rather than the traded range that sets the axis. Either
+        way the cost is that low-leverage levels fall off the picture.
+        {offAxis.length > 0 && <> Here that is {offAxis.map(([L]) => `${L}×`).join(", ").replace(/, ([^,]*)$/, " and $1")}.</>}
+      </p>
+
+      <h2 class="section">Leverage mix used: {profile.label}</h2>
+      {/* THE SHARES ARE THE MODEL'S, NOT THE PROFILE'S, and until now they were the profile's.
+          A profile is written for a 40x contract and sums to 1 there; on anything capped lower
+          the rungs above the cap are dropped and buildLiqMap renormalises what is left, because
+          a 10x contract's positions are all at 10x or below. This table printed the RAW weight
+          under a note calling it "the exact weight vector behind the picture" — the vector for
+          a contract the reader was not looking at. Nine of the ten committed margin tables cap
+          below 40x; on the 3x one the table said 9% of open interest sat at 2x while the model
+          put 100% of it there, and the assumptions table forty lines above says the total
+          modelled notional equals open interest. mixUsed() is now the single implementation. */}
+      <p class="section-note">
+        The exact weight vector behind the picture{mix.length > 0 && mix.length < profile.weights.length
+          ? <>, renormalised over the {mix.length} rung{mix.length === 1 ? "" : "s"} this contract's {tier1.maxLeverage}× cap leaves in play</>
+          : ""}. Every other profile is one form submission away.
+      </p>
+      <div class="panel" style="max-width:600px">
+        <table class="tbl">
+          <thead><tr><th class="num">Leverage</th><th class="num">Share of notional</th><th class="num">Modelled notional</th><th class="num">Long liquidation, % from mark</th></tr></thead>
+          <tbody>
+            {mix.map(({ L, share }) => (
+              <tr><td class="num">{L}×</td><td class="num">{pct(share)}</td><td class="num">{usd(perp.oiNotional * share)}</td><td class="num">−{(((1 / L - mmf) / (1 - mmf)) * 100).toFixed(1)}%</td></tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <h2 class="section">Where the model puts the biggest clusters</h2>
+      <p class="section-note">
+        Price levels still carrying modelled notional at the right-hand edge of the chart, largest
+        first — {usd(totalClustered)} across the ten listed. These are the numbers the bright bands
+        stand for.
+      </p>
+      <div class="panel">
+        <table class="tbl">
+          <thead><tr><th class="num">Price</th><th class="num">Distance from mark</th><th>Side closed</th><th class="num">Modelled notional</th><th class="num">Share of open interest</th></tr></thead>
+          <tbody>
+            {map.clusters.map((c) => (
+              <tr>
+                <td class="num">{axisPx(c.price)}</td>
+                <td class="num">{c.distance >= 0 ? "+" : ""}{(c.distance * 100).toFixed(2)}%</td>
+                <td>{c.side === "long" ? "longs" : "shorts"}</td>
+                <td class="num">{usd(c.notional)}</td>
+                <td class="num">{pct(c.notional / Math.max(1, perp.oiNotional))}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
+  ) : (
+    <div class="empty">
+      <div class="empty__body">
+        <p class="empty__title">Hourly candles not collected yet</p>
+        <p class="empty__text">The density map needs hourly candles for {perp.symbol}. The ingest worker refreshes them every two hours, and a series that is missing entirely is filled on the next five-minute tick rather than waiting for that. Everything below is unaffected.</p>
+      </div>
+    </div>
+  )}
+
+  <h2 class="section">How far price can move before each leverage liquidates — derived, not modelled</h2>
+  <p class="section-note">
+    No assumptions here. Given the tier table and a mark these prices are arithmetic: the upper cap
+    is where a short is closed, the lower cap where a long is closed.
+  </p>
+  <div class="chart" style={`--corrRatio: ${CW} / ${CHT}`}>
+    <svg viewBox={`0 0 ${CW} ${CHT}`} class="corr" role="img" data-tips
+         aria-label={`Liquidation corridor for ${perp.symbol} at a mark of ${px(mark)}. Every value is in the table beneath.`}>
+      <rect x="0" y="0" width={CW} height={CHT} rx={CH.radius} fill={INK.well} />
+      {/* the tick nearest the mark is dropped: the live pill is already the reading there */}
+      {gridPrices.map((p) => (
+        <g>
+          <line x1={cpL} x2={CW - cpR} y1={cy(p)} y2={cy(p)} stroke="#22272e" stroke-width="1" />
+          {Math.abs(cy(p) - cy(mark)) > 16 && (
+            <text x={CW - cpR + 10} y={cy(p) + 4} fill={INK.dim} font-size={FS_AXIS} font-family={MONO}>{axisPx(p)}</text>
+          )}
+        </g>
+      ))}
+      {rungs.map((r, i) => {
+        const yTop = cy(r.shortLiq), yBot = cy(r.longLiq);
+        const op = 0.46 - (0.3 * i) / Math.max(1, rungs.length - 1);
+        return (
+          <g>
+            <rect x={cx(i) - barW / 2} y={yTop} width={barW} height={Math.max(2, yBot - yTop)} rx="4"
+                  fill="#8ab4f8" fill-opacity={op} stroke="#8ab4f8" stroke-opacity="0.5"
+                  data-tip={`<div class="tip__h">${r.L}× on ${perp.symbol}</div><div class="tip__g"><span>Short closed</span><b>${px(r.shortLiq)}</b><span>Long closed</span><b>${px(r.longLiq)}</b><span>Corridor</span><b>${(r.corridor * 100).toFixed(2)}%</b><span>Initial margin</span><b>${pct(r.margin)}</b></div>`} />
+            <line x1={cx(i) - barW / 2} x2={cx(i) + barW / 2} y1={yTop} y2={yTop} stroke="#8ab4f8" stroke-width="2.5" stroke-linecap="round" />
+            <line x1={cx(i) - barW / 2} x2={cx(i) + barW / 2} y1={yBot} y2={yBot} stroke="#8ab4f8" stroke-width="2.5" stroke-linecap="round" />
+            <text x={cx(i)} y={CHT - cpB + 26} fill="#e6e8ec" font-size="15" font-weight="600" text-anchor="middle" font-family="ui-sans-serif,system-ui,sans-serif">{r.L}×</text>
+            <text x={cx(i)} y={CHT - cpB + 44} fill="#6c737d" font-size="11.5" text-anchor="middle" font-family="ui-sans-serif,system-ui,sans-serif">±{(((r.longDist + r.shortDist) / 2) * 100).toFixed(1)}%</text>
+          </g>
+        );
+      })}
+      <line x1={cpL} x2={CW - cpR} y1={cy(mark)} y2={cy(mark)} stroke="#8ab4f8" stroke-width="1" stroke-dasharray="2 5" opacity="0.6" />
+      <rect x={CW - cpR + 5} y={cy(mark) - 10} width="70" height="20" rx="5" fill="#8ab4f8" />
+      <text x={CW - cpR + 40} y={cy(mark) + 4} fill="#12161c" font-size="11.5" font-weight="600" text-anchor="middle" font-family="ui-monospace,Menlo,monospace">{axisPx(mark)}</text>
+    </svg>
+  </div>
+
+  <div class="panel" style="margin-top:14px">
+    <table class="tbl">
+      <thead><tr><th class="num">Leverage</th><th class="num">Initial margin</th><th class="num">Long liquidation</th><th class="num">Move down</th><th class="num">Short liquidation</th><th class="num">Move up</th><th class="num">Corridor width</th></tr></thead>
+      <tbody>
+        {rungs.map((r) => (
+          <tr class={r.L === tier1.maxLeverage ? "is-active" : undefined}>
+            <td class="num">{r.L}×{r.L === tier1.maxLeverage ? " · max" : ""}</td>
+            <td class="num">{pct(r.margin)}</td>
+            <td class="num">{px(r.longLiq)}</td>
+            <td class="num">−{(r.longDist * 100).toFixed(2)}%</td>
+            <td class="num">{px(r.shortLiq)}</td>
+            <td class="num">+{(r.shortDist * 100).toFixed(2)}%</td>
+            <td class="num">{(r.corridor * 100).toFixed(2)}%</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="section">Where {perp.symbol}'s margin tiers step down</h2>
+  <p class="section-note">
+    Maintenance margin is set by the tier the notional falls in.
+    {nextTier && <> Above {usd(nextTier.lowerBound)} the corridor widens, because maintenance margin rises to {pct(maintenanceMarginFraction(nextTier.maxLeverage), 3)}.</>}
+  </p>
+  <div class="panel" style="max-width:720px">
+    <table class="tbl">
+      <thead><tr><th>Tier</th><th class="num">Notional from</th><th class="num">Max leverage</th><th class="num">Maintenance margin</th></tr></thead>
+      <tbody>
+        {tiers.map((t, i) => (
+          <tr class={i === 0 ? "is-active" : undefined}>
+            <td>{i + 1}{i === 0 ? " · charted" : ""}</td>
+            <td class="num">{usd(t.lowerBound)}</td>
+            <td class="num">{t.maxLeverage}×</td>
+            <td class="num">{pct(maintenanceMarginFraction(t.maxLeverage), 3)}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="section">What is deliberately absent</h2>
+  <p class="prose">
+    No liquidation totals and no cascade tracker. Those need an event feed, and every available one
+    is throttled — Binance publishes at most one liquidation per symbol per second, so a sum over
+    it understates by an unknown factor, worst exactly when the number is most quoted.
+    <a class="link" href="/methodology/liquidations">The full reasoning →</a>
+  </p>
+
+  <p style="margin-top:24px">
+    <a class="link" href="/liquidations/sweep">The 5 February sweep, on real candles →</a>
+    · <a class="link" href="/liquidations/survival">Leverage survival — real candles, one stated rule →</a>
+    · <a class="link" href={`/funding/${perp.symbol.toLowerCase()}`}>{perp.symbol} funding and margin tiers →</a>
+  </p>
+
+  {/* The ratios are set inline on the two elements that read them. define:vars would
+      stamp them onto every scoped element on the page — see the note in funding/[symbol]. */}
+  <style>
+    .chart :global(svg[data-heat]) { aspect-ratio: var(--mapRatio); }
+    .corr { aspect-ratio: var(--corrRatio); }
+    .scalebar { display: flex; align-items: flex-start; gap: 24px; flex-wrap: wrap; margin: var(--gap-cluster) 0 0; }
+    .scalebar__note { flex: 1 1 320px; margin: 0; font-size: 12.5px; color: var(--text-faint); max-width: 62ch; line-height: 1.55; }
+    .reads { display: flex; flex-wrap: wrap; gap: var(--gap-block) 40px; margin: var(--inset-panel) 0 4px; }
+    .reads b { display: block; font-size: 21px; font-weight: 650; letter-spacing: -.012em; font-variant-numeric: tabular-nums; }
+    .reads span { font-size: 12.5px; color: var(--text-faint); }
+    .datanote { margin: 12px 0 0; font-size: var(--fs-sm); color: var(--text-faint); max-width: 80ch; }
+    .datanote b { color: var(--text-dim); font-weight: 600; font-variant-numeric: tabular-nums; }
+  </style>

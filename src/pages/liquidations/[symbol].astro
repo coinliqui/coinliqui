@@ -1,0 +1,115 @@
+---
+/* =========================================================================================
+   ONE LIQUIDATION MAP, ONE URL.
+
+   WHAT THIS TEMPLATE REPLACED. `/liquidations?symbol=ETH` rendered a complete ETH page and
+   then declared itself `/liquidations` — Base builds the canonical tag from the pathname,
+   which is correct everywhere else on the site and was catastrophic here. Forty-nine
+   contracts had a finished page nobody could reach: absent from every sitemap, absent from
+   IndexNow, reachable only by submitting a <select>, and disavowed by their own markup.
+
+   THE DEMAND WAS ALREADY IN THE LOG. Search Console, week to 22 August 2026 — "btc
+   liquidation map" (8 impressions), "btc liquidation heatmap" (2), "btc liquidation heat
+   map", "bitcoin liquidation map", "bitcoin liqudation map", "btc liquidation chart", "btc
+   liquidation heatmap all exchanges". Seven queries, every one of them coin-named, against
+   a template with one URL. The sibling template that has a URL per contract drew 392
+   impressions across 25 pages in the same week.
+
+   NOT A THIN TEMPLATE, which is the trap this could have been. Each page is a different
+   heatmap built from that contract's own hourly candles, a different corridor chart from its
+   own tier table, and a cluster table whose every row is a different number. The ingest
+   worker already stores hourly bars for all fifty symbols, so nothing new is fetched: the
+   data was there, the render was there, and only the address was missing.
+
+   THE GUARDS, in the order they fire, and why each is not the one above it:
+     - `sweep` and `survival` are STATIC siblings. Astro resolves static before dynamic so
+       they never arrive here, and the explicit refusal below exists so that stops being
+       something you have to know: a contract named SWEEP would otherwise be a URL whose
+       content silently depends on route-resolution order.
+     - wrong case is a 301, the same answer /funding/[symbol] gives kBONK.
+     - the pinned default is a 301 to /liquidations, which is the address it is already
+       indexed at.
+     - a contract that LEFT coverage is 410 via /retired, not 404: those are different facts
+       and the worker records which is which.
+   ========================================================================================= */
+import Base from "../../layouts/Base.astro";
+import LiqMap from "../../components/LiqMap.astro";
+import { getSnapshot, coldStart, findPerp, requestedPerp } from "../../lib/hyperliquid.ts";
+import { type MarginTable } from "../../lib/margin.ts";
+import { mapTitle, mapDescription } from "../../lib/liqmap.ts";
+import tables from "../../data/margin-tables.json";
+
+const env = (Astro.locals as any)?.runtime?.env;
+const wanted = (Astro.params.symbol ?? "").trim();
+
+/* The static siblings, named here rather than inferred. See the header. */
+const STATIC_SIBLINGS = new Set(["sweep", "survival"]);
+if (STATIC_SIBLINGS.has(wanted.toLowerCase())) return Astro.rewrite(`/404?symbol=${encodeURIComponent(wanted)}`);
+
+const snap = await getSnapshot(env?.SNAPSHOT, import.meta.env.DEV);
+if (!snap.available) return coldStart();
+
+const TABLES = tables as Record<string, MarginTable>;
+const p = findPerp(snap.perps, wanted);
+
+/* ONE URL PER CONTRACT, whatever case it is asked for — the kBONK rule, applied here for the
+   same reason: a canonical tag built from the requested path cannot deduplicate two paths
+   that each declare themselves canonical. */
+if (p && wanted !== p.symbol.toLowerCase()) {
+  return new Response(null, {
+    status: 301,
+    headers: { location: `/liquidations/${p.symbol.toLowerCase()}`, "cache-control": "public, max-age=86400" },
+  });
+}
+
+if (!p) {
+  const retiredAt = await (async () => {
+    try {
+      const m = ((await env?.SNAPSHOT?.get("published:retired", "json")) ?? null) as Record<string, number> | null;
+      if (!m) return null;
+      const hit = Object.entries(m).find(([sym]) => sym.toLowerCase() === wanted.toLowerCase());
+      return hit && typeof hit[1] === "number" ? hit[1] : null;
+    } catch { return null; }
+  })();
+  return retiredAt
+    ? Astro.rewrite(`/retired?symbol=${encodeURIComponent(wanted)}&at=${retiredAt}`)
+    : Astro.rewrite(`/404?symbol=${encodeURIComponent(wanted)}`);
+}
+
+/* THE DEFAULT LIVES AT /liquidations and this is the alias, so it redirects rather than
+   duplicating. Which contract that is comes from requestedPerp with no symbol — the same
+   call /liquidations makes — because two files deciding independently what "the default" is
+   would eventually give two answers, and the failure would be a duplicate of the site's
+   highest-demand page. */
+const def = requestedPerp(snap.perps, null, TABLES);
+if (def === null || def === "unknown") return coldStart();
+if (def.perp.symbol === p.symbol) {
+  return new Response(null, {
+    status: 301,
+    headers: { location: "/liquidations", "cache-control": "public, max-age=3600" },
+  });
+}
+
+/* THE COVERAGE-FLOOR RULE AGAIN. Without a tier table there is no maintenance margin, no
+   corridor and no liquidation price, which is most of this page — see pickPerp. */
+const table = TABLES[String(p.marginTableId)];
+if (!table) return Astro.rewrite(`/404?symbol=${encodeURIComponent(wanted)}`);
+
+const title = mapTitle(p.symbol);
+const description = mapDescription(p.symbol);
+---
+
+<Base
+  title={title}
+  description={description}
+  fetchedAt={snap.fetchedAt}
+  crumb={{ href: "/liquidations", label: "Liquidation maps", current: p.symbol }}
+>
+  <LiqMap perp={p} table={table} snap={snap} params={Astro.url.searchParams} crumb={{ href: "/liquidations", label: "Liquidation maps", current: p.symbol }} />
+
+  <p style="margin-top:24px">
+    <a class="link" href="/liquidations">Every covered contract's map →</a>
+    · <a class="link" href={`/funding/${p.symbol.toLowerCase()}`}>{p.symbol} funding and margin tiers →</a>
+    · <a class="link" href="/learn/liquidation-heatmap">What a liquidation heatmap actually shows →</a>
+  </p>
+</Base>

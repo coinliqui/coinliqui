@@ -139,3 +139,37 @@ export function nextTierBoundary(table: MarginTable, notional: number): MarginTi
   const tiers = [...table.marginTiers].sort((a, b) => a.lowerBound - b.lowerBound);
   return tiers.find((t) => t.lowerBound > notional) ?? null;
 }
+
+/**
+ * THE TIER-1 CORRIDOR AT ONE LEVERAGE — where a long is closed, where a short is closed, and
+ * how far apart those two prices sit as a fraction of the mark.
+ *
+ * Derived, not modelled: given the maintenance margin from the published table and a mark,
+ * every number here is arithmetic. It is the same pair of expressions as liquidationPrice()
+ * uses, at tier 1 and for a notional of one unit — kept separate because the callers here are
+ * drawing a LADDER across leverages at a fixed contract rather than pricing one position, and
+ * threading a synthetic position size through liquidationPrice() to get the same two numbers
+ * would obscure that.
+ *
+ * WHY IT IS A FUNCTION AT ALL. It was written out longhand in three places — the corridor
+ * chart, the "falls off the picture" filter beside it, and the per-contract index on
+ * /liquidations — and the three had to agree, because two of them are printed on the same
+ * page under headings that say the same thing. The formula appears in five further places in
+ * this repository (the map's hot loop, the survival counterfactual, and the calculators' inline
+ * scripts, which cannot import). Those are deliberately left: consolidating a hot loop and a
+ * browser-side script is a different change with a different risk, and pretending otherwise by
+ * doing half of it is how a "single source" ends up being one of several.
+ */
+export function corridorAt(mark: number, L: number, mmf: number) {
+  const longLiq = (mark * (1 - 1 / L)) / (1 - mmf);
+  const shortLiq = (mark * (1 + 1 / L)) / (1 + mmf);
+  return {
+    L,
+    longLiq,
+    shortLiq,
+    longDist: (mark - longLiq) / mark,
+    shortDist: (shortLiq - mark) / mark,
+    corridor: (shortLiq - longLiq) / mark,
+    margin: 1 / L,
+  };
+}

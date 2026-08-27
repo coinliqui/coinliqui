@@ -1,6 +1,7 @@
 import type { APIRoute } from "astro";
 import { getSnapshot } from "../lib/hyperliquid.ts";
 import { liveCoins } from "../lib/coins.ts";
+import { liqMapPaths } from "../lib/routes.ts";
 
 /**
  * The typeahead index. Every entry is a real page, and every real page should be here.
@@ -25,6 +26,19 @@ export const GET: APIRoute = async ({ locals }) => {
   const rows = [
     // Contracts. The bulk of the index and the reason it exists.
     ...snap.perps.map((p) => ({ label: p.symbol, href: `/funding/${p.symbol.toLowerCase()}`, kind: "funding" })),
+
+    /* One map per contract, and they are a SEPARATE row from the funding page rather than a
+       second href on it: "BTC funding" and "BTC liquidation map" are two questions, and the
+       typeahead that offers only the first is the state this file's header describes — a
+       whole section live, sitemapped and invisible to the site's own search. The default's
+       map is at /liquidations, already listed below under Sections, so liqMapPaths omits it
+       here for the same reason it omits it from the sitemap. */
+    ...liqMapPaths(snap.perps.map((p) => p.symbol)).map((href) => ({
+      label: `${href.slice("/liquidations/".length).toUpperCase()} liquidation map`,
+      alt: `${href.slice("/liquidations/".length)} heatmap`,
+      href,
+      kind: "liqmap",
+    })),
 
     // Coins. `alt` is matched but never shown: people type "solana" and they type "sol", and
     // both must reach the page — but as one row, not the same destination offered twice.

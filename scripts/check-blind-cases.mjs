@@ -31,6 +31,7 @@ import {
   chartAgreement, duplicateRuleImplementations, fixtureGaps, requestedLeverageLabels, phantomInlineElements, malformedAttributes, uncitedPermissionClaims, unconditionalCadenceClaims,
   staleCalculatorFigures, controlGroupOverflow, MEASUREMENT_EXPORTS, stampVerdict,
   stampSurfacesAgree,
+  symbolAddressing,
 } from "./checks.mjs";
 
 /* Enough page for a check to have something to read. Deliberately minimal: a fixture that is
@@ -247,6 +248,49 @@ const cases = [
     ],
   },
   {
+    check: "symbolAddressing",
+    why: "a page that changes when a parameter changes, at a URL whose canonical says it does not — /liquidations rendered fifty complete contract pages and published all fifty at one URL, so forty-nine finished pages were in no sitemap, announced to no index, and instructed every crawler to discard them, while Search Console carried seven coin-named liquidation-map queries that week",
+    /* THE DEFECT EXACTLY AS IT SHIPPED: the route varies, and nothing anywhere records that. */
+    fire: () => symbolAddressing(
+      [{ path: "/liquidations", redirect: null, identityVaries: true, canonicalQuery: "" }], []),
+    /* FOUR QUIET SHAPES AND THREE MORE LOUD ONES, because the entry can rot in several
+       directions and only the first is obvious. A check that only ever sees the shipped defect
+       is a check that will pass the day the verdict outlives the behaviour. */
+    quiet: () => [
+      // addressed, and the redirect is still there
+      ...symbolAddressing(
+        [{ path: "/liquidations", redirect: "/liquidations/eth", identityVaries: false, canonicalQuery: "" }],
+        [{ path: "/liquidations", verdict: "addressed", why: "x" }]),
+      // parameter-only on purpose, varying, canonical clean
+      ...symbolAddressing(
+        [{ path: "/tools/leverage", redirect: null, identityVaries: true, canonicalQuery: "" }],
+        [{ path: "/tools/leverage", verdict: "parameter-only", why: "x" }]),
+      // a route that simply does not vary, and is not recorded — the common case
+      ...symbolAddressing(
+        [{ path: "/about", redirect: null, identityVaries: false, canonicalQuery: "" }], []),
+      // nothing probed and nothing declared
+      ...symbolAddressing([], []),
+    ],
+    /* The three regressions the entry is supposed to catch after it exists. Asserted here
+       rather than trusted, because each one leaves the gate green under a naive implementation:
+       the record still exists, so a check that only asks "is it recorded?" says yes. */
+    also: () => [
+      // the redirect regressed to a 200 with a per-contract title
+      symbolAddressing(
+        [{ path: "/liquidations", redirect: null, identityVaries: true, canonicalQuery: "" }],
+        [{ path: "/liquidations", verdict: "addressed", why: "x" }]).length === 1,
+      // Base started putting the query in the canonical, so each parameter-only page is now
+      // fifty self-canonicalising copies of itself
+      symbolAddressing(
+        [{ path: "/tools/leverage", redirect: null, identityVaries: true, canonicalQuery: "?symbol=ETH" }],
+        [{ path: "/tools/leverage", verdict: "parameter-only", why: "x" }]).length === 1,
+      // the verdict outlived the behaviour: the route stopped varying and the entry stayed
+      symbolAddressing(
+        [{ path: "/tools/leverage", redirect: null, identityVaries: false, canonicalQuery: "" }],
+        [{ path: "/tools/leverage", verdict: "parameter-only", why: "x" }]).length === 1,
+    ],
+  },
+  {
     check: "botPolicyReasons",
     why: "excluding a crawler without saying why is a decision nobody can review later",
     fire: () => botPolicyReasons(`const BLOCKED = [{ ua: "SomeBot", why: "" }];`),
@@ -386,7 +430,20 @@ for (const c of cases) {
   const quiet = Array.isArray(q) ? q.length === 0 : !q;
   if (!fires) { bad++; console.log(`  MISS  ${c.check.padEnd(24)} did NOT fire on a fixture built to make it fire`); continue; }
   if (!quiet) { bad++; console.log(`  MISS  ${c.check.padEnd(24)} fired on the clean fixture too — it cannot tell them apart`); console.log(`          ${JSON.stringify(q).slice(0, 140)}`); continue; }
-  console.log(`  ok    ${c.check.padEnd(24)} fires on the fault, silent on the clean page  — ${c.why}`);
+  /* `also` IS FOR CHECKS WITH MORE THAN ONE WAY TO BE WRONG, and every one of them is a
+     regression the fire/quiet pair cannot see. symbolAddressing is the case that needed it: its
+     entry can rot in three separate directions — the redirect disappears, the canonical starts
+     carrying the query, the verdict outlives the behaviour — and in all three the record still
+     EXISTS, so an implementation that only asks "is it recorded?" stays green on the shipped
+     fixture and green on the clean one. Each assertion is a boolean; all must hold. */
+  const also = typeof c.also === "function" ? c.also() : [];
+  const failedAlso = also.map((v, i) => [v, i]).filter(([v]) => !v).map(([, i]) => i);
+  if (failedAlso.length) {
+    bad++;
+    console.log(`  MISS  ${c.check.padEnd(24)} fires and is quiet, but ${failedAlso.length} of ${also.length} regression assertion(s) failed: #${failedAlso.join(", #")}`);
+    continue;
+  }
+  console.log(`  ok    ${c.check.padEnd(24)} fires on the fault, silent on the clean page${also.length ? `, and holds ${also.length} regression(s)` : ""}  — ${c.why}`);
 }
 
 /* THE COVERAGE LINE IS THE POINT: how many finding-returning checks have a standing fixture

@@ -7,6 +7,34 @@ function toApr(ratePerInterval, intervalHours) {
   return ratePerInterval * (HOURS_PER_YEAR / intervalHours);
 }
 
+// src/lib/routes.ts
+var PAGES_DATA = ["/", "/methodology", "/about"];
+var PAGES_CODE = ["/methodology/liquidations", "/data-sources", "/privacy", "/terms"];
+var TOOLS = ["/tools", "/tools/position-size", "/tools/leverage", "/tools/funding-cost", "/tools/funding-arbitrage"];
+var LIQUIDATIONS = ["/liquidations", "/liquidations/sweep", "/liquidations/survival"];
+var LEARN_DATA = ["/learn", "/learn/funding-rate", "/learn/open-interest"];
+var LEARN_CODE = ["/learn/liquidation-heatmap", "/learn/liquidation-price"];
+var LEARN = [...LEARN_DATA, ...LEARN_CODE];
+var FUNDING_HUB = ["/funding"];
+var OPEN_INTEREST = ["/open-interest"];
+var UNLOCKS = ["/unlocks"];
+var COINS_HUB = ["/coins"];
+var STATIC_ROUTES = [
+  ...PAGES_DATA,
+  ...PAGES_CODE,
+  ...COINS_HUB,
+  ...FUNDING_HUB,
+  ...OPEN_INTEREST,
+  ...TOOLS,
+  ...LIQUIDATIONS,
+  ...UNLOCKS,
+  ...LEARN
+];
+var MAP_DEFAULT = "BTC";
+function liqMapPaths(symbols) {
+  return symbols.filter((s) => s.toUpperCase() !== MAP_DEFAULT).map((s) => `/liquidations/${s.toLowerCase()}`);
+}
+
 // src/lib/hyperliquid.ts
 var INFO = "https://api.hyperliquid.xyz/info";
 var OI_NOTIONAL_FLOOR = 5e6;
@@ -211,30 +239,6 @@ function orderSweeps(states, now, backoffMs) {
   });
 }
 
-// src/lib/routes.ts
-var PAGES_DATA = ["/", "/methodology", "/about"];
-var PAGES_CODE = ["/methodology/liquidations", "/data-sources", "/privacy", "/terms"];
-var TOOLS = ["/tools", "/tools/position-size", "/tools/leverage", "/tools/funding-cost", "/tools/funding-arbitrage"];
-var LIQUIDATIONS = ["/liquidations", "/liquidations/sweep", "/liquidations/survival"];
-var LEARN_DATA = ["/learn", "/learn/funding-rate", "/learn/open-interest"];
-var LEARN_CODE = ["/learn/liquidation-heatmap", "/learn/liquidation-price"];
-var LEARN = [...LEARN_DATA, ...LEARN_CODE];
-var FUNDING_HUB = ["/funding"];
-var OPEN_INTEREST = ["/open-interest"];
-var UNLOCKS = ["/unlocks"];
-var COINS_HUB = ["/coins"];
-var STATIC_ROUTES = [
-  ...PAGES_DATA,
-  ...PAGES_CODE,
-  ...COINS_HUB,
-  ...FUNDING_HUB,
-  ...OPEN_INTEREST,
-  ...TOOLS,
-  ...LIQUIDATIONS,
-  ...UNLOCKS,
-  ...LEARN
-];
-
 // src/lib/coins.ts
 var COINS = [
   {
@@ -327,6 +331,11 @@ function publishedUrls(origin, symbols, now = Date.now()) {
   return [
     ...STATIC_ROUTES.map((r) => `${origin}${r === "/" ? "/" : r}`),
     ...symbols.map((s) => `${origin}/funding/${s.toLowerCase()}`),
+    /* The per-contract liquidation maps, from the same rule the sitemap applies — see
+       liqMapPaths in src/lib/routes.ts. Fifty finished pages lived behind `?symbol=` at
+       one URL until 27 August 2026; IndexNow could no more announce them than a crawler
+       could find them, because neither submits a <select>. */
+    ...liqMapPaths(symbols).map((path) => `${origin}${path}`),
     ...liveCoins(now).map((c) => `${origin}/coins/${c.slug}`)
   ];
 }
@@ -1085,7 +1094,7 @@ async function stepCorroborate(env, now = Date.now()) {
 }
 
 // worker/build-stamp.ts
-var WORKER_BUILD = "226c8faf87b0";
+var WORKER_BUILD = "58cbaf331772";
 
 // worker/ingest.ts
 var RETAIN_HOURS = 72;

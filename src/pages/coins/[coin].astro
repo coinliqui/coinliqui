@@ -3,6 +3,7 @@ import Base from "../../layouts/Base.astro";
 import { getSnapshot, coldStart, findPerp, getLive, oldestStamp } from "../../lib/hyperliquid.ts";
 import { usd, pct, VENUE_LABEL, paysClass, paysLabel, carryCost, type Venue } from "../../lib/funding.ts";
 import { findCoin, isLive, liveCoins } from "../../lib/coins.ts";
+import { liqMapHref } from "../../lib/routes.ts";
 import { getCandles, getHourly, getM15 } from "../../lib/candles.ts";
 import { freshness, ageWords, minutesSince } from "../../lib/freshness.ts";
 import { TIMEFRAMES, DEFAULT_TF, MIN_CHART_BARS, aggregate, buildPriceChart, CHART_H, type ChartMode } from "../../lib/series.ts";
@@ -382,7 +383,7 @@ const description = `Live ${coin.name} (${coin.symbol}) perpetual price from Hyp
 
   <p style="margin-top:24px">
     <a class="link" href={`/funding/${coin.symbol.toLowerCase()}`}>{coin.symbol} funding across three venues →</a>
-    · <a class="link" href={`/liquidations?symbol=${coin.symbol}`}>Where {coin.symbol} leverage breaks →</a>
+    · <a class="link" href={liqMapHref(coin.symbol)}>Where {coin.symbol} leverage breaks →</a>
     · <a class="link" href={`/liquidations/survival?symbol=${coin.symbol}`}>What the rules did to past positions →</a>
   </p>
 

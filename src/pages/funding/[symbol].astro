@@ -8,6 +8,7 @@ import { TIMEFRAMES, DEFAULT_TF, MIN_CHART_BARS, aggregate, buildPriceChart, sho
 import { CH } from "../../lib/chart.ts";
 import tables from "../../data/margin-tables.json";
 import { COINS, isLive } from "../../lib/coins.ts";
+import { liqMapHref } from "../../lib/routes.ts";
 import { qty } from "../../lib/funding.ts";
 import { freshness, ageWords, minutesSince } from "../../lib/freshness.ts";
 
@@ -472,7 +473,13 @@ const description = `What a ${p.symbol} perpetual costs to hold, against ${usd(p
         common formula, which is precisely what one calculator sizes against and the other
         explains. */}
     {" "}<a class="link" href={`/tools/position-size?symbol=${p.symbol}`}>Size a position against this liquidation price →</a> ·
-    {" "}<a class="link" href={`/tools/leverage?symbol=${p.symbol}`}>What {p.symbol} allows at your notional →</a>
+    {" "}<a class="link" href={`/tools/leverage?symbol=${p.symbol}`}>What {p.symbol} allows at your notional →</a> ·
+    {/* THE THIRD LINK IS THE SAME QUESTION AT PORTFOLIO SCALE. This paragraph gives ONE
+        liquidation price — a 10x long at the current mark. The map gives the whole field:
+        every leverage, both sides, and which of those levels price has already traded
+        through. Until 27 August 2026 there was nowhere to send a reader for it, because the
+        contract's map had no address of its own. */}
+    {" "}<a class="link" href={liqMapHref(p.symbol)}>Every {p.symbol} liquidation level, mapped →</a>
   </p>
   <div class="panel" style="max-width:620px">
     <table class="tbl">

@@ -299,3 +299,17 @@ export function buildLiqMap(opts: {
     ageBars, spanRule, warmBars: warm,
   };
 }
+
+/**
+ * THE MAP'S TITLE AND DESCRIPTION, ONCE, BECAUSE TWO ROUTES NOW RENDER THE MAP.
+ *
+ * `/liquidations` serves the pinned default and `/liquidations/{symbol}` serves the rest.
+ * Both need the same <title> shape and the same meta description, and a template string
+ * copied into a second file is a copy that drifts — the two sitemap lists in
+ * src/lib/routes.ts drifted by 22 URLs before anything compared them. One implementation
+ * means the search result for BTC and the search result for ETH cannot describe two
+ * differently-worded products.
+ */
+export const mapTitle = (symbol: string) => `${symbol} liquidation heatmap (modelled)`;
+export const mapDescription = (symbol: string) =>
+  `Where ${symbol} liquidation levels sit on Hyperliquid and which ones price has already cleared — a modelled heatmap with every assumption printed on the page and adjustable, beside the liquidation prices derived from the published margin tiers.`;

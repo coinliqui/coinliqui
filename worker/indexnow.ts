@@ -28,7 +28,7 @@
  * comment saying otherwise would mislead whoever reads this next.
  */
 
-import { STATIC_ROUTES } from "../src/lib/routes.ts";
+import { STATIC_ROUTES, liqMapPaths } from "../src/lib/routes.ts";
 import { liveCoins } from "../src/lib/coins.ts";
 
 export const INDEXNOW_KEY = "a7f3c19e84b24d6fa0e5b17c93d82f46";
@@ -107,6 +107,11 @@ export function publishedUrls(origin: string, symbols: string[], now = Date.now(
   return [
     ...STATIC_ROUTES.map((r) => `${origin}${r === "/" ? "/" : r}`),
     ...symbols.map((s) => `${origin}/funding/${s.toLowerCase()}`),
+    /* The per-contract liquidation maps, from the same rule the sitemap applies — see
+       liqMapPaths in src/lib/routes.ts. Fifty finished pages lived behind `?symbol=` at
+       one URL until 27 August 2026; IndexNow could no more announce them than a crawler
+       could find them, because neither submits a <select>. */
+    ...liqMapPaths(symbols).map((path) => `${origin}${path}`),
     ...liveCoins(now).map((c) => `${origin}/coins/${c.slug}`),
   ];
 }

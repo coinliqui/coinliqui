@@ -73,10 +73,24 @@ const check = async (...a) => { if (!(await run(...a))) bad++; };
 await check("prices moved, URL set identical", base, base, (s) => s.length === 0);
 await check("same set, ten passes in a row", base, base, (s) => s.length === 0);
 
-/* A contract crossing the floor is a URL that did not exist. Must submit exactly it. */
+/* A contract crossing the floor is a URL that did not exist. Must submit exactly it — and as
+   of 27 August 2026 that is TWO URLs, not one: a covered contract has a funding page and a
+   liquidation map, and the map only started having an address of its own that day. This case
+   asserted `s.length === 1` and so was the check that noticed the second URL arriving, which
+   is the right way round: the assertion is on the whole set rather than on the one member it
+   was written for. */
 const withNew = publishedUrls(O, ["BTC", "ETH", "SOL"], T1);
 await check("a contract crosses the floor", base, withNew,
-  (s) => s.length === 1 && s[0] === `${O}/funding/sol`);
+  (s) => s.length === 2 && s.includes(`${O}/funding/sol`) && s.includes(`${O}/liquidations/sol`));
+
+/* THE DEFAULT CONTRACT HAS NO /liquidations/{symbol} URL — its map is at /liquidations, which
+   is already in the static set, and announcing the alias would be announcing a 301. Adding BTC
+   to a set that lacks it must therefore produce ONE URL where every other contract produces
+   two. Without this case, liqMapPaths dropping its filter would announce a redirect to five
+   indexes and nothing here would object. */
+const noBtc = publishedUrls(O, ["ETH"], T1);
+await check("the default contract's map is not a URL of its own", noBtc, base,
+  (s) => s.length === 1 && s[0] === `${O}/funding/btc`);
 
 /* The clock crossing a coin's publishAt, which is how a coin URL really comes into existence.
    Six coins share the later date, and all six must be announced — a version that announced only

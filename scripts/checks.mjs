@@ -1750,3 +1750,76 @@ export function controlGroupOverflow(css, sources = []) {
   return out;
 }
 
+
+/**
+ * A PAGE THAT CHANGES WHEN A PARAMETER CHANGES, AT A URL THAT SAYS IT DOES NOT.
+ *
+ * `/liquidations` rendered fifty complete contract pages — its own <title>, <h1>, chart and
+ * every figure per contract — and published all fifty at one URL, because Base builds the
+ * canonical tag from the pathname alone. Forty-nine finished pages therefore instructed every
+ * crawler to discard them. They were in no sitemap, announced to no index, and reachable only
+ * by submitting a <select>, which nothing that crawls does. Search Console had the demand the
+ * whole time: seven coin-named liquidation-map queries in the week to 22 August 2026, against
+ * a template with one URL.
+ *
+ * WHAT THIS DECIDES AND WHAT IT DOES NOT. Whether fifty renderings deserve fifty URLs is a
+ * judgement about whether the content earns an index entry — the calculators say no on purpose,
+ * because fifty near-identical calculator pages is the thin-page rule broken deliberately. So
+ * this does not pick the verdict. It fails when a route varies and NO verdict is recorded,
+ * which is the state /liquidations was in for its whole life, and when a recorded verdict no
+ * longer matches what the route does.
+ *
+ * `observed` is gathered by probing, not by reading source: a static analysis would have to
+ * decide from the text of a .astro file whether `title` transitively depends on a search
+ * parameter, and that is the kind of question that is answered wrongly once and then trusted.
+ * Two GETs answer it exactly — bare, and with a second real contract named.
+ *
+ *   observed  [{ path, redirect: string|null, identityVaries: boolean, canonicalQuery: string }]
+ *             `identityVaries` is <title> OR <meta name="description"> — the two tags a search
+ *             result is built from, and therefore the two claims the canonical URL is making.
+ *             It is NOT the <h1>: a calculator naming the selected contract in its heading is
+ *             the page talking to the reader in front of it. The field was called titleVaries
+ *             while it already meant both, which is the same label-asserting-more-than-the-
+ *             expression-computes defect this file exists to catch, one level up.
+ *   declared  [{ path, verdict: "addressed" | "parameter-only", why }]
+ */
+export function symbolAddressing(observed, declared) {
+  const out = [];
+  const byPath = new Map(declared.map((e) => [e.path, e]));
+  const seen = new Set();
+  for (const o of observed) {
+    const e = byPath.get(o.path);
+    if (o.redirect) {
+      /* It canonicalises, which is the only form of "addressed" confirmable from outside: a
+         200 carrying a per-contract title IS the defect. */
+      seen.add(o.path);
+      if (!e) out.push(`${o.path} redirects ?symbol= to ${o.redirect} but is not in SYMBOL_PARAMETERISED`);
+      else if (e.verdict !== "addressed") out.push(`${o.path} is recorded "${e.verdict}" but redirects ?symbol= to ${o.redirect} — the record is stale`);
+      continue;
+    }
+    if (!o.identityVaries) {
+      /* A record for a route that no longer varies is a record nobody will re-read, and it
+         will be cited later as evidence that the question was settled. */
+      if (e) out.push(`${o.path} is in SYMBOL_PARAMETERISED but does not vary by ?symbol= — remove the entry or fix the route`);
+      continue;
+    }
+    seen.add(o.path);
+    if (!e) {
+      out.push(`${o.path} renders a different <title> or meta description for ?symbol= at the same canonical URL, and is not in SYMBOL_PARAMETERISED`);
+      continue;
+    }
+    if (e.verdict === "addressed") out.push(`${o.path} is recorded "addressed" but still answers 200 with per-contract metadata at ?symbol= — the redirect is gone`);
+    /* A parameter-only page is one URL for every value, so the tag naming that URL must not
+       carry the value. Base strips the query today; if it ever stopped, each of these would
+       become fifty self-canonicalising copies of itself in a single deploy. */
+    else if (o.canonicalQuery) out.push(`${o.path} is recorded "parameter-only" but its canonical carries the query (${o.canonicalQuery})`);
+  }
+  /* A declared route that was never probed is a route the gate is not covering, and the entry
+     is describing something nobody measured. */
+  for (const e of declared) {
+    if (!seen.has(e.path) && !observed.some((o) => o.path === e.path)) {
+      out.push(`${e.path} is in SYMBOL_PARAMETERISED but was not probed — add it to ROUTES so the verdict is measured`);
+    }
+  }
+  return out;
+}

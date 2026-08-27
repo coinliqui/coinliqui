@@ -1,5 +1,6 @@
 import { toApr, type Venue, type VenueFunding } from "./funding.ts";
 import type { MarginTable } from "./margin.ts";
+import { MAP_DEFAULT } from "./routes.ts";
 
 const INFO = "https://api.hyperliquid.xyz/info";
 
@@ -400,7 +401,9 @@ export function requestedPerp<T>(
   perps: Perp[],
   want: string | null | undefined,
   tables: Record<string, T>,
-  fallback = "BTC",
+  /* The pin lives in src/lib/routes.ts, where the sitemap and the IndexNow announcer both
+     read it. A literal here would have been a third copy of the same decision. */
+  fallback = MAP_DEFAULT,
 ): { perp: Perp; table: T } | "unknown" | null {
   const asked = (want ?? "").trim();
   const picked = pickPerp(perps, asked || fallback, tables);
