@@ -961,15 +961,48 @@ const schema = {
       }
       th .th-sort:hover, th .th-sort:focus-visible { color: var(--accent); }
       th.num .th-sort { text-align: right; }
-      /* THE ARROW'S SPACE IS RESERVED WHETHER OR NOT IT IS DRAWN. Growing it on click would
-         shift the heading text by about eleven pixels at the moment the reader is looking at
-         it, and on a 375px screen every header cell is already inside a horizontal scroller
-         where a width change moves the whole table under the finger. Reserved is calmer, and
-         it costs ten pixels a column. */
-      .th-sort__dir { display: inline-block; width: .65em; margin-left: .2em; opacity: .55; }
-      .th-sort__dir::after { content: ""; }
-      .th-sort[data-dir="asc"] .th-sort__dir::after  { content: "\2191"; }
-      .th-sort[data-dir="desc"] .th-sort__dir::after { content: "\2193"; }
+
+      /* THE INDICATOR IS PERMANENT, AND THE FIRST VERSION OF IT WAS NOT — it appeared on
+         hover, and the header was identical to a plain one until a pointer arrived. The
+         argument for that was that these tables are read far more often than they are sorted
+         and a column of affordances would be louder than the figures. The argument is wrong
+         where it matters most: ON A TOUCH SCREEN THERE IS NO HOVER. A hover-only affordance
+         is not a quiet affordance on a phone, it is no affordance at all — the column reads
+         as an ordinary heading and the only way to discover the control is to tap something
+         that looks inert. This site's whole distribution is organic search, which is
+         majority mobile.
+
+         So: the pair of triangles every table library shows, dim at rest, brighter on hover,
+         and one of them accented when that column is the sort.
+
+         DRAWN WITH BORDERS, NOT A GLYPH. `⇅` and `▲▼` depend on the device's font stack and
+         fall back to a box on part of the Android fleet — for an affordance whose entire job
+         is to be recognised, a character that might not render is the wrong primitive. Two
+         CSS triangles render identically everywhere and inherit currentColor, so the hover
+         and active states come for free.
+
+         THE SPACE IS RESERVED EITHER WAY. Growing the indicator on click would shift the
+         heading by about ten pixels at the moment the reader is looking at it, inside a
+         horizontal scroller, which moves the whole table under the finger. */
+      .th-sort__dir {
+        position: relative; display: inline-block; width: .62em; height: 1em;
+        margin-left: .3em; vertical-align: -.12em;
+      }
+      .th-sort__dir::before, .th-sort__dir::after {
+        content: ""; position: absolute; left: 0;
+        border-left: .31em solid transparent; border-right: .31em solid transparent;
+        transition: opacity .12s var(--ease);
+      }
+      .th-sort__dir::before { top: .17em; border-bottom: .3em solid currentColor; opacity: .28; }
+      .th-sort__dir::after { bottom: .17em; border-top: .3em solid currentColor; opacity: .28; }
+      .th-sort:hover .th-sort__dir::before, .th-sort:hover .th-sort__dir::after,
+      .th-sort:focus-visible .th-sort__dir::before, .th-sort:focus-visible .th-sort__dir::after { opacity: .6; }
+      /* The inactive half stays visible rather than disappearing: it is the control saying
+         which way the next tap goes, not decoration. */
+      .th-sort[data-dir="asc"] .th-sort__dir::before { opacity: 1; }
+      .th-sort[data-dir="asc"] .th-sort__dir::after { opacity: .22; }
+      .th-sort[data-dir="desc"] .th-sort__dir::after { opacity: 1; }
+      .th-sort[data-dir="desc"] .th-sort__dir::before { opacity: .22; }
       .th-sort[data-dir="asc"], .th-sort[data-dir="desc"] { color: var(--accent); }
 
       .related { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; }

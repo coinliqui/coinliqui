@@ -25,7 +25,11 @@ import { execFileSync } from "node:child_process";
 const MARGIN_S = 600;
 
 const rows = [];
-const add = (name, state, detail) => rows.push({ name, state, detail });
+/* `left` IS CARRIED ON THE ROW, and the remedy below is why. It used to be a local in the
+   wrangler block, so any message printed later could only say "expiring" and not for how
+   long — and the whole remedy for this credential is a WAIT with a length. A message that
+   says "wait" without saying how long is the same dead end as the one it replaced. */
+const add = (name, state, detail, left) => rows.push({ name, state, detail, left });
 
 /* ---- 1. the wrangler OAuth token: Cloudflare Pages, Workers, KV, D1 ------------------- */
 {
@@ -41,7 +45,8 @@ const add = (name, state, detail) => rows.push({ name, state, detail });
       const left = Math.round((Date.parse(exp) - Date.now()) / 1000);
       const state = left <= 0 ? "EXPIRED" : left < MARGIN_S ? "EXPIRING" : "ok";
       add("cloudflare (wrangler)", state,
-        `${left <= 0 ? `lapsed ${-left}s ago` : `${left}s left`} · pages:write ${has("pages:write") ? "yes" : "NO"} · workers:write ${has("workers:write") ? "yes" : "NO"} · refreshable ${has("offline_access") ? "yes" : "NO"}`);
+        `${left <= 0 ? `lapsed ${-left}s ago` : `${left}s left`} · pages:write ${has("pages:write") ? "yes" : "NO"} · workers:write ${has("workers:write") ? "yes" : "NO"} · refreshable ${has("offline_access") ? "yes" : "NO"}`,
+        left);
     }
   }
 }
@@ -79,12 +84,41 @@ for (const r of rows) {
 
 const dead = rows.filter((r) => r.state === "EXPIRED" || r.state === "ABSENT");
 const soon = rows.filter((r) => r.state === "EXPIRING");
+/* =========================================================================================
+   THE REMEDY THIS FILE PRINTED DID NOT WORK, AND IT COST THREE DEPLOYS TO NOTICE.
+
+   The note below used to read "A wrangler call refreshes them." It does not, and the
+   distinction is the whole difference between a message you can act on and one that sends
+   you in a circle. Measured on 27 August 2026, three times in one session:
+
+       token EXPIRING, 503s left   `npx wrangler whoami` -> still 503s, no refresh
+       token EXPIRING, 340s left   `npx wrangler whoami` -> still 340s, no refresh
+       token EXPIRED,  23s ago     `npx wrangler whoami` -> 3581s left, refreshed
+
+   Wrangler refreshes on LAPSE, not on proximity. So the window this file refuses to deploy
+   in — the last ten minutes of a token's life — is also the one window in which no wrangler
+   command will get you out of it. Reading the old note, the obvious move is to run wrangler
+   and retry, which fails, and fails again, and looks like the credential is broken.
+
+   The instruction now says what actually works and how long it takes. It is a wait, and a
+   message that admits a wait is worth more than one that suggests a command that does not.
+   ========================================================================================= */
+const remedy = (r) => {
+  if (!r.name.includes("wrangler")) return "renew it before retrying";
+  /* NO NUMBER IF THERE IS NO NUMBER. A row with no parsed expiry would otherwise print
+     "wait 0s", which reads as "go now" and is the one thing that does not work here. */
+  if (!Number.isFinite(r.left)) return "wrangler refreshes on LAPSE, not on proximity — wait for it to expire, then any wrangler call (`npx wrangler whoami`) renews it for an hour";
+  const s = Math.max(0, r.left);
+  return `wrangler refreshes on LAPSE, not on proximity — wait ${s}s (${Math.ceil(s / 60)} min) for it to expire, then any wrangler call (\`npx wrangler whoami\`) renews it for an hour`;
+};
 if (dead.length) {
   console.error(`\n  ${dead.length} credential(s) unusable — fix before drawing any conclusion from an API error.`);
+  for (const r of dead) if (r.name.includes("wrangler")) console.error(`  ${r.name}: it has lapsed, so \`npx wrangler whoami\` will renew it now.`);
   process.exit(1);
 }
 if (soon.length && process.argv.includes("--strict")) {
   console.error(`\n  ${soon.length} credential(s) expire within ${MARGIN_S}s — too little for a deploy or an investigation.`);
+  for (const r of soon) console.error(`  ${r.name}: ${remedy(r)}`);
   process.exit(1);
 }
-if (soon.length) console.log(`\n  note: ${soon.length} credential(s) expire within ${MARGIN_S}s. A wrangler call refreshes them.`);
+if (soon.length) for (const r of soon) console.log(`\n  note: ${r.name} expires within ${MARGIN_S}s. ${remedy(r)}`);
