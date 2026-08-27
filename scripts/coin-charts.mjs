@@ -494,6 +494,21 @@ console.log(`\n2. ${jobs.length} renders — every page against every timeframe 
 const rows = await pool(jobs, 6, async ({ fam, id, tf, view }) => {
   const path = `${fam.base}${id}?tf=${tf}${view ? `&view=${view}` : ""}`;
   const r = await get(path);
+  /* A 410 IS THE SITE BEING RIGHT, NOT THE SITE BREAKING, and this sweep called it a fault.
+     The page list is read from the live sitemap when the run starts and then swept over
+     several minutes; a contract that drops below the open-interest floor in that window has
+     its page correctly withdrawn, and every timeframe still queued for it answers 410 Gone.
+     Measured 27 August 2026: kBONK retired mid-run and produced exactly three failures —
+     ?tf=1d, ?tf=1w, ?tf=1m — on a deploy where nothing was wrong. The coverage floor rotates
+     contracts regularly, so this is a false alarm the deploy log will keep producing, and a
+     verifier that cries wolf on correct behaviour is one an operator learns to scroll past.
+
+     ONLY 410, AND ONLY THIS FAMILY. 410 is what /funding/{symbol} answers for a contract this
+     site PUBLISHED and withdrew — a 404 is one that never existed, which would be a real
+     discovery fault, and the pair is kept distinct on purpose elsewhere in this repository.
+     Counted and named at the end rather than silently dropped: a retirement nobody mentions
+     is how a sweep quietly stops covering half the site. */
+  if (r.status === 410 && fam.name === "contract") return { fam: fam.name, id, tf, view, n: 0, faults: [], retired: true, path };
   if (r.status !== 200) return { fam: fam.name, id, tf, view, n: 0, faults: [`returned ${r.status}`], path };
   const p = parsePage(r.body);
   const exp = offered[`${fam.name}:${id}`];
@@ -504,7 +519,9 @@ const rows = await pool(jobs, 6, async ({ fam, id, tf, view }) => {
            newestH: Array.isArray(p.points) && p.points.length ? (Date.now() - p.points[p.points.length - 1][1]) / 3.6e6 : NaN };
 });
 for (const r of rows) if (r.faults.length) r.faults.forEach((m) => bad(`${r.path} — ${m}`));
-if (!rows.some((r) => r.faults.length)) ok(`all ${rows.length} renders: one panel, one payload, the requested timeframe, a real varying series, an axis that matches it, and a current newest bar`);
+const retired = [...new Set(rows.filter((r) => r.retired).map((r) => r.id))];
+if (retired.length) console.log(`   ---   ${retired.join(", ")} left coverage during this run — their pages answered 410 and were skipped, which is the correct answer rather than a fault`);
+if (!rows.some((r) => r.faults.length)) ok(`all ${rows.length - rows.filter((r) => r.retired).length} renders: one panel, one payload, the requested timeframe, a real varying series, an axis that matches it, and a current newest bar`);
 
 console.log("\n3. bars held, by timeframe and family");
 for (const fam of ["coin", "contract"]) {
