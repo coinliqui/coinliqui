@@ -106,7 +106,11 @@ const description =
   "BTC fell from $73,139 to a $60,000 wick in twenty-three hours on 5–6 February 2026. Here is the modelled liquidation field for that window, with the price path drawn over it, so you can watch price run into the bands and clear them.";
 ---
 
-<Base title={title} description={description} fetchedAt={frozen.fetchedAt} frozen crumb={{ href: "/liquidations", label: "Liquidations", current: "The 5 February sweep" }}>
+{/* NO fetchedAt. It fed nothing but dateModified here — `frozen` already suppresses the pill —
+    and what it fed was the February capture date, while the sitemap published the commit date
+    for the same URL. dateModified describes the document, and this document changes when the
+    prose around the frozen dataset does. The capture date is stated in the page's own text. */}
+<Base title={title} description={description} frozen crumb={{ href: "/liquidations", label: "Liquidations", current: "The 5 February sweep" }}>
   <div class="page-head">
     <p class="crumb"><a href="/liquidations">Liquidations</a> › The 5 February sweep</p>
     <h1>The 5 February 2026 BTC sweep: price ran into the bands and cleared them</h1>

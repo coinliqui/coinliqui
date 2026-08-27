@@ -30,6 +30,7 @@ import {
   undefinedClasses, undefinedVars, unreadableText, colourLegend, colourLanguageDrift,
   chartAgreement, duplicateRuleImplementations, fixtureGaps, requestedLeverageLabels, phantomInlineElements, malformedAttributes, uncitedPermissionClaims, unconditionalCadenceClaims,
   staleCalculatorFigures, controlGroupOverflow, MEASUREMENT_EXPORTS, stampVerdict,
+  stampSurfacesAgree,
 } from "./checks.mjs";
 
 /* Enough page for a check to have something to read. Deliberately minimal: a fixture that is
@@ -125,13 +126,21 @@ const cases = [
   },
   {
     check: "dateModifiedAgreement",
-    why: "the date the machine layer states must be the date the page states",
+    why: "a page may not announce a change NEWER than the data it is showing — that is a recrawl a crawler makes and finds nothing for. The reverse, a document older than its live numbers, is the ordinary case on /unlocks and /liquidations/sweep and must stay quiet",
     fire: () => dateModifiedAgreement(doc(
       `<span data-fresh="1780000000000"></span>` +
-      `<script type="application/ld+json">{"dateModified":"2020-01-01T00:00:00.000Z"}</script>`)),
-    quiet: () => dateModifiedAgreement(doc(
-      `<span data-fresh="1780000000000"></span>` +
-      `<script type="application/ld+json">{"dateModified":"${new Date(1780000000000).toISOString()}"}</script>`)),
+      `<script type="application/ld+json">{"dateModified":"2286-01-01T00:00:00.000Z"}</script>`)),
+    /* TWO QUIET SHAPES. Equal is the ordinary market page. OLDER is the case the old rule got
+       wrong and forced four pages to misstate: a document that has not changed while the numbers
+       inside it have. Only one of these was tested before, which is why the wrong rule survived. */
+    quiet: () => [
+      ...dateModifiedAgreement(doc(
+        `<span data-fresh="1780000000000"></span>` +
+        `<script type="application/ld+json">{"dateModified":"${new Date(1780000000000).toISOString()}"}</script>`)),
+      ...dateModifiedAgreement(doc(
+        `<span data-fresh="1780000000000"></span>` +
+        `<script type="application/ld+json">{"dateModified":"2026-01-15T06:07:00.000Z"}</script>`)),
+    ],
   },
   {
     check: "breadcrumbAgreement",
@@ -217,6 +226,24 @@ const cases = [
       ...controlGroupOverflow(
         `table.tbl { border-collapse: collapse; width: 100%; }`,
         [["fixture.astro", `<table class="tbl"><tbody>{rows.map((r) => (<tr><td><a href={r.h}>{r.s}</a></td></tr>))}</tbody></table>`]]),
+    ],
+  },
+  {
+    check: "stampSurfacesAgree",
+    why: "a URL states when it changed twice — <lastmod> in its sitemap and dateModified on the page — and until this nothing compared the two; /data-sources published a commit date of 20 August and an hourly one on the page for a week with both of its own checks green",
+    fire: () => stampSurfacesAgree(
+      [{ path: "/data-sources", lastmod: "2026-08-20T10:00:00.000Z", dateModified: "2026-08-27T09:12:00.000Z" }],
+      { "/data-sources": "2026-08-20T10:00:00.000Z" }),
+    /* BOTH QUIET SHAPES, because they are quiet for different reasons and only one of them was
+       obvious: a commit date matching exactly, and a data stamp whose sitemap copy is floored to
+       the hour while the page carries the exact instant. Testing only the first would leave the
+       tolerance branch unexercised, which is the hole this suite keeps finding elsewhere. */
+    quiet: () => [
+      ...stampSurfacesAgree(
+        [{ path: "/data-sources", lastmod: "2026-08-20T10:00:00.000Z", dateModified: "2026-08-20T10:00:00.000Z" }],
+        { "/data-sources": "2026-08-20T10:00:00.000Z" }),
+      ...stampSurfacesAgree(
+        [{ path: "/", lastmod: "2026-08-27T09:00:00.000Z", dateModified: "2026-08-27T09:47:00.000Z" }], {}),
     ],
   },
   {

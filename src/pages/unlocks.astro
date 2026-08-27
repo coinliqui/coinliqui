@@ -93,7 +93,12 @@ const description = top
   : "A register of token vesting, lock and emission contracts read directly from Ethereum: what each holds right now, what it is still releasing, and which finished years ago with the tokens never withdrawn.";
 ---
 
-<Base title={title} description={description} fetchedAt={snap.fetchedAt}>
+{/* TWO DIFFERENT QUESTIONS, ANSWERED SEPARATELY. `fetchedAt` keeps the freshness pill honest
+    — the amounts here are valued at live prices and do move hourly. `modified` is the register's
+    own verification stamp, which is what sitemaps/unlocks.xml.ts publishes and, as its comment
+    argues at length, the right answer for when this DOCUMENT changed. The page used to publish
+    the snapshot on both, so its structured data and its sitemap disagreed by days. */}
+<Base title={title} description={description} fetchedAt={snap.fetchedAt} modified={new Date((reg as { verifiedAt: string }).verifiedAt).toISOString()}>
   <div class="page-head">
     <h1>Vesting contracts, and what they still hold</h1>
     <p>

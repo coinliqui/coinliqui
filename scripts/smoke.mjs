@@ -38,7 +38,7 @@ import { readdirSync, readFileSync } from "node:fs";
 /* Source is read as CODE by default — see scripts/lib/source.mjs. The two checks below that
    want the prose say so at their call site, with the reason. */
 import { readSource, readRaw } from "./lib/source.mjs";
-import { cssFor, undefinedClasses, undefinedVars, rawEnums, searchIndexGaps, unnamedUpstreams, duplicateRuleImplementations, uncoveredRoutes, unreadableText, chartAgreement, requestedLeverageLabels, inlineScriptSyntax, flipTableColour, colourPalettes, colourLanguageDrift, colourLegend, publishesAPerson, fixtureGaps, staleDerivedCells, basisSelfConsistent, sitemapLastmodHonesty, breadcrumbAgreement, founderAgreement, readmeCounts, botPolicyReasons, contradictoryStates, hiddenFromEveryone, pageWeight, weightFaults, dateModifiedAgreement, phantomInlineElements, malformedAttributes, uncitedPermissionClaims, unconditionalCadenceClaims, staleCalculatorFigures, controlGroupOverflow} from "./checks.mjs";
+import { cssFor, undefinedClasses, undefinedVars, rawEnums, searchIndexGaps, unnamedUpstreams, duplicateRuleImplementations, uncoveredRoutes, unreadableText, chartAgreement, requestedLeverageLabels, inlineScriptSyntax, flipTableColour, colourPalettes, colourLanguageDrift, colourLegend, publishesAPerson, fixtureGaps, staleDerivedCells, basisSelfConsistent, sitemapLastmodHonesty, breadcrumbAgreement, founderAgreement, readmeCounts, botPolicyReasons, contradictoryStates, hiddenFromEveryone, pageWeight, weightFaults, dateModifiedAgreement, phantomInlineElements, malformedAttributes, uncitedPermissionClaims, unconditionalCadenceClaims, staleCalculatorFigures, controlGroupOverflow, stampSurfacesAgree} from "./checks.mjs";
 
 /* The SERVER side of each duplicated formatter, transcribed from the file that owns it and
    named here so the pairing is explicit. Transcription is the honest cost of having no bundler:
@@ -57,6 +57,11 @@ import { cssFor, undefinedClasses, undefinedVars, rawEnums, searchIndexGaps, unn
 const PALETTE = colourPalettes(readSource("src/lib/chart.ts"), readSource("src/layouts/Base.astro"));
 
 const PORT = 8791;
+/* WHAT EACH RENDERED PAGE SAID ABOUT ITS OWN LAST CHANGE, kept so it can be compared with what
+   the SITEMAP says about the same URL further down. The two claims are made in different files
+   by different code and had never been put side by side — see stampSurfacesAgree(). */
+const PAGE_STAMPS = new Map();
+
 const ROUTES = [
   "/", "/coins", "/coins/bitcoin", "/funding", "/funding/btc", "/funding/kpepe",
   "/open-interest", "/liquidations", "/liquidations/survival", "/liquidations/sweep",
@@ -337,6 +342,23 @@ for (const path of ROUTES) {
     for (const d of contradictoryStates(body)) content.push(`two states, one hidden: ${d}`);
     for (const d of hiddenFromEveryone(body)) content.push(`text nobody receives: ${d}`);
     for (const d of dateModifiedAgreement(body)) content.push(`the stated age disagrees with itself: ${d}`);
+    /* Recorded, not asserted here: the counterpart claim lives in a sitemap this loop has not
+       fetched yet. Query strings are stripped because a sitemap lists the bare URL. */
+    {
+      const ld = [...body.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)];
+      let stamp = null;
+      for (const m of ld) {
+        let j; try { j = JSON.parse(m[1]); } catch { continue; }
+        const walk = (n) => {
+          if (Array.isArray(n)) return n.forEach(walk);
+          if (!n || typeof n !== "object") return;
+          if (n.dateModified) stamp = n.dateModified;
+          Object.values(n).forEach(walk);
+        };
+        walk(j);
+      }
+      if (stamp) PAGE_STAMPS.set(path.split("?")[0], stamp);
+    }
     /* MARKUP WE DID NOT WRITE. Every other check here asks whether the templates are right; this
        asks whether the compiler agreed. It has to run on every page, because the defect it was
        written for was invisible on the two pages that had it and absent from the twenty-two that
@@ -471,6 +493,26 @@ for (const path of ROUTES) {
            — the first slash of the scheme — so every lookup missed and the audit passed while blind. */
         const routes = [...body.matchAll(/<loc>(?:https?:\/\/[^/<]+)?([^<]*)<\/loc>/g)].map((m) => m[1]);
         for (const l of sitemapLastmodHonesty(body, table, pagesReadingLiveStores(routes))) lies.push(`${path}: ${l}`);
+      }
+      /* THE OTHER HALF OF THE SAME QUESTION, and the half nothing was asking: does the date a
+         URL publishes in its sitemap agree with the date the PAGE publishes about itself. Two
+         surfaces, two generators, one fact. Built from the same fetched XML so no extra
+         requests, and from what the warm pass already recorded off each rendered page. */
+      const stampRows = [];
+      for (const path of ROUTES.filter((r) => r.startsWith("/sitemaps/"))) {
+        const body = await (await fetch(`http://127.0.0.1:${PORT}${path}`)).text();
+        for (const m of body.matchAll(/<loc>(?:https?:\/\/[^/<]+)?([^<]*)<\/loc><lastmod>([^<]+)<\/lastmod>/g)) {
+          const url = m[1] || "/";
+          if (PAGE_STAMPS.has(url)) stampRows.push({ path: url, lastmod: m[2], dateModified: PAGE_STAMPS.get(url) });
+        }
+      }
+      const split = stampSurfacesAgree(stampRows, table);
+      if (split.length) {
+        bad++;
+        console.log(`  FAIL  ${String(split.length).padStart(4)}         a URL's sitemap date and its own page date disagree`);
+        for (const l of split) console.log(`          ${l}`);
+      } else {
+        console.log(`  ok            ${stampRows.length} URL(s) publish the same change date in the sitemap and on the page`);
       }
       if (lies.length) {
         bad++;

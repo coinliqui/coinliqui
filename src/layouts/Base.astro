@@ -31,8 +31,24 @@ interface Props {
    * when the file was captured, which is the honest form of the same fact.
    */
   frozen?: boolean;
+  /**
+   * WHEN THE DOCUMENT CHANGED, when that is not the same question as how fresh its data is.
+   *
+   * dateModified used to be derived from `fetchedAt` alone, and `fetchedAt` answers a different
+   * question — it is the age of the numbers on the page, which is what the freshness pill is
+   * for. On four routes the two genuinely differ, and every one of them published a page date
+   * that disagreed with its own sitemap: /unlocks (sitemap dates the register, page dated the
+   * snapshot), /liquidations/sweep (sitemap dates the commit, page dated a February capture),
+   * /data-sources (sitemap dates the commit, page dated the snapshot, every hour) and /coins
+   * (two different clocks, the sitemap's the fresher). Nothing compared the two surfaces until
+   * stampSurfacesAgree, which now fails the gate on any of them.
+   *
+   * So a page whose document date is not its data date states it, rather than having one
+   * inferred from the other.
+   */
+  modified?: string;
 }
-const { title, description, fetchedAt, noindex, frozen, crumb, namesFounder, titleMode = "suffix" } = Astro.props;
+const { title, description, fetchedAt, noindex, frozen, crumb, namesFounder, modified: modifiedProp, titleMode = "suffix" } = Astro.props;
 
 /* sameAs IS NO LONGER A CONSTANT, AND THE REASON IS IN src/lib/corroboration.ts. Short version:
    this emitted a URL that returned 404 to every signed-out reader, on every page, for days. The
@@ -115,7 +131,7 @@ const age = ageWords;
    Same function as the sitemap now, so they cannot drift. Routes with neither a market
    timestamp nor a committed date (/terms, /about) still emit no node, which is the same
    answer the sitemap gives them and the correct way to say "I do not know". */
-const modified = fetchedAt ? new Date(fetchedAt).toISOString() : codeStamp(path);
+const modified = modifiedProp ?? (fetchedAt ? new Date(fetchedAt).toISOString() : codeStamp(path));
 const pageNode = modified && !noindex && {
   "@type": "WebPage",
   "@id": `${base}${Astro.url.pathname}#page`,

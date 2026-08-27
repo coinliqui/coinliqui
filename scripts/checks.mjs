@@ -1202,6 +1202,47 @@ export function sitemapLastmodHonesty(xmlBody, lastmodTable, liveRoutes) {
 
 
 /**
+ * ONE URL, TWO PUBLIC ANSWERS TO "WHEN DID THIS CHANGE", AND NOTHING COMPARED THEM.
+ *
+ * Every indexable page here states when it last changed twice, to the same audience, on two
+ * different surfaces: <lastmod> in its sitemap and dateModified in its own structured data.
+ * Two checks already guarded one surface each — sitemapLastmodHonesty asks whether a git date
+ * is defensible, dateModifiedAgreement asks whether the page's own pill and its own JSON-LD
+ * match — and neither could see across.
+ *
+ * So /data-sources published a git date of 20 August in the sitemap and a dateModified of an
+ * hour ago on the page, every hour, for a week. Both of its own checks were green: the sitemap
+ * date is defensible (the page was measured and does not move with the market, which is why it
+ * carries an explicit exemption), and the pill matched the JSON-LD. The disagreement lived
+ * exactly in the gap between the two instruments, which is where this kind of defect always
+ * lives, and the direction was the expensive one — the page claimed to be fresher than the
+ * sitemap said, so a crawler comparing them learns this host's lastmod is not to be trusted.
+ *
+ * THE TOLERANCE IS NOT ONE NUMBER, for the same reason sitemapLastmodHonesty's discriminator is
+ * not: a git date is byte-for-byte the string in lastmod.json and must match exactly, while a
+ * data stamp is deliberately truncated to the hour, so the page's exact instant is the same
+ * claim as the sitemap's floored one. Two hours of slack on the data side covers a snapshot
+ * rotating between the two fetches of a single smoke run; anything wider is two answers.
+ */
+export function stampSurfacesAgree(rows, lastmodTable = {}) {
+  const out = [];
+  for (const { path, lastmod, dateModified } of rows) {
+    if (!lastmod || !dateModified) continue;
+    const a = Date.parse(lastmod), b = Date.parse(dateModified);
+    if (!Number.isFinite(a) || !Number.isFinite(b)) continue;
+    const isGitDate = lastmodTable[path] === lastmod;
+    if (isGitDate) {
+      if (lastmod !== dateModified) {
+        out.push(`${path}: the sitemap publishes the commit date ${lastmod} and the page's own structured data publishes ${dateModified} — two public answers to one question, and the page is the one overclaiming`);
+      }
+    } else if (Math.abs(b - a) >= 2 * 3_600_000) {
+      out.push(`${path}: sitemap lastmod ${lastmod} and page dateModified ${dateModified} are ${Math.round(Math.abs(b - a) / 3_600_000)}h apart — a data stamp is floored to the hour, not to the day`);
+    }
+  }
+  return out;
+}
+
+/**
  * THE BREADCRUMB MARKUP AND THE BREADCRUMB A READER SEES MUST BE THE SAME BREADCRUMB.
  *
  * Structured data that overstates the page is the one kind of markup that can cost more than
@@ -1548,10 +1589,32 @@ export function dateModifiedAgreement(html) {
      frozen dataset: it deliberately shows no "updated N min ago", and the date the underlying
      data was captured is exactly what dateModified is for. Demanding a live pill there would
      be demanding the page pretend to be live, which is the opposite of the point. */
-  if (pill && ld) {
-    const a = Number(pill), b = Date.parse(ld);
-    if (!Number.isFinite(b) || Math.abs(a - b) > 1000) {
-      out.push(`the pill says ${new Date(a).toISOString()} and dateModified says ${ld} — one of them is not the snapshot`);
+  /* EQUALITY WAS THE WRONG RULE, AND IT TOOK A SECOND INSTRUMENT TO SHOW IT.
+     This demanded the pill and dateModified be the same instant, on the premise that they are
+     two renderings of one fact. They are not: the pill is how fresh the NUMBERS are, and
+     dateModified is when the DOCUMENT changed. On /unlocks those genuinely differ — the amounts
+     are valued at live prices and move hourly, while the register they describe is verified by
+     hand and dated by its own stamp, which is also what that URL's sitemap publishes. Equality
+     here forced the page to publish a document date it does not believe, and that is how its
+     structured data came to disagree with its own sitemap by days.
+
+     THE PILL IS NOT THE RIGHT REFERENCE AT ALL. Once the two are different facts, comparing
+     them answers nothing — a document older than its data is the ordinary case on /unlocks and
+     /liquidations/sweep, and a document NEWER than its data is only suspicious because it is
+     heading somewhere that is genuinely wrong: the future. That is the crisp rule. A
+     dateModified ahead of render time is a recrawl a crawler will make and find nothing for,
+     and it is the only shape here that cannot be defended by any page.
+
+     The other two halves of this check are unchanged and were always right: a page that tells
+     readers an age must tell machines one too, and the value must be a date. Whether the
+     document date agrees with the SITEMAP's copy of it is a different question, asked across
+     two surfaces this function only sees one of — stampSurfacesAgree() asks it. */
+  if (ld) {
+    const b = Date.parse(ld);
+    if (!Number.isFinite(b)) {
+      out.push(`dateModified is not a date this page can be scheduled on: "${ld}"`);
+    } else if (b - Date.now() > 60_000) {
+      out.push(`dateModified says ${ld}, which is in the future — a recrawl scheduled on it finds nothing changed`);
     }
   }
   return out;
