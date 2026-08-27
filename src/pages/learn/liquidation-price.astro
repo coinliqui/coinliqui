@@ -58,11 +58,11 @@ const description =
   <p class="prose">
     For a long position, almost every calculator and explainer computes:
   </p>
-  <p class="prose"><code>liquidation = entry × (1 − 1 ÷ leverage)</code></p>
+  <p class="formula"><code>liquidation = entry × (1 − 1 ÷ leverage)</code></p>
   <p class="prose">
     The reasoning is intuitive and wrong. At {REQUESTED_LEVERAGE}× leverage the margin posted is
     a {REQUESTED_LEVERAGE}th of the notional, so a move of a {REQUESTED_LEVERAGE}th against the
-    position wipes it out — {usd(ENTRY, 0)} becomes {usd(small.naivePrice, 2)}. That would be
+    position wipes it out — {usd(ENTRY, 2)} becomes {usd(small.naivePrice, 2)}. That would be
     correct if the venue let the collateral reach exactly zero. No venue does, because a
     position with zero collateral cannot be closed without someone else absorbing the shortfall.
   </p>
@@ -77,7 +77,7 @@ const description =
     the position must be closed while that fraction survives, the liquidation price moves
     <strong> towards</strong> entry:
   </p>
-  <p class="prose"><code>liquidation = entry × (1 − 1 ÷ leverage) ÷ (1 − maintenance margin fraction)</code></p>
+  <p class="formula"><code>liquidation = entry × (1 − 1 ÷ leverage) ÷ (1 − maintenance margin fraction)</code></p>
 
   <h2 class="section">The same position, worked twice</h2>
   <p class="prose">
@@ -171,5 +171,15 @@ const description =
 
   <style>
     h2.section { margin-top: 32px; }
+    /* THE TWO FORMULAS ARE THE CONTENT OF THIS PAGE, and as inline <code> inside a paragraph
+       they wrapped mid-expression on a phone: measured at 375px, the first one broke after
+       "1 ÷" and rendered as two separate tinted boxes with a gap between them, which reads as
+       two fragments rather than one expression. A block of its own cannot wrap into pieces. */
+    .formula {
+      max-width: 72ch; margin: 0 0 var(--gap-block); padding: 12px var(--inset-panel);
+      background: var(--surface-2); border: 1px solid var(--border-soft);
+      border-radius: var(--r-md); overflow-x: auto; color: var(--text);
+    }
+    .formula code { background: none; padding: 0; white-space: nowrap; }
   </style>
 </Base>
