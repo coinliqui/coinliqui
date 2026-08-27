@@ -52,13 +52,23 @@ for(const [name,url,shouldPass] of cases){
 }
 /* AND THE OTHER QUESTION: what does verify-live actually permit today? Read, not assumed.
    If a host is ever added there, this fails and whoever added it has to say so here too. */
+/* THE EXPECTED SET, WRITTEN OUT HERE SO ADDING A HOST IS TWO DELIBERATE EDITS RATHER THAN ONE.
+   This used to assert the list was EMPTY, which is the same mechanism: a second file has to
+   agree before a new off-origin script can pass the gate. It is no longer empty — the
+   Cloudflare Web Analytics beacon was allowed on 27 August 2026 — so the assertion names what
+   it expects instead of asserting nothing is there. Anything else appearing in verify-live,
+   including a lookalike of this host, still fails here. */
+const EXPECTED_SCRIPT_HOSTS = ["static.cloudflareinsights.com"];
 {
   const src = readFileSync(new URL("./verify-live.mjs", import.meta.url), "utf8");
   const m = src.match(/const SCRIPT_HOSTS = \[([^\]]*)\]/);
   const hosts = m ? m[1].split(",").map((t)=>t.trim().replace(/^["']|["']$/g,"")).filter(Boolean) : null;
+  const unexpected = hosts ? hosts.filter((h) => !EXPECTED_SCRIPT_HOSTS.includes(h)) : [];
+  const missing = hosts ? EXPECTED_SCRIPT_HOSTS.filter((h) => !hosts.includes(h)) : EXPECTED_SCRIPT_HOSTS;
   if (!m) { bad++; console.log("  BLIND  SCRIPT_HOSTS not found in verify-live.mjs — this assertion is not reading anything"); }
-  else if (hosts.length) { bad++; console.log(`  BLIND  verify-live permits off-origin script host(s): ${hosts.join(", ")} — intended?`); }
-  else console.log("  ok     EMPTY   verify-live permits no off-origin script host at all");
+  else if (unexpected.length) { bad++; console.log(`  BLIND  verify-live permits an off-origin script host nobody recorded here: ${unexpected.join(", ")}`); }
+  else if (missing.length) { bad++; console.log(`  BLIND  verify-live no longer permits a host this file expects: ${missing.join(", ")} — was it removed on purpose?`); }
+  else console.log(`  ok     NAMED   verify-live permits exactly the ${hosts.length} recorded host(s): ${hosts.join(", ")}`);
 }
 
 /* THE CSP RULE HAS CHANGED TWICE AND ITS BLIND CASES CHANGED WITH IT BOTH TIMES.
@@ -69,11 +79,24 @@ for(const [name,url,shouldPass] of cases){
    rejected. It was caught by running the file rather than by reading it, which is the entire
    argument for the file.
    The predicate is unchanged and did not need to change: every named host must be one we
-   chose, and we now choose none. `https:` and `*` each permit every origin on the internet
-   while reading, at a glance, like a policy; those two cases are why it is written this way
-   rather than as "does it contain a hostname". */
+   chose. `https:` and `*` each permit every origin on the internet while reading, at a glance,
+   like a policy; those two cases are why it is written this way rather than as "does it contain
+   a hostname".
+
+   A THIRD TIME, 27 AUGUST 2026, AND THIS LIST HAD A HOLE THE FIRST TWO HID. Every case below
+   that expected SOUND was a policy naming NO host — so the branch that matters in production,
+   "self plus a host we chose", had never once been exercised, and the list would have read as
+   green whether that branch worked or not. It is now the case directly under this comment.
+   The two rewrites before this one both left the allowlist empty, which is why nobody noticed:
+   an assertion suite whose positive cases all sit on one side of the decision it guards is
+   testing the other side only. */
 const csps=[
   ["self only",                "'self' 'unsafe-inline'",                          true],
+  /* PRODUCTION'S ACTUAL SHAPE since the Cloudflare beacon was allowed: 'self' plus exactly one
+     chosen host. Written with the synthetic allowed name rather than the real one because this
+     block tests the PREDICATE; which host is really permitted is asserted against verify-live
+     a few lines above, where it can be compared with the live header. */
+  ["self plus the one allowed host", "'self' 'unsafe-inline' https://cdn.example-allowed.test", true],
   ["self plus the retired GA host", "'self' 'unsafe-inline' https://www.googletagmanager.com", false],
   ["wildcard",                 "'self' *",                                        false],
   ["scheme allowed",           "'self' https:",                                   false],

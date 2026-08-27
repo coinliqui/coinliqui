@@ -18,6 +18,17 @@ import { PINNED_KEY, IDENTITY } from "../lib/site.ts";
  * which of two paragraphs a reader sees, because that flag is what let the page describe a
  * configuration instead of a fact. Every claim below was measured against the live site.
  *
+ * AND IT HAS NOW BEEN WRONG IN A THIRD WAY, which is why the Analytics section reads as it
+ * does. It said "None run on this site", and that was true of the site's own code and true of
+ * what a browser executed — but the sentence next to it, that Cloudflare's injected beacon
+ * "does not run", was paired in the CSP comment with "the tag itself is being turned off at
+ * the dashboard". That never happened. For eight days the page carried a script it could not
+ * execute, the account recorded zero pageloads, and a comment in src/middleware.ts described
+ * an intention in the present tense. The beacon is now permitted on purpose, and every claim
+ * about what it does below is either quoted from Cloudflare with its URL or measured — the
+ * cookie and query-string claims are measurements of the beacon's own source, which anybody
+ * can repeat with curl and grep.
+ *
  * THE ONE SUBTLE THING, and the reason the Cloudflare section is longer than a hosting note
  * has any right to be: Cloudflare injects a measurement beacon into HTML responses, and it
  * decides whether to do so from the request's `accept` HEADER. Isolated on the live site on 19
@@ -35,9 +46,9 @@ import { PINNED_KEY, IDENTITY } from "../lib/site.ts";
  */
 const title = "Privacy";
 const description =
-  "What Coinliqui collects: no analytics, no third-party scripts, one preference cookie, " +
-  "and no payment or personal information.";
-const updated = "19 August 2026";
+  "What Coinliqui collects: cookieless page-view analytics that reads no query string, one " +
+  "preference cookie, and no payment or personal information. Every claim here is checkable.";
+const updated = "27 August 2026";
 ---
 
 <Base title={title} description={description}>
@@ -56,17 +67,58 @@ const updated = "19 August 2026";
 
   <h2 class="section">Analytics</h2>
   <p class="prose">
-    <strong>None run on this site.</strong> Google Analytics 4 was installed here between 17 and
-    19 August 2026 and has been removed: no tag, no <code>gtag.js</code>, no <code>_ga</code>
-    cookie, and no request to any Google host from any page. The
-    Content-Security-Policy this site sends now permits scripts from its own origin and nowhere
-    else, which you can read in the response headers of this page.
+    <strong>One counter runs: Cloudflare Web Analytics</strong>, permitted here since
+    27&nbsp;August&nbsp;2026. It is a script Cloudflare injects into this site's pages at its
+    edge; it was blocked by this site's Content-Security-Policy until that date and is now
+    allowed by it, which is the only change. It exists to answer one question — whether anybody
+    reads these pages — which nothing else here could answer.
   </p>
   <p class="prose">
-    It was dropped because it was never used. Not one decision about this site was ever made
-    from a GA4 number — coverage came from Search Console, traffic from the host's own request
-    logs, and everything else from measuring the live pages. It cost 167.8&nbsp;KB of
-    JavaScript to answer questions nobody was asking, on a homepage of about 6.5&nbsp;KB.
+    What it sends: the page's origin and <strong>path</strong>, the referring page if your
+    browser supplies one, and page-load timings taken from the browser's own Performance API.
+    Cloudflare states that it "does not collect or use your visitors' personal data" and that
+    it "does not track individual end users across our customers' Internet properties" —
+    <a class="link" href="https://developers.cloudflare.com/web-analytics/" rel="nofollow noopener">their documentation</a>.
+  </p>
+  <p class="prose">
+    Those are their words. These are measurements, made on 27&nbsp;August&nbsp;2026 and
+    repeatable by anyone:
+  </p>
+  <div class="panel" style="max-width:860px">
+    <table class="tbl">
+      <thead><tr><th>Claim</th><th>How it was checked, and how you can</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>It sets no cookie and no browser storage</td>
+          <td class="reason">The beacon's source contains no <code>document.cookie</code>, no <code>localStorage</code>, no <code>sessionStorage</code> and no <code>indexedDB</code> — fetch the script named in this page's markup and search it. Loaded on a live site running the same beacon, the page ended with zero cookies and zero storage keys.</td>
+        </tr>
+        <tr>
+          <td>It does not send the query string</td>
+          <td class="reason">The beacon reads <code>location.pathname</code> and <code>location.origin</code> and rebuilds the URL from those two. It never reads <code>location.href</code> or <code>location.search</code>; neither string appears in the file at all. This is the reason the calculators below are unaffected by it.</td>
+        </tr>
+        <tr>
+          <td>It does not fingerprint</td>
+          <td class="reason">No canvas, no audio context, no device enumeration in the source. What it reads is the Performance API, which reports how long the page took to load and nothing about you.</td>
+        </tr>
+        <tr>
+          <td>The data goes to this domain, not a third one</td>
+          <td class="reason">The measurement is posted to <code>/cdn-cgi/rum</code> on this origin. That is why this site's <code>connect-src</code> is still <code>'self'</code> — no off-origin host is permitted to receive a request from any page here.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="section-note" style="margin-top:10px">
+    The one host now permitted to serve a script here is <code>static.cloudflareinsights.com</code>,
+    and it is the only one — you can read the whole policy in this page's response headers.
+  </p>
+  <p class="prose">
+    <strong>Google Analytics 4 is gone and is not coming back.</strong> It was installed here
+    between 17 and 19&nbsp;August&nbsp;2026 and removed: no tag, no <code>gtag.js</code>, no
+    <code>_ga</code> cookie, and no request to any Google host from any page. It was dropped
+    because it was never used — not one decision about this site was ever made from a GA4
+    number — and it cost 167.8&nbsp;KB of JavaScript to answer questions nobody was asking, on
+    a homepage of about 6.5&nbsp;KB. The counter that replaced it is 11.4&nbsp;KB over the wire,
+    sets nothing, and answers one question that is actually asked.
   </p>
 
   <h2 class="section">Cookies and local storage</h2>
@@ -96,7 +148,9 @@ const updated = "19 August 2026";
     </table>
   </div>
   <p class="section-note" style="margin-top:10px">
-    Clearing your browser data removes all of them and the site behaves the same without them.
+    Two entries, and the analytics above adds neither a third nor anything else — see the
+    measurement in that section. Clearing your browser data removes both of these and the site
+    behaves the same without them.
   </p>
 
   <h2 class="section">The calculators</h2>
@@ -108,14 +162,19 @@ const updated = "19 August 2026";
     not appear in a log line, use a representative figure.
   </p>
   <p class="prose">
-    Those request logs are now the only place the values go. While Google Analytics ran, the
-    full URL of every page view — query string included, so the figure typed into a field named
-    <code>capital</code> along with it — was sent to Google as part of the standard page-view
-    event. That was true from the day the tag went in, it was not described on this page, and it
-    stopped when the tag came out.
+    Those request logs are still the only place the values go, and the analytics above does not
+    change that: the beacon rebuilds the URL from the origin and the path, so a figure typed
+    into a field named <code>capital</code> is not part of what it sends. That is a measurement
+    of the script, stated in the table above, not an assurance.
+  </p>
+  <p class="prose">
+    It was not always true. While Google Analytics ran, the full URL of every page view — query
+    string included — was sent to Google as part of the standard page-view event. That was true
+    from the day the tag went in, it was not described on this page, and it stopped when the tag
+    came out.
   </p>
 
-  <h2 class="section">Hosting, and the one script we did not put here</h2>
+  <h2 class="section">Hosting</h2>
   <p class="prose">
     This site runs on Cloudflare. Serving a page means Cloudflare handles the request itself —
     your IP address, the page asked for, the browser string, the response status — and keeps
@@ -123,19 +182,12 @@ const updated = "19 August 2026";
     optional for a site that is served at all.
   </p>
   <p class="prose">
-    It also does something a host description would not lead you to expect, and this page used
-    to say only the first half. Cloudflare <strong>injects its own measurement script</strong>
-    into HTML responses, after this site's code has finished with them, and it does so whenever
-    a client asks for the page the way a browser asks for it. It is not ours, it was not added
-    here, and it is not in this site's source.
-  </p>
-  <p class="prose">
-    <strong>It does not run.</strong> The Content-Security-Policy this site sends allows scripts
-    only from its own origin, so your browser refuses to load it and logs the refusal in the
-    console. The tag arrives in the markup and does nothing. We would rather it were not sent at
-    all, and that is a setting on the hosting account rather than something this codebase can
-    reach; until it is switched off, this is exactly what happens, described here rather than
-    left for you to find in a developer console.
+    The measurement script described above is Cloudflare's too, and it is <strong>injected by
+    the host rather than written into this site's source</strong>: it appears in the HTML after
+    this site's code has finished with the response, and it does so whenever a client asks for
+    the page the way a browser asks for it. It was blocked here until 27&nbsp;August&nbsp;2026
+    and is permitted now. Nothing else off-origin can serve a script, receive a fetch, or load
+    an image on any page here.
   </p>
 
   <h2 class="section">Contact</h2>

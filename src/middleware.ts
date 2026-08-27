@@ -131,56 +131,70 @@ export const onRequest = defineMiddleware(async (ctx, next) => {
      whose central claim is that it cannot take a payment should say so to the browser too. */
   res.headers.set("permissions-policy", "camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()");
 
-  /* THE CSP, BACK TO `script-src 'self'` — the strongest form it has ever had here.
+  /* THE CSP, WITH EXACTLY ONE NAMED HOST: static.cloudflareinsights.com.
    *
-   * It began as script-src 'self' and nothing else, to make "no third-party scripts" true by
-   * force. That was relaxed to run Google Analytics 4: one named host in script-src, and
-   * wildcards on three Google domains across img-src and connect-src. GA4 is gone, so the
-   * seven allowances it bought are gone with it, and nothing off-origin can serve a script,
-   * receive a fetch, or load a pixel on this site any more.
+   * THIS SECTION HAS NOW BEEN REWRITTEN THREE TIMES AND THE HISTORY IS THE USEFUL PART. It
+   * began as `script-src 'self'` and nothing else, to make "no third-party scripts" true by
+   * force. It was relaxed to run Google Analytics 4 — one named host plus wildcards on three
+   * Google domains across img-src and connect-src. GA4 was removed and it went back to 'self'.
+   * It is now relaxed again, by one host, for the Cloudflare Web Analytics beacon.
    *
-   * NARROWING IS THE WHOLE POINT, not a tidy-up after the fact. A CSP defends against an
-   * origin nobody chose — a compromised dependency, an injected tag, a rewriting proxy — and
-   * every named host is a hole punched in that defence for something we decided we wanted.
-   * www.googletagmanager.com in particular will serve any GTM container to anyone who asks for
-   * it by ID, so allowlisting it was strictly weaker than 'self'. It was a deliberate trade
-   * for the analytics. With the analytics gone, keeping it would be a trade for nothing.
+   * WHY THE PREVIOUS VERSION OF THIS COMMENT WAS WRONG ABOUT THE STATE OF THE WORLD. It said
+   * "the tag itself is being turned off at the dashboard so the page stops carrying an inert
+   * script it cannot run". That never happened. Measured on 27 August 2026: the beacon is
+   * injected into every HTML response, our own policy blocks it, and the account's Web
+   * Analytics has recorded ZERO pageloads in 31 days while the same account's other site
+   * records normally. So the site was paying for the tag — 359 bytes and a CSP violation in
+   * every reader's console — and receiving nothing at all for it. That is the worst of the
+   * three available states and it held for eight days because a comment described an intention
+   * as though it were a configuration.
    *
-   * THE CLOUDFLARE RUM BEACON IS DELIBERATELY NOT ALLOWED. Cloudflare injects
-   * static.cloudflareinsights.com into every response after this Worker is finished, and this
-   * policy blocks it — verified in a browser console, not assumed. Allowing it would buy real
-   * Core Web Vitals field data for about 11 KB. That is a genuine offer and it is declined for
-   * now: the beacon's cookielessness has not been confirmed against Cloudflare's current
-   * terms, and this is the wrong week to add a third-party script back on trust. The tag
-   * itself is being turned off at the dashboard so the page stops carrying an inert script it
-   * cannot run. Revisit when the confirmation is in — see /privacy, which describes exactly
-   * this state rather than a tidier version of it.
+   * WHY IT IS ALLOWED NOW, AND WHAT WAS ACTUALLY CHECKED. The earlier refusal turned on one
+   * open question: whether the beacon is cookieless. Cloudflare's documentation does not answer
+   * it in those words, so it is not claimed in those words. What the documentation does say is
+   * quoted on /privacy with its URL, and what the beacon does on THIS site is measured rather
+   * than trusted — see the measurement recorded there. The operator's decision, 27 August 2026,
+   * was to allow it: the alternative left us with no reader-side measurement of any kind, on a
+   * site whose only feedback loop is Search Console clicks in the single digits.
+   *
+   * connect-src IS DELIBERATELY UNCHANGED. Cloudflare's own documentation says beacon data goes
+   * to `https://<yourdomain>/cdn-cgi/rum` for a site proxied through Cloudflare, and this site
+   * is proxied — so the POST is SAME-ORIGIN and 'self' already permits it. Adding
+   * cloudflareinsights.com to connect-src would be punching a second hole for a request that
+   * does not need one. If that ever stops being true the beacon will fail in the console and
+   * the check in scripts/verify-live.mjs will say so.
    *
    * The rule for editing this: name hosts, never a scheme and never a wildcard. `https:` or
    * `*` in script-src would permit every origin on the internet and read, at a glance, like a
-   * tightened policy. scripts/verify-live.mjs fails on either.
+   * tightened policy. scripts/verify-live.mjs fails on either, and it also fails on a host that
+   * is in the header but not on its own allowlist — so widening this file alone does not widen
+   * the site.
    *
    * 'unsafe-inline' PERMITS EVERY INLINE SCRIPT in the document — ours and anyone else's. CSP
    * has no notion of authorship, and an earlier version of this comment claimed it did, which
    * was flattering and false. It is here because the calculators' `define:vars` blocks are
-   * inline. It survives GA's removal because those blocks do; what it does not do is admit an
-   * off-origin ORIGIN, and that half is now as tight as it can be. Removing it means hashing
-   * or noncing every inline block, which is worth doing and is still not done — and it is now
-   * the single largest remaining weakness in this header.
+   * inline. Removing it means hashing or noncing every inline block, which is worth doing and
+   * is still not done — and it remains the single largest weakness in this header, larger than
+   * the one named host below.
    */
   if (isDocument) {
     res.headers.set(
       "content-security-policy",
       [
         "default-src 'self'",
-        /* NO NAMED HOST. Not one, in any directive. If a host ever needs adding here again,
-           the question to answer first is the one GA4 failed: what decision will be made with
-           what it returns, that cannot be made without it. */
-        "script-src 'self' 'unsafe-inline'",
+        /* ONE NAMED HOST, and the question GA4 failed is answered for it: the decision this
+           returns is whether anybody reads the site. Search Console counts clicks from Google
+           and nothing else — not a direct visit, not a link followed, not which page was read.
+           Every client-side counter this site has had was off, and the number the operator was
+           looking at was zero because nothing was counting. */
+        "script-src 'self' 'unsafe-inline' https://static.cloudflareinsights.com",
         "style-src 'self' 'unsafe-inline'",
         "img-src 'self' data:",
         "font-src 'self'",
-        /* Same origin only. The one fetch this site makes is /api/live.json, to itself. */
+        /* SAME ORIGIN ONLY, AND THAT STILL COVERS THE BEACON. This site's own fetch is
+           /api/live.json, to itself; Cloudflare's documentation puts beacon data at
+           `https://<yourdomain>/cdn-cgi/rum` for a proxied site, which is also this origin. A
+           second named host here would be a hole punched for a request nobody makes. */
         "connect-src 'self'",
         "form-action 'self'",
         "base-uri 'self'",

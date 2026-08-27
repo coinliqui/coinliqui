@@ -559,6 +559,11 @@ const schema = {
         color: var(--text);
       }
       .callout a, .callout .link { color: var(--accent); }
+      /* THE EXPLANATION COLUMN OF A TWO-COLUMN TABLE — a claim on the left, why you can
+         believe it on the right. It existed five times, byte-identical, in about.astro,
+         unlocks.astro, status.astro, liquidations/survival.astro and tools/index.astro, and a
+         sixth page needing it is what surfaced that. One definition, six users. */
+      .reason { color: var(--text-dim); white-space: normal; }
       .prose { max-width: 72ch; color: var(--text-dim); }
       .prose strong { color: var(--text); font-weight: 600; }
       .prose a, .link { color: var(--accent); }

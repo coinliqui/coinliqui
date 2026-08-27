@@ -367,10 +367,18 @@ console.log("\n5. sitemap");
  * and running it, and widening the allowlist makes it more dangerous rather than less —
  * scripts/blind-cases.mjs keeps the cases.
  */
-/* EMPTY, AND THAT IS THE ASSERTION. Not "no hosts have been added yet" — no host is permitted
-   to serve a script to this site. Adding one here is a deliberate act that has to survive the
-   question GA4 failed: what decision gets made with what it returns. */
-const SCRIPT_HOSTS = [];
+/* ONE HOST, AND THAT IS THE ASSERTION — not "some hosts are fine". This list is the site's
+   record of every off-origin script it chose, and it is compared against the live header in
+   BOTH directions: a host in the header and not here fails as "permits a host nobody chose",
+   and a host here and not in the header fails as "missing an allowlisted host". So this line
+   cannot drift from production in either direction without the gate saying which way.
+
+   static.cloudflareinsights.com added 27 August 2026 at the operator's decision, after the
+   measurement that the beacon was being injected into every page, blocked by our own policy,
+   and recording nothing — 0 pageloads in 31 days against a live tag. It survives the question
+   GA4 failed: what it returns is whether anyone reads the site at all, which Search Console
+   cannot answer because it counts only clicks that came from Google. */
+const SCRIPT_HOSTS = ["static.cloudflareinsights.com"];
 const REQUIRED_CSP = [
   ["object-src", "'none'"], ["base-uri", "'self'"], ["frame-ancestors", "'none'"],
   ["form-action", "'self'"], ["default-src", "'self'"],
@@ -437,7 +445,15 @@ for (const p of ["/", "/funding/btc"]) {
     : !/'self'/.test(scriptSrc) ? bad(`${p} script-src no longer allows 'self': "${scriptSrc}"`)
     : !named ? bad(`${p} script-src is missing an allowlisted host: "${scriptSrc}"`)
     : strayHosts.length ? bad(`${p} script-src permits a host nobody chose: ${strayHosts.join(", ")}`)
-    : ok(`${p} script-src permits no off-origin host at all — ${cspHosts.length} named, parsed as hostnames rather than matched as substrings`);
+    /* THE MESSAGE USED TO SAY "permits no off-origin host at all" UNCONDITIONALLY, computed
+       from a branch that had just proved the header names exactly the allowlist. With an empty
+       allowlist the two happened to coincide; with one host on it the sentence would have been
+       false on every green run. A label that asserts a fact the expression does not compute is
+       the class this project keeps finding, and it would have been shipped here by leaving a
+       correct check with a stale sentence attached. */
+    : ok(cspHosts.length
+        ? `${p} script-src names exactly the ${cspHosts.length} chosen host(s): ${cspHosts.join(", ")} — parsed as hostnames rather than matched as substrings`
+        : `${p} script-src permits no off-origin host at all — parsed as hostnames rather than matched as substrings`);
 
   const missing = REQUIRED_CSP.filter(([k, v]) => dir(k) !== v);
   missing.length
