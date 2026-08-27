@@ -928,7 +928,24 @@ const schema = {
 
       /* --- mobile: same anchors, re-laid-out. Never a second DOM copy. --- */
       .navtoggle, .nav__scrim { display: none; }
-      @media (max-width: 900px) {
+            /* THE TICKER CHIPS, PROMOTED OUT OF /funding/{symbol} ON 27 AUGUST 2026.
+         Two consumers now — the contract pages and the liquidation maps — which is the same
+         threshold that moved .callout and .reason here. And it repairs something that was
+         already wrong: the mobile rule below, which raises these to a 44px tap target, has
+         always lived in this GLOBAL stylesheet while the pill itself was scoped to one page.
+         So on any page but that one, a .chip-link got the mobile padding and none of the
+         look. Nothing rendered a chip elsewhere, so nothing showed it — the defect was
+         waiting for the second consumer rather than absent. */
+      .related { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; }
+      .chip-link {
+        display: inline-block; padding: var(--gap-pair) var(--gap-cluster); border-radius: var(--r-pill);
+        background: var(--surface-2); border: 1px solid var(--border-soft);
+        text-decoration: none; font-size: 13px; font-weight: 500;
+        transition: background .14s var(--ease), color .14s var(--ease);
+      }
+      .chip-link:hover { background: var(--surface-3); color: var(--accent); }
+
+@media (max-width: 900px) {
         .app, .is-collapsed .app { grid-template-columns: minmax(0,1fr); }
         .topbar { padding: 0 16px; }
         .page { margin: 0 12px 12px; padding: 16px 16px 24px; min-height: 0; }

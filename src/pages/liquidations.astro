@@ -89,7 +89,7 @@ const description = mapDescription(perp.symbol);
 ---
 
 <Base title={title} description={description} fetchedAt={snap.fetchedAt}>
-  <LiqMap perp={perp} table={table} snap={snap} params={q} />
+  <LiqMap perp={perp} table={table} snap={snap} params={q} siblings={false} />
 
   <h2 class="section">A map for every covered contract</h2>
   {/* THE COUNT AND THE TABLE ARE ONE ARRAY, and for one morning they were two. This note said

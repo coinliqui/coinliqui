@@ -550,14 +550,7 @@ const description = `What a ${p.symbol} perpetual costs to hold, against ${usd(p
     .src { margin-top: 12px; }
     .src summary { font-size: var(--fs-sm); color: var(--text-dim); cursor: pointer; padding: 8px 0; }
     .src summary:hover { color: var(--text); }
-    .related { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; }
-    .chip-link {
-      display: inline-block; padding: var(--gap-pair) var(--gap-cluster); border-radius: var(--r-pill);
-      background: var(--surface-2); border: 1px solid var(--border-soft);
-      text-decoration: none; font-size: 13px; font-weight: 500;
-      transition: background .14s var(--ease), color .14s var(--ease);
-    }
-    .chip-link:hover { background: var(--surface-3); color: var(--accent); }
+    /* .related and .chip-link moved to the layout stylesheet — two consumers now. */
     @media (max-width: 700px) { .hero__meta { gap: var(--gap-cluster) 20px; } }
   </style>
 </Base>

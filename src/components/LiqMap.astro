@@ -30,6 +30,8 @@ import { paintHeatMap } from "../lib/heatmap.ts";
 import { RAMP, CH, INK, MONO, FS_AXIS, compact, niceTicks } from "../lib/chart.ts";
 import { aggregate, shortDate } from "../lib/series.ts";
 import type { Perp, Snapshot } from "../lib/hyperliquid.ts";
+import { liqMapHref } from "../lib/routes.ts";
+import tables from "../data/margin-tables.json";
 
 import Advisory from "./Advisory.astro";
 import { priceDp, axisDp as axisDpOf } from "../lib/funding.ts";
@@ -47,9 +49,48 @@ interface Props {
      position in a hierarchy that the page does not show. Absent on /liquidations, which is
      the top of its own section and has nothing to point up at. */
   crumb?: { href: string; label: string; current: string };
+  /* THE CHIP STRIP IS FOR THE PER-CONTRACT PAGES AND OFF ON THE HUB. /liquidations already
+     carries the full index table — every contract, with its mark, open interest, cap and
+     corridor — so fifty chips underneath it would be fifty second links to fifty URLs the
+     page has already linked, adding no reachability and a wall of noise. The strip earns its
+     place on the per-symbol pages, where it is the only path to a sibling. */
+  siblings?: boolean;
 }
-const { perp, table, snap, params: q, crumb } = Astro.props;
+const { perp, table, snap, params: q, crumb, siblings = true } = Astro.props;
 const env = (Astro.locals as any)?.runtime?.env;
+
+/* =========================================================================================
+   EVERY OTHER CONTRACT'S MAP, AS CHIPS, AND THE MEASUREMENT BEHIND IT.
+
+   Internal link graph of the live site, 133 URLs, contextual links inside <main> only:
+
+       /funding/{symbol}      n=51   median 53 inbound
+       /coins/{coin}          n=11   median 11
+       /liquidations/{symbol} n=52   median  2      <- this template, shipped that morning
+       /tools/{tool}          n= 5   median  3
+
+   Two. One from the hub, one from the contract's own funding page. Meanwhile this site has
+   already run the experiment and written the result down — see the note above the same chip
+   strip in src/pages/funding/[symbol].astro, measured 24 August 2026:
+
+       indexed contract pages     (39)   median 50 inbound
+       NOT indexed                (10)   median  3
+       eight of the ten Google has not indexed sit at 2-4 inbound links
+
+   Every one of the forty-nine new map pages sat at 2, which is inside that band. Links are
+   not sufficient — /funding/zro and /funding/vvv carry 50 apiece and are still queued — but
+   it is the one lever here that is cheap, safe, and pointed at exactly the pages that need
+   it. This takes the template from 2 inbound to about 50, and from 21 outbound internal
+   links to about 69, which is the same shape as the template that outperforms it tenfold.
+
+   FILTERED BY TIER TABLE, like the index on /liquidations. A contract with no committed
+   margin table has no maintenance margin, no corridor and no liquidation price, so its map
+   answers 404 — and a chip strip is exactly where fifty links to a 404 would go unnoticed.
+   ========================================================================================= */
+const TABLES = tables as Record<string, unknown>;
+const mapSiblings = snap.perps.filter(
+  (x) => x.symbol !== perp.symbol && Object.prototype.hasOwnProperty.call(TABLES, String(x.marginTableId)),
+);
 const tiers = [...table.marginTiers].sort((a, b) => a.lowerBound - b.lowerBound);
 const tier1 = tiers[0];
 const mark = perp.markPx;
@@ -480,6 +521,23 @@ const gridPrices = niceTicks(yMin, yMax, 5);
     it understates by an unknown factor, worst exactly when the number is most quoted.
     <a class="link" href="/methodology/liquidations">The full reasoning →</a>
   </p>
+
+  {siblings && mapSiblings.length > 0 && (
+    <>
+      <h2 class="section">Other coins</h2>
+      <p class="section-note">
+        The same model, the same window, every other covered contract. {perp.symbol} is the one
+        drawn above.
+      </p>
+      <p class="related">
+        {mapSiblings.map((x) => (
+          <a class="chip-link" href={liqMapHref(x.symbol)}>{x.symbol}</a>
+        ))}
+        <a class="chip-link" href="/liquidations">All {mapSiblings.length + 1} →</a>
+        <a class="chip-link" href={`/funding/${perp.symbol.toLowerCase()}`}>{perp.symbol} funding →</a>
+      </p>
+    </>
+  )}
 
   <p style="margin-top:24px">
     <a class="link" href="/liquidations/sweep">The 5 February sweep, on real candles →</a>
