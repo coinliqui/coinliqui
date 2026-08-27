@@ -33,11 +33,25 @@ import { readFileSync } from "node:fs";
 /* A HOST THAT IS NOT ALLOWED IN PRODUCTION, on purpose. The matcher does not care which name
    it is given, and using the retired GA host would read as though it were still permitted. */
 const ALLOWED="cdn.example-allowed.test";
+/* A SECOND SYNTHETIC ALLOWED HOST, added 27 August 2026 when production gained one. Google
+   Analytics 4 was restored alongside the Cloudflare beacon, so script-src now names TWO hosts,
+   and until this line every positive case in this file had exactly one. The comment further
+   down already warns about that shape — "an assertion suite whose positive cases all sit on one
+   side of the decision it guards is testing the other side only" — and one-host-only was the
+   same blind spot one notch along: a predicate that accidentally accepted only the FIRST host
+   would have passed every case here and rejected production. */
+const ALLOWED2="cdn.example-second.test";
+const CHOSEN=[ALLOWED, ALLOWED2];
 const cases=[
   ["the allowlisted host itself",        "https://cdn.example-allowed.test/x.js",                    true],
   ["lookalike host, prefix collision",   "https://cdn.example-allowed.test.evil.tld/x.js",           false],
   ["subdomain of the allowed host",      "https://evil.cdn.example-allowed.test/x.js",               false],
-  ["the retired GA loader",              "https://www.googletagmanager.com/gtag/js?id=G-XXXXXXXXXX", false],
+  /* A REAL ANALYTICS LOADER THAT IS NOT ON THIS FIXTURE'S LIST. Both of these hosts are
+     permitted in production as of 27 August 2026; here they are neither, and that is the
+     point — the predicate must reject on the list it was given, not on a host it recognises.
+     The label used to read "the retired GA loader", which stopped being true the day GA came
+     back and would have been read as "this host is forbidden" by whoever edited next. */
+  ["a real loader, absent from this list", "https://www.googletagmanager.com/gtag/js?id=G-XXXXXXXXXX", false],
   ["the cloudflare beacon",              "https://static.cloudflareinsights.com/beacon.min.js/v123", false],
   ["unrelated third party",              "https://cdn.example.net/tracker.js",                       false],
 ];
@@ -57,8 +71,14 @@ for(const [name,url,shouldPass] of cases){
    agree before a new off-origin script can pass the gate. It is no longer empty — the
    Cloudflare Web Analytics beacon was allowed on 27 August 2026 — so the assertion names what
    it expects instead of asserting nothing is there. Anything else appearing in verify-live,
-   including a lookalike of this host, still fails here. */
-const EXPECTED_SCRIPT_HOSTS = ["static.cloudflareinsights.com"];
+   including a lookalike of these hosts, still fails here.
+
+   www.googletagmanager.com joined the list on the same day, when the owner asked for Google
+   Analytics 4 back. It is the wider of the two by a distance: that host serves any GTM
+   container to anyone who asks for one, so what the CSP permits is the host and not our tag.
+   Written here as a second deliberate edit precisely because it is the kind of widening that
+   should cost somebody a decision rather than a diff. */
+const EXPECTED_SCRIPT_HOSTS = ["static.cloudflareinsights.com", "www.googletagmanager.com"];
 {
   const src = readFileSync(new URL("./verify-live.mjs", import.meta.url), "utf8");
   const m = src.match(/const SCRIPT_HOSTS = \[([^\]]*)\]/);
@@ -97,7 +117,10 @@ const csps=[
      block tests the PREDICATE; which host is really permitted is asserted against verify-live
      a few lines above, where it can be compared with the live header. */
   ["self plus the one allowed host", "'self' 'unsafe-inline' https://cdn.example-allowed.test", true],
-  ["self plus the retired GA host", "'self' 'unsafe-inline' https://www.googletagmanager.com", false],
+  /* TWO chosen hosts, which is production's shape since GA4 was restored on 27 August 2026. */
+  ["self plus both allowed hosts", "'self' 'unsafe-inline' https://cdn.example-allowed.test https://cdn.example-second.test", true],
+  ["one allowed host and one nobody chose", "'self' 'unsafe-inline' https://cdn.example-allowed.test https://www.googletagmanager.com", false],
+  ["a host nobody chose, alone", "'self' 'unsafe-inline' https://www.googletagmanager.com", false],
   ["wildcard",                 "'self' *",                                        false],
   ["scheme allowed",           "'self' https:",                                   false],
   ["scheme buried mid-list",   "'self' https://www.googletagmanager.com https:",  false],
@@ -117,7 +140,7 @@ for(const [name,val,shouldPass] of csps){
   }).filter(Boolean);
   const sound = /'self'/.test(val)
     && !/(^|\s)(\*|https?:)(\s|$)/.test(val)
-    && hosts.every((h) => h === ALLOWED);
+    && hosts.every((h) => CHOSEN.includes(h));
   const correct = sound === shouldPass;
   if(!correct) bad++;
   console.log(`  ${correct?"ok  ":"BLIND"}  ${sound?"SOUND ":"REJECT"}  script-src ${val}`);

@@ -254,6 +254,46 @@ console.log("\n4. www");
   r.status === 200 ? ok("apex 200") : bad(`apex ${r.status}`);
 }
 
+/**
+ * EVERY READER-SIDE COUNTER THIS SITE RUNS, AND BOTH HALVES OF EACH ONE.
+ *
+ * A counter counts nothing unless the tag is IN the document and the CSP that document ships
+ * PERMITS the host it names. Between 19 and 27 August 2026 the first held for the Cloudflare
+ * beacon and the second did not: the tag was injected into every page, our own policy blocked
+ * it, and the account recorded zero pageloads for eight days while every surface stayed green.
+ * That is why this returns a list of what is missing rather than a boolean.
+ *
+ * ONE FUNCTION FOR BOTH CALL SITES. Section 5 walks every URL in the sitemaps; section 7 walks
+ * the documents no sitemap lists — /watchlist, /status, the 404 and 410 branches. Those two
+ * had separate copies of the same regex pair, which is how one of them would eventually learn
+ * about a new counter and the other would not.
+ *
+ * GA4 IS MATCHED ON ITS LOADER URL AND A MEASUREMENT ID, not on gtag.js having executed. The
+ * loader is deferred behind idle-or-interaction, so at fetch time the only thing in the
+ * document is the inline bootstrap that queues the config call and builds that URL — which is
+ * exactly what must be present for the hit to fire later.
+ */
+const COUNTERS = [
+  {
+    name: "cloudflare beacon",
+    tag: /<script[^>]+src="https:\/\/static\.cloudflareinsights\.com\/beacon\.min\.js/,
+    host: /script-src[^;]*\bstatic\.cloudflareinsights\.com\b/,
+  },
+  {
+    name: "google analytics",
+    tag: /googletagmanager\.com\/gtag\/js\?id=/,
+    id: /\bG-[A-Z0-9]{6,15}\b/,
+    host: /script-src[^;]*\bwww\.googletagmanager\.com\b/,
+  },
+];
+const analyticsGaps = (body, csp) =>
+  COUNTERS.flatMap((c) =>
+    !c.tag.test(body) ? [`no ${c.name} tag`]
+      : c.id && !c.id.test(body) ? [`${c.name} tag carries no measurement ID`]
+      : !c.host.test(csp) ? [`${c.name} blocked by this page's own CSP`]
+      : []);
+
+
 /* 5. Every URL we asked Google to index must resolve, as a crawler, with numbers in it. */
 console.log("\n5. sitemap");
 {
@@ -284,7 +324,7 @@ console.log("\n5. sitemap");
      page counting nothing: the tag must be PRESENT in the document, and the CSP that document
      ships must PERMIT the host it names. Between 19 and 27 August the first held and the second
      did not, and the site recorded zero pageloads for eight days. */
-  let noBeacon = [], beaconBlocked = [], beaconOk = 0;
+  let noBeacon = [], beaconOk = 0;
   for (const u of urls) {
     const r = await fetchAs(pathOf(u) || "/", "GPTBot/1.1");
     if (r.status !== 200) broken.push(`${u} ${r.status}`);
@@ -331,10 +371,9 @@ console.log("\n5. sitemap");
        space, silently, for an hour — is still caught: that page had NEITHER a panel NOR the
        empty state. Requiring one of the two keeps the alarm and drops the false one. */
     if (r.status === 200 && isDocument(r.body)) {
-      const tag = /<script[^>]+src="https:\/\/static\.cloudflareinsights\.com\/beacon\.min\.js/.test(r.body);
-      const permitted = /script-src[^;]*\bstatic\.cloudflareinsights\.com\b/.test(r.headers.get("content-security-policy") ?? "");
-      if (!tag) noBeacon.push(u);
-      else if (!permitted) beaconBlocked.push(u);
+      const csp = r.headers.get("content-security-policy") ?? "";
+      const miss = analyticsGaps(r.body, csp);
+      if (miss.length) noBeacon.push(`${u} (${miss.join(", ")})`);
       else beaconOk++;
     }
     if (
@@ -350,9 +389,8 @@ console.log("\n5. sitemap");
   cut.length ? bad(`TRUNCATED — 200 with no </html>, the render threw mid-stream: ${cut.join(", ")}`)
              : ok(`every one of the ${urls.length} sitemap URLs answered 200 with a complete HTML document — no empty bodies, no truncation, not a sample`);
   hollow.length ? bad(`contract page with no chart panel: ${hollow.join(", ")}`) : ok("every contract page renders a chart, or says why it cannot yet");
-  noBeacon.length ? bad(`page(s) carrying no analytics beacon at all — nothing counts a reader on them: ${noBeacon.join(", ")}`)
-    : beaconBlocked.length ? bad(`page(s) carrying the beacon behind a CSP that forbids its host — the tag is shipped and cannot run: ${beaconBlocked.join(", ")}`)
-    : ok(`analytics runs on all ${beaconOk} published pages — tag present AND permitted by that page's own CSP, checked per page rather than assumed from one`);
+  noBeacon.length ? bad(`page(s) where a counter is missing or cannot run: ${noBeacon.join("; ")}`)
+    : ok(`both counters run on all ${beaconOk} published pages — each tag present AND permitted by that page's own CSP, checked per page rather than assumed from one`);
 
   /* Withdrawn URLs must stay withdrawn. A 410 that silently becomes a 200 or a 301 puts a
      commodity page back into the index, which is the whole thing the removal was for. */
@@ -379,11 +417,12 @@ console.log("\n5. sitemap");
  * against an origin NOBODY CHOSE: a compromised dependency, an injected tag, a rewriting
  * proxy. So:
  *
- *   - every off-origin script must be on the allowlist below, BY HOSTNAME. The list is empty,
- *     so any off-origin script that is PERMITTED TO RUN is a failure.
+ *   - every off-origin script must be on the allowlist below, BY HOSTNAME, and the comparison
+ *     runs in both directions: a host in the header and not on the list fails as "permits a
+ *     host nobody chose", a host on the list and not in the header fails as "missing an
+ *     allowlisted host".
  *   - script-src must never contain a scheme or a wildcard. `https:` or `*` permits the
- *     entire internet while reading like a policy. With an empty allowlist it must also name
- *     no host at all.
+ *     entire internet while reading like a policy.
  *   - the directives that do the anti-injection work must all still be present. Relaxing
  *     script-src for analytics was a decision; quietly losing object-src 'none' is not.
  *
@@ -403,7 +442,18 @@ console.log("\n5. sitemap");
    and recording nothing — 0 pageloads in 31 days against a live tag. It survives the question
    GA4 failed: what it returns is whether anyone reads the site at all, which Search Console
    cannot answer because it counts only clicks that came from Google. */
-const SCRIPT_HOSTS = ["static.cloudflareinsights.com"];
+/* www.googletagmanager.com added 27 August 2026 on the operator's instruction, restoring the
+   GA4 property that ran 17-19 August. The record of why it was removed then is still in
+   /privacy and in src/lib/site.ts, and none of it turned out to be wrong — it is expensive and
+   it was unused. What changed is the question: neither the Cloudflare beacon nor Search
+   Console can say which page a reader went to next, and that is the number that decides which
+   of the fifty contract pages is worth writing more about.
+
+   NAMING THIS HOST PERMITS EVERY GTM CONTAINER, not ours. www.googletagmanager.com serves any
+   container to anyone who asks for one; CSP has no notion of whose tag it is. That is a real
+   widening and it is written here rather than implied, because the list below reads like a
+   list of tags and is in fact a list of hosts. */
+const SCRIPT_HOSTS = ["static.cloudflareinsights.com", "www.googletagmanager.com"];
 const REQUIRED_CSP = [
   ["object-src", "'none'"], ["base-uri", "'self'"], ["frame-ancestors", "'none'"],
   ["form-action", "'self'"], ["default-src", "'self'"],
@@ -517,14 +567,12 @@ for (const p of ["/", "/funding/btc", "/coins/bitcoin", "/watchlist", "/404",
   rendersToEnd(r.body)
     ? ok(`${p.padEnd(20)} ${String(r.status)} complete, ${r.body.length}b`)
     : bad(`${p} TRUNCATED — ${r.status} with ${r.body.length}b and no </html>; the render threw mid-stream`);
-  const tag = /<script[^>]+src="https:\/\/static\.cloudflareinsights\.com\/beacon\.min\.js/.test(r.body);
-  const permitted = /script-src[^;]*\bstatic\.cloudflareinsights\.com\b/.test(r.headers.get("content-security-policy") ?? "");
-  if (!tag) extraBeaconGaps.push(`${p} carries no beacon`);
-  else if (!permitted) extraBeaconGaps.push(`${p} carries the beacon behind a CSP that forbids it`);
+  const miss = analyticsGaps(r.body, r.headers.get("content-security-policy") ?? "");
+  if (miss.length) extraBeaconGaps.push(`${p}: ${miss.join(", ")}`);
 }
 extraBeaconGaps.length
   ? bad(`unlisted document(s) counting no reader: ${extraBeaconGaps.join("; ")}`)
-  : ok("the documents no sitemap lists — watchlist, status, the 404 and 410 branches — carry analytics too");
+  : ok("the documents no sitemap lists — watchlist, status, the 404 and 410 branches — carry both counters too");
 
 /* 8. "NEXT SETTLEMENT" MUST BE IN THE FUTURE, on every contract page.
  *

@@ -1,5 +1,5 @@
 ---
-import { SITE, NAV, FOOTER_LINKS, IDENTITY, origin } from "../lib/site.ts";
+import { SITE, NAV, FOOTER_LINKS, IDENTITY, origin, GA_MEASUREMENT_ID, GA_ENABLED, GA_DEFER, GA_CONFIG } from "../lib/site.ts";
 import { ageWords } from "../lib/freshness.ts";
 import { codeStamp } from "../lib/sitemap.ts";
 import { publishedSameAs } from "../lib/corroboration.ts";
@@ -1007,6 +1007,71 @@ const schema = {
         .calc .btn, .calc button { width: 100%; }
       }
     </style>
+
+    {/* =====================================================================================
+        GOOGLE ANALYTICS 4 — ON EVERY PAGE, BECAUSE IT IS IN THE LAYOUT.
+
+        WHY IT LIVES HERE AND NOWHERE ELSE. Every page on this site renders through Base, so a
+        tag in this file is a tag on every page that exists and on every page anybody adds
+        later. The alternative — remembering to include it — is the failure mode the analytics
+        gate in scripts/verify-live.mjs already exists to catch, and it catches it by walking
+        every URL in the sitemaps rather than by trusting this comment.
+
+        RENDERS ONLY WITH A WELL-FORMED MEASUREMENT ID. With no ID there is no tag, no request
+        and no cookie: the "off" state is genuinely off rather than a broken tag pointing at
+        nothing.
+
+        DELIBERATELY NO `preconnect` to googletagmanager.com. A preconnect opens a DNS+TLS
+        connection during the window the page is racing to paint its largest text block, which
+        is the one thing on this site that must not get slower. The loader is deferred anyway,
+        so a warmed connection would be warmed for a request that is not coming yet.
+
+        THE CONFIG CALL CARRIES GA_CONFIG, which turns off Google signals and ad
+        personalisation. See src/lib/site.ts for why those three switches, and for what that
+        does and does not settle about consent.
+        ===================================================================================== */}
+    {GA_ENABLED && !GA_DEFER && (
+      <script async is:inline src={`https://www.googletagmanager.com/gtag/js?id=${GA_MEASUREMENT_ID}`}></script>
+    )}
+    {GA_ENABLED && (
+      <script is:inline define:vars={{ GA_ID: GA_MEASUREMENT_ID, DEFER: GA_DEFER, CFG: GA_CONFIG }}>
+        window.dataLayer = window.dataLayer || [];
+        function gtag() { window.dataLayer.push(arguments); }
+        gtag("js", new Date());
+        gtag("config", GA_ID, CFG);
+
+        /* The queue above is safe to fill before gtag.js exists — that is what dataLayer is
+           for — so deferring the LOADER changes when the hit is sent, not whether it is. */
+        if (DEFER) {
+          var armed = false;
+          var events = ["pointerdown", "keydown", "scroll", "touchstart"];
+          function load() {
+            if (armed) return;
+            armed = true;
+            for (var i = 0; i < events.length; i++) {
+              window.removeEventListener(events[i], load, { passive: true });
+            }
+            var s = document.createElement("script");
+            s.async = true;
+            s.src = "https://www.googletagmanager.com/gtag/js?id=" + GA_ID;
+            document.head.appendChild(s);
+          }
+          for (var j = 0; j < events.length; j++) {
+            window.addEventListener(events[j], load, { passive: true, once: true });
+          }
+          /* After load, not after parse: the point is to be behind everything the page needs
+             to become useful. requestIdleCallback where it exists, a timeout where it does
+             not (Safari), and a 3s backstop so a perfectly still reader is still counted. */
+          function schedule() {
+            if (window.requestIdleCallback) window.requestIdleCallback(load, { timeout: 3000 });
+            else setTimeout(load, 1200);
+            setTimeout(load, 3000);
+          }
+          if (document.readyState === "complete") schedule();
+          else window.addEventListener("load", schedule, { once: true });
+        }
+      </script>
+    )}
   </head>
   <body>
     <div class="app">

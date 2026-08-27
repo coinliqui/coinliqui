@@ -131,13 +131,22 @@ export const onRequest = defineMiddleware(async (ctx, next) => {
      whose central claim is that it cannot take a payment should say so to the browser too. */
   res.headers.set("permissions-policy", "camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()");
 
-  /* THE CSP, WITH EXACTLY ONE NAMED HOST: static.cloudflareinsights.com.
+  /* THE CSP, WITH TWO NAMED SCRIPT HOSTS: static.cloudflareinsights.com and
+   * www.googletagmanager.com.
    *
-   * THIS SECTION HAS NOW BEEN REWRITTEN THREE TIMES AND THE HISTORY IS THE USEFUL PART. It
+   * THIS SECTION HAS NOW BEEN REWRITTEN FOUR TIMES AND THE HISTORY IS THE USEFUL PART. It
    * began as `script-src 'self'` and nothing else, to make "no third-party scripts" true by
    * force. It was relaxed to run Google Analytics 4 — one named host plus wildcards on three
    * Google domains across img-src and connect-src. GA4 was removed and it went back to 'self'.
-   * It is now relaxed again, by one host, for the Cloudflare Web Analytics beacon.
+   * It was relaxed again, by one host, for the Cloudflare Web Analytics beacon. And on
+   * 27 August 2026 the operator asked for GA4 back, so the Google entries are back with it.
+   *
+   * WHAT THE TWO COUNTERS ANSWER, because running both is otherwise just two tags. Cloudflare
+   * Web Analytics answers "did anybody load a page", cheaply and without a cookie, and stops
+   * there. Search Console answers "who clicked from Google" and nothing about what happened
+   * next. GA4 is here for the question neither can answer: which page a reader went to after
+   * the one they landed on, and which of the fifty contract pages is worth writing more about.
+   * If that stops being the reason, this is the paragraph to reread before keeping it.
    *
    * WHY THE PREVIOUS VERSION OF THIS COMMENT WAS WRONG ABOUT THE STATE OF THE WORLD. It said
    * "the tag itself is being turned off at the dashboard so the page stops carrying an inert
@@ -187,15 +196,25 @@ export const onRequest = defineMiddleware(async (ctx, next) => {
            and nothing else — not a direct visit, not a link followed, not which page was read.
            Every client-side counter this site has had was off, and the number the operator was
            looking at was zero because nothing was counting. */
-        "script-src 'self' 'unsafe-inline' https://static.cloudflareinsights.com",
+        /* TWO NAMED HOSTS SERVE SCRIPTS HERE, and the second one is back by decision rather
+           than by drift. www.googletagmanager.com will serve any GTM container to anyone who
+           asks for one, so naming it does not permit "our tag" — CSP has no notion of whose
+           tag it is. It permits that host. The narrower alternative is a hash or a nonce per
+           inline block, which is the same work 'unsafe-inline' above is still owed. */
+        "script-src 'self' 'unsafe-inline' https://static.cloudflareinsights.com https://www.googletagmanager.com",
         "style-src 'self' 'unsafe-inline'",
-        "img-src 'self' data:",
+        /* GA4 falls back to a pixel where fetch/beacon is unavailable, so the image hosts are
+           the same two families the connect hosts are. */
+        "img-src 'self' data: https://www.google-analytics.com https://*.google-analytics.com",
         "font-src 'self'",
-        /* SAME ORIGIN ONLY, AND THAT STILL COVERS THE BEACON. This site's own fetch is
-           /api/live.json, to itself; Cloudflare's documentation puts beacon data at
-           `https://<yourdomain>/cdn-cgi/rum` for a proxied site, which is also this origin. A
-           second named host here would be a hole punched for a request nobody makes. */
-        "connect-src 'self'",
+        /* THE CLOUDFLARE BEACON STILL NEEDS NOTHING HERE. Its data goes to
+           `https://<yourdomain>/cdn-cgi/rum` for a proxied site, which is this origin, so
+           'self' already covers it and naming cloudflareinsights.com would be a hole punched
+           for a request nobody makes. The Google entries are for GA4, which does post
+           off-origin: region1.google-analytics.com and analytics.google.com among others,
+           which is why these are host wildcards rather than three named hosts that would fail
+           the first time Google added a region. */
+        "connect-src 'self' https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com",
         "form-action 'self'",
         "base-uri 'self'",
         "frame-ancestors 'none'",

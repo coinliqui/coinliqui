@@ -176,6 +176,81 @@ export const IDENTITY = {
    removed with it, and a half-restored tag is the failure mode worth avoiding. */
 
 
+/**
+ * GOOGLE ANALYTICS 4, RESTORED 27 AUGUST 2026 ON THE OPERATOR'S INSTRUCTION.
+ *
+ * IT WAS HERE BEFORE, 17–19 AUGUST, AND WAS REMOVED. The reasons are still on the record and
+ * still true: it cost 167.8 KB of JavaScript on a homepage of about 6.5 KB, and no decision
+ * about this site had ever been made from a GA4 number. What has changed is the question being
+ * asked. Since then Cloudflare Web Analytics went on, and it answers "did anybody load a page"
+ * and very little else; Search Console answers only "who clicked from Google". Neither answers
+ * which page a reader went to next, how long they stayed, or which of the fifty contract pages
+ * is worth writing more about. That is what this is for.
+ *
+ * WHAT THE MEASUREMENT ID IS. Public by design: it ships in the HTML of every page and
+ * identifies a property, not an account. Not a credential, and it does not belong in a secret
+ * store. This is the same property that ran in August, so its history is intact rather than
+ * starting from zero.
+ *
+ * GA_ENABLED is a SHAPE check, not a truthiness check, so a placeholder left in by accident
+ * cannot emit a live tag pointing at nothing. Deliberately loose about length — real IDs are
+ * G- plus ten characters, but a regex tightened to exactly ten would silently disable analytics
+ * if Google ever issues another width, and "silently off" is the worst failure this value has.
+ */
+export const GA_MEASUREMENT_ID = "G-5Y4ZENWMQJ";
+export const GA_ENABLED = /^G-[A-Z0-9]{6,15}$/.test(GA_MEASUREMENT_ID);
+
+/**
+ * LOAD gtag.js AFTER THE PAGE HAS SETTLED, rather than in parallel with it. Measured on
+ * /funding/btc against the local warm build in August, GA off then on:
+ *
+ *                       GA off      GA on
+ *   long tasks          none        119 ms + 66 ms
+ *   total blocking      0 ms        85 ms
+ *   load event          133 ms      668 ms
+ *   off-origin hosts    0           2
+ *   transfer            —           +145.8 KB brotli (the whole page is 69 KB)
+ *   JS to parse         ~0          +419 KB decoded
+ *
+ * This site ships almost no JavaScript, so gtag.js is not an increment on the main thread — it
+ * IS the main-thread work. Those numbers are the reason the tag is deferred rather than the
+ * reason it is absent: deferring the LOADER changes when the hit is sent, not whether it is,
+ * because dataLayer queues the config call until gtag.js arrives.
+ *
+ * THE TRIGGER IS WHICHEVER COMES FIRST of: the browser going idle after load, the first real
+ * interaction (scroll, tap, key or pointer), or a 3-second backstop. What is genuinely lost is
+ * the visitor who leaves before any of the three, which is the shortest and least informative
+ * session there is.
+ *
+ * Set to false for Google's stock async-in-head behaviour. The numbers above are the argument
+ * for the default; if they change, change the default.
+ */
+export const GA_DEFER = true;
+
+/**
+ * THE THREE SWITCHES THAT DECIDE WHETHER THIS TAG NEEDS A CONSENT BANNER, AND THEY ARE OFF.
+ *
+ * GA4's advertising features — Google signals, ad personalisation, and the identifiers that
+ * feed them — are the part of GA4 that most clearly cannot run on a European reader without
+ * asked-for consent. They are also the part this site has no use for: nothing here is sold,
+ * nothing is remarketed, and there is no ad account attached to the property.
+ *
+ * Turning them off does not make GA4 cookieless — it still writes _ga and _ga_<id>, and
+ * /privacy names both — but it removes the advertising dimension from what is collected, and
+ * that is a claim the privacy page can make honestly rather than a hope.
+ *
+ * WHAT THIS DOES NOT SETTLE: whether analytics cookies alone need consent where the reader
+ * lives. They do under a strict reading of the ePrivacy Directive, and this site currently
+ * shows no banner. That is an open decision for the operator, recorded here rather than
+ * quietly assumed away — see the Analytics section of /privacy, which states the position
+ * plainly instead of implying the question does not exist.
+ */
+export const GA_CONFIG = {
+  anonymize_ip: true,
+  allow_google_signals: false,
+  allow_ad_personalization_signals: false,
+} as const;
+
 /** Namespace for anything this site writes to a visitor's own browser. One constant, so
  *  /privacy can document the exact key rather than a copy of it that drifts. */
 export const STORE_NS = "coinliqui";

@@ -1,7 +1,7 @@
 ---
 import Base from "../layouts/Base.astro";
 import Related from "../components/Related.astro";
-import { PINNED_KEY, IDENTITY } from "../lib/site.ts";
+import { PINNED_KEY, IDENTITY, GA_MEASUREMENT_ID } from "../lib/site.ts";
 
 /**
  * AN ORDINARY PRIVACY POLICY. Deliberately short, deliberately unremarkable.
@@ -10,8 +10,15 @@ import { PINNED_KEY, IDENTITY } from "../lib/site.ts";
  * it is. The first version was an argument: "no analytics, no third-party scripts, no
  * off-origin requests", plus three paragraphs on a Cloudflare beacon. Then the site ran Google
  * Analytics 4 and those sentences became false, so the page was rewritten as a compliance
- * document. GA4 is now gone — see the note where its constants used to live in site.ts — and
- * the GA-shaped half of that rewrite is false in turn.
+ * document. GA4 was then removed and the GA-shaped half of that rewrite became false in turn,
+ * so it was rewritten again — into a paragraph saying GA "is gone and is not coming back".
+ * On 27 August 2026 the owner asked for it back, and that sentence became the fourth false
+ * thing this page has said about analytics.
+ *
+ * IT IS REPLACED IN THE OPEN RATHER THAN DELETED. The published text now says what the page
+ * used to promise and that the promise was withdrawn, because a privacy page that revises its
+ * commitments silently is worth less than one that never made them — a reader who read the old
+ * sentence and came back has no other way to find out.
  *
  * The lesson is not "be vague". It is that this page must describe WHAT RUNS, checked, on the
  * day it is edited. So there are no gates left in it. There is no GA_ENABLED flag deciding
@@ -48,6 +55,9 @@ const title = "Privacy";
 const description =
   "What Coinliqui collects: cookieless page-view analytics that reads no query string, one " +
   "preference cookie, and no payment or personal information. Every claim here is checkable.";
+/* THE DATE IS THE ONE ON THE MOST RECENT CHANGE TO WHAT THIS PAGE DESCRIBES, not the date of
+   the last edit to the file. Both fall on 27 August 2026: the Cloudflare beacon was permitted
+   and Google Analytics 4 was restored, on the same day. */
 const updated = "27 August 2026";
 ---
 
@@ -67,11 +77,19 @@ const updated = "27 August 2026";
 
   <h2 class="section">Analytics</h2>
   <p class="prose">
-    <strong>One counter runs: Cloudflare Web Analytics</strong>, permitted here since
-    27&nbsp;August&nbsp;2026. It is a script Cloudflare injects into this site's pages at its
-    edge; it was blocked by this site's Content-Security-Policy until that date and is now
-    allowed by it, which is the only change. It exists to answer one question — whether anybody
-    reads these pages — which nothing else here could answer.
+    <strong>Two counters run here: Cloudflare Web Analytics and Google Analytics 4.</strong>
+    Cloudflare's has been permitted since 27&nbsp;August&nbsp;2026; Google's was installed
+    between 17 and 19&nbsp;August&nbsp;2026, removed, and restored on
+    27&nbsp;August&nbsp;2026. They answer different questions, which is the only reason both
+    are here: Cloudflare's says whether anybody loaded a page, cheaply and without a cookie,
+    and stops there. Google's says which page a reader went to next and how long they stayed —
+    the number that decides which of the fifty contract pages is worth writing more about.
+    Each is described below, separately, including what each one costs you.
+  </p>
+  <h3 class="subsection">Cloudflare Web Analytics</h3>
+  <p class="prose">
+    A script Cloudflare injects into this site's pages at its edge. It was blocked by this
+    site's Content-Security-Policy until 27&nbsp;August&nbsp;2026 and is now allowed by it.
   </p>
   <p class="prose">
     What it sends: the page's origin and <strong>path</strong>, the referring page if your
@@ -108,17 +126,47 @@ const updated = "27 August 2026";
     </table>
   </div>
   <p class="section-note" style="margin-top:10px">
-    The one host now permitted to serve a script here is <code>static.cloudflareinsights.com</code>,
-    and it is the only one — you can read the whole policy in this page's response headers.
+    Two hosts are permitted to serve a script here: <code>static.cloudflareinsights.com</code>
+    and <code>www.googletagmanager.com</code>. There is no third — you can read the whole
+    policy in this page's response headers.
+  </p>
+  <h3 class="subsection">Google Analytics 4</h3>
+  <p class="prose">
+    <strong>This page said, until 27&nbsp;August&nbsp;2026, that Google Analytics was gone and
+    was not coming back.</strong> It is back, by the site owner's decision on that date, and
+    the sentence is replaced rather than quietly deleted — a privacy page that revises its
+    promises without saying so is worth less than one that never made them.
   </p>
   <p class="prose">
-    <strong>Google Analytics 4 is gone and is not coming back.</strong> It was installed here
-    between 17 and 19&nbsp;August&nbsp;2026 and removed: no tag, no <code>gtag.js</code>, no
-    <code>_ga</code> cookie, and no request to any Google host from any page. It was dropped
-    because it was never used — not one decision about this site was ever made from a GA4
-    number — and it cost 167.8&nbsp;KB of JavaScript to answer questions nobody was asking, on
-    a homepage of about 6.5&nbsp;KB. The counter that replaced it is 11.4&nbsp;KB over the wire,
-    sets nothing, and answers one question that is actually asked.
+    What that costs you, stated plainly. GA4 <strong>sets cookies</strong> — <code>_ga</code>
+    and <code>_ga_5Y4ZENWMQJ</code>, both named in the table below — and it sends data to
+    Google, a third party, which the Cloudflare counter does not. Google's own terms and
+    processing govern what happens to it after that; nothing on this page can promise
+    otherwise, so nothing on this page does.
+  </p>
+  <p class="prose">
+    What is switched off, and it is checkable in this page's own markup:
+    <strong>Google signals is off</strong>, <strong>ad personalisation is off</strong>, and IP
+    anonymisation is on. Those are the advertising features of GA4 — the part that follows a
+    reader between sites — and this site has no ad account, sells nothing and remarkets to
+    nobody, so they are turned off in the configuration call rather than merely unused. Search
+    for <code>allow_google_signals</code> in the source of this page.
+  </p>
+  <p class="prose">
+    <strong>There is no consent banner here, and that is a position rather than an oversight.</strong>
+    A strict reading of the ePrivacy Directive requires asked-for consent before an analytics
+    cookie is set, and this site does not ask. If you would rather it did not, blocking
+    <code>www.googletagmanager.com</code> stops it completely — every browser-level tracker
+    blocker already does, and nothing else on this site depends on that host. The Cloudflare
+    counter is unaffected either way, and this page will say so if that changes.
+  </p>
+  <p class="prose">
+    The script is loaded <strong>after the page has finished</strong> — on the first scroll,
+    tap or key you make, or when the browser goes idle, or three seconds in, whichever comes
+    first. That is not a privacy measure; it is a speed one. Measured on this site in August,
+    <code>gtag.js</code> added 145.8&nbsp;KB over the wire and about 419&nbsp;KB of JavaScript
+    to parse, on pages whose own budget is under 70&nbsp;KB. Deferring it keeps the page fast
+    and still counts the visit.
   </p>
 
   <h2 class="section">Cookies and local storage</h2>
@@ -144,13 +192,34 @@ const updated = "27 August 2026";
           <td>The coins you pinned on <a href="/watchlist">your watchlist</a>. Never sent anywhere</td>
           <td>Until you clear it</td>
         </tr>
+        {/* THE TWO GOOGLE COOKIES ARE LISTED BECAUSE THEY EXIST, and this table is the place a
+            reader looks to find out what a page put on their machine. The section above says
+            GA4 sets them; a cookie table that then lists two entries and calls itself complete
+            would be the page contradicting itself one heading later. Both are first-party —
+            written by gtag.js on this domain, not by Google's — which changes who can read
+            them and does not change that they identify a returning browser. */}
+        <tr>
+          <td><code>_ga</code></td>
+          <td>Cookie · Google Analytics</td>
+          <td>A random identifier for your browser, so a second visit is counted as the same
+              browser rather than a new one. Set by <code>gtag.js</code> on this domain</td>
+          <td>2 years</td>
+        </tr>
+        <tr>
+          <td><code set:text={`_ga_${GA_MEASUREMENT_ID.slice(2)}`} /></td>
+          <td>Cookie · Google Analytics</td>
+          <td>Session state for this specific property — when the current visit started and how
+              many there have been. Named after the measurement ID, so it changes if that does</td>
+          <td>2 years</td>
+        </tr>
       </tbody>
     </table>
   </div>
   <p class="section-note" style="margin-top:10px">
-    Two entries, and the analytics above adds neither a third nor anything else — see the
-    measurement in that section. Clearing your browser data removes both of these and the site
-    behaves the same without them.
+    Four entries. The first two are this site's own and hold no identifier; the last two are
+    Google Analytics and do — blocking <code>www.googletagmanager.com</code> prevents both, and
+    the Cloudflare counter still sets nothing either way. Clearing your browser data removes
+    all four and the site behaves the same without them.
   </p>
 
   <h2 class="section">The calculators</h2>
@@ -204,6 +273,17 @@ const updated = "27 August 2026";
   ]} />
 
   <style>
+    /* THE ONLY PAGE ON THIS SITE WITH A THIRD HEADING LEVEL, and it earns it: "Analytics" now
+       has two counters under it that collect different things and cost the reader different
+       amounts, and flattening them to siblings of their own parent would tell a screen reader
+       that Google Analytics is a peer of Analytics rather than a case of it.
+
+       NOT `.sub`, which was the first attempt. src/pages/unlocks.astro already defines .sub as
+       a small faint inline label inside table cells; reusing the name for a heading is the
+       `.lede` defect this codebase has already paid for once — one class name meaning two
+       things in two files, with whichever stylesheet loads last deciding. Scoped here rather
+       than promoted into the layout because exactly one page needs it. */
+    h3.subsection { font-size: var(--fs-sm); font-weight: 650; letter-spacing: -.005em; color: var(--text-dim); margin: var(--gap-block) 0 var(--gap-tight); }
     h2.section { margin-top: 32px; }
   </style>
 </Base>
