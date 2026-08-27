@@ -475,10 +475,28 @@ report's grouping cannot drift from the site's own.
 
 Section C reads aggregate request metrics Cloudflare already keeps at the edge, which is the
 only place a named crawler's fetch is visible at all — Googlebot runs no JavaScript, so it
-never appears in Google Analytics. The two sources answer different questions and neither
-replaces the other: GA4 measures people, section C measures crawlers.
+never appears in any client-side counter. The two sources answer different questions and
+neither replaces the other: the beacon measures people, section C measures crawlers.
+
+(That sentence named Google Analytics until 27 August 2026, eight days after GA4 was removed
+from this site. The reader analytics are Cloudflare Web Analytics now — cookieless, no query
+string, one named host in the CSP, all of it measured rather than asserted on `/privacy`. A
+README describing a configuration the repository no longer has is the same defect this project
+keeps finding in its own checks.)
 
 ## Not built yet
 
 OG image generation, at build time in GitHub Actions into R2 — not on demand in a Worker,
 whose 10ms CPU limit image rendering exceeds by orders of magnitude.
+
+## Licence
+
+MIT — see [LICENSE](LICENSE).
+
+Not a decision made lightly and not a formality: the site's whole argument is that its figures
+can be checked, and a reader who cannot read the code that produced them is taking the checking
+on trust. The licence is what turns "you can verify this" from a claim into a permission.
+
+It covers the code in this repository. It says nothing about the market data the site displays,
+which belongs to the venues named on [/data-sources](https://coinliqui.com/data-sources) and
+reaches this site through their public endpoints under their own terms.
