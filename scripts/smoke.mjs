@@ -684,7 +684,11 @@ for (const path of ROUTES) {
       }
       /* The distribution, not a verdict on it — a 2x drift in this list is the thing to notice. */
       for (const [path, w] of heaviest) {
-        console.log(`                ${String(w.bytesPerWord).padStart(4)} bytes/word  ${path}  (${w.total.toLocaleString()}B, ${w.words}w, ${w.dominant.kind} ${w.dominant.pct}%)`);
+        /* THE TRANSFERRED FIGURE LEADS. This line used to print only the uncompressed size —
+           "523,042B, svg 91.4%" — and anybody reading it would conclude the page was half a
+           megabyte. Over the wire it is 24 KB. Both are printed because the uncompressed
+           number still says something about parse cost; the one a reader pays goes first. */
+        console.log(`                ${String(w.wireBytes === null ? "?" : Math.round(w.wireBytes / 1024) + "KB").padStart(6)} wire  ${String(w.bytesPerWord).padStart(4)} bytes/word  ${path}  (${w.total.toLocaleString()}B raw, ${w.words}w, ${w.dominant.kind} ${w.dominant.pct}%)`);
       }
     } catch (e) {
       bad++;

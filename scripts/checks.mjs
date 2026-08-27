@@ -1,3 +1,10 @@
+import { brotliCompressSync, constants as zlibConstants } from "node:zlib";
+const brotli = (html) => {
+  try {
+    return brotliCompressSync(Buffer.from(html), { params: { [zlibConstants.BROTLI_PARAM_QUALITY]: 5 } }).length;
+  } catch { return null; }
+};
+
 /**
  * Body-level checks, run against the RENDERED page rather than the source.
  *
@@ -1590,16 +1597,57 @@ export function pageWeight(html) {
     dominant: { kind: dominant[0], bytes: dominant[1], pct: html.length ? +(dominant[1] / html.length * 100).toFixed(1) : 0 },
     /** Bytes a fetcher downloads per word of citable text. Reported, never gated. */
     bytesPerWord: words ? Math.round(html.length / words) : Infinity,
+    /**
+     * WHAT A READER ACTUALLY DOWNLOADS, WHICH IS NOT `total`.
+     *
+     * Every figure above is uncompressed, and the gate printed them under the heading "page
+     * weight": "523,042B, svg 91.4%" for /liquidations/survival. Anybody reading that would
+     * conclude the page is half a megabyte. Measured on production, 27 August 2026:
+     *
+     *     page                     uncompressed   over the wire
+     *     /liquidations/survival        527,309          24,417     21.6x
+     *     /liquidations                 328,008          44,796      7.3x
+     *     /liquidations/eth             305,356          42,605      7.2x
+     *     /                              39,246           6,694      5.9x
+     *
+     * The heatmap grid is enormously repetitive, so brotli crushes it. The heaviest page on
+     * this site costs a reader 45 KB. That is not a page-weight problem, and the number that
+     * said it might be was the wrong number — the same label-over-a-different-value shape this
+     * file exists to catch, in this file's own output.
+     *
+     * ESTIMATED, AND SAID SO. This is local brotli at quality 5, not Cloudflare's edge. Against
+     * the four rows above it lands 8-25% under the wire figure, so it understates rather than
+     * flatters. It is a scale, not a contract: it turns "half a megabyte" into "tens of
+     * kilobytes", which is the distinction anybody reading this line needs.
+     */
+    wireBytes: brotli(html),
   };
 }
 
+/* THE ONLY IMPORT IN THIS FILE, and the first version of it was `require("node:zlib")` inside
+   a try — which in an ES module is not a lazy import, it is a ReferenceError caught and
+   swallowed. wireBytes came back null on every page and weightFaults quietly fell back to the
+   uncompressed size, so the check would have kept its old behaviour while its comment claimed
+   otherwise. Caught by running it once and printing the number instead of trusting the catch. */
+
 /** The two conditions that mean breakage rather than a design choice. See pageWeight above. */
-export const WEIGHT_LIMITS = { maxTotalBytes: 1_000_000, minWords: 150 };
+export const WEIGHT_LIMITS = {
+  /* 300 KB over the wire. The heaviest page here costs 45 KB, so this is a ceiling against
+     breakage rather than a budget to spend — the same intent the 1 MB uncompressed figure had
+     before it turned out to be measuring something a reader never pays. */
+  maxWireBytes: 300_000,
+  minWords: 150,
+};
 
 /** Returns the reasons this page breaches a limit — empty when it does not. */
 export function weightFaults(w, limits = WEIGHT_LIMITS) {
   const out = [];
-  if (w.total > limits.maxTotalBytes) out.push(`${w.total.toLocaleString()} bytes exceeds ${limits.maxTotalBytes.toLocaleString()} — ${w.dominant.kind} is ${w.dominant.pct}% of it`);
+  /* THE LIMIT IS ON WHAT A READER DOWNLOADS, and it used to be on the uncompressed size. On
+     this site those differ by up to 21x, so the old ceiling was effectively 48 KB of real
+     transfer on the pages that matter — a limit nobody chose. It falls back to `total` when
+     zlib is unavailable, which is the conservative direction. */
+  const paid = w.wireBytes ?? w.total;
+  if (paid > limits.maxWireBytes) out.push(`${paid.toLocaleString()} bytes over the wire exceeds ${limits.maxWireBytes.toLocaleString()} — ${w.dominant.kind} is ${w.dominant.pct}% of the uncompressed ${w.total.toLocaleString()}`);
   if (w.words < limits.minWords) out.push(`${w.words} words of prose is under ${limits.minWords} — a section probably rendered empty`);
   return out;
 }
