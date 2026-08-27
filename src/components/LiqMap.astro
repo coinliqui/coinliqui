@@ -24,11 +24,11 @@
    ========================================================================================= */
 import { usd, pct } from "../lib/funding.ts";
 import { maintenanceMarginFraction, nextTierBoundary, corridorAt, type MarginTable } from "../lib/margin.ts";
-import { getHourly, type Candle } from "../lib/candles.ts";
+import { getHourly, T, O, H, L, C, type Candle } from "../lib/candles.ts";
 import { buildLiqMap, PROFILES , mixUsed } from "../lib/liqmap.ts";
 import { paintHeatMap } from "../lib/heatmap.ts";
 import { RAMP, CH, INK, MONO, FS_AXIS, compact, niceTicks } from "../lib/chart.ts";
-import { aggregate } from "../lib/series.ts";
+import { aggregate, shortDate } from "../lib/series.ts";
 import type { Perp, Snapshot } from "../lib/hyperliquid.ts";
 
 import Advisory from "./Advisory.astro";
@@ -106,6 +106,37 @@ const offAxis = profile.weights.filter(([L]) => {
   return longLiq < map.loPrice || shortLiq > map.hiPrice;
 });
 const sweptTotal = map ? map.swept.reduce((a, b) => a + b, 0) : 0;
+
+/* =========================================================================================
+   THE BARS THAT DID THE CLEARING, from an array the page already computed and threw away.
+
+   `map.swept` carries the modelled notional price traded through PER DRAWN COLUMN, and until
+   now the page reduced it to one total and discarded the shape. The shape is the more
+   interesting half: a reader who opens a liquidation map is asking when the levels went, and
+   the answer is in five bars out of a hundred and eighty.
+
+   WHY IT IS WORTH THE ROWS. Measured 27 August 2026 against the site's own templates, by
+   5-gram overlap between two sibling pages: /funding/{symbol} 10% shared and 3,187 words,
+   /coins/{coin} 68% and 545 words, and this template 66% and 1,206. Search Console for the
+   same week: the funding template drew 392 impressions across the 25 pages that have any,
+   sixteen per page; the coins template drew 8 across 5, under two. Overlap is not blocking
+   indexation here — coins is indexed at the same 82% as funding — but the template that is
+   mostly its own words outperforms the two that are mostly shared boilerplate by ten times
+   per page, and this one shipped into the second group.
+
+   So the fix is more of what only this contract can say, not more words. Every column of this
+   table is specific to one contract's own price path, and half of it — the bar, its range,
+   its date — is OBSERVED rather than modelled, which is the distinction the rest of the page
+   is built around. The notional is the model's; the candle is Hyperliquid's.
+   ========================================================================================= */
+const sweptBars = map
+  ? map.swept
+      .map((n, i) => ({ n, c: map.candles[i] }))
+      .filter((x) => x.n > 0 && x.c)
+      .sort((a, b) => b.n - a.n)
+      .slice(0, 6)
+  : [];
+const biggestBar = sweptBars[0] ?? null;
 
 /* --- corridor ladder: derived, not modelled --- */
 const CHART_FRACTIONS = [1, 0.75, 0.6, 0.5, 0.4, 0.3, 0.25];
@@ -277,6 +308,59 @@ const gridPrices = niceTicks(yMin, yMax, 5);
           </tbody>
         </table>
       </div>
+
+      {sweptBars.length > 0 && (
+        <>
+          <h2 class="section">The bars that did the clearing</h2>
+          <p class="section-note" style="max-width:88ch">
+            The dark corridor in the picture is not empty space, and it was not carved evenly. These
+            are the {sweptBars.length} bars of this window in which the model says the most notional
+            was traded through — {pct(sweptBars.reduce((a, b) => a + b.n, 0) / Math.max(1, sweptTotal))}
+            {" "}of everything cleared in {win.label}, in {sweptBars.length} bars out of {map!.cols}.
+            {biggestBar && <> The largest was <b>{shortDate(biggestBar.c[T])}</b>, a {win.factor}-hour bar
+              that ranged {axisPx(biggestBar.c[L])} to {axisPx(biggestBar.c[H])}.</>}
+            {" "}The bar and its range are traded candles; what it cleared is the model's,
+            and the two are separated in the columns below for that reason.
+          </p>
+          <div class="panel" style="max-width:940px">
+            <table class="tbl">
+              <thead>
+                <tr>
+                  <th>Bar opened</th>
+                  <th class="num">Low</th>
+                  <th class="num">High</th>
+                  <th class="num">Move, open to close</th>
+                  <th class="num">Modelled notional cleared</th>
+                  <th class="num">Share of the window</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sweptBars.map((b, i) => (
+                  <tr class={i === 0 ? "is-active" : undefined}>
+                    <td>{shortDate(b.c[T])} {new Date(b.c[T]).toISOString().slice(11, 16)} UTC</td>
+                    <td class="num">{axisPx(b.c[L])}</td>
+                    <td class="num">{axisPx(b.c[H])}</td>
+                    {/* NO COLOUR ON A PRICE MOVE, which is a rule this site already keeps and it
+                        would have been easy to break here. Red and green mean the direction of a
+                        funding payment everywhere on this site; /coins/{coin} prints its 24-hour
+                        change as an arrow in plain text for exactly that reason. A third meaning
+                        for the same two hues teaches the next reader the wrong rule. */}
+                    <td class="num">{b.c[C] >= b.c[O] ? "+" : "−"}{(Math.abs((b.c[C] - b.c[O]) / b.c[O]) * 100).toFixed(2)}%</td>
+                    <td class="num">{compact(b.n)}</td>
+                    <td class="num">{pct(b.n / Math.max(1, sweptTotal))}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p class="section-note" style="max-width:88ch">
+            A bar clears a level by trading through it, so the column on the right is bounded by what
+            the model had standing there in the first place — a violent bar through a thin part of the
+            field clears less than a quiet one through a crowded part. That is the reading the picture
+            gives at a glance and this table gives in figures.
+          </p>
+        </>
+      )}
 
       <h2 class="section">Where the model puts the biggest clusters</h2>
       <p class="section-note">

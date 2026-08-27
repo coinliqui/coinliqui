@@ -506,6 +506,48 @@ for (const c of cases) {
    standing fixture" and, underneath it, "-5 still report green that has never been falsified".
    A coverage line that can go negative is not measuring coverage. */
 /* ---------------------------------------------------------------------------------------------
+   TWO CHECKS MEASURED AND REJECTED, 27 AUGUST 2026 — "a count printed over a list it does not
+   count".
+
+   The defect was real and shipped that morning, in this repository, written while adding the
+   per-contract liquidation maps: /liquidations printed "50 contracts have a published margin
+   table" directly above a table of 49 rows. The sentence counted every contract with a tier
+   table; the rows deliberately excluded the default, whose map is that page. A reader counting
+   rows got a different number from the one printed over them.
+
+   BOTH CANDIDATE CHECKS WERE BUILT AND RUN AGAINST THE LIVE SITE BEFORE BEING DROPPED. The
+   numbers are here so the next person to have this idea can skip the hour:
+
+     A. RENDERED. For every <p class="section-note"> immediately followed by a table.tbl,
+        compare each bare integer in the note against the table's row count.
+          26 pages fetched, 31 note-then-table pairs, 19 bare integers inside them.
+          Near-misses (|n - rows| <= 3): 6. Of those, ONE was the defect. The other five were
+          "Row 8 is the one most worth reading twice", "in the last 24 hours", "finished on
+          4 November 2025", "Step 2 is where every heatmap differs" — twice on one page.
+        One finding, five exemptions.
+
+        Narrowing it to notes that OPEN with an integer gives one finding and zero exemptions
+        today, and is worthless: it is defeated by writing "There are 50 contracts", which is
+        the same sentence.
+
+     B. SOURCE. Inside one .astro file, compare the identifier in the nearest preceding
+        {X.length} against the {Y.map( that renders the <tbody> beneath it.
+          8 such pairs across src/pages and src/components. 4 identifier mismatches, of which
+          ONE was the defect; the others are a note about one collection standing above an
+          unrelated table — /learn prints the contract count above BTC's venue rows,
+          /status prints the run count above the bindings table and the covered count above
+          series coverage. All three correct.
+        One finding, three exemptions.
+
+   Both fail the test written immediately below, so neither shipped. The defect was fixed
+   STRUCTURALLY instead: the default contract went back into the table, so the count and the
+   rows are one array and the two cannot disagree. That is not a general guard, and this
+   comment is the honest record of that — the class can recur in a file nobody has looked at.
+   What it is not is a check with more exemptions than findings, which is the thing that gets
+   switched off and then cited as coverage.
+   --------------------------------------------------------------------------------------------- */
+
+/* ---------------------------------------------------------------------------------------------
    THE QUESTION TO ASK BEFORE WIRING A CHECK IN, and it is not "does it pass".
 
    Two of them: what does this fire on TODAY, and is that list shorter than its exemptions?

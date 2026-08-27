@@ -81,9 +81,8 @@ const rows = snap.perps
     const t = [...TABLES[String(p.marginTableId)].marginTiers].sort((a, b) => a.lowerBound - b.lowerBound)[0];
     const L = t.maxLeverage;
     const { corridor } = corridorAt(p.markPx, L, maintenanceMarginFraction(L));
-    return { p, L, corridor, href: liqMapHref(p.symbol) };
+    return { p, L, corridor, href: liqMapHref(p.symbol), here: p.symbol === perp.symbol };
   });
-const others = rows.filter((r) => r.p.symbol !== perp.symbol);
 
 const title = mapTitle(perp.symbol);
 const description = mapDescription(perp.symbol);
@@ -93,6 +92,17 @@ const description = mapDescription(perp.symbol);
   <LiqMap perp={perp} table={table} snap={snap} params={q} />
 
   <h2 class="section">A map for every covered contract</h2>
+  {/* THE COUNT AND THE TABLE ARE ONE ARRAY, and for one morning they were two. This note said
+      "50 contracts" above a table of 49, because the sentence counted every contract with a
+      tier table and the rows deliberately excluded the default — whose map is this page. A
+      reader counting rows got a different number from the one printed over them.
+
+      Fixed by putting the default back in the list rather than by correcting the number.
+      A list titled "every covered contract" that silently omits the largest one is a second,
+      quieter wrongness, and adding it removes both: there is now one array, `rows`, and the
+      count is its length by construction. Its row is marked and carries no link — a table
+      whose every row links somewhere, one of them to the page you are on, is worse than a
+      row that says so. */}
   <p class="section-note" style="max-width:88ch">
     {rows.length} contracts have a published margin table, and each one has its own map at its own
     address. The corridor column is not modelled: it is the distance price has to travel before a
@@ -118,9 +128,11 @@ const description = mapDescription(perp.symbol);
         </tr>
       </thead>
       <tbody>
-        {others.map((r) => (
-          <tr>
-            <td><a class="link" href={r.href}>{r.p.symbol} liquidation map →</a></td>
+        {rows.map((r) => (
+          <tr class={r.here ? "is-active" : undefined}>
+            <td>{r.here
+              ? <>{r.p.symbol} liquidation map · <span class="dim">this page</span></>
+              : <a class="link" href={r.href}>{r.p.symbol} liquidation map →</a>}</td>
             <td class="num">{usd(r.p.markPx, priceDp(r.p.markPx))}</td>
             <td class="num">{usd(r.p.oiNotional)}</td>
             <td class="num">{r.L}×</td>
