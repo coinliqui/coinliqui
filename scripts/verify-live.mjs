@@ -7,6 +7,13 @@
  *
  *   node scripts/verify-live.mjs [origin]        default https://coinliqui.com
  */
+/* THE ONE IMPORT IN THIS FILE, and it is a pure function with a standing blind case rather
+   than anything that touches the network. Everything else here is deliberately self-contained
+   — this runs against production and its whole claim is that it asserts what a client on the
+   open internet receives. underLinked() decides nothing about the site; it turns a count into
+   a sentence, and it lives in checks.mjs so it is covered by the gate's own fixture suite. */
+import { underLinked } from "./checks.mjs";
+
 const ORIGIN = process.argv[2] || "https://coinliqui.com";
 const CRAWLERS = [
   "GPTBot/1.1", "OAI-SearchBot/1.0", "ChatGPT-User/1.0",
@@ -325,8 +332,36 @@ console.log("\n5. sitemap");
      ships must PERMIT the host it names. Between 19 and 27 August the first held and the second
      did not, and the site recorded zero pageloads for eight days. */
   let noBeacon = [], beaconOk = 0;
+  /* =======================================================================================
+     THE INTERNAL LINK GRAPH, BUILT FROM A LOOP THAT WAS ALREADY FETCHING EVERY PAGE.
+
+     Not one extra request: this walk exists to check that every sitemap URL answers 200 to a
+     crawler, and the bodies are in hand. What it costs is a regex per page.
+
+     CONTEXTUAL LINKS ONLY — inside <main>. The nav rail and the footer link the same set from
+     all 133 pages, so counting them would give every page in the nav 132 inbound and every
+     page not in it almost none, which measures the nav rather than the site.
+
+     THE HREF IS NORMALISED TO ITS PATH, and the first version of this measurement did not do
+     that. It skipped any href carrying a query string, so the fifty
+     `/tools/position-size?symbol=X` links the contract pages carry went uncounted: the tools
+     template read 3 inbound where it actually has 53. /tools/position-size is the page Google
+     currently has as "Discovered - currently not indexed", so a wrong number and a real
+     symptom agreed, which is the most convincing thing a bad instrument can produce. It would
+     have sent somebody to link a template that was never under-linked.
+     ======================================================================================= */
+  const inbound = new Map(urls.map((u) => [pathOf(u) || "/", 0]));
+  const linkNorm = (h) => { const p = h.split("#")[0].split("?")[0]; return p.length > 1 ? p.replace(/\/$/, "") : p; };
   for (const u of urls) {
     const r = await fetchAs(pathOf(u) || "/", "GPTBot/1.1");
+    if (r.status === 200) {
+      const self = pathOf(u) || "/";
+      const mi = r.body.indexOf("<main"), mj = r.body.indexOf("</main>");
+      const main = mi > 0 ? r.body.slice(mi, mj) : "";
+      for (const t of new Set([...main.matchAll(/href="(\/[^"]*)"/g)].map((m) => linkNorm(m[1])))) {
+        if (t !== self && inbound.has(t)) inbound.set(t, inbound.get(t) + 1);
+      }
+    }
     if (r.status !== 200) broken.push(`${u} ${r.status}`);
     else if (!/Coinliqui/.test(r.body)) thin.push(u);
     /* THE BRAND IS NOT A COMPLETENESS TEST, AND IT WAS BEING USED AS ONE.
@@ -389,6 +424,13 @@ console.log("\n5. sitemap");
   cut.length ? bad(`TRUNCATED — 200 with no </html>, the render threw mid-stream: ${cut.join(", ")}`)
              : ok(`every one of the ${urls.length} sitemap URLs answered 200 with a complete HTML document — no empty bodies, no truncation, not a sample`);
   hollow.length ? bad(`contract page with no chart panel: ${hollow.join(", ")}`) : ok("every contract page renders a chart, or says why it cannot yet");
+  const orphans = underLinked(inbound);
+  orphans.length ? bad(`${orphans.length} published URL(s) almost nothing links to:\n          ${orphans.join("\n          ")}`)
+    : ok(`every published URL carries at least 5 contextual inbound links — median per template: ${
+        [...new Map([...inbound].reduce((m, [p, n]) => {
+          const t = p === "/" ? "/" : p.split("/")[1];
+          m.set(t, [...(m.get(t) ?? []), n]); return m;
+        }, new Map()))].sort().map(([t, a]) => `/${t} ${a.sort((x, y) => x - y)[a.length >> 1]}`).join(", ")}`);
   noBeacon.length ? bad(`page(s) where a counter is missing or cannot run: ${noBeacon.join("; ")}`)
     : ok(`both counters run on all ${beaconOk} published pages — each tag present AND permitted by that page's own CSP, checked per page rather than assumed from one`);
 

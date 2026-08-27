@@ -1896,3 +1896,40 @@ export function staleAnnouncerState(known, published) {
   );
   return out;
 }
+
+/**
+ * A PUBLISHED URL THAT ALMOST NOTHING LINKS TO.
+ *
+ * THE MEASUREMENT THIS EXISTS FOR is already in this repository, taken 24 August 2026 on the
+ * contract pages and written above the ticker-chip strip in src/pages/funding/[symbol].astro:
+ *
+ *     indexed contract pages     (39)   median 50 inbound
+ *     NOT indexed                (10)   median  3
+ *     eight of the ten Google has not indexed sit at 2-4 inbound links
+ *
+ * Links are not sufficient — /funding/zro and /funding/vvv carry 50 apiece and are still
+ * queued — but a page in that band is a page nothing is pointing at, and on 27 August the
+ * forty-nine liquidation maps shipped into it: two inbound links each, from the hub and from
+ * one sibling. Nobody noticed for half a day, because nothing was counting.
+ *
+ * THE FLOOR IS 5, and it is not a round number. It is one above the band where eight of the
+ * ten unindexed pages sat. Below it means "in the range this site has already watched fail".
+ *
+ * WHAT IT FIRES ON TODAY: nothing, with one exemption. That is the honest description, and it
+ * is not a reason to drop it — this is a REGRESSION GUARD, not a discovery tool. The defect
+ * was found by hand, the fix took the template from 2 to 50, and the check is what stops the
+ * next template shipping at 2. Its blind case proves it can fire.
+ *
+ * THE EXEMPTION IS THE HOMEPAGE and it is structural rather than an excuse. Every page links
+ * "/" from the brand in the nav rail, which is chrome; contextual inbound to a site's own root
+ * is 0 by nature and always will be.
+ *
+ *   counts  Map or object of path -> number of DISTINCT pages linking to it, contextually
+ */
+export function underLinked(counts, floor = 5, exempt = ["/"]) {
+  const rows = counts instanceof Map ? [...counts] : Object.entries(counts ?? {});
+  return rows
+    .filter(([p, n]) => !exempt.includes(p) && n < floor)
+    .sort((a, b) => a[1] - b[1] || a[0].localeCompare(b[0]))
+    .map(([p, n]) => `${p} has ${n} contextual inbound link(s), below the floor of ${floor}`);
+}

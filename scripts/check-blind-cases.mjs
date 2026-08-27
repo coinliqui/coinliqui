@@ -33,6 +33,7 @@ import {
   stampSurfacesAgree,
   symbolAddressing,
   staleAnnouncerState,
+  underLinked,
 } from "./checks.mjs";
 
 /* Enough page for a check to have something to read. Deliberately minimal: a fixture that is
@@ -319,6 +320,33 @@ const cases = [
       /^the announcer's state is missing 49 of the 49/.test(
         staleAnnouncerState([], Array.from({ length: 49 }, (_, i) => `https://coinliqui.com/liquidations/c${i}`))[0]),
       staleAnnouncerState([], ["https://coinliqui.com/a", "https://coinliqui.com/b/c"])[0].includes("1x /a"),
+    ],
+  },
+  {
+    check: "underLinked",
+    why: "forty-nine liquidation maps shipped with two inbound links each — the band where eight of the ten contract pages Google has not indexed were sitting, measured on this site in August",
+    fire: () => underLinked({ "/liquidations/eth": 2, "/liquidations/sol": 2, "/funding/btc": 53 }),
+    quiet: () => [
+      ...underLinked({ "/liquidations/eth": 50, "/funding/btc": 53, "/coins/bitcoin": 12 }),
+      // the homepage is exempt: every page links it from the nav brand, which is chrome
+      ...underLinked({ "/": 0, "/about": 132 }),
+      ...underLinked({}),
+    ],
+    /* THE MEASUREMENT NEARLY WENT IN WRONG, and these pin the shape that caught it. The first
+       version of the graph excluded any href carrying a query string, so the fifty
+       `/tools/position-size?symbol=X` links the contract pages carry were not counted at all:
+       the template read 3 inbound where it actually has 53, and /tools/position-size is the
+       page Google currently has as "Discovered - currently not indexed". A wrong number and a
+       real symptom agreeing is the most convincing thing a bad instrument can produce, and it
+       would have sent somebody to fix a template that was never broken. The caller normalises
+       a parameterised href to its path before counting; these assert the consequences. */
+    also: () => [
+      underLinked({ "/tools/position-size": 53 }).length === 0,
+      underLinked({ "/tools/position-size": 3 }).length === 1,
+      // a Map is accepted as well as an object, because the caller accumulates in one
+      underLinked(new Map([["/x", 1]])).length === 1,
+      // the floor is inclusive-below: exactly at the floor passes
+      underLinked({ "/x": 5 }).length === 0 && underLinked({ "/x": 4 }).length === 1,
     ],
   },
   {
