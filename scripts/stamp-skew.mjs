@@ -35,23 +35,49 @@ if (!m) {
 }
 const [, deployedRaw, expectedRaw] = m;
 /* "THE WORKER NOW RUNNING IS X" WAS READ OFF A VALUE WRITTEN BEFORE THE DEPLOY.
-   That figure is whatever the worker last put in KV on its tick, and the tick runs once a
-   minute — so immediately after `wrangler deploy` it still names the PREVIOUS build. Measured
-   on 24 August: this printed "worker 9b850372c52c and the live site agree" seconds after
-   deploying abd866373f8e, which was wrong about both halves, and the pair took 120 seconds to
-   settle. It runs at the end of deploy:worker, which is exactly when the value is stalest.
-   Polled to the same 150s ceiling verify-live uses, and the wording no longer claims to know
-   what is running — it names the last stamp the worker wrote. */
+   That figure is whatever the worker last put in KV on its tick, so immediately after
+   `wrangler deploy` it still names the PREVIOUS build. Measured on 24 August: this printed
+   "worker 9b850372c52c and the live site agree" seconds after deploying abd866373f8e, which
+   was wrong about both halves. It runs at the end of deploy:worker, which is exactly when the
+   value is stalest.
+
+   AND THE CADENCE IN THIS COMMENT WAS WRONG, which is why the ceiling was wrong. It said "the
+   tick runs once a minute" and 150 seconds was sized from that. The stamp is written inside
+   the FIVE-MINUTE ingest tick — the minute tick returns before reaching that write — so 150
+   seconds is half of one chance rather than two and a half, and the same false premise sits in
+   verify-live, where it does fail the deploy. It did, twice on 27 August 2026.
+
+   THE TICK IS OBSERVED RATHER THAN TIMED. The site publishes dateModified from the same
+   `fetchedAt` the five-minute tick writes, so a change in it proves a cycle completed. That
+   turns one indistinguishable outcome into two: the cron has not fired yet, or it fired and
+   the stamp is genuinely stale. stampVerdict() in scripts/checks.mjs holds the rule for both
+   this file and verify-live, so the two cannot drift on it. */
+const stampOf = (b) => (/"dateModified":"([^"]+)"/.exec(b) || [])[1] ?? null;
+const dataStamp = async () => stampOf(
+  await fetch(`${ORIGIN}/?cb=${Math.random()}`, { headers: { "user-agent": UA } }).then((x) => x.text()).catch(() => ""),
+);
+const stampAtStart = await dataStamp();
 let [deployed, expected] = [deployedRaw, expectedRaw];
-for (let waited = 0; deployed !== expected && waited < 150_000; waited += 20_000) {
+let tickRan = false;
+for (let waited = 0; deployed !== expected && waited < 360_000; waited += 20_000) {
   await new Promise((res) => setTimeout(res, 20_000));
   const again = /Deployed <code[^>]*>([^<]*)<\/code>, site expects <code[^>]*>([^<]*)</.exec(
     await fetch(`${ORIGIN}/status?cb=${Math.random()}`, { headers: { "user-agent": UA } }).then((x) => x.text()).catch(() => ""),
   );
   if (again) [, deployed, expected] = again;
+  const now = await dataStamp();
+  if (stampAtStart && now && now !== stampAtStart) tickRan = true;
 }
-if (deployed === expected) {
+const { stampVerdict } = await import("./checks.mjs");
+const verdict = stampVerdict(deployed, expected, null, tickRan || !stampAtStart);
+if (verdict.state === "current") {
   console.log(`\n  stamp: worker ${deployed} and the live site agree.`);
+  process.exit(0);
+}
+if (verdict.state === "awaiting-tick") {
+  console.log(`\n  stamp: the site expects ${expected} and KV still holds ${deployed}, but no five-minute ingest\n` +
+              `  tick has completed since this started — the data stamp has not moved either. Nothing is\n` +
+              `  stale; the next tick records it.`);
   process.exit(0);
 }
 console.log(

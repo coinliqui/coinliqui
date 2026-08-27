@@ -1122,23 +1122,42 @@ console.log("\n16. data");
        about a worker that had been deployed ninety seconds earlier, and a single 20-second
        wait cleared it. A verdict taken from a stale reading is a wrong verdict whichever
        branch it lands on. */
-    /* THE WINDOW HAS TO OUTLAST THE THING THAT REFRESHES THE VALUE, and one 20-second wait did
-       not. "Deployed" is whatever the worker last wrote to KV on its tick, and the tick that
-       writes it runs once a minute — so a freshly deployed worker reports its previous build
-       until the next tick lands. Measured on 24 August by polling: the pair took 120 SECONDS to
-       agree, twice the wait, and the check failed a deploy that was entirely correct.
-       Polled to 150s rather than slept once, so the ordinary case still costs nothing: it stops
-       the moment the two agree. */
+    /* THE WINDOW WAS SIZED FROM A CADENCE THE CODE DOES NOT HAVE. The comment this replaces
+       said "the tick that writes it runs once a minute", and 150 seconds was chosen as two and
+       a half chances at it. The stamp is written inside the FIVE-MINUTE ingest tick — the
+       minute tick returns before reaching that write — so 150 seconds is half of one chance,
+       and this check was built to fail whenever the next tick happened to be further away than
+       that. It did, twice on 27 August 2026, on a worker that was fine both times.
+
+       A BIGGER NUMBER IS NOT THE FIX. It trades a false red for a slower deploy and still says
+       the wrong thing when it fires. What was missing is the ability to tell "the cron has not
+       fired yet" from "it fired and the stamp is still old" — one of those is a deploy nobody
+       needs to look at and the other is a real skew.
+
+       So the tick is OBSERVED. The site publishes dateModified from the same `fetchedAt` that
+       the five-minute tick writes, so a change in it is proof a cycle completed. The ceiling is
+       one full cron interval plus the run's own duration; it is only ever reached in the honest
+       case, because the loop stops the moment the stamps agree. */
+    const stampOf = (b) => (/"dateModified":"([^"]+)"/.exec(b) || [])[1] ?? null;
+    const dataStamp = async () => stampOf((await fetchAs("/", "Mozilla/5.0")).body);
+    const stampAtStart = await dataStamp();
     let [deployedNow, expectsNow] = [deployed, expects];
-    for (let waited = 0; deployedNow !== expectsNow && waited < 150_000; waited += 20_000) {
+    let tickRan = false;
+    for (let waited = 0; deployedNow !== expectsNow && waited < 360_000; waited += 20_000) {
       await new Promise((res) => setTimeout(res, 20_000));
       const again = /Deployed <code[^>]*>([^<]*)<\/code>, site expects <code[^>]*>([^<]*)</.exec((await fetchAs("/status", "Mozilla/5.0")).body);
       if (again) [, deployedNow, expectsNow] = again;
+      const now = await dataStamp();
+      if (stampAtStart && now && now !== stampAtStart) tickRan = true;
     }
-    const v = stampVerdict(deployedNow, expectsNow, local);
+    const v = stampVerdict(deployedNow, expectsNow, local, tickRan || !stampAtStart);
     if (v.state === "current") ok(`worker bundle current (${deployedNow})${deployed !== expects ? " — one of the two was still lagging when this check started" : ""}`);
-    else if (v.state === "site-behind") bad(`the SITE is behind, not the worker: the deployed worker ${deployedNow} matches worker/build-stamp.ts, and the site still expects ${expectsNow} after 150s of polling. Re-run the Pages deploy rather than deploy:worker.`);
-    else bad(`worker bundle stale: deployed ${deployedNow}, the site expects ${expectsNow}, and worker/build-stamp.ts says ${local ?? "?"} — the worker is behind the source tree after 150s of polling. Run: npm run deploy:worker`);
+    else if (v.state === "site-behind") bad(`the SITE is behind, not the worker: the deployed worker ${deployedNow} matches worker/build-stamp.ts, and the site still expects ${expectsNow}. Re-run the Pages deploy rather than deploy:worker.`);
+    /* NOT A FAILURE. The worker records its build on the five-minute ingest tick, and no tick
+       has completed since this check started — the site's data stamp has not moved. There is
+       nothing to run and nothing to look at; the next tick will settle it. */
+    else if (v.state === "awaiting-tick") ok(`worker bundle not yet confirmed: the site expects ${expectsNow} and KV still holds ${deployedNow}, but no five-minute ingest tick has completed in the last 6 minutes — the data stamp has not moved either. Nothing is stale; the next tick records it.`);
+    else bad(`worker bundle stale: deployed ${deployedNow}, the site expects ${expectsNow}, and worker/build-stamp.ts says ${local ?? "?"} — an ingest tick HAS run since this check started and the stamp did not change. Run: npm run deploy:worker`);
   }
 }
 

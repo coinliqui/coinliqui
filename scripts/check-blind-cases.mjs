@@ -531,7 +531,28 @@ const cases = [
     const got = stampVerdict(d, e, l).state;
     if (got !== want) { vbad++; console.log(`  MISS  stampVerdict            ${name}: got ${got}, want ${want}`); }
   }
-  if (!vbad) console.log(`  ok    stampVerdict             names which half is behind, on all five inputs`);
+  /* THE FOURTH INPUT, added 27 August 2026. The worker writes its stamp on the FIVE-MINUTE
+     ingest tick, and both callers waited 150 seconds — a number sized from a comment claiming
+     the tick runs every minute. Half of one chance, not two and a half, so the check failed
+     whenever the next tick was further out than that: twice in one afternoon, on a worker that
+     was fine. `tickRan` is what separates "the cron has not fired" from "it fired and the
+     stamp is old", and these four rows are the ones that distinction turns on. */
+  for (const [name, d, e, l, tick, want] of [
+    ["no tick yet, stamps disagree — nothing to fix, the cron has not fired", "ccc", "bbb", "aaa", false, "awaiting-tick"],
+    ["a tick ran and the stamp did not change — a real skew", "ccc", "bbb", "aaa", true, "worker-stale"],
+    ["site-behind is decided BEFORE awaiting-tick: a deploy-order fault is not cron timing", "aaa", "bbb", "aaa", false, "site-behind"],
+    ["agreement needs no tick at all", "aaa", "aaa", "aaa", false, "current"],
+  ]) {
+    const got = stampVerdict(d, e, l, tick).state;
+    if (got !== want) { vbad++; console.log(`  MISS  stampVerdict            ${name}: got ${got}, want ${want}`); }
+  }
+  /* A caller that cannot observe the tick must get the OLD behaviour, not a silent downgrade
+     to "probably fine" — an unobservable tick defaulting to false would turn every real skew
+     into a shrug. */
+  if (stampVerdict("ccc", "bbb", "aaa").state !== "worker-stale") {
+    vbad++; console.log("  MISS  stampVerdict            omitting tickRan must default to the old, stricter behaviour");
+  }
+  if (!vbad) console.log(`  ok    stampVerdict             names which half is behind, and tells "not ticked yet" from "ticked and stale"`);
   else bad0 += vbad;
 }
 

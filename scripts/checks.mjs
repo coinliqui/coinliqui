@@ -1026,9 +1026,36 @@ export function founderAgreement(html) {
  * Extracted from the inline form so all three verdicts can be exercised. Two of them had never
  * run — a three-branch decision with one tested branch is the shape this whole pass removes.
  */
-export function stampVerdict(deployed, expects, local) {
+/**
+ * `tickRan` IS THE FOURTH INPUT AND IT SEPARATES TWO STATES THAT LOOKED IDENTICAL.
+ *
+ * The worker records its build in KV inside the FIVE-MINUTE ingest tick — the minute tick
+ * returns before reaching that write. Both callers polled for 150 seconds and then declared
+ * the worker stale, and the comment in scripts/stamp-skew.mjs says why the number is 150:
+ * "the tick runs once a minute". It does not. So 150 seconds is not two and a half chances,
+ * it is half of one, and the check was built to fail whenever the next tick happened to be
+ * more than 150s away — about half of all deploys. It did exactly that twice on
+ * 27 August 2026, on a worker that was fine.
+ *
+ * The fix is not a bigger number. A bigger number trades a false red for a slow deploy and
+ * still says the wrong thing when it fires. What the check could not do was tell these apart:
+ *
+ *     the tick has not run yet          the worker is current, the cron simply has not fired
+ *     the tick ran, the stamp is old    a real skew, and the message is right
+ *
+ * So the caller establishes whether a cycle completed — the site publishes `dateModified`
+ * from the same `fetchedAt` that tick writes — and passes it here. `tickRan` defaults to true
+ * so a caller that cannot observe it gets exactly the old behaviour rather than a silent
+ * downgrade to "probably fine".
+ *
+ * ORDER MATTERS: `site-behind` is decided BEFORE `awaiting-tick`. If the deployed stamp equals
+ * the local source then the worker is current and the SITE is the stale half, which is a real
+ * finding about deploy order and has nothing to do with cron timing.
+ */
+export function stampVerdict(deployed, expects, local, tickRan = true) {
   if (deployed === expects) return { state: "current", stamp: deployed };
   if (local && deployed === local) return { state: "site-behind", deployed, expects };
+  if (!tickRan) return { state: "awaiting-tick", deployed, expects, local: local ?? null };
   return { state: "worker-stale", deployed, expects, local: local ?? null };
 }
 
