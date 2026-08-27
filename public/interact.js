@@ -787,3 +787,115 @@ const liveEls = [...document.querySelectorAll("[data-repaint]")];
     addEventListener("online", pull);
   }
 })();
+
+/* =========================================================================================
+   SORTABLE TABLES.
+
+   OPT-IN, NEVER INFERRED. A `data-sortable` attribute on the table is a decision somebody
+   made about that table. Inferring it from "has a .num column" would have switched on the
+   margin-tier ladder, the eight-row assumptions table and the leverage corridor — three
+   tables whose ROW ORDER IS THE CONTENT. A tier ladder sorted by maintenance margin is not
+   a differently-ordered tier ladder; it is a wrong one.
+
+   IT OBEYS THIS FILE'S RULE: it never produces a number. Every value it compares was already
+   in the HTML at first byte; the sort reads the text the server printed and reorders the rows
+   it was given. With JavaScript off the table renders exactly as the server ordered it, which
+   is a deliberate order in every case — widest spread first on /funding, largest open
+   interest first on /liquidations.
+
+   THE COMPARISON READS THE PRINTED TEXT, and that text is formatted for people: "$1.70B",
+   "$96.25M", "−1.51%", "25×", "—". So the parse strips currency, separators and units and
+   applies the compact suffix. It is deliberately NOT a second implementation of the
+   formatters in shared.js — it is their inverse, and the only safe inverse is one that reads
+   what was actually written rather than assuming which formatter wrote it.
+
+   A CELL THAT IS NOT A NUMBER SORTS LAST IN BOTH DIRECTIONS. "—" means the figure does not
+   exist for that row — no perpetual, no venue — and a missing value is not the smallest one.
+   Sorting it to the top of an ascending column would put the rows that have no answer above
+   the rows that do.
+   ========================================================================================= */
+{
+  const SUFFIX = { k: 1e3, m: 1e6, b: 1e9, t: 1e12 };
+  /** The printed text back to a number, or null when the cell holds no figure. */
+  const parseCell = (text) => {
+    const raw = (text || "").trim();
+    if (!raw || raw === "—" || raw === "–" || raw === "-") return null;
+    /* U+2212 MINUS is what the site prints; ASCII hyphen is what parseFloat understands. */
+    const cleaned = raw.replace(/−/g, "-").replace(/[^0-9.\-+a-zA-Z]/g, "");
+    const m = /^([+-]?\d*\.?\d+)\s*([kmbt])?/i.exec(cleaned);
+    if (!m) return null;
+    const n = parseFloat(m[1]);
+    if (!Number.isFinite(n)) return null;
+    return m[2] ? n * SUFFIX[m[2].toLowerCase()] : n;
+  };
+
+  for (const table of document.querySelectorAll("table.tbl[data-sortable]")) {
+    const body = table.tBodies[0];
+    const heads = [...table.tHead.rows[0].cells];
+    if (!body || !heads.length) continue;
+    /* The order the server chose, kept so a third click can restore it. That order is an
+       argument on every one of these pages — /funding leads with the widest venue spread —
+       and a sort control that cannot give it back has taken something away. */
+    const original = [...body.rows];
+
+    heads.forEach((th, i) => {
+      if (th.dataset.nosort !== undefined) return;
+      const numeric = th.classList.contains("num");
+      const label = th.textContent.trim();
+      /* A BUTTON, NOT A CLICK HANDLER ON THE <th>. Keyboard reachable, announced as a
+         control, and it inherits the cell's alignment because it is display:block. */
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "th-sort";
+      while (th.firstChild) btn.appendChild(th.firstChild);
+      const arrow = document.createElement("span");
+      arrow.className = "th-sort__dir";
+      arrow.setAttribute("aria-hidden", "true");
+      btn.appendChild(arrow);
+      th.appendChild(btn);
+      th.setAttribute("aria-sort", "none");
+
+      let state = 0; // 0 = as served, 1 = first click, 2 = reversed
+      btn.addEventListener("click", () => {
+        for (const other of heads) {
+          if (other === th) continue;
+          other.setAttribute("aria-sort", "none");
+          const b = other.querySelector(".th-sort");
+          if (b) b.dataset.dir = "";
+        }
+        state = (state + 1) % 3;
+        if (state === 0) {
+          for (const r of original) body.appendChild(r);
+          th.setAttribute("aria-sort", "none");
+          btn.dataset.dir = "";
+          btn.title = `${label}: back to the order this page was served in`;
+          return;
+        }
+        /* NUMERIC COLUMNS OPEN LARGEST-FIRST. On every table here the question is which row
+           is biggest — the widest spread, the most open interest, the narrowest corridor —
+           and opening ascending would make the first click the wrong one every time. Text
+           columns open A-Z, which is the only reading of "first" they have. */
+        const desc = numeric ? state === 1 : state === 2;
+        const rows = [...body.rows];
+        const key = new Map(rows.map((r) => {
+          const cell = r.cells[i];
+          const text = cell ? cell.textContent : "";
+          return [r, numeric ? parseCell(text) : (text || "").trim().toLowerCase()];
+        }));
+        rows.sort((a, b) => {
+          const x = key.get(a), y = key.get(b);
+          /* Missing sorts last in BOTH directions — see the header. */
+          if (x === null && y === null) return 0;
+          if (x === null) return 1;
+          if (y === null) return -1;
+          const c = numeric ? x - y : String(x).localeCompare(String(y));
+          return desc ? -c : c;
+        });
+        for (const r of rows) body.appendChild(r);
+        th.setAttribute("aria-sort", desc ? "descending" : "ascending");
+        btn.dataset.dir = desc ? "desc" : "asc";
+        btn.title = `${label}: ${desc ? "largest first" : "smallest first"} — click again to reverse, once more for the served order`;
+      });
+    });
+  }
+}

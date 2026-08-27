@@ -742,13 +742,21 @@ const schema = {
       /* No hidden columns, no fade — otherwise every panel that fits would dim its own edge. */
       @media (min-width: 1400px) { .panel:has(> .tbl) { -webkit-mask-image: none; mask-image: none; } }
       /* The coin column stays put, or scrolling right leaves numbers with nothing to name them. */
-      .tbl td.sym { position: sticky; left: 0; background: var(--surface-2); }
+      /* Z-INDEX ON A STICKY CELL IS NOT DECORATION. With `z-index: auto` a sticky cell paints
+         in DOM order, so every cell AFTER it in the same row paints on top as it scrolls
+         underneath — the pinned coin column had a solid background and the next column's text
+         still came through it. Measured on a 375px viewport: at maximum scroll the funding
+         hub's header read "d (APR)" and "Coin" superimposed. It appeared when the sortable
+         header buttons widened the head cells by about 44px, which moved the neighbouring
+         label far enough left to overlap; the cause was always here, and the widening only
+         found it. 1 is enough — it just has to beat `auto`. */
+      .tbl td.sym { position: sticky; left: 0; background: var(--surface-2); z-index: 1; }
       .tbl tbody tr:hover td.sym { background: var(--surface-3); }
       /* The pinned header cell takes the HEADER's fill, not the panel's. Sticky cells need an
          opaque background or the scrolled content shows through, and the first version used
          --surface-2 for both — which left a visibly darker patch where "Coin" sits against the
          --surface-3 header band. Seen on the phone, not in the diff. */
-      .tbl thead th:first-child { position: sticky; left: 0; background: var(--surface-3); }
+      .tbl thead th:first-child { position: sticky; left: 0; background: var(--surface-3); z-index: 2; }
 
       /* --- empty state -----------------------------------------------------------
          Sits on the spacious side of the split, like Drive's empty-folder state:
@@ -928,6 +936,8 @@ const schema = {
 
       /* --- mobile: same anchors, re-laid-out. Never a second DOM copy. --- */
       .navtoggle, .nav__scrim { display: none; }
+      /* The drawer's close button does not exist on desktop, where the drawer does not either. */
+      .rail__close { display: none; }
             /* THE TICKER CHIPS, PROMOTED OUT OF /funding/{symbol} ON 27 AUGUST 2026.
          Two consumers now — the contract pages and the liquidation maps — which is the same
          threshold that moved .callout and .reason here. And it repairs something that was
@@ -936,6 +946,32 @@ const schema = {
          So on any page but that one, a .chip-link got the mobile padding and none of the
          look. Nothing rendered a chip elsewhere, so nothing showed it — the defect was
          waiting for the second consumer rather than absent. */
+      /* SORTABLE TABLE HEADERS. Global, because the button is created by interact.js and
+         injected markup carries no data-astro-cid — a page-scoped rule would resolve to
+         nothing and the control would render as unstyled text. That has shipped here before,
+         on generated SVG, three times.
+
+         The header looks IDENTICAL until the pointer arrives. These tables are read far more
+         often than they are sorted, and a column of blue affordances across every heading
+         would make the chrome louder than the figures underneath it. */
+      th .th-sort {
+        display: block; width: 100%; padding: 0; margin: 0; border: 0; background: none;
+        font: inherit; color: inherit; text-align: inherit; letter-spacing: inherit;
+        cursor: pointer; position: relative;
+      }
+      th .th-sort:hover, th .th-sort:focus-visible { color: var(--accent); }
+      th.num .th-sort { text-align: right; }
+      /* THE ARROW'S SPACE IS RESERVED WHETHER OR NOT IT IS DRAWN. Growing it on click would
+         shift the heading text by about eleven pixels at the moment the reader is looking at
+         it, and on a 375px screen every header cell is already inside a horizontal scroller
+         where a width change moves the whole table under the finger. Reserved is calmer, and
+         it costs ten pixels a column. */
+      .th-sort__dir { display: inline-block; width: .65em; margin-left: .2em; opacity: .55; }
+      .th-sort__dir::after { content: ""; }
+      .th-sort[data-dir="asc"] .th-sort__dir::after  { content: "\2191"; }
+      .th-sort[data-dir="desc"] .th-sort__dir::after { content: "\2193"; }
+      .th-sort[data-dir="asc"], .th-sort[data-dir="desc"] { color: var(--accent); }
+
       .related { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; }
       .chip-link {
         display: inline-block; padding: var(--gap-pair) var(--gap-cluster); border-radius: var(--r-pill);
@@ -977,6 +1013,12 @@ const schema = {
 
            Crawlability does not depend on any of this: every destination is also a real anchor
            in the footer, which is why /watchlist was added there in the same commit. */
+        /* THE DRAWER IS THE ONLY NAVIGATION ON MOBILE, so the control inside it must close
+           the drawer rather than set a desktop preference. The collapse form is the wrong
+           gesture here twice over: it means nothing when the rail is an overlay, and it costs
+           a POST and a full reload to do what an anchor does for free. */
+        .rail__collapse { display: none !important; }
+        .rail__close { display: inline-flex; }
         .navtoggle {
           display: grid; place-items: center; width: 44px; height: 44px; flex: 0 0 44px;
           margin-left: -8px; border-radius: var(--r-pill); color: var(--text-dim);
@@ -1095,11 +1137,25 @@ const schema = {
       <!-- ONE nav element. The mobile bar below reuses these same anchors via CSS. -->
       <nav class="rail" id="nav" aria-label="Main">
         <div class="rail__top">
-          <form method="POST" action="/rail" style="display:contents">
-            <button class="icon-btn" type="submit" aria-label="Toggle navigation">
+          {/* TWO CONTROLS, ONE VISIBLE AT A TIME, AND THAT IS THE FIX RATHER THAN A FLOURISH.
+              This slot held only the form button, and on mobile that button was a lie: the
+              open drawer's one obvious control was labelled "Toggle navigation" and, tapped,
+              POSTed to /rail, set the DESKTOP collapse cookie and reloaded the whole page.
+              The drawer closed, but as a side effect of a navigation the reader did not ask
+              for and paid a round trip for. Measured on a 375px viewport: the element at the
+              top-left of the open drawer was BUTTON.icon-btn inside FORM, and the real
+              close — the scrim behind the drawer — is invisible.
+
+              So the form keeps the desktop job it is right for, and mobile gets an anchor to
+              "#" which unsets :target and closes the drawer with no request at all. */}
+          <form method="POST" action="/rail" class="rail__collapse" style="display:contents">
+            <button class="icon-btn" type="submit" aria-label="Collapse navigation">
               <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M3 5h14M3 10h14M3 15h14" /></svg>
             </button>
           </form>
+          <a class="icon-btn rail__close" href="#" aria-label="Close navigation">
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M5 5l10 10M15 5L5 15" /></svg>
+          </a>
           <a class="brand" href="/"><span>{SITE.name}</span></a>
         </div>
 
