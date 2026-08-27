@@ -561,12 +561,67 @@ export async function stepReport(env: ReportEnv, force = false): Promise<string 
             const pos = imp ? r.reduce((a, x) => a + x.position * x.impressions, 0) / imp : 0;
             say(`| \`${t.name}\` | ${imp} | ${r.reduce((a, x) => a + x.clicks, 0)} | ${pos ? pos.toFixed(1) : "—"} | ${r.length}/${t.urls.length} |`);
           }
-          const q = await api(base, { startDate: start, endDate: end, dimensions: ["query"], rowLimit: 25 });
+          const q = await api(base, { startDate: start, endDate: end, dimensions: ["query"], rowLimit: 500 });
           if (q.rows?.length) {
             say("\n### Top queries\n");
             say("| Query | Impressions | Clicks | Position |");
             say("|---|---:|---:|---:|");
             for (const r of q.rows.slice(0, 15)) say(`| ${r.keys[0]} | ${r.impressions} | ${r.clicks} | ${r.position.toFixed(1)} |`);
+
+            /* =================================================================================
+               WHERE THE SITE ACTUALLY STANDS, WHICH "TOP QUERIES" DOES NOT SAY.
+
+               That table is sorted by impressions, so it answers "what is this site SEEN for".
+               Every row in it has sat between position 36 and 81 since the domain existed, and
+               a reader of the report could not tell from it whether that is the whole picture
+               or the visible tail of something better. It was also capped at 25 rows fetched
+               and 15 printed, so the question could not be answered by looking harder either.
+
+               WHY THE BANDS ARE THESE BANDS. Click-through collapses with depth: position 1-3
+               takes most of the clicks, 4-10 takes most of the rest, and page two is close to
+               nothing — this site's own numbers say the same thing, 720 impressions and 5
+               clicks in the week to 22 August at an average position in the thirties. So the
+               boundaries are drawn where the CONSEQUENCE changes, not at round numbers: what
+               is on page one, what is at the top of page two and could reach page one, and
+               what is far enough away that on-page work will not move it.
+
+               THIS IS THE ONE SECTION THAT SUGGESTS AN ACTION. Everything else in this report
+               measures what was served or received. A query sitting at 11-25 with real
+               impressions is a page that is already relevant and is losing to something
+               beatable, and for a domain with no external links that band is the only one
+               worth spending a week on. The rest is waiting.
+               ================================================================================= */
+            say("\n### Where the queries sit\n");
+            say("Every query Search Console recorded this week, by the position it averaged.");
+            say("Impressions say how often Google showed the page; clicks say how often that mattered.\n");
+            say("| Position | Queries | Impressions | Clicks | What that band means |");
+            say("|---|---:|---:|---:|---|");
+            for (const b of positionBands(q.rows as QueryRow[])) {
+              say(`| ${b.label} | ${b.queries} | ${b.impressions} | ${b.clicks} | ${b.note} |`);
+            }
+
+            /* THE PAGE IS FETCHED WITH THE QUERY, because "improve this query" is not an
+               instruction anybody can act on. A second dimension turns it into a page to edit.
+               One extra call, inside the same authenticated session. */
+            const qp = await api(base, {
+              startDate: start, endDate: end, dimensions: ["query", "page"], rowLimit: 500,
+            });
+            const near = nearMisses((qp.rows || []) as QueryRow[]);
+            say("\n### One push away\n");
+            if (!near.length) {
+              say("No query averaged a position between 11 and 25 this week. Nothing here is close enough");
+              say("that writing more of the same page would move it — see the band table above for where");
+              say("the queries actually are.");
+            } else {
+              say(`${near.length} quer${near.length === 1 ? "y is" : "ies are"} on page two or three. These are the pages where`);
+              say("the site is already relevant and is losing to something beatable.\n");
+              say("| Query | Page | Impressions | Clicks | Position |");
+              say("|---|---|---:|---:|---:|");
+              for (const r of near) {
+                const path = (() => { try { return new URL(r.keys[1]).pathname; } catch { return r.keys[1]; } })();
+                say(`| ${r.keys[0]} | \`${path}\` | ${r.impressions} | ${r.clicks} | ${r.position.toFixed(1)} |`);
+              }
+            }
           }
         }
       } catch (e) {
@@ -703,7 +758,12 @@ export async function stepReport(env: ReportEnv, force = false): Promise<string 
   say("   average position per template moves earlier and more honestly.");
   say("4. **Crawler fetches are the leading indicator.** If they are zero, nothing downstream can");
   say("   move, and the cause is access rather than quality.");
-  say("5. **Section D is the one nothing else can catch.** Every other failure on this site has a");
+  say("5. **\"One push away\" is the only section that suggests an action.** Everything else here");
+  say("   measures what was served or received. A query at position 11–25 is a page that is");
+  say("   already relevant and losing to something beatable; for a domain with no external links");
+  say("   that band is the only one on-page work can move. An empty section means the honest");
+  say("   answer this week is to keep writing and wait — read the band table above it for why.");
+  say("6. **Section D is the one nothing else can catch.** Every other failure on this site has a");
   say("   technical symptom. A change to the terms this site depends on has none — the pages keep");
   say("   rendering perfectly — so the only detector is somebody re-reading the document.");
 
@@ -772,4 +832,58 @@ export async function stepProbe(env: ReportEnv): Promise<string | null> {
   }
   try { await env.SNAPSHOT.put("probe:result", JSON.stringify(out)); } catch { /* best effort */ }
   return String(out.coverageState ?? out.error ?? "done");
+}
+
+/**
+ * WHERE A WEEK'S QUERIES SIT, AND WHICH OF THEM ARE CLOSE ENOUGH TO BE WORTH A WEEK.
+ *
+ * EXPORTED SO THEY CAN BE FALSIFIED. The Search Console half of this report has no fixture
+ * coverage at all — the harness in scripts/report-cases.mjs mocks fetch by pathname and
+ * cannot sign the service-account JWT the live path needs, so every line of it has only ever
+ * run in production, once a week, unattended. The two things most likely to be wrong here are
+ * the band boundaries and the near-miss filter, and neither needs a credential to test. They
+ * are pure functions over rows now, and scripts/report-cases.mjs holds the cases.
+ *
+ * THE BOUNDARIES ARE DRAWN WHERE THE CONSEQUENCE CHANGES, not at round numbers. Click-through
+ * collapses with depth: 1-3 takes most of the clicks, 4-10 most of the rest, page two is close
+ * to nothing. This site's own week to 22 August says the same — 720 impressions, 5 clicks, an
+ * average position in the thirties. `position` from Search Console is an AVERAGE and therefore
+ * fractional, so every boundary is a half: `> 10.5` is "worse than tenth on average", and a
+ * query averaging exactly 10.0 belongs on page one rather than at the top of page two.
+ */
+export const POSITION_BANDS: { label: string; lo: number; hi: number; note: string }[] = [
+  { label: "1–3", lo: 0, hi: 3.5, note: "page one, above the fold — where clicks actually happen" },
+  { label: "4–10", lo: 3.5, hi: 10.5, note: "page one" },
+  { label: "11–25", lo: 10.5, hi: 25.5, note: "page two and three — the only band on-page work can move" },
+  { label: "26–50", lo: 25.5, hi: 50.5, note: "seen, not read" },
+  { label: "51+", lo: 50.5, hi: Infinity, note: "counted, and that is all" },
+];
+
+export interface QueryRow { keys: string[]; impressions: number; clicks: number; position: number }
+
+/** One row per band, in band order, including the bands nothing landed in — an absent band
+ *  reads as "no data" and the truthful reading is "nothing is there". */
+export function positionBands(rows: QueryRow[]): { label: string; note: string; queries: number; impressions: number; clicks: number }[] {
+  return POSITION_BANDS.map((b) => {
+    const inBand = (rows ?? []).filter((r) => r.position > b.lo && r.position <= b.hi);
+    return {
+      label: b.label, note: b.note, queries: inBand.length,
+      impressions: inBand.reduce((a, r) => a + r.impressions, 0),
+      clicks: inBand.reduce((a, r) => a + r.clicks, 0),
+    };
+  });
+}
+
+/**
+ * The queries on page two or three, most-seen first, capped.
+ *
+ * SORTED BY IMPRESSIONS AND THEN BY POSITION, not by position alone. A query at 11.2 that
+ * Google showed twice is a worse use of a week than one at 24 it showed forty times; the
+ * question this table answers is where the traffic is, not where the ranking is.
+ */
+export function nearMisses(rows: QueryRow[], limit = 20): QueryRow[] {
+  return (rows ?? [])
+    .filter((r) => r.position > 10.5 && r.position <= 25.5)
+    .sort((a, b) => b.impressions - a.impressions || a.position - b.position)
+    .slice(0, limit);
 }

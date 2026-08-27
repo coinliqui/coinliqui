@@ -889,12 +889,48 @@ Inspection stopped: ${e instanceof Error ? e.message : String(e)}`);
             const pos = imp ? r.reduce((a, x) => a + x.position * x.impressions, 0) / imp : 0;
             say(`| \`${t.name}\` | ${imp} | ${r.reduce((a, x) => a + x.clicks, 0)} | ${pos ? pos.toFixed(1) : "\u2014"} | ${r.length}/${t.urls.length} |`);
           }
-          const q = await api(base, { startDate: start, endDate: end, dimensions: ["query"], rowLimit: 25 });
+          const q = await api(base, { startDate: start, endDate: end, dimensions: ["query"], rowLimit: 500 });
           if (q.rows?.length) {
             say("\n### Top queries\n");
             say("| Query | Impressions | Clicks | Position |");
             say("|---|---:|---:|---:|");
             for (const r of q.rows.slice(0, 15)) say(`| ${r.keys[0]} | ${r.impressions} | ${r.clicks} | ${r.position.toFixed(1)} |`);
+            say("\n### Where the queries sit\n");
+            say("Every query Search Console recorded this week, by the position it averaged.");
+            say("Impressions say how often Google showed the page; clicks say how often that mattered.\n");
+            say("| Position | Queries | Impressions | Clicks | What that band means |");
+            say("|---|---:|---:|---:|---|");
+            for (const b of positionBands(q.rows)) {
+              say(`| ${b.label} | ${b.queries} | ${b.impressions} | ${b.clicks} | ${b.note} |`);
+            }
+            const qp = await api(base, {
+              startDate: start,
+              endDate: end,
+              dimensions: ["query", "page"],
+              rowLimit: 500
+            });
+            const near = nearMisses(qp.rows || []);
+            say("\n### One push away\n");
+            if (!near.length) {
+              say("No query averaged a position between 11 and 25 this week. Nothing here is close enough");
+              say("that writing more of the same page would move it \u2014 see the band table above for where");
+              say("the queries actually are.");
+            } else {
+              say(`${near.length} quer${near.length === 1 ? "y is" : "ies are"} on page two or three. These are the pages where`);
+              say("the site is already relevant and is losing to something beatable.\n");
+              say("| Query | Page | Impressions | Clicks | Position |");
+              say("|---|---|---:|---:|---:|");
+              for (const r of near) {
+                const path = (() => {
+                  try {
+                    return new URL(r.keys[1]).pathname;
+                  } catch {
+                    return r.keys[1];
+                  }
+                })();
+                say(`| ${r.keys[0]} | \`${path}\` | ${r.impressions} | ${r.clicks} | ${r.position.toFixed(1)} |`);
+              }
+            }
           }
         }
       } catch (e) {
@@ -998,7 +1034,12 @@ ${pct1}% of the requests carrying a crawler's name were verified as that crawler
   say("   average position per template moves earlier and more honestly.");
   say("4. **Crawler fetches are the leading indicator.** If they are zero, nothing downstream can");
   say("   move, and the cause is access rather than quality.");
-  say("5. **Section D is the one nothing else can catch.** Every other failure on this site has a");
+  say('5. **"One push away" is the only section that suggests an action.** Everything else here');
+  say("   measures what was served or received. A query at position 11\u201325 is a page that is");
+  say("   already relevant and losing to something beatable; for a domain with no external links");
+  say("   that band is the only one on-page work can move. An empty section means the honest");
+  say("   answer this week is to keep writing and wait \u2014 read the band table above it for why.");
+  say("6. **Section D is the one nothing else can catch.** Every other failure on this site has a");
   say("   technical symptom. A change to the terms this site depends on has none \u2014 the pages keep");
   say("   rendering perfectly \u2014 so the only detector is somebody re-reading the document.");
   const doc = { week: st.week, at: Date.now(), tookMs: Date.now() - st.startedAt, md: st.lines.join("\n") + "\n", urls: st.urls ?? [] };
@@ -1054,6 +1095,28 @@ async function stepProbe(env) {
   }
   return String(out.coverageState ?? out.error ?? "done");
 }
+var POSITION_BANDS = [
+  { label: "1\u20133", lo: 0, hi: 3.5, note: "page one, above the fold \u2014 where clicks actually happen" },
+  { label: "4\u201310", lo: 3.5, hi: 10.5, note: "page one" },
+  { label: "11\u201325", lo: 10.5, hi: 25.5, note: "page two and three \u2014 the only band on-page work can move" },
+  { label: "26\u201350", lo: 25.5, hi: 50.5, note: "seen, not read" },
+  { label: "51+", lo: 50.5, hi: Infinity, note: "counted, and that is all" }
+];
+function positionBands(rows) {
+  return POSITION_BANDS.map((b) => {
+    const inBand = (rows ?? []).filter((r) => r.position > b.lo && r.position <= b.hi);
+    return {
+      label: b.label,
+      note: b.note,
+      queries: inBand.length,
+      impressions: inBand.reduce((a, r) => a + r.impressions, 0),
+      clicks: inBand.reduce((a, r) => a + r.clicks, 0)
+    };
+  });
+}
+function nearMisses(rows, limit = 20) {
+  return (rows ?? []).filter((r) => r.position > 10.5 && r.position <= 25.5).sort((a, b) => b.impressions - a.impressions || a.position - b.position).slice(0, limit);
+}
 
 // src/lib/corroboration.ts
 var CANDIDATES = ["https://github.com/coinliqui/coinliqui"];
@@ -1095,7 +1158,7 @@ async function stepCorroborate(env, now = Date.now()) {
 }
 
 // worker/build-stamp.ts
-var WORKER_BUILD = "e91c1c3eedeb";
+var WORKER_BUILD = "d5aa6f37e233";
 
 // worker/ingest.ts
 var RETAIN_HOURS = 72;

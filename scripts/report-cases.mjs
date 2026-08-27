@@ -168,6 +168,7 @@ import { coverageBucket } from "../worker/report.ts";
 }
 
 import { stepReport, isoWeek } from "../worker/report.ts";
+import { positionBands, nearMisses, POSITION_BANDS } from "../worker/report.ts";
 
 const kv = () => {
   const m = new Map();
@@ -329,4 +330,50 @@ console.log("\n  the weekly report holding the ingest tick:");
 }
 
 if (rbad) { console.error(`\n  ${rbad} case(s) wrong`); process.exit(1); }
+/* =====================================================================================
+   THE SEARCH CONSOLE HALF, WHICH HAD NO COVERAGE AT ALL UNTIL 27 AUGUST 2026.
+
+   Every line of section B has only ever run in production, once a week, unattended: the
+   harness above mocks fetch by pathname and cannot sign the service-account JWT the live
+   path needs. That is still true of the API plumbing. It is no longer true of the two
+   things most likely to be wrong, which are the band boundaries and the near-miss filter —
+   both are pure functions over rows now and neither needs a credential.
+
+   THE BOUNDARIES ARE HALVES ON PURPOSE. Search Console's `position` is an AVERAGE and
+   therefore fractional. A query averaging exactly 10.0 is on page one; one averaging 10.6
+   is at the top of page two. Every case below sits ON a boundary, because the middle of a
+   band is where nothing ever breaks.
+   ===================================================================================== */
+{
+  const row = (q, pos, imp = 1, clicks = 0) => ({ keys: [q, "https://coinliqui.com/x"], impressions: imp, clicks, position: pos });
+
+  const bands = positionBands([row("a", 1.0), row("b", 3.5), row("c", 3.6), row("d", 10.0), row("e", 10.5), row("f", 10.6), row("g", 25.5), row("h", 25.6), row("i", 900)]);
+  const by = Object.fromEntries(bands.map((b) => [b.label, b.queries]));
+  claim(by["1–3"] === 2, "1–3 holds a query at exactly 3.5 and not the one at 3.6");
+  claim(by["4–10"] === 3, "4–10 holds 3.6, 10.0 and exactly 10.5 — an average of ten is page one");
+  claim(by["11–25"] === 2, "11–25 opens just past 10.5 and closes at exactly 25.5");
+  claim(by["26–50"] === 1, "26–50 takes the one at 25.6");
+  claim(by["51+"] === 1, "51+ takes everything else, with no upper bound to fall off");
+  claim(bands.length === POSITION_BANDS.length, "every band is reported, including any that is empty");
+
+  const empty = positionBands([]);
+  claim(empty.length === POSITION_BANDS.length && empty.every((b) => b.queries === 0 && b.impressions === 0),
+    "no queries at all reports five zeroed bands rather than nothing — absent reads as no data, and the truth is nothing is there");
+  claim(positionBands(undefined).length === POSITION_BANDS.length, "an absent row set does not throw the whole section away");
+
+  const totals = positionBands([row("a", 2, 10, 3), row("b", 40, 5, 0)]);
+  claim(totals[0].impressions === 10 && totals[0].clicks === 3 && totals[3].impressions === 5,
+    "impressions and clicks are summed per band, not counted");
+
+  /* THE SORT IS THE POINT OF THE NEAR-MISS TABLE, and sorting by position alone would put a
+     query nobody sees above one Google showed forty times. */
+  const near = nearMisses([row("seen a lot", 24, 40), row("barely seen", 11.2, 2), row("page one", 4, 99), row("far", 60, 99)]);
+  claim(near.length === 2, "only page two and three — page one is not a near miss and neither is position 60");
+  claim(near[0].keys[0] === "seen a lot", "most-seen first: 40 impressions at 24 beats 2 impressions at 11.2");
+  claim(nearMisses([row("a", 12, 5), row("b", 20, 5)])[0].keys[0] === "a", "a tie on impressions breaks on position");
+  claim(nearMisses(Array.from({ length: 50 }, (_, i) => row(`q${i}`, 15, 100 - i)), 20).length === 20, "the table is capped");
+  claim(nearMisses([]).length === 0 && nearMisses(undefined).length === 0, "nothing close enough is an empty list, not a throw");
+}
+
+
 console.log("\n  the report can no longer hold the ingest tick: not on a bad sitemap, not on anything else");
