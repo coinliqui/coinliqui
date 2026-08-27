@@ -241,6 +241,12 @@ export const NAV: NavGroup[] = [
   {
     title: "Tools & docs",
     items: [
+      /* LEARN SITS ABOVE TOOLS, not below Methodology, and the order is the argument. A reader
+         who does not yet know what a funding rate is cannot evaluate a calculator that computes
+         one, and the rail is read top to bottom. Methodology answers "how did you get this
+         number"; Learn answers "what is this number" — the second question comes first for
+         everyone arriving from a search engine, which is everyone. */
+      { label: "Learn", href: "/learn", icon: "M10 6.5S8.5 5 6 5H3v9h3c2.5 0 4 1.5 4 1.5m0-9S11.5 5 14 5h3v9h-3c-2.5 0-4 1.5-4 1.5m0-9v9" },
       { label: "Tools", href: "/tools", icon: "M12.5 3a4.5 4.5 0 0 0-4.2 6.1L3 14.4V17h2.6l5.3-5.3A4.5 4.5 0 1 0 12.5 3Z" },
       { label: "Methodology", href: "/methodology", icon: "M4 4h12v12H4zM4 8h12M8 8v8" },
       { label: "Data sources", href: "/data-sources", icon: "M10 3c3.9 0 7 1.1 7 2.5S13.9 8 10 8 3 6.9 3 5.5 6.1 3 10 3Zm7 5.5c0 1.4-3.1 2.5-7 2.5s-7-1.1-7-2.5m14 4c0 1.4-3.1 2.5-7 2.5s-7-1.1-7-2.5" },
@@ -289,6 +295,11 @@ export const FOOTER_LINKS = [
   { href: "/unlocks", label: "Token unlocks" },
   { href: "/funding", label: "Funding" },
   { href: "/open-interest", label: "Open interest" },
+  { href: "/learn", label: "Learn" },
+  { href: "/learn/funding-rate", label: "Funding rate explained" },
+  { href: "/learn/liquidation-heatmap", label: "Liquidation heatmaps explained" },
+  { href: "/learn/liquidation-price", label: "Liquidation price explained" },
+  { href: "/learn/open-interest", label: "Open interest explained" },
   { href: "/tools", label: "Tools" },
   { href: "/methodology", label: "Methodology" },
   { href: "/methodology/liquidations", label: "Why no liquidation totals" },

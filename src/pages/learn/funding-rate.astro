@@ -1,0 +1,258 @@
+---
+import Base from "../../layouts/Base.astro";
+import Related from "../../components/Related.astro";
+import { getSnapshot, coldStart } from "../../lib/hyperliquid.ts";
+import { VENUE_LABEL, pct, usd, carryCost, rawRate, settlementsPerYear } from "../../lib/funding.ts";
+
+/**
+ * THE FUNDING-RATE EXPLAINER.
+ *
+ * WHY THIS ONE FIRST. Search Console for the week to 22 August 2026: the funding cluster is
+ * this domain's largest measured demand by a distance — "btc funding rate", "eth funding
+ * rate", "sol funding rate", "bitcoin perpetual funding rate", "btc usdt funding rate 8h",
+ * "funding rate history hyperliquid", "btc aggregated funding rate chart" — 392 impressions
+ * across the contract template alone. The site answered every one of those with a table and
+ * none of them with a sentence.
+ *
+ * THE FIGURES ARE LIVE ON PURPOSE, and it is the only structural advantage this page has. An
+ * explanation of what a funding rate costs, written with today's rate in it and the arithmetic
+ * carried out on that rate, is a document nobody with a static article can publish. Everything
+ * printed here is server-rendered from the same snapshot the market pages read; if the store
+ * is cold the page returns 503 rather than explaining arithmetic over blanks.
+ *
+ * WHAT IS DELIBERATELY NOT CLAIMED. The venue-side formula — the premium and interest
+ * components, the clamps each venue applies — is described in general terms and attributed to
+ * the venues' own documentation rather than reproduced as though we had verified it. What this
+ * page asserts without hedging is only what this site measures itself: the intervals, the
+ * rates, and the annualisation.
+ */
+const snap = await getSnapshot((Astro.locals as any)?.runtime?.env?.SNAPSHOT, import.meta.env.DEV);
+if (!snap.available) return coldStart();
+
+const perps = [...snap.perps].sort((a, b) => b.oiNotional - a.oiNotional);
+const btc = perps.find((p) => p.symbol === "BTC") ?? perps[0];
+const btcVenues = btc?.venues ?? [];
+const hl = btcVenues.find((v) => v.venue === "HlPerp") ?? btcVenues[0];
+
+/* The worked example. A round notional and a round holding period, so a reader can scale it in
+   their head; the rate is whatever the market is doing at the moment the page is served. */
+const EXAMPLE_NOTIONAL = 10_000;
+const EXAMPLE_DAYS = 30;
+const exampleCost = btc ? carryCost(EXAMPLE_NOTIONAL, btc.hlApr, EXAMPLE_DAYS) : 0;
+
+/* Widest absolute annualised rates on the book. NOT the widest venue spreads — that is the
+   arbitrage table on /funding — but the contracts where simply holding a position costs or
+   pays the most, which is what this page is about. */
+const extremes = [...perps]
+  .filter((p) => Number.isFinite(p.hlApr))
+  .sort((a, b) => Math.abs(b.hlApr) - Math.abs(a.hlApr))
+  .slice(0, 12);
+
+const title = "Funding rate explained: who pays, how it is calculated, what it costs";
+const description =
+  "A perpetual funding rate is a payment between longs and shorts, not a fee to the exchange. " +
+  "What it is, why two venues quoting different intervals cannot be compared until both are " +
+  "annualised, and what a position costs to hold at today's rates.";
+---
+
+<Base title={title} description={description} fetchedAt={snap.fetchedAt}>
+  <div class="page-head">
+    <h1>What a funding rate is</h1>
+  </div>
+
+  <p class="callout">
+    A funding rate is a recurring payment between the two sides of a perpetual futures
+    contract. When it is positive, everyone holding a long position pays everyone holding a
+    short; when it is negative, shorts pay longs. The venue is not a party to it and takes
+    none of it — it only moves the money.
+  </p>
+
+  <h2 class="section">Why perpetuals need one at all</h2>
+  <p class="prose">
+    An ordinary futures contract has an expiry date. On that date it settles against the spot
+    price, and because everyone knows this in advance, the contract's price is pulled towards
+    spot as the date approaches. Convergence is a consequence of settlement.
+  </p>
+  <p class="prose">
+    A perpetual never expires, so that mechanism does not exist. Left alone, the contract could
+    trade at any distance from the underlying asset indefinitely. Funding is the replacement:
+    when the contract trades above spot, longs pay shorts, which makes holding a long more
+    expensive and holding a short more attractive, until the gap closes. It is a tether made of
+    money rather than of time.
+  </p>
+
+  <h2 class="section">Reading the sign</h2>
+  <div class="panel">
+    <table class="tbl">
+      <thead><tr><th>Rate</th><th>Direction</th><th>Usually means</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>Positive</td>
+          <td>Longs pay shorts</td>
+          <td>The perpetual is trading above spot. More capital wants leveraged long exposure than short.</td>
+        </tr>
+        <tr>
+          <td>Negative</td>
+          <td>Shorts pay longs</td>
+          <td>The perpetual is trading below spot — usually a crowded short, sometimes a spot bid the derivatives book has not followed.</td>
+        </tr>
+        <tr>
+          <td>Near zero</td>
+          <td>Almost nothing changes hands</td>
+          <td>The two sides are balanced. This is the resting state, not the exception.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="section-note" style="margin-top:10px">
+    The sign is a fact about positioning, not a forecast. It says what traders have already
+    done, and crowded positioning resolves in both directions.
+  </p>
+
+  <h2 class="section">How a venue arrives at the number</h2>
+  <p class="prose">
+    Each venue computes its own rate and publishes its own method; the shapes are similar and
+    the details are not interchangeable. Broadly, a venue measures how far its contract is
+    trading from an index of spot prices — the <em>premium</em> — adds a small fixed interest
+    component, and clamps the result so a single dislocated minute cannot produce an enormous
+    payment. What the clamps are, and how the premium is sampled, differs by venue and is
+    stated in each venue's own documentation. The endpoints this site reads, and what each one
+    returns, are listed on <a class="link" href="/data-sources">Data sources</a>.
+  </p>
+  <p class="prose">
+    Two things are worth carrying away from that. First, the rate is a measurement of a price
+    gap, so it moves with positioning rather than being set by anyone. Second, because each
+    venue measures its own book against its own index, three venues can honestly report three
+    different rates for the same coin at the same instant — which is the gap the
+    {" "}<a class="link" href="/tools/funding-arbitrage">carry calculator</a> quantifies.
+  </p>
+
+  <h2 class="section">The comparison trap</h2>
+  <p class="prose">
+    This is the error that makes most published funding numbers unusable, and it is not subtle
+    once seen. A venue quotes the rate it will charge <strong>per settlement</strong>, and
+    settlements are not the same length everywhere. Hyperliquid settles hourly. Binance and
+    Bybit settle on an eight-hour cycle. So an eight-hour rate of 0.01% and an hourly rate of
+    0.01% differ by a factor of eight in what they actually cost, and the two numbers look
+    identical.
+  </p>
+  <p class="prose">
+    The fix is to annualise: multiply the quoted rate by the number of settlements in a year.
+    That is {settlementsPerYear(1).toLocaleString("en-US")} for an hourly contract and
+    {" "}{settlementsPerYear(8).toLocaleString("en-US")} for an eight-hour one. Simple, not
+    compounded — compounding a rate that is re-measured every settlement would turn a
+    measurement into a forecast. Here is the same contract, today, before and after:
+  </p>
+  {btc && btcVenues.length > 0 && (
+    <div class="panel">
+      <table class="tbl">
+        <thead><tr><th>Venue</th><th class="num">Quoted rate</th><th class="num">Interval</th><th class="num">Settlements per year</th><th class="num">Annualised</th></tr></thead>
+        <tbody>
+          {btcVenues.map((v) => (
+            <tr>
+              <td>{VENUE_LABEL[v.venue]}</td>
+              <td class="num">{rawRate(v.rate)}</td>
+              <td class="num">{v.intervalHours}h</td>
+              <td class="num">{Math.round(settlementsPerYear(v.intervalHours)).toLocaleString("en-US")}</td>
+              <td class="num">{pct(v.apr)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )}
+  <p class="section-note" style="margin-top:10px">
+    {btc ? `${btc.symbol} · rendered by the server from the snapshot stamped at the top of this page.` : "Rendered by the server."}
+    {" "}<a class="link" href="/funding">The same normalisation for every covered contract →</a>
+  </p>
+
+  <h2 class="section">What it costs to hold a position</h2>
+  {btc && (
+    <>
+      <p class="prose">
+        Funding is charged on the <strong>notional</strong> value of the position, not on the
+        margin posted against it. A position of {usd(EXAMPLE_NOTIONAL)} pays the same funding
+        whether it was opened with {usd(EXAMPLE_NOTIONAL)} of collateral or with a tenth of
+        that at ten times leverage — which is why leverage multiplies the cost relative to the
+        capital at risk without changing the cost itself.
+      </p>
+      <div class="panel">
+        <table class="tbl">
+          <thead><tr><th>Input</th><th class="num">Value</th></tr></thead>
+          <tbody>
+            <tr><td>Position notional</td><td class="num">{usd(EXAMPLE_NOTIONAL)}</td></tr>
+            <tr><td>{btc.symbol} funding, annualised, right now</td><td class="num">{pct(btc.hlApr)}</td></tr>
+            <tr><td>Holding period</td><td class="num">{EXAMPLE_DAYS} days</td></tr>
+            <tr>
+              <td><strong set:text={exampleCost >= 0 ? "A long pays" : "A long receives"} /></td>
+              <td class="num"><strong set:text={usd(Math.abs(exampleCost), 2)} /></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="section-note" style="margin-top:10px">
+        {usd(EXAMPLE_NOTIONAL)} × {pct(btc.hlApr)} × ({EXAMPLE_DAYS} ÷ 365). The rate is today's
+        and will not be tomorrow's, so this is what the position would cost if it stayed here —
+        an arithmetic result, not a projection.
+        {" "}<a class="link" href="/tools/funding-cost">Run it on your own numbers →</a>
+      </p>
+    </>
+  )}
+
+  <h2 class="section">What a large funding rate does not tell you</h2>
+  <p class="prose">
+    A high positive rate is regularly reported as a signal that a reversal is due. It is not
+    one, and the reason is mechanical: the rate is a measurement of a price gap that already
+    exists. It tells you leveraged longs are crowded and are paying for the privilege. Crowded
+    positioning does unwind, and it also persists for weeks in a strong trend while shorts pay
+    the whole way. The rate is a cost, and treating a cost as a direction is the most common
+    way this number is misused.
+  </p>
+  <p class="prose">
+    What it does tell you precisely is the price of carry: how much a position bleeds or earns
+    per day for holding, before any move in the underlying. That is a real, computable number,
+    and it is the one this site publishes.
+  </p>
+
+  {hl && (
+    <>
+      <h2 class="section">Where funding is most expensive right now</h2>
+      <p class="prose">
+        The {extremes.length} covered contracts with the largest annualised rates in either
+        direction. A large negative figure is not a bargain — it is a crowded short paying to
+        stay short, and the same warning about direction applies to both columns.
+      </p>
+      <div class="panel">
+        <table class="tbl">
+          <thead><tr><th>Coin</th><th class="num">Annualised</th><th>Who pays</th><th class="num">Open interest <span class="thscope">Hyperliquid</span></th></tr></thead>
+          <tbody>
+            {extremes.map((p) => (
+              <tr>
+                <td><a href={`/funding/${p.symbol.toLowerCase()}`}>{p.symbol}</a></td>
+                <td class="num">{pct(p.hlApr)}</td>
+                <td>{p.hlApr >= 0 ? "Longs pay shorts" : "Shorts pay longs"}</td>
+                <td class="num">{usd(p.oiNotional)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
+  )}
+
+  <Related
+    title="Where to go next"
+    items={[
+      { href: "/funding", label: "Funding, all venues", note: "Every covered contract, three venues, normalised to the same unit." },
+      { href: "/tools/funding-cost", label: "Funding cost calculator", note: "What a position of your size costs to hold for your holding period." },
+      { href: "/tools/funding-arbitrage", label: "Cross-venue carry", note: "What the spread between two venues would pay, with the costs that eat it." },
+      { href: "/learn/open-interest", label: "Open interest, explained", note: "The other half of the positioning picture, and what it does and does not say." },
+      { href: "/methodology", label: "Methodology", note: "The annualisation, worked through on today's real rates." },
+      { href: "/learn", label: "All explainers", note: "Funding, liquidation maps, liquidation price and open interest." },
+    ]}
+  />
+
+  <style>
+    h2.section { margin-top: 32px; }
+  </style>
+</Base>

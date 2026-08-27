@@ -544,6 +544,21 @@ const schema = {
 
       h2.section { font-size: 16px; font-weight: 600; letter-spacing: -.01em; margin: var(--gap-section) 0 var(--gap-tight); }
       .section-note { font-size: var(--fs-sm); color: var(--text-faint); margin: 0 0 var(--gap-block); max-width: 80ch; }
+      /* THE OPENING STATEMENT OF A PROSE PAGE, defined once here rather than per page.
+         It arrives from src/pages/methodology/liquidations.astro, which had it as a local
+         `.lede`. That name was already taken by a completely different treatment on the
+         homepage — 21px dimmed intro text — so two pages carried one class name meaning two
+         things, and a third page adopting either would have inherited whichever rule the
+         bundler happened to emit last. Renaming it on the way out settles that: `.callout` is
+         the bordered statement, `.lede` stays the homepage's large intro, and neither can be
+         reached by accident from the other. */
+      .callout {
+        max-width: 72ch; padding: 16px var(--inset-panel); margin: 0 0 8px;
+        background: var(--surface-2); border: 1px solid var(--border-soft);
+        border-left: 3px solid var(--accent); border-radius: var(--r-md);
+        color: var(--text);
+      }
+      .callout a, .callout .link { color: var(--accent); }
       .prose { max-width: 72ch; color: var(--text-dim); }
       .prose strong { color: var(--text); font-weight: 600; }
       .prose a, .link { color: var(--accent); }

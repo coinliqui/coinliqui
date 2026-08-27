@@ -1,0 +1,175 @@
+---
+import Base from "../../layouts/Base.astro";
+import Related from "../../components/Related.astro";
+import TABLES from "../../data/margin-tables.json";
+import { liquidationPrice, maintenanceMarginFraction, type MarginTable } from "../../lib/margin.ts";
+import { pct, usd } from "../../lib/funding.ts";
+
+/**
+ * THE LIQUIDATION-PRICE EXPLAINER.
+ *
+ * WHY IT IS WORTH A PAGE OF ITS OWN. The formula in general circulation — entry x (1 - 1/L) for
+ * a long — omits maintenance margin entirely, which means every calculator repeating it puts
+ * the liquidation further from entry than it is. A trader acting on it believes they have room
+ * they do not have. This site already quantifies the gap in a table on /tools; what it has
+ * never done is explain WHY the two answers differ, which is the part a reader needs in order
+ * to trust the smaller number over the one every other calculator shows them.
+ *
+ * THE WORKED EXAMPLES ARE COMPUTED, NOT TYPED. Every figure below comes out of the same
+ * liquidationPrice() the calculators call, over a margin table committed to this repository.
+ * A number typed into prose is a number that goes stale silently — this project has shipped
+ * that defect before and now has a gate for it — so the only literals here are the inputs.
+ *
+ * NO STORE READ, ON PURPOSE. The arithmetic does not change when the market moves, so the
+ * route takes a committed date. A live price would make the sentence "the same position, at
+ * two sizes" harder to follow, not easier.
+ */
+const tables = TABLES as unknown as Record<string, MarginTable>;
+/* The clearest tier boundary in the published set: 10x up to $3M of notional, 5x above it.
+   Chosen because the boundary is reachable in an example a reader can hold in their head. */
+const table = tables["51"];
+const ENTRY = 100;
+const REQUESTED_LEVERAGE = 10;
+
+const small = liquidationPrice({ entryPrice: ENTRY, positionSize: 10_000, leverage: REQUESTED_LEVERAGE, side: "long", table });
+const large = liquidationPrice({ entryPrice: ENTRY, positionSize: 40_000, leverage: REQUESTED_LEVERAGE, side: "long", table });
+
+const title = "How a liquidation price is actually calculated";
+const description =
+  "The formula most calculators use leaves out maintenance margin, so it places the " +
+  "liquidation further from entry than the venue will. What maintenance margin is, how " +
+  "margin tiers change the answer with position size, and both figures worked through.";
+---
+
+<Base title={title} description={description}>
+  <div class="page-head">
+    <h1>How a liquidation price is calculated</h1>
+  </div>
+
+  <p class="callout">
+    A liquidation price is the price at which a venue closes a position because the collateral
+    behind it has fallen to the minimum it will accept. That minimum is called
+    <strong> maintenance margin</strong>, and the formula in general circulation leaves it out —
+    which puts the liquidation further from entry than the venue actually will. The error is in
+    the direction that costs money.
+  </p>
+
+  <h2 class="section">The formula you will usually be given</h2>
+  <p class="prose">
+    For a long position, almost every calculator and explainer computes:
+  </p>
+  <p class="prose"><code>liquidation = entry × (1 − 1 ÷ leverage)</code></p>
+  <p class="prose">
+    The reasoning is intuitive and wrong. At {REQUESTED_LEVERAGE}× leverage the margin posted is
+    a {REQUESTED_LEVERAGE}th of the notional, so a move of a {REQUESTED_LEVERAGE}th against the
+    position wipes it out — {usd(ENTRY, 0)} becomes {usd(small.naivePrice, 2)}. That would be
+    correct if the venue let the collateral reach exactly zero. No venue does, because a
+    position with zero collateral cannot be closed without someone else absorbing the shortfall.
+  </p>
+
+  <h2 class="section">What maintenance margin adds</h2>
+  <p class="prose">
+    The venue closes the position while there is still something left: a fixed fraction of the
+    notional that must remain at all times. On Hyperliquid that fraction is half the initial
+    margin required at the tier's maximum leverage — so a tier permitting
+    {" "}{table.marginTiers[0].maxLeverage}× carries a maintenance margin of
+    {" "}{pct(maintenanceMarginFraction(table.marginTiers[0].maxLeverage))} of notional. Because
+    the position must be closed while that fraction survives, the liquidation price moves
+    <strong> towards</strong> entry:
+  </p>
+  <p class="prose"><code>liquidation = entry × (1 − 1 ÷ leverage) ÷ (1 − maintenance margin fraction)</code></p>
+
+  <h2 class="section">The same position, worked twice</h2>
+  <p class="prose">
+    A long on a contract trading at {usd(ENTRY, 0)}, opened at {REQUESTED_LEVERAGE}× on the
+    venue's {JSON.stringify(table.description).slice(1, -1)} margin table. The only difference
+    between the two columns is size.
+  </p>
+  <div class="panel">
+    <table class="tbl">
+      <thead><tr><th>&nbsp;</th><th class="num">{usd(small.notional)} position</th><th class="num">{usd(large.notional)} position</th></tr></thead>
+      <tbody>
+        <tr><td>Entry price</td><td class="num">{usd(ENTRY, 0)}</td><td class="num">{usd(ENTRY, 0)}</td></tr>
+        <tr><td>Leverage requested</td><td class="num">{REQUESTED_LEVERAGE}×</td><td class="num">{REQUESTED_LEVERAGE}×</td></tr>
+        <tr><td>Leverage the tier permits</td><td class="num">{small.effectiveLeverage}×</td><td class="num">{large.effectiveLeverage}×</td></tr>
+        <tr><td>Maintenance margin fraction</td><td class="num">{pct(small.maintenanceMarginFraction)}</td><td class="num">{pct(large.maintenanceMarginFraction)}</td></tr>
+        <tr><td>Common formula says</td><td class="num">{usd(small.naivePrice, 2)}</td><td class="num">{usd(large.naivePrice, 2)}</td></tr>
+        <tr><td><strong>Venue liquidates at</strong></td><td class="num"><strong set:text={usd(small.liquidationPrice, 2)} /></td><td class="num"><strong set:text={usd(large.liquidationPrice, 2)} /></td></tr>
+        <tr><td>Gap between the two</td><td class="num">{usd(small.differenceAbs, 2)} ({pct(small.differencePct)})</td><td class="num">{usd(large.differenceAbs, 2)} ({pct(large.differencePct)})</td></tr>
+        <tr><td>Room from entry, in truth</td><td class="num">{pct(small.distancePct)}</td><td class="num">{pct(large.distancePct)}</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="section-note" style="margin-top:10px">
+    Every figure in this table is computed on render by the same function the
+    {" "}<a class="link" href="/tools/position-size">calculators</a> call, over a margin table
+    committed to this project. Nothing here is a number somebody typed in once.
+  </p>
+
+  <h2 class="section">Why the larger position is worse off</h2>
+  <p class="prose">
+    Maximum leverage is not a property of the venue or of the coin. It is a property of the
+    <strong> tier</strong>, and tiers step down as the position grows, because a larger position
+    is harder to close without moving the price. On the table used above, positions up to
+    {" "}{usd(table.marginTiers[1].lowerBound)} may use {table.marginTiers[0].maxLeverage}×;
+    above that the cap falls to {table.marginTiers[1].maxLeverage}×, and the maintenance margin
+    fraction doubles with it.
+  </p>
+  <p class="prose">
+    Two consequences follow, and neither is visible in the common formula. A request for
+    {" "}{REQUESTED_LEVERAGE}× on a position above the boundary is silently clamped to
+    {" "}{large.effectiveLeverage}×, so the position is smaller than intended relative to
+    margin. And the liquidation price sits {pct(large.distancePct)} from entry rather than
+    {" "}{pct(small.distancePct)} — the same order, at a different size, with different room.
+  </p>
+  <div class="panel">
+    <table class="tbl">
+      <thead><tr><th>Tier starts at</th><th class="num">Maximum leverage</th><th class="num">Maintenance margin</th></tr></thead>
+      <tbody>
+        {table.marginTiers.map((t) => (
+          <tr>
+            <td>{usd(t.lowerBound)}</td>
+            <td class="num">{t.maxLeverage}×</td>
+            <td class="num">{pct(maintenanceMarginFraction(t.maxLeverage))}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="section">Cross and isolated margin</h2>
+  <p class="prose">
+    Everything above assumes the position stands on its own collateral — <em>isolated</em>
+    margin. Under <em>cross</em> margin the account's whole free balance backs every position,
+    so the liquidation price of any one of them depends on what the others are doing, and it
+    moves when they do. The arithmetic here is the isolated case because it is the one that can
+    be stated for a single position; under cross margin the same formula gives the price at
+    which that position alone would exhaust its share, which is a floor rather than an answer.
+  </p>
+
+  <h2 class="section">What this does not include</h2>
+  <p class="prose">
+    Funding payments are deducted from collateral while a position is open, which moves the
+    liquidation price gradually in the direction of the payment — a long paying funding is
+    liquidated slightly earlier each hour it holds. Fees do the same. Neither is in the formula
+    above, and over a long hold at a high rate the effect is not negligible:
+    {" "}<a class="link" href="/learn/funding-rate">what funding costs</a> is the other half of
+    the same arithmetic.
+  </p>
+
+  <Related
+    title="Where to go next"
+    items={[
+      { href: "/tools/position-size", label: "Position size calculator", note: "Your entry, size and leverage, with the tier-aware liquidation price and the gap against the common formula." },
+      { href: "/tools/leverage", label: "Leverage calculator", note: "What a given leverage does to margin, room and the maintenance requirement." },
+      { href: "/tools", label: "All calculators", note: "Including the table of how far the common formula sits from the published one, per contract." },
+      { href: "/learn/liquidation-heatmap", label: "Liquidation heatmaps", note: "What happens when this arithmetic is applied to a whole book instead of one position." },
+      { href: "/methodology", label: "Methodology", note: "Where the margin tables come from and how they are kept current." },
+      { href: "/learn", label: "All explainers", note: "Funding, liquidation maps, liquidation price and open interest." },
+    ]}
+  />
+
+  <style>
+    h2.section { margin-top: 32px; }
+  </style>
+</Base>

@@ -63,6 +63,11 @@ const ROUTES = [
   "/unlocks", "/tools", "/tools/position-size", "/tools/leverage", "/tools/funding-cost",
   "/tools/funding-arbitrage", "/tools/liquidation-price", "/methodology",
   "/methodology/liquidations", "/data-sources", "/privacy", "/about", "/terms", "/llms.txt",
+  /* THE EXPLAINERS. Two of them read the live store and return 503 on a cold one, which is the
+     behaviour every market page here has; the warm fixture covers that. The other two are prose
+     over committed data and cannot 503, so a failure in either is a real render fault. */
+  "/learn", "/learn/funding-rate", "/learn/liquidation-heatmap", "/learn/liquidation-price",
+  "/learn/open-interest",
   "/.well-known/security.txt", "/watchlist", "/status",
   "/status/indexation", "/404",
   /* THE RETIREMENT PAGE, AND THE STATUS IS THE POINT OF IT. A contract that leaves coverage
@@ -94,7 +99,7 @@ const ROUTES = [
      one of them would have shipped green and been served to Googlebot. */
   "/sitemaps/coins.xml", "/sitemaps/funding-symbols.xml", "/sitemaps/funding-hub.xml",
   "/sitemaps/liquidations.xml", "/sitemaps/open-interest.xml", "/sitemaps/pages.xml",
-  "/sitemaps/tools.xml", "/sitemaps/unlocks.xml",
+  "/sitemaps/tools.xml", "/sitemaps/unlocks.xml", "/sitemaps/learn.xml",
 ];
 /** Routes whose correct answer is not 200.
  *  /rail exports POST only — the rail's collapsed state is decided server-side so there is no

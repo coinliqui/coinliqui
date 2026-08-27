@@ -10,5 +10,7 @@
   "/tools/funding-cost": "2026-08-20T09:51:28.000Z",
   "/tools/funding-arbitrage": "2026-08-20T09:51:28.000Z",
   "/unlocks": "2026-08-24T13:25:10.000Z",
-  "/liquidations/sweep": "2026-08-24T14:39:23.000Z"
+  "/liquidations/sweep": "2026-08-24T14:39:23.000Z",
+  "/learn/liquidation-heatmap": "2026-08-24T06:33:21.000Z",
+  "/learn/liquidation-price": "2026-08-20T06:20:39.000Z"
 }

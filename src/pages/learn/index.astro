@@ -1,0 +1,221 @@
+---
+import Base from "../../layouts/Base.astro";
+import Related from "../../components/Related.astro";
+import { getSnapshot, coldStart, OI_NOTIONAL_FLOOR } from "../../lib/hyperliquid.ts";
+import { VENUE_LABEL, pct, usd } from "../../lib/funding.ts";
+
+/**
+ * THE EXPLAINERS' FRONT DOOR, AND THE FIRST PAGE ON THIS SITE WHOSE JOB IS A SENTENCE RATHER
+ * THAN A NUMBER.
+ *
+ * WHY IT EXISTS AT ALL, stated with the measurement behind it. Every query this domain has
+ * ever appeared for is a THING query — "btc liquidation map", "btc funding rate", "funding
+ * rate history hyperliquid" — and on all of them the site sits between position 30 and 80,
+ * behind sites with years of links. Those positions do not move because a page got better;
+ * they move because a domain got older or got linked. Meanwhile the questions underneath
+ * those queries — what the number is, how it is computed, what it costs — have no
+ * competition worth the name, because the sites that rank for the thing rarely explain it,
+ * and the sites that explain it have no live figure to explain it with. This site has both,
+ * and had been publishing only the half nobody searches for in words.
+ *
+ * WHY NOT A BLOG. A dated post decays: it is worth most on the day it is published and less
+ * every day after, and it needs feeding forever to stay worth anything. An explainer is worth
+ * more each month as it accumulates links and as the domain ages, and it needs feeding only
+ * when the thing it explains changes. There is one of us. The maths is not close.
+ *
+ * WHY THE LIVE FIGURES ARE HERE AND NOT ONLY ON THE MARKET PAGES. An explanation of what
+ * funding costs is a different document with today's rate in it. It is also the only thing
+ * this section has that a well-written article on somebody else's site does not.
+ */
+const snap = await getSnapshot((Astro.locals as any)?.runtime?.env?.SNAPSHOT, import.meta.env.DEV);
+if (!snap.available) return coldStart();
+
+const perps = [...snap.perps].sort((a, b) => b.oiNotional - a.oiNotional);
+const totalOi = perps.reduce((s, p) => s + p.oiNotional, 0);
+const btc = perps.find((p) => p.symbol === "BTC") ?? perps[0];
+const btcVenues = btc?.venues ?? [];
+/* The widest normalised spread on the book right now — the one figure that exists here and
+   nowhere else, because it is only computable after the intervals are made comparable. */
+const widest = perps
+  .filter((p) => p.aprSpread !== null && Number.isFinite(p.aprSpread))
+  .sort((a, b) => (b.aprSpread as number) - (a.aprSpread as number))[0];
+
+const title = "Perpetual futures explained";
+const description =
+  "Funding rates, liquidation maps, open interest and maintenance margin, explained with " +
+  "today's Hyperliquid, Binance and Bybit numbers instead of invented ones. Four explainers, " +
+  "each linked to the page that shows the live figure.";
+---
+
+<Base title={title} description={description} fetchedAt={snap.fetchedAt}>
+  <div class="page-head">
+    <h1>Perpetual futures explained</h1>
+    <p>
+      Four questions this site answers with numbers, answered here in words first. Every
+      explainer names its sources, states what the figure cannot tell you, and links to the
+      live page it describes.
+    </p>
+  </div>
+
+  <p class="callout">
+    A perpetual future is a futures contract with no expiry date. That single missing feature
+    is where everything else on this site comes from: with no settlement date there is nothing
+    to pull the contract's price back towards the spot price, so the venues invented a
+    recurring payment between the two sides to do it — the <strong>funding rate</strong> — and
+    made positions closable by the venue itself when the collateral runs out — a
+    <strong>liquidation</strong>. The rest is bookkeeping.
+  </p>
+
+  <Related
+    title="The explainers"
+    items={[
+      { href: "/learn/funding-rate", label: "Funding rates", note: "What the payment is, who pays it, how the three venues quote it differently, and what holding a position actually costs." },
+      { href: "/learn/liquidation-heatmap", label: "Liquidation heatmaps", note: "What a heatmap is a model of, why nobody can observe the thing it draws, and how to read one without being misled." },
+      { href: "/learn/liquidation-price", label: "Liquidation price", note: "Why the formula in circulation is wrong, what maintenance margin does to it, and how far apart the two answers are." },
+      { href: "/learn/open-interest", label: "Open interest", note: "What the number counts, what rising and falling open interest imply about who is opening, and why one venue's book is not the market's." },
+    ]}
+  />
+
+  <h2 class="section">Where the numbers on this site come from</h2>
+  <div class="panel">
+    <table class="tbl">
+      <thead>
+        <tr><th>Figure</th><th class="num">Right now</th><th>What it is</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><a href="/funding">Contracts covered</a></td>
+          <td class="num">{perps.length}</td>
+          <td>Every Hyperliquid perpetual whose open interest clears {usd(OI_NOTIONAL_FLOOR)}. The floor, and why there is one, is on <a class="link" href="/data-sources">Data sources</a>.</td>
+        </tr>
+        <tr>
+          <td><a href="/open-interest">Open interest</a></td>
+          <td class="num">{usd(totalOi)}</td>
+          <td>Hyperliquid's book alone, across those contracts — a minority of the market's, and not comparable with an aggregator's figure.</td>
+        </tr>
+        {btc && (
+          <tr>
+            <td><a href={`/funding/${btc.symbol.toLowerCase()}`}>{btc.symbol} funding, annualised</a></td>
+            <td class="num">{pct(btc.hlApr)}</td>
+            <td>Hyperliquid's current hourly rate, multiplied out to a year. Positive means longs pay shorts.</td>
+          </tr>
+        )}
+        {widest && (
+          <tr>
+            <td><a href={`/funding/${widest.symbol.toLowerCase()}`}>Widest venue spread</a></td>
+            <td class="num">{pct(widest.aprSpread as number)}</td>
+            <td>{widest.symbol}: the gap between the dearest and cheapest of the three venues, once their different settlement intervals are normalised.</td>
+          </tr>
+        )}
+      </tbody>
+    </table>
+  </div>
+  <p class="section-note" style="margin-top:10px">
+    Every figure in this table is rendered by the server before the page is sent, from the
+    snapshot stamped at the top of this page. Nothing here is filled in by a script afterwards.
+  </p>
+
+  {btc && btcVenues.length > 0 && (
+    <>
+      <h2 class="section">The same rate, quoted three ways</h2>
+      <p class="prose">
+        This is the comparison the whole site exists for, and the reason a funding rate cannot
+        be read off a venue page and compared with another. Each venue quotes the rate it
+        charges per settlement, and the settlements are not the same length — so the raw
+        numbers are in different units and the larger one is not the dearer one. Annualising
+        puts them in the same unit. Today, on {btc.symbol}:
+      </p>
+      <div class="panel">
+        <table class="tbl">
+          <thead><tr><th>Venue</th><th class="num">Quoted rate</th><th class="num">Settles every</th><th class="num">Annualised</th></tr></thead>
+          <tbody>
+            {btcVenues.map((v) => (
+              <tr>
+                <td>{VENUE_LABEL[v.venue]}</td>
+                <td class="num">{pct(v.rate, 5)}</td>
+                <td class="num">{v.intervalHours}h</td>
+                <td class="num">{pct(v.apr)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p class="section-note" style="margin-top:10px">
+        <a class="link" href="/learn/funding-rate">How that arithmetic works, and what it costs to hold a position →</a>
+      </p>
+    </>
+  )}
+
+  <h2 class="section">The words, once</h2>
+  <p class="prose">
+    Short definitions, so the explainers do not have to stop and give them. Each one is the
+    sense in which this site uses the word, which is not always the only sense in circulation.
+  </p>
+  <div class="panel">
+    <table class="tbl">
+      <thead><tr><th>Term</th><th>What it means here</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>Perpetual</td>
+          <td>A futures contract with no expiry. It never settles, so it never converges to spot on its own — funding does that job instead.</td>
+        </tr>
+        <tr>
+          <td>Funding rate</td>
+          <td>A recurring payment between the two sides of the contract. Positive: longs pay shorts. Negative: shorts pay longs. The venue takes none of it. <a class="link" href="/learn/funding-rate">Full explanation</a>.</td>
+        </tr>
+        <tr>
+          <td>Settlement interval</td>
+          <td>How often that payment changes hands. Hyperliquid settles hourly; Binance and Bybit settle on an eight-hour cycle. Two rates quoted over different intervals are not comparable until both are annualised.</td>
+        </tr>
+        <tr>
+          <td>APR</td>
+          <td>The rate multiplied out to a year with no compounding — the interval rate times the number of settlements in 8,760 hours. Simple, not compounded, because compounding a rate that changes every settlement would be a forecast.</td>
+        </tr>
+        <tr>
+          <td>Mark price</td>
+          <td>The price the venue uses to decide margin and liquidations. It is not the last trade: it is anchored to an index of spot venues so a thin order book cannot trigger liquidations on its own.</td>
+        </tr>
+        <tr>
+          <td>Basis</td>
+          <td>Perpetual price minus spot price. Positive means the contract is dearer than the underlying, which is normally also when funding is positive.</td>
+        </tr>
+        <tr>
+          <td>Open interest</td>
+          <td>The total value of contracts currently open. Every contract has a long and a short, so it counts each position once, not twice. <a class="link" href="/learn/open-interest">Full explanation</a>.</td>
+        </tr>
+        <tr>
+          <td>Turnover</td>
+          <td>Twenty-four-hour volume divided by open interest. High turnover means the position base is churning; low means it is being held. On <a class="link" href="/open-interest">Open interest</a> it is a column.</td>
+        </tr>
+        <tr>
+          <td>Maintenance margin</td>
+          <td>The minimum collateral a position may hold before the venue closes it. It rises in steps as the position gets larger, and it is the term the widely-copied liquidation formula leaves out. <a class="link" href="/learn/liquidation-price">Full explanation</a>.</td>
+        </tr>
+        <tr>
+          <td>Liquidation</td>
+          <td>The venue closing a position because its collateral fell below maintenance margin. It is an event, and no venue publishes a complete feed of them — see <a class="link" href="/methodology/liquidations">why we publish no liquidation totals</a>.</td>
+        </tr>
+        <tr>
+          <td>Liquidation map</td>
+          <td>A model of where liquidations would happen if positions were distributed a particular way. It is drawn from open interest and an assumed leverage mix, never from observed positions. <a class="link" href="/learn/liquidation-heatmap">Full explanation</a>.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <Related
+    title="The pages these explain"
+    items={[
+      { href: "/funding", label: "Funding", note: "All three venues, normalised, for every covered contract." },
+      { href: "/liquidations", label: "Liquidation map", note: "The model itself, with its assumptions printed above it." },
+      { href: "/open-interest", label: "Open interest", note: "Hyperliquid's book and 24-hour turnover, per contract." },
+      { href: "/tools", label: "Calculators", note: "Funding cost, position size, leverage and cross-venue carry." },
+      { href: "/methodology", label: "Methodology", note: "How every number here is produced, with a worked example." },
+      { href: "/data-sources", label: "Data sources", note: "Every endpoint behind every figure, and what is deliberately absent." },
+    ]}
+  />
+
+  <style>
+    h2.section { margin-top: 32px; }
+  </style>
+</Base>

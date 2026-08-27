@@ -28,7 +28,7 @@ const total = rows.reduce((s, p) => s + p.oiNotional, 0);
       cannot. <a class="link" href="/data-sources">What is collected, and what is not →</a>
     </p>
   </div>
-  <p style="margin:0 0 20px;max-width:74ch"><strong class="num">{usd(total)}</strong> across {rows.length} coins. The turnover column is 24h volume divided by open interest: a high number means the position base is churning rather than accumulating.</p>
+  <p style="margin:0 0 20px;max-width:74ch"><strong class="num">{usd(total)}</strong> across {rows.length} coins. The turnover column is 24h volume divided by open interest: a high number means the position base is churning rather than accumulating. <a class="link" href="/learn/open-interest">What open interest does and does not tell you →</a></p>
   <div class="panel"><table class="tbl">
     <thead><tr><th>Coin</th><th class="num">Open interest <span class="thscope">Hyperliquid</span></th><th class="num">24h volume <span class="thscope">Hyperliquid</span></th><th class="num">Turnover (24h volume ÷ OI)</th><th class="num">Max leverage</th></tr></thead>
     <tbody>

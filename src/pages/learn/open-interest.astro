@@ -1,0 +1,190 @@
+---
+import Base from "../../layouts/Base.astro";
+import Related from "../../components/Related.astro";
+import { getSnapshot, coldStart, OI_NOTIONAL_FLOOR } from "../../lib/hyperliquid.ts";
+import { pct, usd } from "../../lib/funding.ts";
+
+/**
+ * THE OPEN-INTEREST EXPLAINER.
+ *
+ * WHY IT IS SEPARATE FROM /open-interest. That page is a table: it shows the book and assumes
+ * the reader knows what the column means. The two questions people actually ask of the number
+ * — "is rising open interest bullish" and "why is your figure a fifth of the one I saw
+ * elsewhere" — are answered nowhere on this site, and the second one is the difference between
+ * a reader trusting a page and closing it.
+ *
+ * THE FRAGMENTATION PARAGRAPH IS THE POINT OF THE PAGE. A visitor who compares our BTC open
+ * interest against an aggregator's sees a number roughly a fifth the size and concludes the
+ * site is broken. It is not broken; it is one venue's book, stated as such. That explanation
+ * exists on /open-interest and on /about as a clause; here it gets the space to actually
+ * land, because it is the single most likely reason a reader distrusts this site's numbers.
+ */
+const snap = await getSnapshot((Astro.locals as any)?.runtime?.env?.SNAPSHOT, import.meta.env.DEV);
+if (!snap.available) return coldStart();
+
+const perps = [...snap.perps];
+const totalOi = perps.reduce((s, p) => s + p.oiNotional, 0);
+const totalVol = perps.reduce((s, p) => s + p.dayNtlVlm, 0);
+const btc = perps.find((p) => p.symbol === "BTC") ?? perps[0];
+
+/* Fastest-churning books: volume as a multiple of the position base. A different sort from
+   /open-interest, which leads with size — this page is about what the ratio means. */
+const churn = perps
+  .filter((p) => p.oiNotional > 0 && Number.isFinite(p.dayNtlVlm))
+  .sort((a, b) => b.dayNtlVlm / b.oiNotional - a.dayNtlVlm / a.oiNotional)
+  .slice(0, 12);
+
+const title = "Open interest explained: what it counts and what it cannot tell you";
+const description =
+  "Open interest is the value of perpetual contracts currently open — a stock, not a flow. " +
+  "What rising and falling open interest imply about who is opening, what turnover measures, " +
+  "and why one venue's book is not the market's.";
+---
+
+<Base title={title} description={description} fetchedAt={snap.fetchedAt}>
+  <div class="page-head">
+    <h1>What open interest tells you</h1>
+  </div>
+
+  <p class="callout">
+    Open interest is the total value of perpetual contracts that are currently open. Every
+    contract has a buyer and a seller, so it is counted once, not twice: a book with
+    {" "}{usd(totalOi)} of open interest has {usd(totalOi)} of long exposure facing
+    {" "}{usd(totalOi)} of short exposure, by construction. It is the size of the position
+    base, not the size of the trading.
+  </p>
+
+  <h2 class="section">Open interest is a stock; volume is a flow</h2>
+  <p class="prose">
+    Volume counts what changed hands over a period and resets when the period does. Open
+    interest counts what is still open at this instant and carries over. The same contract can
+    be traded a hundred times in a day without open interest moving at all, if every trade
+    passes an existing position from one holder to another. Open interest changes only when a
+    position is <em>created</em> or <em>closed</em>.
+  </p>
+  <p class="prose">
+    Across the {perps.length} contracts covered here, that is {usd(totalOi)} of open interest
+    against {usd(totalVol)} of volume in the last twenty-four hours — a turnover of
+    {" "}{totalOi > 0 ? (totalVol / totalOi).toFixed(2) : "—"}×. A turnover above one means the
+    book traded more than its own size in a day.
+  </p>
+
+  <h2 class="section">The four combinations</h2>
+  <p class="prose">
+    Open interest is most informative read together with price, because the pair distinguishes
+    new positioning from unwinding. This is a reading of what has already happened, not a
+    prediction of what happens next.
+  </p>
+  <div class="panel">
+    <table class="tbl">
+      <thead><tr><th>Price</th><th>Open interest</th><th>What is happening</th></tr></thead>
+      <tbody>
+        <tr><td>Rising</td><td>Rising</td><td>New long positions are being opened. Fresh money is taking the direction the price is going.</td></tr>
+        <tr><td>Falling</td><td>Rising</td><td>New short positions are being opened. Fresh money is taking the other side.</td></tr>
+        <tr><td>Rising</td><td>Falling</td><td>Shorts are closing. The move is being driven by exits rather than by new conviction — a squeeze rather than an accumulation.</td></tr>
+        <tr><td>Falling</td><td>Falling</td><td>Longs are closing. Positions are being unwound, which is what the tail of a liquidation cascade looks like.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="section-note" style="margin-top:10px">
+    Each row describes the dominant flow, not the only one. Both sides are always present.
+  </p>
+
+  <h2 class="section">Why our figure is smaller than the one you saw elsewhere</h2>
+  <p class="prose">
+    This is the most common reason to distrust a number on this site, so it is worth stating
+    plainly: <strong>every open-interest figure here is Hyperliquid's book alone.</strong> It is
+    the venue this project collects from directly, and it is a minority of perpetual open
+    interest across the market. Measured on 18 August 2026, Hyperliquid held $2.68B of BTC open
+    interest against $6.83B on Binance and $3.91B on Bybit — roughly a fifth of those three
+    together, and those three are not the whole market either.
+  </p>
+  <p class="prose">
+    An aggregator adding a dozen venues will therefore report several times our figure for the
+    same coin, and both numbers can be right. The difference is scope, and it is stated on
+    every page that carries one. Funding is the exception: three venues publish comparable
+    funding rates, so <a class="link" href="/funding">the funding pages</a> compare all three.
+    {" "}<a class="link" href="/data-sources">What is collected, and what is not →</a>
+  </p>
+
+  <h2 class="section">What the number cannot tell you</h2>
+  <div class="panel">
+    <table class="tbl">
+      <thead><tr><th>A reading you may have seen</th><th>Why it does not follow</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>"Open interest is high, so the market is heavily long"</td>
+          <td>It cannot be. Longs and shorts are equal by construction — the figure says how large the position base is, never which way it leans. Funding is the number that leans.</td>
+        </tr>
+        <tr>
+          <td>"Open interest is the money at risk"</td>
+          <td>It is notional value, not collateral. A book of {usd(totalOi)} held at ten times leverage is backed by a tenth of that in margin.</td>
+        </tr>
+        <tr>
+          <td>"Rising open interest is bullish"</td>
+          <td>Only with the price direction attached — see the table above. Rising open interest into a falling price is new shorts.</td>
+        </tr>
+        <tr>
+          <td>"A drop in open interest means people left the market"</td>
+          <td>Or that they were closed out. A liquidation cascade reduces open interest exactly as an orderly exit does, and the two mean opposite things.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="section">Turnover: how fast the book is churning</h2>
+  <p class="prose">
+    Dividing twenty-four-hour volume by open interest gives a ratio this site prints as
+    turnover. A low number means positions are being held; a high number means the same
+    exposure is changing hands repeatedly. It is the cleanest available separation between a
+    contract that is being <em>invested in</em> and one that is being <em>traded</em>.
+  </p>
+  <div class="panel">
+    <table class="tbl">
+      <thead><tr><th>Coin</th><th class="num">Turnover (24h volume ÷ OI)</th><th class="num">Open interest <span class="thscope">Hyperliquid</span></th><th class="num">Funding, annualised</th></tr></thead>
+      <tbody>
+        {churn.map((p) => (
+          <tr>
+            <td><a href={`/funding/${p.symbol.toLowerCase()}`}>{p.symbol}</a></td>
+            <td class="num">{(p.dayNtlVlm / p.oiNotional).toFixed(2)}×</td>
+            <td class="num">{usd(p.oiNotional)}</td>
+            <td class="num">{pct(p.hlApr)}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+  <p class="section-note" style="margin-top:10px">
+    The twelve fastest-churning covered books right now.
+    {" "}<a class="link" href="/open-interest">All {perps.length}, sorted by size →</a>
+  </p>
+
+  <h2 class="section">Which contracts appear here at all</h2>
+  <p class="prose">
+    Coverage is decided by open interest and nothing else: a Hyperliquid perpetual is covered
+    once its open interest clears {usd(OI_NOTIONAL_FLOOR)}, and it is retired when it falls
+    materially below that and stays there. No venue, listing or partnership influences the set —
+    there are none. A contract that leaves coverage answers
+    {" "}<a class="link" href="/retired">410 Gone</a> rather than quietly redirecting, so a
+    crawler is told the page is over rather than left guessing.
+    {btc && (
+      <span>{" "}The largest book covered today is {btc.symbol}, at {usd(btc.oiNotional)}.</span>
+    )}
+  </p>
+
+  <Related
+    title="Where to go next"
+    items={[
+      { href: "/open-interest", label: "Open interest table", note: "Every covered contract, with 24-hour volume and turnover." },
+      { href: "/learn/funding-rate", label: "Funding rates, explained", note: "The number that says which way positioning leans, which this one cannot." },
+      { href: "/learn/liquidation-heatmap", label: "Liquidation heatmaps", note: "What open interest becomes when it is distributed across price levels." },
+      { href: "/data-sources", label: "Data sources", note: "Which venue every figure comes from, and the coverage floor." },
+      { href: "/coins", label: "Coins", note: "Price, funding and open interest per coin, one page each." },
+      { href: "/learn", label: "All explainers", note: "Funding, liquidation maps, liquidation price and open interest." },
+    ]}
+  />
+
+  <style>
+    h2.section { margin-top: 32px; }
+  </style>
+</Base>

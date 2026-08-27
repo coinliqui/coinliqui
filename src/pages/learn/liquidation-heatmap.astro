@@ -1,0 +1,189 @@
+---
+import Base from "../../layouts/Base.astro";
+import Related from "../../components/Related.astro";
+import { PROFILES } from "../../lib/liqmap.ts";
+
+/**
+ * THE LIQUIDATION-HEATMAP EXPLAINER, AND THE ONE PAGE IN THIS SECTION THAT ARGUES AGAINST ITS
+ * OWN PRODUCT.
+ *
+ * WHY. "btc liquidation heatmap", "btc liquidation map", "bitcoin liqudation map" and
+ * "kaito liquidation heatmap" are the second-largest measured query cluster this domain
+ * appears for, and every site that ranks for them presents the picture as data. It is not
+ * data. It is a model of an unobservable quantity, and this site already says so on
+ * /liquidations in an assumptions block that a reader arriving from search will scroll past.
+ *
+ * THE STRUCTURAL ADVANTAGE HERE IS CANDOUR. We cannot out-rank an established site on the
+ * thing query this quarter. We can be the only page that states what the picture is a model
+ * OF, prints the exact leverage assumptions behind it, and says which readings of it are
+ * unsupported — which is also the page an answer engine can safely quote, because every
+ * sentence in it is checkable against the code that draws the map.
+ *
+ * NO STORE READ, ON PURPOSE. Nothing here depends on today's market: a model's assumptions and
+ * the argument for stating them do not change hourly, so this route takes a committed date and
+ * the sitemap says so. The live figures belong on /liquidations, which is one click away.
+ */
+const title = "What a liquidation heatmap actually shows";
+const description =
+  "A liquidation heatmap is a model, not a measurement: no venue publishes where other " +
+  "traders would be liquidated. What the picture is built from, the leverage assumptions " +
+  "behind it, and which readings of it the data does not support.";
+---
+
+<Base title={title} description={description}>
+  <div class="page-head">
+    <h1>What a liquidation heatmap actually shows</h1>
+  </div>
+
+  <p class="callout">
+    A liquidation heatmap looks like a measurement and is not one. Nobody — not this site, not
+    an exchange, not the largest data vendor in the market — can see where other traders would
+    be liquidated. Every heatmap in circulation, including
+    {" "}<a class="link" href="/liquidations">the one on this site</a>, is a
+    <strong> model of an unobservable quantity</strong>. That is not a disclaimer bolted onto
+    the picture; it is the first fact about it.
+  </p>
+
+  <h2 class="section">Why the underlying quantity cannot be observed</h2>
+  <p class="prose">
+    A position's liquidation price is a function of three things: its entry price, its
+    leverage, and the collateral behind it. All three are private to the trader and the venue.
+    An exchange knows its own book and publishes none of it position by position; a venue that
+    settles on-chain makes each position readable in principle, but only by address, which
+    means reconstructing the market would require indexing every account on every venue and
+    then knowing which accounts matter.
+  </p>
+  <p class="prose">
+    What <em>is</em> public is aggregate open interest — the total value of contracts open on a
+    contract — and the venue's own margin rules. A heatmap is what you get when you take those
+    two public facts and assume the missing one.
+  </p>
+
+  <h2 class="section">How the picture is built</h2>
+  <div class="panel">
+    <table class="tbl">
+      <thead><tr><th class="num">Step</th><th>What happens</th><th>What is assumed</th></tr></thead>
+      <tbody>
+        <tr>
+          <td class="num">1</td>
+          <td>Take the contract's open interest — a real, published figure.</td>
+          <td>Nothing. This is measured.</td>
+        </tr>
+        <tr>
+          <td class="num">2</td>
+          <td>Split it into slices, each representing positions opened at a given leverage.</td>
+          <td>The <strong>leverage mix</strong>: what share of the book sits at 2×, 5×, 10× and so on. Assumed, and the single largest source of error.</td>
+        </tr>
+        <tr>
+          <td class="num">3</td>
+          <td>Place each slice at the price where a position of that leverage, opened around the prices that were trading when it was opened, would be closed.</td>
+          <td>That positions were opened across the recent price range rather than all at once, and that the venue's published maintenance margin applies.</td>
+        </tr>
+        <tr>
+          <td class="num">4</td>
+          <td>Sum the slices into price bands and shade by density.</td>
+          <td>That older positions have partly been closed already, so the model decays them rather than carrying every position forward forever.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="section-note" style="margin-top:10px">
+    Step 2 is where every heatmap differs from every other one, and almost nobody publishes
+    their answer to it. Ours is below.
+  </p>
+
+  <h2 class="section">The leverage assumptions this site uses</h2>
+  <p class="prose">
+    Three profiles, selectable on the map itself. Each is a distribution of notional across
+    leverage levels; the shares sum to one, and levels above a contract's own maximum leverage
+    are redistributed rather than silently dropped. These are assumptions, published so that a
+    reader can disagree with a specific number rather than with the picture in general.
+  </p>
+  <div class="panel">
+    <table class="tbl">
+      <thead>
+        <tr>
+          <th>Profile</th>
+          {PROFILES[0].weights.map(([L]) => (<th class="num">{L}×</th>))}
+        </tr>
+      </thead>
+      <tbody>
+        {PROFILES.map((p) => (
+          <tr>
+            <td>{p.label}</td>
+            {p.weights.map(([, share]) => (<td class="num">{Math.round(share * 100)}%</td>))}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+  <p class="section-note" style="margin-top:10px">
+    {PROFILES.map((p) => `${p.label}: ${p.note}`).join(" ")}
+  </p>
+
+  <h2 class="section">How to read one without being misled</h2>
+  <div class="panel">
+    <table class="tbl">
+      <thead><tr><th>A common reading</th><th>What the data supports</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>"There is $400M of liquidity sitting at that level"</td>
+          <td>There is no liquidity in the picture at all. A heatmap contains no orders — it estimates where forced <em>closing</em> would occur, which consumes liquidity rather than providing it.</td>
+        </tr>
+        <tr>
+          <td>"Price is going to that cluster"</td>
+          <td>The map has no directional content. It says where a move, if it happens, would meet forced selling or buying that could extend it — a conditional, not a target.</td>
+        </tr>
+        <tr>
+          <td>"The bright band is where liquidations happened"</td>
+          <td>The map is forward-looking and hypothetical. Liquidations that have already happened are events, and no venue publishes a complete feed of them — <a class="link" href="/methodology/liquidations">why we publish no totals</a>.</td>
+        </tr>
+        <tr>
+          <td>Comparing the absolute dollar values between two sites</td>
+          <td>Meaningless without both leverage assumptions. Two models over the same open interest can differ several-fold purely from step 2, and only one of the two usually publishes it.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="section">What it is genuinely good for</h2>
+  <p class="prose">
+    One thing, and it is worth having: identifying price regions where forced closing would be
+    self-reinforcing. If a large share of the position base would be closed within a narrow
+    band, a move into that band mechanically produces more of the same move. That is a
+    structural observation about how the book is built, and it holds under a wide range of
+    leverage assumptions even though the dollar figure attached to it does not.
+  </p>
+  <p class="prose">
+    Read as regions rather than lines, and as relative density rather than absolute dollars, a
+    heatmap is a useful map of fragility. Read as a measurement, it is a confident-looking
+    picture of something nobody can see.
+  </p>
+
+  <h2 class="section">Liquidation totals are a worse number than the map</h2>
+  <p class="prose">
+    Most sites that publish a heatmap also publish a "total liquidated" figure, and that
+    number has a harder problem: the exchange feeds it is summed from are throttled, so the
+    total is systematically understated, and most understated during the cascades that make it
+    newsworthy. This site publishes no such total, and the mechanism is set out in full on
+    {" "}<a class="link" href="/methodology/liquidations">why we don't publish liquidation
+    totals</a>. A modelled map that says it is a model is a more honest object than a measured
+    total that is not a total.
+  </p>
+
+  <Related
+    title="Where to go next"
+    items={[
+      { href: "/liquidations", label: "The liquidation map", note: "The model itself, with its assumptions printed above the picture and the profile switchable." },
+      { href: "/liquidations/survival", label: "Position survival", note: "How long a position at a given leverage would have survived the actual price path." },
+      { href: "/methodology/liquidations", label: "Why no liquidation totals", note: "The throttled feeds, the measured scale of the understatement, and what we publish instead." },
+      { href: "/learn/liquidation-price", label: "Liquidation price, explained", note: "The arithmetic behind step 3, and why the popular formula gets it wrong." },
+      { href: "/learn/open-interest", label: "Open interest, explained", note: "The one measured input the whole model is built on." },
+      { href: "/learn", label: "All explainers", note: "Funding, liquidation maps, liquidation price and open interest." },
+    ]}
+  />
+
+  <style>
+    h2.section { margin-top: 32px; }
+  </style>
+</Base>

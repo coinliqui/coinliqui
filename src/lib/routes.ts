@@ -37,6 +37,21 @@ export const TOOLS = ["/tools", "/tools/position-size", "/tools/leverage", "/too
 /** The liquidation surface. /liquidations/sweep is frozen; the other two move with the market. */
 export const LIQUIDATIONS = ["/liquidations", "/liquidations/sweep", "/liquidations/survival"] as const;
 
+/**
+ * THE EXPLAINERS, and the one template on this site whose job is to answer a question rather
+ * than to show a number.
+ *
+ * WHY IT IS SPLIT THE SAME WAY /pages IS. Two of these read the live store on purpose — an
+ * explanation of what a funding rate costs is worth more with today's rate in it than with a
+ * made-up one — and two do not, because a model's assumptions and a margin formula do not
+ * change when the market does. Filing all five on one side would put a git date on a page that
+ * moves hourly, or an hourly date on a page that has not changed in a week. The gate measures
+ * store dependence rather than trusting this list, so getting it wrong fails within one run.
+ */
+export const LEARN_DATA = ["/learn", "/learn/funding-rate", "/learn/open-interest"] as const;
+export const LEARN_CODE = ["/learn/liquidation-heatmap", "/learn/liquidation-price"] as const;
+export const LEARN = [...LEARN_DATA, ...LEARN_CODE] as const;
+
 /** One-page templates, each its own sitemap so its indexation rate is separately observable. */
 export const FUNDING_HUB = ["/funding"] as const;
 export const OPEN_INTEREST = ["/open-interest"] as const;
@@ -56,4 +71,5 @@ export const STATIC_ROUTES: readonly string[] = [
   ...PAGES_DATA, ...PAGES_CODE,
   ...COINS_HUB, ...FUNDING_HUB, ...OPEN_INTEREST,
   ...TOOLS, ...LIQUIDATIONS, ...UNLOCKS,
+  ...LEARN,
 ];

@@ -216,6 +216,9 @@ var PAGES_DATA = ["/", "/methodology", "/about"];
 var PAGES_CODE = ["/methodology/liquidations", "/data-sources", "/privacy", "/terms"];
 var TOOLS = ["/tools", "/tools/position-size", "/tools/leverage", "/tools/funding-cost", "/tools/funding-arbitrage"];
 var LIQUIDATIONS = ["/liquidations", "/liquidations/sweep", "/liquidations/survival"];
+var LEARN_DATA = ["/learn", "/learn/funding-rate", "/learn/open-interest"];
+var LEARN_CODE = ["/learn/liquidation-heatmap", "/learn/liquidation-price"];
+var LEARN = [...LEARN_DATA, ...LEARN_CODE];
 var FUNDING_HUB = ["/funding"];
 var OPEN_INTEREST = ["/open-interest"];
 var UNLOCKS = ["/unlocks"];
@@ -228,7 +231,8 @@ var STATIC_ROUTES = [
   ...OPEN_INTEREST,
   ...TOOLS,
   ...LIQUIDATIONS,
-  ...UNLOCKS
+  ...UNLOCKS,
+  ...LEARN
 ];
 
 // src/lib/coins.ts
@@ -1081,7 +1085,7 @@ async function stepCorroborate(env, now = Date.now()) {
 }
 
 // worker/build-stamp.ts
-var WORKER_BUILD = "472ced22b9be";
+var WORKER_BUILD = "680163c7321f";
 
 // worker/ingest.ts
 var RETAIN_HOURS = 72;

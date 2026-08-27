@@ -205,9 +205,19 @@ const cases = [
     fire: () => controlGroupOverflow(
       `.tf { display: inline-flex; gap: var(--seg-gap); padding: 2px; }`,
       [["fixture.astro", `<div class="tf">{TIMEFRAMES.map((t) => (<button data-tf={t.key}>{t.label}</button>))}</div>`]]),
-    quiet: () => controlGroupOverflow(
-      `.tf { display: inline-flex; flex-wrap: wrap; gap: var(--seg-gap); padding: 2px; }`,
-      [["fixture.astro", `<div class="tf">{TIMEFRAMES.map((t) => (<button data-tf={t.key}>{t.label}</button>))}</div>`]]),
+    /* TWO WAYS OF BEING QUIET, because only one of them was ever tested and the other was
+       broken. The first is a flex row that wraps. The second is a container whose rule is
+       ELEMENT-QUALIFIED — `table.tbl`, which is how the layout declares every table on this
+       site — and the lookup used to miss it and report a styled class as unstyled. Both must
+       return nothing or the check is guessing. */
+    quiet: () => [
+      ...controlGroupOverflow(
+        `.tf { display: inline-flex; flex-wrap: wrap; gap: var(--seg-gap); padding: 2px; }`,
+        [["fixture.astro", `<div class="tf">{TIMEFRAMES.map((t) => (<button data-tf={t.key}>{t.label}</button>))}</div>`]]),
+      ...controlGroupOverflow(
+        `table.tbl { border-collapse: collapse; width: 100%; }`,
+        [["fixture.astro", `<table class="tbl"><tbody>{rows.map((r) => (<tr><td><a href={r.h}>{r.s}</a></td></tr>))}</tbody></table>`]]),
+    ],
   },
   {
     check: "botPolicyReasons",

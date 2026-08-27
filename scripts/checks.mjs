@@ -1664,7 +1664,16 @@ export function controlGroupOverflow(css, sources = []) {
     /* THE RULE MAY BE IN EITHER PLACE. Most live in the layout's stylesheet; a page with its own
        <style> block styles its own containers, and looking only at the layout reported those as
        "no rule in the stylesheet" — an instrument saying it cannot see rather than a finding. */
-    const find = (text) => new RegExp(`(^|[},])\\s*\\.${cls}\\s*\\{([^}]*)\\}`, "m").exec(text);
+    /* THE SELECTOR MAY BE ELEMENT-QUALIFIED, and until this allowed for that the check reported
+       a styled class as unstyled. `.tbl` is declared `table.tbl { ... }` in the layout, so the
+       lookup missed it and the message asserted "no rule in either the layout stylesheet or its
+       own page" about a rule sitting fifty lines up in the file it had just read. The finding
+       fired on the first new page whose generated table happened to be short enough to match —
+       the failure was not that the page changed, it was that the instrument could not see. The
+       message named one thing and the value measured another, which is the class this project
+       has been sweeping for; a check that cannot distinguish "no rule" from "no rule I can
+       parse" produces the confident kind of wrong finding. */
+    const find = (text) => new RegExp(`(^|[},])\\s*(?:[a-zA-Z][\\w-]*)?\\.${cls}\\s*\\{([^}]*)\\}`, "m").exec(text);
     const rule = find(bare) ?? find(own);
     if (!rule) { out.push(`\`.${cls}\` in ${file} renders a variable number of controls and has no rule in either the layout stylesheet or its own page — nothing here can say whether it wraps`); continue; }
     const body = rule[2];

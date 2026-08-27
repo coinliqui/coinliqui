@@ -54,6 +54,13 @@ const ROUTES = {
   "/unlocks": ["src/pages/unlocks.astro", "src/data/vesting-contracts.json"],
   // Frozen by design: the window never moves, so this date is the truest lastmod on the site.
   "/liquidations/sweep": ["src/pages/liquidations/sweep.astro", "src/data/sweep-2026-02.json"],
+  /* The two explainers that describe a method rather than a market. Each names the library it
+     explains, because a change to the arithmetic changes what the page teaches even when the
+     page's own source is untouched — the margin functions and the leverage profiles are as much
+     the content of these pages as the prose is. The other three explainers read the live store
+     and take a data stamp; see LEARN_DATA in src/lib/routes.ts. */
+  "/learn/liquidation-heatmap": ["src/pages/learn/liquidation-heatmap.astro", "src/lib/liqmap.ts"],
+  "/learn/liquidation-price": ["src/pages/learn/liquidation-price.astro", "src/lib/margin.ts", "src/data/margin-tables.json"],
 };
 
 const dateOf = (files) => {

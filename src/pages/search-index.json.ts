@@ -44,6 +44,15 @@ export const GET: APIRoute = async ({ locals }) => {
     { label: "Token unlocks", href: "/unlocks", kind: "section" },
     { label: "Coins", href: "/coins", kind: "section" },
     { label: "Calculators", href: "/tools", kind: "section" },
+    { label: "Learn", alt: "explained guide", href: "/learn", kind: "section" },
+
+    // The explainers. `alt` carries the words a reader actually types — nobody searches for
+    // "funding rate explained" inside a site, they type "funding rate" and expect both the
+    // table and the explanation to be offered.
+    { label: "What a funding rate is", alt: "funding rate explained", href: "/learn/funding-rate", kind: "reference" },
+    { label: "What a liquidation heatmap shows", alt: "liquidation heatmap explained", href: "/learn/liquidation-heatmap", kind: "reference" },
+    { label: "How a liquidation price is calculated", alt: "liquidation price formula", href: "/learn/liquidation-price", kind: "reference" },
+    { label: "What open interest tells you", alt: "open interest explained", href: "/learn/open-interest", kind: "reference" },
 
     // Studies and reference.
     { label: "The 5 February 2026 crash", href: "/liquidations/sweep", kind: "reference" },

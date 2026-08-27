@@ -61,6 +61,12 @@ ${base} is the only domain this project publishes. Any other site using this nam
   contracts whose schedule has finished but whose tokens were never withdrawn: ${base}/unlocks
 - Four calculators — position size, leverage, funding cost, cross-venue funding spread:
   ${base}/tools
+- Plain explanations of the four quantities above, each written against the live figures and
+  stating what the number cannot tell you: ${base}/learn
+  - What a funding rate is, who pays it, and what a position costs to hold: ${base}/learn/funding-rate
+  - What a liquidation heatmap is a model OF, with the leverage assumptions printed: ${base}/learn/liquidation-heatmap
+  - How a liquidation price is calculated, and why the widely-copied formula omits maintenance margin: ${base}/learn/liquidation-price
+  - What open interest counts, and why one venue's book is not the market's: ${base}/learn/open-interest
 
 ## How its claims can be verified
 
