@@ -180,6 +180,12 @@ const description =
       background: var(--surface-2); border: 1px solid var(--border-soft);
       border-radius: var(--r-md); overflow-x: auto; color: var(--text);
     }
-    .formula code { background: none; padding: 0; white-space: nowrap; }
+    /* WRAPS, AND DOES NOT SCROLL. `white-space: nowrap` was the first answer and it traded one
+       defect for a worse one: measured at 375px the second formula is 595px of text in a 317px
+       box, so it scrolled inside its own block with no fade, no scrollbar and no affordance —
+       the reader saw "…÷ (1 − maintena" and nothing telling them there was more. The original
+       fault was never wrapping; it was wrapping into TWO tinted boxes with a gap. Inside one
+       block there is one background, so a wrap is just a line break. */
+    .formula code { background: none; padding: 0; }
   </style>
 </Base>
