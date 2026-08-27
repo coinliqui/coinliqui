@@ -270,6 +270,21 @@ console.log("\n5. sitemap");
   const offOrigin = urls.filter((u) => !u.startsWith(ORIGIN + "/") && u !== ORIGIN);
   offOrigin.length ? bad(`${offOrigin.length} URLs off-origin`) : ok(`${maps.length} sitemaps, ${urls.length} URLs, all on ${ORIGIN}`);
   let broken = [], thin = [], hollow = [], gone = [], cut = [];
+  /* THE ANALYTICS COVERAGE ASSERTION, and the reason it lives inside this loop rather than in a
+     section of its own: this loop already holds every URL the site publishes, fetched with a
+     browser's accept header, which is the header the injection keys off. Counting the beacon
+     here costs nothing and covers ALL of them rather than a sample.
+
+     WHY IT IS ASSERTED AT ALL. "Analytics is on every page" is a promise about pages that do not
+     exist yet, and the only honest form of that promise is a gate that fails when a new page
+     does not carry it. The tag is injected by Cloudflare at the edge, after this site's code has
+     finished, so it is not something a template can forget — but "the host does it for us" is a
+     configuration claim, and this project has already shipped one of those in the present tense
+     about something nobody had done. Two halves are checked, because either one alone leaves the
+     page counting nothing: the tag must be PRESENT in the document, and the CSP that document
+     ships must PERMIT the host it names. Between 19 and 27 August the first held and the second
+     did not, and the site recorded zero pageloads for eight days. */
+  let noBeacon = [], beaconBlocked = [], beaconOk = 0;
   for (const u of urls) {
     const r = await fetchAs(pathOf(u) || "/", "GPTBot/1.1");
     if (r.status !== 200) broken.push(`${u} ${r.status}`);
@@ -315,6 +330,13 @@ console.log("\n5. sitemap");
        The real defect it was written for — /funding/uni rendering a timeframe bar above empty
        space, silently, for an hour — is still caught: that page had NEITHER a panel NOR the
        empty state. Requiring one of the two keeps the alarm and drops the false one. */
+    if (r.status === 200 && isDocument(r.body)) {
+      const tag = /<script[^>]+src="https:\/\/static\.cloudflareinsights\.com\/beacon\.min\.js/.test(r.body);
+      const permitted = /script-src[^;]*\bstatic\.cloudflareinsights\.com\b/.test(r.headers.get("content-security-policy") ?? "");
+      if (!tag) noBeacon.push(u);
+      else if (!permitted) beaconBlocked.push(u);
+      else beaconOk++;
+    }
     if (
       /\/funding\/[a-z0-9]/i.test(u) && r.status === 200 &&
       !/data-tfpanel="[^"]+" [^>]*data-on/.test(r.body) &&
@@ -328,6 +350,9 @@ console.log("\n5. sitemap");
   cut.length ? bad(`TRUNCATED — 200 with no </html>, the render threw mid-stream: ${cut.join(", ")}`)
              : ok(`every one of the ${urls.length} sitemap URLs answered 200 with a complete HTML document — no empty bodies, no truncation, not a sample`);
   hollow.length ? bad(`contract page with no chart panel: ${hollow.join(", ")}`) : ok("every contract page renders a chart, or says why it cannot yet");
+  noBeacon.length ? bad(`page(s) carrying no analytics beacon at all — nothing counts a reader on them: ${noBeacon.join(", ")}`)
+    : beaconBlocked.length ? bad(`page(s) carrying the beacon behind a CSP that forbids its host — the tag is shipped and cannot run: ${beaconBlocked.join(", ")}`)
+    : ok(`analytics runs on all ${beaconOk} published pages — tag present AND permitted by that page's own CSP, checked per page rather than assumed from one`);
 
   /* Withdrawn URLs must stay withdrawn. A 410 that silently becomes a 200 or a 301 puts a
      commodity page back into the index, which is the whole thing the removal was for. */
@@ -477,14 +502,29 @@ for (const p of ["/", "/funding/btc"]) {
       generic branch (/404 itself) rendered perfectly throughout; only the rewrite branch —
       the one a real person reaches by mistyping a coin — was broken. */
 console.log("\n7. documents render to completion");
+/* AND THE ANALYTICS ASSERTION FOR THE PAGES NO SITEMAP LISTS. Section 5 covers every published
+   URL; these are the documents a reader can reach that are deliberately absent from the
+   sitemaps — /watchlist carries noindex, /status is operational, and the 404 and 410 branches
+   are pages a real person lands on after mistyping a coin. "Analytics on every page" has to mean
+   every page a person can see, not every page a crawler is invited to, so the same two halves
+   are asserted here on the routes section 5 structurally cannot reach. */
+let extraBeaconGaps = [];
 for (const p of ["/", "/funding/btc", "/coins/bitcoin", "/watchlist", "/404",
-                 "/funding/notacoin", "/coins/notacoin", "/tools/leverage"]) {
+                 "/funding/notacoin", "/coins/notacoin", "/tools/leverage",
+                 "/status", "/status/indexation", "/retired?symbol=FET"]) {
   const r = await fetchAs(p, "Mozilla/5.0");
   if (!isDocument(r.body)) { bad(`${p} did not return an HTML document (${r.status}, ${r.body.length}b)`); continue; }
   rendersToEnd(r.body)
     ? ok(`${p.padEnd(20)} ${String(r.status)} complete, ${r.body.length}b`)
     : bad(`${p} TRUNCATED — ${r.status} with ${r.body.length}b and no </html>; the render threw mid-stream`);
+  const tag = /<script[^>]+src="https:\/\/static\.cloudflareinsights\.com\/beacon\.min\.js/.test(r.body);
+  const permitted = /script-src[^;]*\bstatic\.cloudflareinsights\.com\b/.test(r.headers.get("content-security-policy") ?? "");
+  if (!tag) extraBeaconGaps.push(`${p} carries no beacon`);
+  else if (!permitted) extraBeaconGaps.push(`${p} carries the beacon behind a CSP that forbids it`);
 }
+extraBeaconGaps.length
+  ? bad(`unlisted document(s) counting no reader: ${extraBeaconGaps.join("; ")}`)
+  : ok("the documents no sitemap lists — watchlist, status, the 404 and 410 branches — carry analytics too");
 
 /* 8. "NEXT SETTLEMENT" MUST BE IN THE FUTURE, on every contract page.
  *
