@@ -12,7 +12,7 @@
    — this runs against production and its whole claim is that it asserts what a client on the
    open internet receives. underLinked() decides nothing about the site; it turns a count into
    a sentence, and it lives in checks.mjs so it is covered by the gate's own fixture suite. */
-import { underLinked } from "./checks.mjs";
+import { underLinked, duplicateHeadMetadata } from "./checks.mjs";
 
 const ORIGIN = process.argv[2] || "https://coinliqui.com";
 const CRAWLERS = [
@@ -351,6 +351,10 @@ console.log("\n5. sitemap");
      have sent somebody to link a template that was never under-linked.
      ======================================================================================= */
   const inbound = new Map(urls.map((u) => [pathOf(u) || "/", 0]));
+  /* The head of every page, collected in the same pass and for the same reason: the bodies
+     are already in hand. See duplicateHeadMetadata() for what two URLs sharing one title
+     costs, and for why title LENGTH is deliberately not checked here. */
+  const heads = [];
   const linkNorm = (h) => { const p = h.split("#")[0].split("?")[0]; return p.length > 1 ? p.replace(/\/$/, "") : p; };
   for (const u of urls) {
     const r = await fetchAs(pathOf(u) || "/", "GPTBot/1.1");
@@ -361,6 +365,11 @@ console.log("\n5. sitemap");
       for (const t of new Set([...main.matchAll(/href="(\/[^"]*)"/g)].map((m) => linkNorm(m[1])))) {
         if (t !== self && inbound.has(t)) inbound.set(t, inbound.get(t) + 1);
       }
+      heads.push({
+        path: self,
+        title: (r.body.match(/<title>([\s\S]*?)<\/title>/) ?? [, ""])[1].trim(),
+        description: (r.body.match(/<meta name="description" content="([^"]*)"/) ?? [, ""])[1].trim(),
+      });
     }
     if (r.status !== 200) broken.push(`${u} ${r.status}`);
     else if (!/Coinliqui/.test(r.body)) thin.push(u);
@@ -424,6 +433,9 @@ console.log("\n5. sitemap");
   cut.length ? bad(`TRUNCATED — 200 with no </html>, the render threw mid-stream: ${cut.join(", ")}`)
              : ok(`every one of the ${urls.length} sitemap URLs answered 200 with a complete HTML document — no empty bodies, no truncation, not a sample`);
   hollow.length ? bad(`contract page with no chart panel: ${hollow.join(", ")}`) : ok("every contract page renders a chart, or says why it cannot yet");
+  const dupHeads = duplicateHeadMetadata(heads);
+  dupHeads.length ? bad(`published URL(s) whose head does not identify them uniquely:\n          ${dupHeads.join("\n          ")}`)
+    : ok(`all ${heads.length} published URLs carry a title and a meta description, and no two share either`);
   const orphans = underLinked(inbound);
   orphans.length ? bad(`${orphans.length} published URL(s) almost nothing links to:\n          ${orphans.join("\n          ")}`)
     : ok(`every published URL carries at least 5 contextual inbound links — median per template: ${

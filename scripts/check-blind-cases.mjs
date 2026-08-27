@@ -34,6 +34,7 @@ import {
   symbolAddressing,
   staleAnnouncerState,
   underLinked,
+  duplicateHeadMetadata,
 } from "./checks.mjs";
 
 /* Enough page for a check to have something to read. Deliberately minimal: a fixture that is
@@ -347,6 +348,38 @@ const cases = [
       underLinked(new Map([["/x", 1]])).length === 1,
       // the floor is inclusive-below: exactly at the floor passes
       underLinked({ "/x": 5 }).length === 0 && underLinked({ "/x": 4 }).length === 1,
+    ],
+  },
+  {
+    check: "duplicateHeadMetadata",
+    why: "two published URLs handing a crawler the same claim about what they are — the mirror of the /liquidations defect, where fifty different titles lived at one URL; one title at fifty URLs would have gone unnoticed the same way",
+    fire: () => duplicateHeadMetadata([
+      { path: "/liquidations/eth", title: "Liquidation heatmap", description: "a" },
+      { path: "/liquidations/sol", title: "Liquidation heatmap", description: "b" },
+    ]),
+    quiet: () => [
+      ...duplicateHeadMetadata([
+        { path: "/liquidations/eth", title: "ETH liquidation heatmap", description: "a" },
+        { path: "/liquidations/sol", title: "SOL liquidation heatmap", description: "b" },
+      ]),
+      ...duplicateHeadMetadata([]),
+    ],
+    /* BOTH FIELDS, AND THE ABSENT CASE. A template can keep its title varying while its
+       description stops — the two are separate expressions in every page on this site — and an
+       empty tag is not a duplicate of anything, so a check that only groups by value would
+       report nothing at all for a page that has no description. */
+    also: () => [
+      duplicateHeadMetadata([
+        { path: "/a", title: "A", description: "same" },
+        { path: "/b", title: "B", description: "same" },
+      ]).length === 1,
+      duplicateHeadMetadata([{ path: "/a", title: "A", description: "" }]).length === 1,
+      duplicateHeadMetadata([{ path: "/a", title: "", description: "d" }]).length === 1,
+      // whitespace is not a difference
+      duplicateHeadMetadata([
+        { path: "/a", title: " X ", description: "1" },
+        { path: "/b", title: "X", description: "2" },
+      ]).length === 1,
     ],
   },
   {

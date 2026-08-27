@@ -1933,3 +1933,44 @@ export function underLinked(counts, floor = 5, exempt = ["/"]) {
     .sort((a, b) => a[1] - b[1] || a[0].localeCompare(b[0]))
     .map(([p, n]) => `${p} has ${n} contextual inbound link(s), below the floor of ${floor}`);
 }
+
+/**
+ * TWO URLS TELLING A SEARCH ENGINE THEY ARE THE SAME DOCUMENT.
+ *
+ * A duplicate <title> or meta description across two published URLs is one of the few things
+ * that will keep a page out of an index on its own: the crawler has fetched two addresses and
+ * been handed the same claim about what they are, and it picks one. This site is built almost
+ * entirely out of templates that interpolate a symbol, so the failure mode is not sloppiness —
+ * it is a template whose variable stops varying. /liquidations spent its whole life rendering
+ * fifty different titles at one URL; the mirror of that is one title at fifty URLs, and
+ * nothing here would have noticed it either.
+ *
+ * SWEPT 27 AUGUST 2026 ACROSS ALL 133 PUBLISHED URLS: zero duplicate titles, zero duplicate
+ * descriptions, zero duplicate h1s, none missing. So this fires on nothing today and has no
+ * exemptions — a regression guard, like underLinked(), and the honest description of it is
+ * that it is cheap rather than that it is finding things.
+ *
+ * TITLE LENGTH IS DELIBERATELY NOT CHECKED. Fifteen titles run past the ~65 characters Google
+ * will show, and every one of them carries its query terms in the first thirty: what gets cut
+ * is the tail and the " | Coinliqui" suffix. A rule firing on fifteen correct pages to report
+ * a cosmetic truncation is the shape this repository turns off within a week — see the
+ * rejected-checks note in scripts/check-blind-cases.mjs for the two that were measured and
+ * dropped for exactly that reason.
+ *
+ *   rows  [{ path, title, description }]
+ */
+export function duplicateHeadMetadata(rows) {
+  const out = [];
+  for (const [field, label] of [["title", "<title>"], ["description", "meta description"]]) {
+    const seen = new Map();
+    for (const r of rows ?? []) {
+      const v = (r?.[field] ?? "").trim();
+      if (!v) { out.push(`${r?.path} has no ${label}`); continue; }
+      seen.set(v, [...(seen.get(v) ?? []), r.path]);
+    }
+    for (const [v, ps] of seen) {
+      if (ps.length > 1) out.push(`${ps.length} URLs share one ${label} — ${ps.join(", ")} — "${v.slice(0, 60)}"`);
+    }
+  }
+  return out;
+}
