@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: A number on the site looks wrong
+    url: https://coinliqui.com/methodology
+    about: Start here — every figure's arithmetic is written out, and most surprises are the venue scope rather than a bug.
+  - name: Where a figure comes from
+    url: https://coinliqui.com/data-sources
+    about: Every upstream endpoint behind every number, and an explicit list of what is deliberately absent.
+  - name: Security report
+    url: https://github.com/coinliqui/coinliqui/blob/main/SECURITY.md
+    about: Report privately to hello@coinliqui.com rather than in a public issue.
