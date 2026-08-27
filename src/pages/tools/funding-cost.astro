@@ -98,7 +98,7 @@ const description = `What holding a ${perp.symbol} perpetual actually costs in f
     <div class="card">
       <div class="card__label">Per settlement</div>
       <div class="card__value" style="font-size:20px" id="out-per">{usd(Math.abs(perSettlement), 2)}</div>
-      <div class="card__meta">every {f.intervalHours}h at {rawRate(f.rate)}</div>
+      <div class="card__meta">every {f.intervalHours}h at {rawRate(f.rate, f)}</div>
     </div>
   </div>
 
@@ -131,7 +131,7 @@ const description = `What holding a ${perp.symbol} perpetual actually costs in f
           return (
             <tr class={v.venue === f.venue ? "is-active" : undefined}>
               <td>{VENUE_LABEL[v.venue]}{v.venue === f.venue ? " · yours" : ""}</td>
-              <td class="num">{rawRate(v.rate)}</td>
+              <td class="num">{rawRate(v.rate, v)}</td>
               <td class="num">{v.intervalHours}h</td>
               <td class="num">{Math.round(s).toLocaleString("en-US")}</td>
               <td class:list={["num", paysClass(v.apr)]}>{pct(v.apr)}</td>

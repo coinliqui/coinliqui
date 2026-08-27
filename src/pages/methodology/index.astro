@@ -61,7 +61,7 @@ const description =
           {rows.map((f) => (
             <tr>
               <td>{VENUE_LABEL[f.venue]}</td>
-              <td class="num">{rawRate(f.rate)}</td>
+              <td class="num">{rawRate(f.rate, f)}</td>
               <td class="num">{f.intervalHours}h</td>
               <td class="num">{Math.round(settlementsPerYear(f.intervalHours)).toLocaleString("en-US")}</td>
               <td class="num"><strong>{pct(f.apr)}</strong></td>
@@ -106,6 +106,5 @@ const description =
 
 <style>
     h2 { font-size: 16px; font-weight: 600; margin: 32px 0 var(--gap-block); letter-spacing: -.01em; }
-    .formula { max-width: 72ch; padding: 12px 16px; background: var(--surface-2); border: 1px solid var(--border-soft); border-radius: 10px; font-variant-numeric: tabular-nums; }
   </style>
 </Base>

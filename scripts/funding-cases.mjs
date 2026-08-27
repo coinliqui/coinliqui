@@ -16,7 +16,7 @@
  *
  *   node --experimental-strip-types scripts/funding-cases.mjs
  */
-import { nextSettlement, toApr, settlementsPerYear, queryNum, usd, paymentDirection, stopVerdict } from "../src/lib/funding.ts";
+import { nextSettlement, toApr, settlementsPerYear, queryNum, usd, paymentDirection, stopVerdict, rawRate, pct } from "../src/lib/funding.ts";
 import { pickPerp } from "../src/lib/hyperliquid.ts";
 
 const now = Date.parse("2026-08-17T14:27:48Z");
@@ -191,6 +191,59 @@ pc("no tables committed at all -> null", pickPerp([P("BTC", 3)], "btc", {}), nul
    must use the same rule or it would reject exactly the contracts it is meant to admit. */
 pc("id 3 matches key \"3\"", sym(pickPerp([P("BTC", 3)], "btc", { "3": "t3" })), ["BTC", "t3"]);
 if (pbad) bad++;
+
+/* ------------------------------------------------------------------------------------------
+   rawRate — A PAGE THAT INVITES THE READER TO CHECK ITS ARITHMETIC MUST SURVIVE THE CHECK.
+   /methodology prints the conversion, then the quoted rate and the APR side by side, and says
+   the two are shown together so the conversion can be checked. At a fixed seven decimals, 29 of
+   the 143 venue cells the site renders could not be reproduced from the printed rate — measured
+   against the live snapshot on 27 August 2026. ETH on Binance showed 0.0000857, which multiplies
+   out to 9.38% beside a printed 9.39%.
+   THE INVARIANT IS THE READER'S ARITHMETIC, not a decimal count: whatever is printed, times
+   8760 over the interval, rounded the way the page rounds, is the APR printed beside it.
+   ------------------------------------------------------------------------------------------ */
+console.log("\n  rawRate — the printed rate reproduces the printed APR");
+let rbad = 0;
+const reproduces = (rate, intervalHours) => {
+  const apr = toApr(rate, intervalHours);
+  const shown = rawRate(rate, { intervalHours, apr });
+  return { shown, ok: pct(toApr(Number(shown), intervalHours)) === pct(apr) };
+};
+const rc = (name, rate, intervalHours) => {
+  const { shown, ok } = reproduces(rate, intervalHours);
+  if (!ok) { rbad++; console.log(`  FAIL  ${name}: prints ${shown}, which does not multiply out to the APR beside it`); }
+  else console.log(`  ok    ${name.padEnd(46)} prints ${shown}`);
+};
+/* The two shapes the live book actually produces, plus the extremes either side of them. */
+rc("hourly, the magnitude seven decimals loses", 0.0000435812345, 1);
+rc("eight-hourly, the ETH/Binance case", 0.00008571234, 8);
+rc("a rate far below the seven-decimal floor", 0.00000004557, 1);
+rc("a large rate, where seven is plenty", 0.0125, 8);
+rc("exactly zero", 0, 1);
+rc("negative, shorts paying longs", -0.0000435812345, 1);
+/* AND THE BLIND CASE: without the reconciliation target it must behave exactly as before, or
+   this change would have silently added digits to every rate on the site, including the ones
+   printed nowhere near an APR. */
+{
+  const before = (0.0000435812345).toFixed(7).replace(/0+$/, "").replace(/\.$/, "");
+  const now = rawRate(0.0000435812345);
+  if (before !== now) { rbad++; console.log(`  FAIL  no target given: was ${before}, now ${now} — the old behaviour did not survive`); }
+  else console.log(`  ok    ${"no target given -> the old seven decimals".padEnd(46)} prints ${now}`);
+}
+/* A rate whose APR was NOT computed from it — an upstream inconsistency — cannot be reproduced
+   at any precision, and the honest answer is every digit we hold rather than a silent loop to
+   the ceiling pretending it succeeded. */
+{
+  /* THE ASSERTION IS THE VALUE, NOT ITS LENGTH. A first version demanded twelve decimal PLACES
+     and failed on 0.0001, which is correct output — trailing zeros are stripped, so "every digit
+     we hold" and "twelve characters after the point" are different claims. Compared against the
+     formatter's own twelve-decimal form instead. */
+  const held = (0.0001).toFixed(12).replace(/0+$/, "").replace(/\.$/, "");
+  const shown = rawRate(0.0001, { intervalHours: 1, apr: 999 });
+  if (shown !== held) { rbad++; console.log(`  FAIL  irreconcilable pair: printed ${shown} rather than every digit held (${held})`); }
+  else console.log(`  ok    ${"an APR that is not this rate's -> all digits".padEnd(46)} prints ${shown}`);
+}
+if (rbad) bad++;
 
 console.log(bad ? `\n  ${bad} failure(s) in the funding library\n` : "\n  funding library invariants hold\n");
 process.exit(bad ? 1 : 0);

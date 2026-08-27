@@ -121,7 +121,7 @@ const description = `What the funding spread between venues is actually worth on
         <tr class="is-active">
           <td><strong>Short</strong></td>
           <td>{VENUE_LABEL[shortLeg.venue]}</td>
-          <td class="num">{rawRate(shortLeg.rate)}</td>
+          <td class="num">{rawRate(shortLeg.rate, shortLeg)}</td>
           <td class="num">{shortLeg.intervalHours}h</td>
           <td class:list={["num", paysClass(shortLeg.apr)]} style="font-weight:600">{pct(shortLeg.apr)}</td>
           <td class="num">{shortLeg.apr >= 0 ? "receive" : "pay"}</td>
@@ -129,7 +129,7 @@ const description = `What the funding spread between venues is actually worth on
         <tr class="is-active">
           <td><strong>Long</strong></td>
           <td>{VENUE_LABEL[longLeg.venue]}</td>
-          <td class="num">{rawRate(longLeg.rate)}</td>
+          <td class="num">{rawRate(longLeg.rate, longLeg)}</td>
           <td class="num">{longLeg.intervalHours}h</td>
           <td class:list={["num", paysClass(longLeg.apr)]} style="font-weight:600">{pct(longLeg.apr)}</td>
           <td class="num">{longLeg.apr >= 0 ? "pay" : "receive"}</td>
@@ -138,7 +138,7 @@ const description = `What the funding spread between venues is actually worth on
           <tr>
             <td class="faint">unused</td>
             <td class="dim">{VENUE_LABEL[v.venue]}</td>
-            <td class="num dim">{rawRate(v.rate)}</td>
+            <td class="num dim">{rawRate(v.rate, v)}</td>
             <td class="num dim">{v.intervalHours}h</td>
             <td class:list={["num", paysClass(v.apr)]}>{pct(v.apr)}</td>
             <td class="num faint">—</td>

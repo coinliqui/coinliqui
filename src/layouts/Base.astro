@@ -580,6 +580,19 @@ const schema = {
          unlocks.astro, status.astro, liquidations/survival.astro and tools/index.astro, and a
          sixth page needing it is what surfaced that. One definition, six users. */
       .reason { color: var(--text-dim); white-space: normal; }
+      /* A DISPLAYED EXPRESSION. Two definitions of this existed with different padding and
+         radius — /methodology's, and one added to /learn/liquidation-price in the same session
+         that consolidated `.lede` and `.reason` for exactly this reason. It wraps rather than
+         scrolling: measured at 375px, the longer of the two formulas is 595px of text in a 317px
+         box, and nowrap hid half of it behind a scroll with no fade and no affordance. Inside one
+         block there is one background, so a wrap is a line break rather than two fragments. */
+      .formula {
+        max-width: 72ch; margin: 0 0 var(--gap-block); padding: 12px var(--inset-panel);
+        background: var(--surface-2); border: 1px solid var(--border-soft);
+        border-radius: var(--r-md); overflow-x: auto; color: var(--text);
+        font-variant-numeric: tabular-nums;
+      }
+      .formula code { background: none; padding: 0; }
       .prose { max-width: 72ch; color: var(--text-dim); }
       .prose strong { color: var(--text); font-weight: 600; }
       .prose a, .link { color: var(--accent); }

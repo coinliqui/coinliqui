@@ -67,7 +67,7 @@ const description =
                   {f ? (
                     <>
                       <span class={paysClass(f.apr)} data-repaint="apr" data-sym={p.symbol} data-venue={v}>{pct(f.apr)}</span>
-                      <span class="raw">{rawRate(f.rate)} / {f.intervalHours}h</span>
+                      <span class="raw">{rawRate(f.rate, f)} / {f.intervalHours}h</span>
                     </>
                   ) : (
                     <span class="faint">—</span>

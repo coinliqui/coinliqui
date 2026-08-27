@@ -429,7 +429,7 @@ const description = `What a ${p.symbol} perpetual costs to hold, against ${usd(p
           return (
             <tr>
               <td>{VENUE_LABEL[v]}</td>
-              <td class="num">{f ? rawRate(f.rate) : dash}</td>
+              <td class="num">{f ? rawRate(f.rate, f) : dash}</td>
               <td class="num">{iv ? `${iv}h` : dash}</td>
               <td class="num">{iv ? Math.round(settlementsPerYear(iv)).toLocaleString("en-US") : dash}</td>
               <td class:list={["num", f && Number.isFinite(f.apr) && paysClass(f.apr)]} style="font-weight:600"

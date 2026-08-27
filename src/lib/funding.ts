@@ -20,7 +20,9 @@
    were the defect, so there is now one file and both sides import it. Callers keep importing
    these names from this module; only the implementation moved. See public/shared.js. */
 export { paysClass, paysLabel, paysArrow, carryCost, pct, changeWords, ageWords, minutesSince, usd, nf, qty, compact, spreadOf, priceDp, axisDp, stopVerdict } from "../../public/shared.js";
-import { spreadOf } from "../../public/shared.js";
+/* Re-exporting a name does not bind it in this module's scope, which is why rawRate() threw
+   ReferenceError on pct the moment it needed it. Imported as well as re-exported. */
+import { spreadOf, pct } from "../../public/shared.js";
 
 export const HOURS_PER_YEAR = 24 * 365; // 8760
 
@@ -103,10 +105,38 @@ export function aprSpread(venues: VenueFunding[]): number | null {
 
 
 
-/** Format a raw per-interval rate, which is a very small number. */
-export function rawRate(x: number): string {
+/**
+ * Format a raw per-interval rate, which is a very small number.
+ *
+ * SEVEN DECIMALS WAS NOT ENOUGH, AND THE PAGE THAT INVITES THE READER TO CHECK IS WHERE IT
+ * SHOWED. /methodology prints "APR = quoted rate × (8760 ÷ interval hours)" and then a table of
+ * both columns, with the sentence "the quoted rate and the interval are always shown next to the
+ * APR so the conversion can be checked". Measured against the live snapshot on 27 August 2026:
+ * of the 143 venue cells the site renders, 29 could not be reproduced from the printed rate at
+ * seven decimals — ETH on Binance showed 0.0000857, which multiplies out to 9.38% beside a
+ * printed 9.39%. A reader doing exactly what the page asks got a different answer from the page,
+ * on one in five cells.
+ *
+ * THE PRECISION IS DERIVED, NOT CHOSEN. A constant would be another number to get wrong the next
+ * time the rate distribution moves: eight decimals leaves 4 of 143 irreproducible today and nine
+ * leaves 1, and which contracts those are changes hourly. So when the caller supplies what the
+ * figure has to reconcile with, this prints the FEWEST decimals at which the reader's arithmetic
+ * lands on the APR beside it — usually seven, more only where seven genuinely is not enough.
+ * Callers with no APR beside the rate keep the old behaviour, because there is nothing to
+ * reconcile and extra digits would be noise.
+ */
+export function rawRate(x: number, reconcile?: { intervalHours: number; apr: number }): string {
   if (!Number.isFinite(x)) return "—";
-  return x.toFixed(7).replace(/0+$/, "").replace(/\.$/, "");
+  const trim = (d: number) => x.toFixed(d).replace(/0+$/, "").replace(/\.$/, "");
+  if (!reconcile || !Number.isFinite(reconcile.apr) || !(reconcile.intervalHours > 0)) return trim(7);
+  const want = pct(reconcile.apr);
+  for (let d = 7; d <= 12; d++) {
+    const shown = Number(trim(d));
+    if (pct(toApr(shown, reconcile.intervalHours)) === want) return trim(d);
+  }
+  /* No precision reproduces it — the APR beside this rate was not computed from it. Printing
+     every digit we have is the honest answer: it shows the reader the same input we had. */
+  return trim(12);
 }
 
 /**
