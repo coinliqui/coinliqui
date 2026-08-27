@@ -32,6 +32,7 @@ import {
   staleCalculatorFigures, controlGroupOverflow, MEASUREMENT_EXPORTS, stampVerdict,
   stampSurfacesAgree,
   symbolAddressing,
+  staleAnnouncerState,
 } from "./checks.mjs";
 
 /* Enough page for a check to have something to read. Deliberately minimal: a fixture that is
@@ -291,6 +292,36 @@ const cases = [
     ],
   },
   {
+    check: "staleAnnouncerState",
+    why: "the IndexNow drain read the key the Worker stopped writing after a rename, so it held 79 URLs against the live 133 — running it would have posted 4 URLs instead of the 58 owed, cleared no backoff, and printed \"cleared 2 endpoint(s); 0 still owed\"",
+    /* THE DRIFT EXACTLY AS MEASURED: a state that predates two templates. */
+    fire: () => staleAnnouncerState(
+      ["https://coinliqui.com/", "https://coinliqui.com/funding/btc"],
+      ["https://coinliqui.com/", "https://coinliqui.com/funding/btc",
+       "https://coinliqui.com/liquidations/eth", "https://coinliqui.com/liquidations/sol",
+       "https://coinliqui.com/learn"]),
+    quiet: () => [
+      // in step, in a different order — set membership, not sequence
+      ...staleAnnouncerState(
+        ["https://coinliqui.com/funding/btc", "https://coinliqui.com/"],
+        ["https://coinliqui.com/", "https://coinliqui.com/funding/btc"]),
+      // the state knows MORE than the site publishes, which is the retirement case and correct:
+      // `known` is a record of what has ever been published, not of what is published today
+      ...staleAnnouncerState(
+        ["https://coinliqui.com/", "https://coinliqui.com/funding/fet"],
+        ["https://coinliqui.com/"]),
+      ...staleAnnouncerState([], []),
+    ],
+    /* One line per TEMPLATE, not per URL: the failure mode this replaced would print fifty
+       identical-looking lines and bury the one fact worth reading. */
+    also: () => [
+      staleAnnouncerState([], Array.from({ length: 49 }, (_, i) => `https://coinliqui.com/liquidations/c${i}`)).length === 1,
+      /^the announcer's state is missing 49 of the 49/.test(
+        staleAnnouncerState([], Array.from({ length: 49 }, (_, i) => `https://coinliqui.com/liquidations/c${i}`))[0]),
+      staleAnnouncerState([], ["https://coinliqui.com/a", "https://coinliqui.com/b/c"])[0].includes("1x /a"),
+    ],
+  },
+  {
     check: "botPolicyReasons",
     why: "excluding a crawler without saying why is a decision nobody can review later",
     fire: () => botPolicyReasons(`const BLOCKED = [{ ua: "SomeBot", why: "" }];`),
@@ -383,6 +414,26 @@ const cases = [
        its type argument, because that is what distinguishes a KV read from searchParams.get. */
     fire: () => fixtureGaps([["fixture.ts", 'const REACH = "identity:reach";\nkv.get(`candles:${sym}`, "json");\nkv.get("live", "json");\nkv.get(REACH, "json");\nurl.searchParams.get("tf");']], ["snapshot"]).gaps,
     quiet: () => fixtureGaps([["fixture.ts", 'const REACH = "identity:reach";\nkv.get(`candles:${sym}`, "json");\nkv.get("live", "json");\nkv.get(REACH, "json");\nurl.searchParams.get("tf");']], ["candles", "live", "identity:reach"]).gaps,
+    /* THE FOURTH READ SHAPE, added 27 August 2026 after it went unseen on a live page. /status
+       reads `indexnow:state` as STATE_KEY, imported from the worker that writes it — the
+       announcer's whole state, on the only account-free route into the non-Google indexes,
+       read from a page with no fixture behind it while the success line said all eleven
+       prefixes were covered. Case 3 resolved constants only within one file.
+
+       Three assertions, because the interesting half is what must NOT happen: the declaring
+       file supplies the constant and NOT its own reads, or the cron's keys would be demanded
+       of a fixture built to render pages. */
+    also: () => [
+      // an imported constant resolves when its declaring file is passed as constantSources
+      fixtureGaps([["page.astro", 'kv.get(STATE_KEY, "json");']], ["snapshot"],
+        [["worker/indexnow.ts", 'export const STATE_KEY = "indexnow:state";']]).gaps.length === 1,
+      // ...and is quiet once the fixture carries that prefix
+      fixtureGaps([["page.astro", 'kv.get(STATE_KEY, "json");']], ["indexnow:state"],
+        [["worker/indexnow.ts", 'export const STATE_KEY = "indexnow:state";']]).gaps.length === 0,
+      // the declaring file's OWN reads are not collected — it is not on the render path
+      fixtureGaps([["page.astro", 'kv.get("live", "json");']], ["live"],
+        [["worker/ingest.ts", 'export const K = "x:y";\nkv.get("funding:rot", "json");']]).gaps.length === 0,
+    ],
   },
   {
     check: "requestedLeverageLabels",

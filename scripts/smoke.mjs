@@ -203,7 +203,13 @@ try {
       const walk = (dir) => readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
         e.isDirectory() ? walk(`${dir}/${e.name}`) : (/\.(ts|astro)$/.test(e.name) ? [`${dir}/${e.name}`] : []));
       const rendered = [...walk("src/lib"), ...walk("src/pages"), ...walk("src/layouts")].map((f) => [f, readSource(f)]);
-      const { gaps, searched } = fixtureGaps(rendered, keys);
+      /* worker/ IS PASSED SEPARATELY, and not because the worker renders anything. It declares
+         key constants that pages import — /status reads `indexnow:state` as STATE_KEY from
+         worker/indexnow.ts — and fixtureGaps can resolve an imported constant only if the file
+         that exports it is in front of it. Passing it as `sources` instead would also collect
+         every key the CRON reads and demand them of a fixture built to render pages. */
+      const declarers = walk("worker").map((f) => [f, readSource(f)]);
+      const { gaps, searched } = fixtureGaps(rendered, keys, declarers);
       if (gaps.length) { failures++; console.log(`\n  FAIL  the warm fixture cannot render ${gaps.length} feature(s):`); for (const g of gaps) console.log(`          ${g}`); }
       else console.log(`\n  ok    ${searched} KV key prefix(es) read anywhere in the render path are all present in the warm fixture (${keys.length} keys)`);
     } catch (e) {

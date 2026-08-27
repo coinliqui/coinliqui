@@ -49,7 +49,12 @@ export const INDEXNOW_KEY = "a7f3c19e84b24d6fa0e5b17c93d82f46";
  *
  * Cost is four extra subrequests on a run that only happens when the URL set changes.
  */
-const ENDPOINTS = [
+/* EXPORTED because scripts/indexnow-drain.mjs posts to the same endpoints from a non-Cloudflare
+   address when the Microsoft pair throttles the Worker. It carried its own hand-written copy of
+   this list, as a `POST_TO` map keyed by hostname, with a comment saying it "mirrors ENDPOINTS in
+   worker/indexnow.ts". A mirror is a copy, and this file has already paid for one: see the header
+   of src/lib/routes.ts for the two sitemap lists that drifted 22 URLs apart. */
+export const ENDPOINTS = [
   "https://api.indexnow.org/indexnow",
   "https://www.bing.com/indexnow",
   "https://yandex.com/indexnow",
@@ -69,8 +74,20 @@ const MAX_URLS = 200;
    state would re-baseline, and re-baselining is precisely the condition that used to print
    "all previously submitted and accepted" after zero submissions. So the old key is still read
    when the new one is absent, and only the new one is ever written. */
-const STATE_KEY = "indexnow:state";
+export const STATE_KEY = "indexnow:state";
+/* NOT exported, unlike STATE_KEY. The drain has no business reading the legacy key — reading
+   it is the defect this cycle exists to fix — and an export nothing outside this file calls is
+   dead code that still deploys, which the gate says so within one run. */
 const LEGACY_STATE_KEY = "indexnow:submitted";
+
+/**
+ * THE NAME AN ENDPOINT IS FILED UNDER IN `pending` AND `backoff`, AND IT IS NOT THE URL.
+ *
+ * `https://www.bing.com/indexnow` is filed as `bing.com`. The drain script re-derived that
+ * mapping by hand and got it right; the point of exporting it is that "got it right once" is
+ * not a property anything can check. Now there is one function and both callers use it.
+ */
+export const endpointLabel = (endpoint: string) => new URL(endpoint).hostname.replace(/^www\./, "");
 
 export interface IndexNowEnv {
   /* Structural, matching ReportEnv rather than the Cloudflare KVNamespace global — the worker's
@@ -233,7 +250,7 @@ export async function stepIndexNow(env: IndexNowEnv, current: string[]): Promise
   const fresh = current.filter((u) => !known.has(u));
   const pending = { ...(st.pending ?? {}) };
   const backoff = { ...(st.backoff ?? {}) };
-  const label = (endpoint: string) => new URL(endpoint).hostname.replace(/^www\./, "");
+  const label = endpointLabel;
   const now = Date.now();
 
   /* What each endpoint is owed: whatever it never accepted, plus whatever is new. Capped per

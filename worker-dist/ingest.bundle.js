@@ -327,6 +327,7 @@ var ENDPOINTS = [
 var MAX_URLS = 200;
 var STATE_KEY = "indexnow:state";
 var LEGACY_STATE_KEY = "indexnow:submitted";
+var endpointLabel = (endpoint) => new URL(endpoint).hostname.replace(/^www\./, "");
 function publishedUrls(origin, symbols, now = Date.now()) {
   return [
     ...STATIC_ROUTES.map((r) => `${origin}${r === "/" ? "/" : r}`),
@@ -364,7 +365,7 @@ async function stepIndexNow(env, current) {
   const fresh = current.filter((u) => !known.has(u));
   const pending = { ...st.pending ?? {} };
   const backoff = { ...st.backoff ?? {} };
-  const label = (endpoint) => new URL(endpoint).hostname.replace(/^www\./, "");
+  const label = endpointLabel;
   const now = Date.now();
   const owed = /* @__PURE__ */ new Map();
   const held = [];
@@ -1094,7 +1095,7 @@ async function stepCorroborate(env, now = Date.now()) {
 }
 
 // worker/build-stamp.ts
-var WORKER_BUILD = "58cbaf331772";
+var WORKER_BUILD = "e91c1c3eedeb";
 
 // worker/ingest.ts
 var RETAIN_HOURS = 72;

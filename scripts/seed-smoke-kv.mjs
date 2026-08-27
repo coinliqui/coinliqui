@@ -219,6 +219,40 @@ for (const { key, blob_id } of rows) {
   console.log(`  published:retired  FET left 6h ago — the gate renders the 410 branch production shows only after a real retirement`);
 }
 
+/* THE BRANCH /status SHOWS WHEN AN ENDPOINT IS REFUSING, which is the branch that matters and
+   the one production hides.
+
+   The announcer's state is the site's record of what it has told the non-Google indexes about.
+   Measured 27 August 2026: the two Microsoft-run IndexNow endpoints had refused the Worker 21
+   consecutive times and were sitting on 58 URLs each — the 49 liquidation maps that shipped
+   that morning and the five /learn explainers — while every surface on the site was green. The
+   only way to find that out was to read the KV value by hand, so /status gained a section for
+   it; and a section whose interesting branch has never been rendered by the gate is a section
+   that ships untested. The healthy shape renders in production every day. This is the other.
+
+   The state seeded here deliberately carries a backlog, a refusal count and a live backoff on
+   ONE endpoint pair, and nothing on the other three — so the row colouring, the "held until"
+   cell and the warning verdict are all exercised, next to three quiet rows that must not be. */
+{
+  const now = Date.now();
+  const rec = {
+    known: ["https://coinliqui.com/", "https://coinliqui.com/liquidations", "https://coinliqui.com/liquidations/eth"],
+    pending: {
+      "api.indexnow.org": ["https://coinliqui.com/liquidations/eth"],
+      "bing.com": ["https://coinliqui.com/liquidations/eth"],
+    },
+    backoff: {
+      "api.indexnow.org": { fails: 21, nextAt: now + 6 * 3_600_000 },
+      "bing.com": { fails: 21, nextAt: now + 6 * 3_600_000 },
+    },
+    sentAt: now - 26 * 3_600_000,
+  };
+  const id = randomBytes(40).toString("hex");
+  writeFileSync(join(blobDir, id), JSON.stringify(rec));
+  put.run("indexnow:state", id);
+  console.log(`  indexnow:state  2 endpoints refusing, 21x, 1 URL owed each — /status renders the branch production hides`);
+}
+
 db.close();
 console.log(wrote ? `seeded ${wrote} m15 series into the gate's fixture` : "nothing written");
 process.exit(wrote ? 0 : 1);

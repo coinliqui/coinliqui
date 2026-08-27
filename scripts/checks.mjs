@@ -1032,7 +1032,7 @@ export function stampVerdict(deployed, expects, local) {
   return { state: "worker-stale", deployed, expects, local: local ?? null };
 }
 
-export function fixtureGaps(sources, fixtureKeys) {
+export function fixtureGaps(sources, fixtureKeys, constantSources = []) {
   const wanted = new Map();
   const note = (key, file) => {
     const prefix = key.includes(":") ? key.split(":")[0] : key;
@@ -1046,6 +1046,27 @@ export function fixtureGaps(sources, fixtureKeys) {
      every other `.get` in this codebase takes one. That is syntactic, needs no list of receiver
      names, and cannot be defeated by renaming a variable. */
   const TYPE = String.raw`\s*,\s*["'](?:json|text|arrayBuffer|stream)["']`;
+  /* 4. THE CONSTANT DECLARED IN A FILE THE READER IMPORTS FROM, which case 3 below cannot see.
+        /status reads `indexnow:state` as `SNAPSHOT.get(STATE_KEY, "json")`, and STATE_KEY is
+        exported by worker/indexnow.ts — the announcer that WRITES the key. That is the shape
+        case 3's own comment calls "the normal way to share a key between its reader and its
+        writer", resolved only when both ends are in one file. The site's only account-free
+        announcement channel was therefore read on a page with no fixture coverage, and the
+        success line said all eleven prefixes were covered.
+        Names are matched globally rather than per import statement: these are SCREAMING_CASE
+        key constants, a collision would still name a real key, and parsing import specifiers
+        to be more precise buys nothing this check can use.
+
+        `constantSources` is a SEPARATE input rather than more entries in `sources`, and that
+        distinction is the whole care in this change. The worker declares the constants but is
+        not on the render path: folding it into `sources` would also collect every key the
+        CRON reads — published:retired, funding:rot, index:history — and demand them of a
+        fixture that exists to render pages. A check that fails on keys nobody renders is a
+        check somebody switches off. */
+  const exported = new Map();
+  for (const [, src] of [...sources, ...constantSources]) {
+    for (const m of src.matchAll(/\bexport\s+const\s+([A-Z][A-Z0-9_]*)\s*(?::[^=]+)?=\s*["']([A-Za-z0-9_:.-]+)["']/g)) exported.set(m[1], m[2]);
+  }
   for (const [file, src] of sources) {
     /* 1. kv.get(`prefix:${sym}`, "json") — every per-symbol series. */
     for (const m of src.matchAll(new RegExp(String.raw`\.get\(\s*\x60([a-z0-9]+):\$\{[^\x60]*\x60` + TYPE, "gi"))) note(m[1], file);
@@ -1058,7 +1079,7 @@ export function fixtureGaps(sources, fixtureKeys) {
     const consts = new Map();
     for (const m of src.matchAll(/\b(?:const|let|var)\s+([A-Z][A-Z0-9_]*)\s*(?::[^=]+)?=\s*["']([A-Za-z0-9_:.-]+)["']/g)) consts.set(m[1], m[2]);
     for (const m of src.matchAll(new RegExp(String.raw`\.get\(\s*([A-Z][A-Z0-9_]*)` + TYPE, "g"))) {
-      const lit = consts.get(m[1]);
+      const lit = consts.get(m[1]) ?? exported.get(m[1]);
       if (lit) note(lit, file);
     }
   }
@@ -1821,5 +1842,57 @@ export function symbolAddressing(observed, declared) {
       out.push(`${e.path} is in SYMBOL_PARAMETERISED but was not probed — add it to ROUTES so the verdict is measured`);
     }
   }
+  return out;
+}
+
+/**
+ * THE ANNOUNCER'S STATE FILE, AGAINST WHAT THE SITE ACTUALLY PUBLISHES.
+ *
+ * WHAT THIS WAS WRITTEN FOR, measured 27 August 2026. The ingest Worker keeps its IndexNow
+ * state under `indexnow:state`; it used to be `indexnow:submitted`, and after the rename it
+ * writes only the new key and reads the old one solely as a fallback. scripts/indexnow-drain.mjs
+ * — the escape hatch that delivers the backlog from a non-Cloudflare address when Microsoft's
+ * two endpoints throttle the Worker — was never updated. It still read the LEGACY key.
+ *
+ * The two had drifted a long way:
+ *
+ *     indexnow:state       133 URLs known, 58 owed to each Microsoft endpoint, last
+ *                          accepted 2026-08-27 11:32 UTC, all 49 liquidation maps present
+ *     indexnow:submitted    79 URLs known,  4 owed, nothing ever accepted,
+ *                          zero liquidation maps, zero /learn pages
+ *
+ * So running the drain would have posted FOUR URLs — none of them the ones actually owed —
+ * written the 79-URL state back to a key the Worker never reads, and printed "cleared 2
+ * endpoint(s); 0 still owed. State written." A green line for a drain that delivered nothing
+ * that was owed and reset no backoff. The endpoint would keep refusing the Worker, the operator
+ * would believe the backlog was cleared, and nothing anywhere would say otherwise.
+ *
+ * The structural half of the fix is that the drain now imports STATE_KEY from the Worker, so it
+ * cannot name a different key. This is the other half, and it is the one that survives the next
+ * rename: whatever key it read, the state it holds must know about the URLs the site publishes.
+ * A state file that has never heard of a template is stale whatever the cause — wrong key, a
+ * partial write, a namespace restored from backup.
+ *
+ *   known      the announcer's recorded URL set
+ *   published  what the site publishes right now
+ */
+export function staleAnnouncerState(known, published) {
+  const out = [];
+  const have = new Set(known ?? []);
+  const missing = (published ?? []).filter((u) => !have.has(u));
+  if (!missing.length) return out;
+  /* Grouped by path prefix rather than listed flat: fifty missing URLs from one template is a
+     template the state has never seen, and fifty separate lines say that fifty times without
+     saying it once. */
+  const byTemplate = new Map();
+  for (const u of missing) {
+    let seg;
+    try { seg = new URL(u).pathname.split("/").filter(Boolean)[0] ?? "/"; } catch { seg = u; }
+    byTemplate.set(seg, (byTemplate.get(seg) ?? 0) + 1);
+  }
+  out.push(
+    `the announcer's state is missing ${missing.length} of the ${(published ?? []).length} URL(s) this site publishes` +
+    ` — ${[...byTemplate.entries()].map(([t, n]) => `${n}x /${t}`).join(", ")}`,
+  );
   return out;
 }

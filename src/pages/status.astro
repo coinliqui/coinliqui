@@ -5,6 +5,9 @@ import { getSnapshot } from "../lib/hyperliquid.ts";
 import { reachRows } from "../lib/corroboration.ts";
 import { EXPECTED_WORKER_BUILD } from "../lib/version.ts";
 import { VENUE_LABEL, type Venue } from "../lib/funding.ts";
+/* The Worker owns the endpoint list, the key name and the label rule. This page reads them
+   rather than restating them — src/pages/[key].txt.ts already imports from the same module. */
+import { ENDPOINTS, STATE_KEY, endpointLabel } from "../../worker/indexnow.ts";
 
 // Deliberately NOT guarded with coldStart(): this is the page you open to find out why
 // everything else is returning 503, so it has to render when the snapshot store is empty.
@@ -12,6 +15,44 @@ import { VENUE_LABEL, type Venue } from "../lib/funding.ts";
 const env = (Astro.locals as any)?.runtime?.env;
 const snap = await getSnapshot(env?.SNAPSHOT, import.meta.env.DEV);
 const reach = reachRows(await env?.SNAPSHOT?.get("identity:reach", "json").catch(() => null), Date.now());
+
+/* =========================================================================================
+   THE ANNOUNCEMENT CHANNEL.
+
+   IndexNow is this site's only account-free route into the indexes that are not Google —
+   Bing, and therefore DuckDuckGo, Yahoo and Ecosia, plus Yandex, Seznam and Naver. It runs
+   from the ingest Worker and it fails silently by design: nothing a reader sees depends on
+   it, so a refusal is logged and the run continues.
+
+   MEASURED 27 AUGUST 2026, and this section exists because of how it was measured. The two
+   Microsoft-run endpoints had refused the Worker TWENTY-ONE consecutive times and were sitting
+   in a capped twelve-hour backoff owing 58 URLs each — the 49 liquidation maps that shipped
+   that morning and the five /learn explainers from the cycle before. Every surface on this
+   site was green. The only way to find out was to read the KV value by hand.
+
+   The refusal itself is understood and is not a defect here: the same payload, same key, same
+   minute, returns 200 from a laptop and 429 from the Worker, because both endpoints throttle
+   Cloudflare's shared Workers egress. See the backoff field in worker/indexnow.ts. What was
+   missing was any way to know it was happening, or to notice the day it stops being that.
+   ========================================================================================= */
+const announce = await (async () => {
+  try {
+    const st = (await env?.SNAPSHOT?.get(STATE_KEY, "json")) as
+      { known?: string[]; pending?: Record<string, string[]>; backoff?: Record<string, { fails: number; nextAt: number }>; sentAt?: number } | null;
+    if (!st || !Array.isArray(st.known)) return null;
+    return {
+      known: st.known.length,
+      sentAt: st.sentAt ?? null,
+      rows: ENDPOINTS.map((e) => {
+        const name = endpointLabel(e);
+        return { name, owed: st.pending?.[name]?.length ?? 0, fails: st.backoff?.[name]?.fails ?? 0, nextAt: st.backoff?.[name]?.nextAt ?? null };
+      }),
+    };
+  } catch { return null; }
+})();
+/* A backlog is normal for one pass. A backlog with consecutive failures behind it is an
+   endpoint that has stopped accepting, and that is the thing worth a colour. */
+const announceBad = (announce?.rows ?? []).filter((r) => r.fails > 0);
 
 interface Check { at: number; source: string; status: number; ms: number; ok: number; note: string | null }
 let checks: Check[] = [];
@@ -406,6 +447,53 @@ const utc = (ms: number) => new Date(ms).toISOString().slice(0, 16).replace("T",
       So the state is measured instead of assumed. The address below is deliberately NOT wrapped.
       If the edge is rewriting, this one link is mangled and everything else on the site still
       works — and scripts/verify-live.mjs reads this page and says so. */}
+  <h2 class="section">Announcement channel</h2>
+  <p class="section-note" style="max-width:88ch">
+    IndexNow is the only route from this site into the indexes that are not Google, and it needs
+    no account. A URL is announced once, when it first appears — never on a price change. The
+    Worker submits to all five endpoints rather than trusting the aggregator's fan-out, so a
+    backlog against one of them is that endpoint's refusal rather than a site fault. Consecutive
+    failures against the two Microsoft-run endpoints mean the shared Cloudflare egress is being
+    throttled; the fix is <code>npm run indexnow:drain</code>, which sends the same backlog from
+    somewhere else.
+  </p>
+  {announce ? (
+    <>
+      <div class="panel" style="max-width:760px">
+        <table class="tbl">
+          <thead><tr><th>Endpoint</th><th class="num">URLs owed</th><th class="num">Consecutive refusals</th><th>Next attempt</th></tr></thead>
+          <tbody>
+            {announce.rows.map((r) => (
+              <tr class={r.fails > 0 ? "is-active" : undefined}>
+                <td>{r.name}</td>
+                <td class:list={["num", r.owed ? "is-bad" : "is-ok"]} style="font-weight:600">{r.owed || "0"}</td>
+                <td class:list={["num", r.fails ? "is-bad" : "dim"]}>{r.fails || "—"}</td>
+                <td class="reason">{r.nextAt && r.nextAt > now ? <>held until {utc(r.nextAt)}</> : "next pass"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p class="datanote-status">
+        {announce.known} URL(s) recorded as published.
+        {" "}{announce.sentAt
+          ? <>Last accepted by any endpoint <b>{utc(announce.sentAt)}</b>.</>
+          : <><b>Nothing has ever been accepted by any endpoint</b> — the recorded set is a baseline, not a receipt.</>}
+      </p>
+      {announceBad.length > 0 && (
+        <div class="verdict verdict--warn">
+          <div>
+            <b>{announceBad.length} endpoint(s) are refusing.</b> {announceBad.map((r) => `${r.name} (${r.fails}x, ${r.owed} owed)`).join(", ")}.
+            The retry rate decays from five minutes to a twelve-hour cap, so a URL owed here is
+            not lost — it is waiting. What it is not is announced.
+          </div>
+        </div>
+      )}
+    </>
+  ) : (
+    <p class="datanote-status">No announcer state readable — either the Worker has never run against this store, or the KV binding is missing.</p>
+  )}
+
   <h2 class="section">Contact route</h2>
   <p class="prose">
     The published address is
@@ -428,5 +516,7 @@ const utc = (ms: number) => new Date(ms).toISOString().slice(0, 16).replace("T",
     .is-bad { color: #ef6b5e; }
     .is-ok  { color: #58c48c; }
     .tbl code { font-size: 12px; }
+    .datanote-status { margin: 12px 0 0; font-size: var(--fs-sm); color: var(--text-faint); max-width: 80ch; }
+    .datanote-status b { color: var(--text-dim); font-weight: 600; font-variant-numeric: tabular-nums; }
   </style>
 </Base>
