@@ -1,7 +1,7 @@
 ---
 import Base from "../layouts/Base.astro";
 import { getSnapshot, coldStart } from "../lib/hyperliquid.ts";
-import { pct, usd, paysClass, paysArrow, LEGEND, LEGEND_PAYS } from "../lib/funding.ts";
+import { pct, usd, paysClass, paysArrow, LEGEND_FUNDING } from "../lib/funding.ts";
 import { PINNED_KEY } from "../lib/site.ts";
 
 // Every covered contract renders server-side, so the page is a complete, useful table for a
@@ -34,7 +34,7 @@ const maxOi = Math.max(...snap.perps.map((p) => p.oiNotional || 0), 1);
   </div>
 
   <div class="wl-bar">
-    <p class="legend" style="margin:0">{LEGEND} — {LEGEND_PAYS}. No other figure is tinted.</p>
+    <p class="legend" style="margin:0">{LEGEND_FUNDING}. No other figure is tinted.</p>
     {/* THE LABEL IS NOT WRITTEN HERE. `hidden` is display:none from the UA stylesheet, so a
         sighted reader does not see this control and a screen reader does not announce it — but
         the words sat in the markup regardless, and anything reading the text layer naively took
@@ -47,10 +47,21 @@ const maxOi = Math.max(...snap.perps.map((p) => p.oiNotional || 0), 1);
   <p class="section-note wl-off" id="wl-offcoverage" hidden></p>
 
   <div class="panel">
-    <table class="tbl" id="wl">
+    {/* SORTABLE, LIKE THE FOUR OTHER TABLES THAT ARE A LIST OF THESE SAME FIFTY CONTRACTS.
+        It was left out when sorting shipped, so a reader who learned the control on /funding
+        tapped a heading here and nothing happened — the worst state for an affordance is one
+        that exists on some pages and not others that look identical.
+
+        THE PIN COLUMN IS EXCLUDED. It holds a toggle and a visually-hidden label, so a sort
+        button on it would be a control with no readable name ordering rows by nothing.
+
+        SORTING OVERRIDES THE PINNED-FIRST ORDER, and that is recoverable rather than lost: the
+        third click restores the order the server sent, which IS pinned-first. The promise this
+        page makes in its own lede is one tap away at all times. */}
+    <table class="tbl" id="wl" data-sortable>
       <thead>
         <tr>
-          <th style="width:38px"><span class="vh">Pinned</span></th>
+          <th style="width:38px" data-nosort><span class="vh">Pinned</span></th>
           <th>Coin</th>
           <th class="num">Hyperliquid funding APR</th>
           <th class="num">Venue spread (APR)</th>

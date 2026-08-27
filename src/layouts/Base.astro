@@ -457,6 +457,12 @@ const schema = {
         width: 100%; height: 44px; padding: 0 16px 0 48px; font: 14px var(--sans); color: var(--text);
         background: var(--surface-3); border: 1px solid var(--border-soft); border-radius: var(--r-pill);
       }
+      /* THE PLACEHOLDER IS CLIPPED MID-WORD AT 375px — "Search a coin, tool or pa" — because
+         the field shares the bar with a hamburger, a freshness pill and the pin button. An
+         ellipsis does not buy the space back; it makes the truncation read as deliberate
+         rather than as a broken string. Shortening the text instead would cost the desktop
+         reader the one line that says what the box searches. */
+      .search input { text-overflow: ellipsis; }
       .search input::placeholder { color: var(--text-faint); }
 
       /* THE TYPEAHEAD DROPDOWN. There was no rule for this anywhere in the repository —
@@ -517,6 +523,7 @@ const schema = {
 
       /* Per-figure age, printed next to anything not on the page's fastest clock. */
       .clock { font-size: var(--fs-xs); color: var(--text-faint); font-variant-numeric: tabular-nums; }
+
       .clock b { color: var(--text-dim); font-weight: 500; }
       .freshness time { color: var(--text); font-variant-numeric: tabular-nums; }
       /* A person icon pointing at a page that says there are no accounts would be its own
@@ -540,6 +547,17 @@ const schema = {
       .page-head { margin: 8px 0 24px; }
       .page-head h1 { font-size: 22px; font-weight: 600; letter-spacing: -.015em; margin: 0 0 var(--gap-pair); }
       .page-head p { margin: 0; color: var(--text-dim); max-width: 76ch; }
+      /* A SECOND PARAGRAPH AT A SMALLER SIZE, WITH NO GAP, READS AS THE FIRST ONE SHRINKING.
+         On /unlocks the lede is a 14px <p> followed immediately by an 11.5px .clock — same
+         colour, no rule between them — and on a 375px screen it looks like the text changes
+         size mid-sentence, which reads as a layout fault rather than as a separate note.
+
+         THE SELECTOR CARRIES .page-head DELIBERATELY. The first attempt was `p + .clock`,
+         which is 0-1-1 and loses to the `.page-head p { margin: 0 }` directly above at equal
+         specificity and later position — the rule was in the stylesheet, matched the element,
+         and computed to 0px. Measured rather than assumed: getComputedStyle said marginTop
+         0px with both rules present. */
+      .page-head p + .clock { margin-top: var(--gap-block); }
       /* THE DISCLAIMER LINE, above the fold on the calculators and the liquidation map — see
          src/components/Advisory.astro for why it exists at all. `p.advisory` rather than
          `.advisory` so it outranks `.page-head p`, which would otherwise flatten its margin
@@ -738,7 +756,13 @@ const schema = {
         border-radius: var(--r-md);
         overflow-x: auto; overscroll-behavior-x: contain;
       }
-      .panel:has(> .tbl) { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 20px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 20px), transparent); }
+      /* IT FADES TO DIM, NOT TO NOTHING, and that is the whole change. Fading to transparent
+         erases the right-hand 20px of whatever is under it, and on a narrow screen that is
+         usually the middle of a number: /watchlist rendered "10.95⁵" and "3.38⁵" with the per
+         cent sign half gone, which reads as a typo rather than as "there is more to the
+         right". Any edge fade over scrolling content will sometimes land on a glyph — the fix
+         is to make what it lands on legible-but-receding instead of destroyed. */
+      .panel:has(> .tbl) { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 20px), rgba(0,0,0,.38)); mask-image: linear-gradient(to right, #000 calc(100% - 20px), rgba(0,0,0,.38)); }
       /* No hidden columns, no fade — otherwise every panel that fits would dim its own edge. */
       @media (min-width: 1400px) { .panel:has(> .tbl) { -webkit-mask-image: none; mask-image: none; } }
       /* The coin column stays put, or scrolling right leaves numbers with nothing to name them. */

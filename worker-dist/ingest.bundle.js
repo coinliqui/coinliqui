@@ -1158,7 +1158,7 @@ async function stepCorroborate(env, now = Date.now()) {
 }
 
 // worker/build-stamp.ts
-var WORKER_BUILD = "d5aa6f37e233";
+var WORKER_BUILD = "9ce5f2b90450";
 
 // worker/ingest.ts
 var RETAIN_HOURS = 72;

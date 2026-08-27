@@ -146,7 +146,23 @@ export function rawRate(x: number, reconcile?: { intervalHours: number; apr: num
  * neutral quantity implies a judgement the data does not support.
  */
 
-export const LEGEND = "▲ longs pay shorts · ▼ shorts pay longs";
+/**
+ * ONE CLAUSE PER DIRECTION, BECAUSE THE PAIR SAID EACH ONE TWICE.
+ *
+ * This was `LEGEND = "▲ longs pay shorts · ▼ shorts pay longs"`, and every page that used it
+ * printed it as `{LEGEND} — {LEGEND_PAYS}`, which rendered:
+ *
+ *     ▲ longs pay shorts · ▼ shorts pay longs — amber = longs pay shorts · cyan = shorts pay longs
+ *
+ * The same two facts, stated twice in one sentence, on the homepage, /funding and /watchlist.
+ * Three lines of a mobile screen spent repeating themselves above the table they describe.
+ * The arrow and the colour are two encodings of ONE thing, so they belong in one clause.
+ *
+ * LEGEND_PAYS survives unchanged: two calculators print the colour rule with no arrows on the
+ * page to explain, and folding the arrows into that sentence would have them describe a mark
+ * those pages do not use.
+ */
+export const LEGEND_FUNDING = "▲ amber = longs pay shorts · ▼ cyan = shorts pay longs";
 /**
  * TWO COLOUR LANGUAGES NOW EXIST AND EVERY PAGE THAT USES ONE MUST NAME IT.
  *

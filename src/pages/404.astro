@@ -32,9 +32,16 @@ const covered = Boolean(findPerp(snap.perps, wanted));
 const nearest = snap.perps.slice(0, 12);
 ---
 
+{/* fetchedAt IS PASSED HERE TOO, and it was not. Every other page carries the freshness pill
+    in the top bar; on this one the bar lost it, so the chrome visibly changed between a page
+    and the 404 a reader reaches from it. The snapshot is already read above — this page prints
+    the coverage floor and the eligible count from it — so the pill costs nothing and the
+    inconsistency was an omission rather than a decision. It cannot leak into structured data:
+    Base emits dateModified only when the page is not noindex, and this one is. */}
 <Base
   title="Not found"
   description="That page does not exist."
+  fetchedAt={snap.fetchedAt}
   noindex
 >
   <div class="page-head">

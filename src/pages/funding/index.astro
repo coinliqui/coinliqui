@@ -1,7 +1,7 @@
 ---
 import Base from "../../layouts/Base.astro";
 import { getSnapshot, coldStart, getLive } from "../../lib/hyperliquid.ts";
-import { VENUE_LABEL, pct, usd, rawRate, paysClass, paysArrow, LEGEND, LEGEND_PAYS, type Venue } from "../../lib/funding.ts";
+import { VENUE_LABEL, pct, usd, rawRate, paysClass, paysArrow, LEGEND_FUNDING, type Venue } from "../../lib/funding.ts";
 
 import { freshness, ageWords, minutesSince } from "../../lib/freshness.ts";
 const env = (Astro.locals as any)?.runtime?.env;
@@ -38,7 +38,7 @@ const description =
     </p>
   </div>
 
-  <p class="legend">{LEGEND} — {LEGEND_PAYS}. Every other figure is neutral.</p>
+  <p class="legend">{LEGEND_FUNDING}. Every other figure is neutral.</p>
 
   <p class="clock" style="margin:0 0 12px">
     {fresh.note} Open interest and 24-hour volume come from the snapshot taken

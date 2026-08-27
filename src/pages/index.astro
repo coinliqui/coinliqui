@@ -2,7 +2,7 @@
 import Base from "../layouts/Base.astro";
 import { SITE } from "../lib/site.ts";
 import { getSnapshot, coldStart } from "../lib/hyperliquid.ts";
-import { pct, usd, paysClass, paysArrow, paysLabel, LEGEND, LEGEND_PAYS, VENUE_LABEL, type Venue } from "../lib/funding.ts";
+import { pct, usd, paysClass, paysArrow, paysLabel, LEGEND_FUNDING, VENUE_LABEL, type Venue } from "../lib/funding.ts";
 import { readCachedFlips, describeCoverage } from "../lib/flips.ts";
 
 const env = (Astro.locals as any)?.runtime?.env;
@@ -260,7 +260,7 @@ const description =
     )}
 
     <h2 class="section">Funding rates by coin</h2>
-    <p class="legend">{LEGEND} — {LEGEND_PAYS}. Every other figure is neutral.</p>
+    <p class="legend">{LEGEND_FUNDING}. Every other figure is neutral.</p>
     <div class="panel">
       <table class="tbl">
         <thead>

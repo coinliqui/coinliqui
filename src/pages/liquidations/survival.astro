@@ -202,7 +202,10 @@ const description = `Which leveraged ${perp.symbol} positions were liquidated an
     <label>Held for
       <select name="hold">{HOLDS.map((h) => <option value={h} selected={h === hold}>{h} days</option>)}</select>
     </label>
-    <button class="btn btn--primary" type="submit">Redraw the map</button>
+    {/* NOT "Redraw the map". This page draws a grid of one-day-per-leverage outcomes over real
+        candles; the map is the modelled density surface on /liquidations, and borrowing its
+        label here names the wrong artefact on the page the reader is looking at. */}
+    <button class="btn btn--primary" type="submit">Redraw the grid</button>
   </form>
 
   {grid ? (
