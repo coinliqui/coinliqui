@@ -597,13 +597,32 @@ async function run(env: Env): Promise<RunResult> {
           .first<{ a: number | null }>();
         const since = oldest?.a ?? at;
 
+        /* THE POPULATION THE FLIP COUNT IS A FRACTION OF, measured over the SAME 24 hours the
+           count is. The home page printed "N of the M coin-venue pairs flipped" with N from
+           this window and M counted on the page from the CURRENT snapshot — one population
+           over a day against another at an instant. Pairs leave: the published set is capped
+           at 50 while 59 contracts clear the open-interest floor, so the rank-50 boundary is
+           crossed by ordinary moves, and the page already renders an em dash reading "no
+           longer published at this venue" for exactly those rows. Every such pair counts in N
+           and cannot count in M, so a broad reversal day could print N greater than M.
+
+           IT COMES FROM D1 AND NOT FROM THE EVENT LOG because the log holds only flips, and
+           the denominator has to include the pairs that did not flip. readFlips computes the
+           same figure the same way, which is what keeps scripts/flips-parity.mjs comparing
+           like with like. */
+        const pop = await (env.DB as unknown as D1Like)
+          .prepare("SELECT count(*) AS n FROM (SELECT DISTINCT symbol, venue FROM funding_snapshot WHERE at >= ?1)")
+          .bind(at - 24 * 3_600_000)
+          .first<{ n: number | null }>();
+        const legs = Number(pop?.n ?? 0);
+
         await env.SNAPSHOT.put(LAST_KEY, JSON.stringify(sample));
         await env.SNAPSHOT.put(EVENTS_KEY, JSON.stringify(events));
 
         const covered = (at - since) / 3_600_000;
         const feed = covered < 24
           ? { status: "warming" as const, since, hours: covered }
-          : feedFromEvents(events, since, at, 24);
+          : feedFromEvents(events, since, at, 24, legs);
         await writeCachedFlips(env.SNAPSHOT, feed, at);
         result.flips = feed.status === "ready"
           ? `${seeded ? "seeded from D1, " : ""}${fresh.length} new, ${feed.total} in window, ${feed.rows.length} shown`

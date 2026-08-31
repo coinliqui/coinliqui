@@ -2169,6 +2169,58 @@ export function computedFigureFloor(templates, exportsByFile = {}, floor = 3, re
  * WHAT COUNTS IS DELIBERATELY NARROW: a dollar amount, a percentage, or a grouped integer.
  * A bare "3" matches nothing, because "three venues" and "5 February" are prose, not readings.
  */
+/**
+ * THE COLOUR AND ARROW VOCABULARY IS SHARED, AND A PAGE THAT RETYPES IT DRIFTS FROM IT.
+ *
+ * /coins printed "▲ longs pay shorts · ▼ shorts pay longs" underneath a table whose only ▲▼
+ * come from arrow(r.chg) — the 24-hour PRICE direction. A reader looking at Ethereum's "▼ 0.63%"
+ * beside a funding APR of +10.95% was told the ▼ meant shorts pay longs, when it meant price
+ * fell and funding ran the other way. The legend defined a mark the page does not draw, and
+ * defined it as the opposite of what that mark means where it does appear.
+ *
+ * THE LIBRARY HAD ALREADY DECIDED THIS. src/lib/funding.ts exports two forms — LEGEND_FUNDING
+ * carries the arrows, LEGEND_PAYS is deliberately arrow-free — and its comment gives the reason
+ * in as many words: "folding the arrows into that sentence would have them describe a mark those
+ * pages do not use". /coins never imported either. It typed the sentence out, and typing it out
+ * is how it acquired the arrows the library had removed on purpose.
+ *
+ * So the rule is not "the legend must be right", which nothing can check. It is: a page may not
+ * bind an ARROW to the funding-direction wording by hand. That is mechanical, and it is exactly
+ * what the library legislated.
+ *
+ * SCOPED TO ARROWS ON PURPOSE, AND THE FIRST VERSION WAS NOT. Matching the wording alone fired
+ * on three more pages, and two were right to say it: /learn/funding-rate and /learn/index
+ * EXPLAIN the concept — "positive means longs pay shorts" — which binds the phrase to the SIGN,
+ * not to a mark on the page, and no import belongs there. A rule asserting more than the library
+ * decided is the same defect as a label asserting more than its expression computes, so it was
+ * narrowed to what actually went wrong rather than exempting the pages it should never have
+ * caught.
+ *
+ * WHAT IT THEREFORE DOES NOT COVER, said plainly so nobody reads it as broader: funding/[symbol]
+ * renders "amber where longs pay shorts and cyan where shorts pay longs" as two coloured spans.
+ * That is a hand-rolled copy of LEGEND_PAYS and it can drift — but it is not wrong today, the
+ * colours it names are the colours it draws, and a flat string constant cannot express two
+ * differently-coloured halves. Arrows are the binding that went wrong; colours are not.
+ */
+export function handRolledLegends(sources) {
+  return (sources ?? []).flatMap(({ path, src }) => {
+    /* Comments are stripped first, or this file and every commit that explains the defect would
+       trip it. Astro's {/* … *\/} is a block comment with braces around it, so the same strip
+       covers both. */
+    const code = String(src ?? "")
+      .replace(/\/\*[\s\S]*?\*\//g, " ")
+      .replace(/\/\/[^\n]*/g, " ");
+    /* SAME LINE, because a legend is one line binding a mark to a meaning. A page may draw
+       arrows in a table and explain funding in a paragraph elsewhere without either claiming
+       anything about the other. */
+    const bound = code.split("\n").some((l) =>
+      /[\u25b2\u25bc]/.test(l) && /longs pay shorts|shorts pay longs/i.test(l));
+    if (!bound) return [];
+    if (/\bLEGEND_(?:FUNDING|PAYS)\b/.test(code)) return [];
+    return [`${path} writes the funding-direction legend by hand — import LEGEND_PAYS (no arrows) or LEGEND_FUNDING (with them) from src/lib/funding.ts, whichever matches the marks this page actually draws`];
+  });
+}
+
 export function openingFigure(html, chars = 700) {
   const text = String(html ?? "")
     .replace(/<(script|style|svg|template)\b[\s\S]*?<\/\1>/gi, " ")

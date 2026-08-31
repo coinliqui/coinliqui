@@ -490,7 +490,7 @@ function mergeEvents(existing, fresh, now, hours) {
   kept.sort((a, b) => a.at - b.at);
   return kept.length > MAX_EVENTS ? kept.slice(kept.length - MAX_EVENTS) : kept;
 }
-function feedFromEvents(events, since, now, hours) {
+function feedFromEvents(events, since, now, hours, legs = 0) {
   const cutoff = now - hours * 36e5;
   const latest = /* @__PURE__ */ new Map();
   for (const f of events) {
@@ -501,7 +501,7 @@ function feedFromEvents(events, since, now, hours) {
   }
   const cmp = (x, y) => x < y ? -1 : x > y ? 1 : 0;
   const rows = [...latest.values()].sort((a, b) => b.at - a.at || cmp(a.symbol, b.symbol) || cmp(a.venue, b.venue));
-  return { status: "ready", rows: rows.slice(0, 25), since, total: rows.length };
+  return { status: "ready", rows: rows.slice(0, 25), since, total: rows.length, legs };
 }
 
 // src/data/terms-baseline.json
@@ -1183,7 +1183,7 @@ async function stepCorroborate(env, now = Date.now()) {
 }
 
 // worker/build-stamp.ts
-var WORKER_BUILD = "dc6c4c5484ed";
+var WORKER_BUILD = "87e3b4c5c66f";
 
 // worker/ingest.ts
 var RETAIN_HOURS = 720;
@@ -1381,10 +1381,12 @@ async function run(env) {
         const events = mergeEvents(existing, fresh, at, 24);
         const oldest = await env.DB.prepare("SELECT MIN(at) AS a FROM funding_snapshot").first();
         const since2 = oldest?.a ?? at;
+        const pop = await env.DB.prepare("SELECT count(*) AS n FROM (SELECT DISTINCT symbol, venue FROM funding_snapshot WHERE at >= ?1)").bind(at - 24 * 36e5).first();
+        const legs = Number(pop?.n ?? 0);
         await env.SNAPSHOT.put(LAST_KEY, JSON.stringify(sample));
         await env.SNAPSHOT.put(EVENTS_KEY, JSON.stringify(events));
         const covered = (at - since2) / 36e5;
-        const feed = covered < 24 ? { status: "warming", since: since2, hours: covered } : feedFromEvents(events, since2, at, 24);
+        const feed = covered < 24 ? { status: "warming", since: since2, hours: covered } : feedFromEvents(events, since2, at, 24, legs);
         await writeCachedFlips(env.SNAPSHOT, feed, at);
         result.flips = feed.status === "ready" ? `${seeded ? "seeded from D1, " : ""}${fresh.length} new, ${feed.total} in window, ${feed.rows.length} shown` : `${feed.status} (${covered.toFixed(1)}h of history)`;
       } catch (e) {

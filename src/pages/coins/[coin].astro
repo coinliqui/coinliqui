@@ -84,8 +84,18 @@ const px = (v: number) => usd(v, dp);
    percentage disagree with the number printed directly above it. */
 const chg24 = perp && perp.prevDayPx > 0 && Number.isFinite(markNow) ? markNow / perp.prevDayPx - 1 : NaN;
 /* 24h HIGH AND LOW COME FROM THE HOURLY SERIES, because the snapshot does not carry them. The
-   last 24 closed hourly bars of the same Hyperliquid feed the chart is drawn from, so the
-   figures beside the chart and the figures in it cannot disagree. */
+   last 24 hourly bars of the same Hyperliquid feed the chart is drawn from, so the figures
+   beside the chart and the figures in it cannot disagree.
+
+   NOT 24 CLOSED BARS, WHICH IS WHAT THIS COMMENT AND THE LINE UNDER THE CHART BOTH SAID.
+   fetchHourly (src/lib/candles.ts:67) requests candleSnapshot with endTime = Date.now() and
+   filters only on v > 0, so the hour in progress at collection time has volume and survives.
+   slice(-24) is therefore 23 closed bars plus one open one, frozen at whatever it held when
+   the two-hourly sweep ran. The window is kept — an extreme set in the current hour belongs in
+   a 24-hour high, and dropping the newest bar would age the figure by up to two more hours for
+   nothing — so the WORDS moved to match it, here and beside the chart. The newest bar's high
+   and low are provisional and will move on the next sweep; the age printed next to them is
+   what tells a reader how provisional. */
 const last24 = (hourset?.d ?? []).slice(-24);
 const high24 = last24.length ? Math.max(...last24.map((c) => c[2])) : NaN;
 const low24 = last24.length ? Math.min(...last24.map((c) => c[3])) : NaN;
@@ -253,8 +263,9 @@ const description = `Live ${coin.name} (${coin.symbol}) perpetual price from Hyp
   <p class="clock">
     {fresh.note} Open interest and 24-hour volume come from the snapshot taken
     <b><time data-fresh={snap.fetchedAt} data-clock="snapAt">{ageWords(minutesSince(snap.fetchedAt))}</time></b>.
-    The 24-hour high and low are the extremes of the last 24 closed hourly bars, read from the
-    same candle series the chart is drawn from, collected every 2 hours{hourAge !== null ? <> and last written <b>{hourAge} min ago</b></> : null}.
+    The 24-hour high and low are the extremes of the last 24 hourly bars of the same candle
+    series the chart is drawn from — the newest of them still open when it was collected —
+    collected every 2 hours{hourAge !== null ? <> and last written <b>{hourAge} min ago</b></> : null}.
   </p>
 
   {hasChart ? (

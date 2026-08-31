@@ -32,7 +32,7 @@ export type FlipsResult =
   /* `total` is how many contracts flipped in the window; `rows` is the truncated head of that
      list. They were the same number in the copy and never in the data — the page said "in the
      last 24 hours" above 25 rows while 104 contracts had flipped. */
-  | { status: "ready"; rows: Flip[]; since: number; total: number }
+  | { status: "ready"; rows: Flip[]; since: number; total: number; legs: number }
   | { status: "no-store" }
   | { status: "warming"; since: number; hours: number }
   /**
@@ -137,8 +137,24 @@ export async function readFlips(db: D1Like | undefined, hours = 24, now = Date.n
          )
          /* The count comes from the same CTE the rows come from, so the number the page prints
             and the rows it shows can never describe different sets. */
+         /* THE DENOMINATOR COMES FROM THE SAME WINDOW AS THE NUMERATOR, which it did not.
+            The home page printed "N of the M coin-venue pairs flipped" with N counted here,
+            over 24 hours of funding_snapshot, and M counted on the page from the CURRENT
+            snapshot: one population measured over a day against another measured at an
+            instant. The page already knows they differ — a flip row whose pair is absent from
+            the live snapshot renders an em dash reading "no longer published at this venue",
+            and every such pair is in N and cannot be in M. The published set is capped at 50
+            while 59 contracts clear the floor, so the rank-50 boundary is crossed by ordinary
+            open-interest moves and pairs leave the denominator mid-window. On a broad reversal
+            day that prints N greater than M, which is the impossible-looking figure the
+            denominator was added to prevent. The ordered CTE is every row in the window,
+            flipped or not, so the population is one DISTINCT away and needs no second query.
+            NOTE the comment rule two blocks up applies to backticks as well as apostrophes:
+            this SQL lives in a template literal, so a backtick here ends the statement and
+            TypeScript reports a missing name twenty lines away. */
          SELECT symbol, venue, prevApr, apr, at, gapMin,
-                (SELECT count(*) FROM latest) AS total
+                (SELECT count(*) FROM latest) AS total,
+                (SELECT count(*) FROM (SELECT DISTINCT symbol, venue FROM ordered)) AS legs
          FROM latest
          /* Tie-break specified, not inherited. One snapshot stamps every pair with the same
             at, so simultaneous flips are the common case and ORDER BY at DESC alone left their
@@ -150,10 +166,10 @@ export async function readFlips(db: D1Like | undefined, hours = 24, now = Date.n
          LIMIT 25`,
       )
       .bind(cutoff)
-      .all<Flip & { total: number }>();
+      .all<Flip & { total: number; legs: number }>();
 
     const rows = results ?? [];
-    return { status: "ready", rows, since, total: Number(rows[0]?.total ?? rows.length) };
+    return { status: "ready", rows, since, total: Number(rows[0]?.total ?? rows.length), legs: Number(rows[0]?.legs ?? 0) };
   } catch (e) {
     /* SAY WHY, THEN DEGRADE. This was a bare `catch` returning no-store, which is the correct
        READER behaviour and was the wrong DIAGNOSTIC behaviour: a query that threw on every

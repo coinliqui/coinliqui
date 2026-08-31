@@ -24,8 +24,21 @@ const byApr = [...snap.perps].filter((p) => Number.isFinite(p.hlApr)).sort((a, b
 const richest = byApr[0];
 const cheapest = byApr[byApr.length - 1];
 const widest = [...snap.perps].filter((p) => p.aprSpread != null).sort((a, b) => (b.aprSpread ?? 0) - (a.aprSpread ?? 0))[0];
-/* Every (coin, venue) pair the site actually tracks — the denominator the flip count needs. */
-const venueLegs = snap.perps.reduce((n, p) => n + p.venues.filter((v) => Number.isFinite(v.apr)).length, 0);
+/* THE DENOMINATOR MOVED TO THE WORKER, which measures it over the same 24 hours the numerator
+   covers. It was computed here, from the CURRENT snapshot, and divided a 24-hour count by an
+   instantaneous one: a pair that flipped and then fell out of the rank-50 cap counted in the
+   numerator and could not count in the denominator, so a broad reversal day could print more
+   pairs flipped than pairs tracked. The page fifteen lines below already renders an em dash
+   reading "no longer published at this venue" for exactly those rows, so the disagreement was
+   visible in the table while the sentence above it claimed a ratio. See worker/ingest.ts. */
+const flipScale = flips.status === "ready"
+  ? flips.legs > 0
+    ? `${flips.total} of the ${flips.legs} coin–venue pairs flipped`
+    : `${flips.total} coin–venue pairs flipped`
+  : "";
+const flipNote = flips.status === "ready"
+  ? ` ${flipScale}${flips.total > flips.rows.length ? `; the ${flips.rows.length} most recent are shown` : ""}.`
+  : "";
 const totalOi = snap.perps.reduce((s, p) => s + (Number.isFinite(p.oiNotional) ? p.oiNotional : 0), 0);
 const totalVol = snap.perps.reduce((s, p) => s + (Number.isFinite(p.dayNtlVlm) ? p.dayNtlVlm : 0), 0);
 const btc = snap.perps.find((p) => p.symbol === "BTC");
@@ -123,9 +136,7 @@ const description =
           so the number arrived without the unit that makes it make sense. Naming the unit and
           giving the denominator turns a figure that looks like a bug into one that says how
           widespread the reversal was. */}
-      {flips.status === "ready" && flips.total > flips.rows.length
-        ? ` ${flips.total} of the ${venueLegs} coin–venue pairs flipped; the ${flips.rows.length} most recent are shown.`
-        : flips.status === "ready" ? ` ${flips.total} of the ${venueLegs} coin–venue pairs flipped.` : ""}
+      {flipNote}
     </p>
     {flips.status === "ready" && flips.rows.length > 0 ? (
       <>

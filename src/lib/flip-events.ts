@@ -106,10 +106,16 @@ export function mergeEvents(existing: Flip[], fresh: Flip[], now: number, hours:
  *   - ordered by time descending
  *   - at most 25 rows
  *   - `total` counting DISTINCT PAIRS that flipped in the window, not events
+ *   - `legs` counting DISTINCT PAIRS the ingest WROTE in the window, flipped or not
+ *
+ * `legs` cannot be derived from the event log, which by construction holds only flips, so the
+ * caller supplies it. It defaults to 0, which the home page reads as "no denominator" and
+ * prints the count without a ratio — the honest degradation for the one tick after a deploy,
+ * before the worker has recomputed, and for any caller that has no population to offer.
  * The last of those was a real defect once: the page said "in the last 24 hours" above 25 rows
  * while 104 contracts had flipped, because rows and total came from different sets.
  */
-export function feedFromEvents(events: Flip[], since: number, now: number, hours: number): FlipsResult {
+export function feedFromEvents(events: Flip[], since: number, now: number, hours: number, legs = 0): FlipsResult {
   const cutoff = now - hours * 3_600_000;
   const latest = new Map<string, Flip>();
   for (const f of events) {
@@ -130,5 +136,5 @@ export function feedFromEvents(events: Flip[], since: number, now: number, hours
      and the fix is to say which order is meant rather than to trust either default. */
   const cmp = (x: string, y: string) => (x < y ? -1 : x > y ? 1 : 0);
   const rows = [...latest.values()].sort((a, b) => b.at - a.at || cmp(a.symbol, b.symbol) || cmp(a.venue, b.venue));
-  return { status: "ready", rows: rows.slice(0, 25), since, total: rows.length };
+  return { status: "ready", rows: rows.slice(0, 25), since, total: rows.length, legs };
 }

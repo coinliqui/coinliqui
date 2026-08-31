@@ -38,7 +38,7 @@ import { readdirSync, readFileSync } from "node:fs";
 /* Source is read as CODE by default — see scripts/lib/source.mjs. The two checks below that
    want the prose say so at their call site, with the reason. */
 import { readSource, readRaw } from "./lib/source.mjs";
-import { cssFor, undefinedClasses, undefinedVars, rawEnums, searchIndexGaps, unnamedUpstreams, duplicateRuleImplementations, uncoveredRoutes, unreadableText, chartAgreement, requestedLeverageLabels, inlineScriptSyntax, flipTableColour, colourPalettes, colourLanguageDrift, colourLegend, publishesAPerson, fixtureGaps, staleDerivedCells, basisSelfConsistent, sitemapLastmodHonesty, breadcrumbAgreement, founderAgreement, readmeCounts, botPolicyReasons, contradictoryStates, hiddenFromEveryone, pageWeight, weightFaults, dateModifiedAgreement, phantomInlineElements, malformedAttributes, uncitedPermissionClaims, unconditionalCadenceClaims, staleCalculatorFigures, controlGroupOverflow, stampSurfacesAgree, symbolAddressing, computedFigureFloor, COMPUTED_FIGURES, openingFigure, PROSE_ROUTES} from "./checks.mjs";
+import { cssFor, undefinedClasses, undefinedVars, rawEnums, searchIndexGaps, unnamedUpstreams, duplicateRuleImplementations, uncoveredRoutes, unreadableText, chartAgreement, requestedLeverageLabels, inlineScriptSyntax, flipTableColour, colourPalettes, colourLanguageDrift, colourLegend, publishesAPerson, fixtureGaps, staleDerivedCells, basisSelfConsistent, sitemapLastmodHonesty, breadcrumbAgreement, founderAgreement, readmeCounts, botPolicyReasons, contradictoryStates, hiddenFromEveryone, pageWeight, weightFaults, dateModifiedAgreement, phantomInlineElements, malformedAttributes, uncitedPermissionClaims, unconditionalCadenceClaims, staleCalculatorFigures, controlGroupOverflow, stampSurfacesAgree, symbolAddressing, computedFigureFloor, COMPUTED_FIGURES, openingFigure, PROSE_ROUTES, handRolledLegends} from "./checks.mjs";
 
 /* The SERVER side of each duplicated formatter, transcribed from the file that owns it and
    named here so the pairing is explicit. Transcription is the honest cost of having no bundler:
@@ -490,6 +490,22 @@ for (const path of ROUTES) {
         for (const l of thinT) console.log(`          ${l}`);
       } else {
         console.log(`  ok            all ${templates.length} multi-URL template(s) publish at least 3 figures this site computes, from a registry of ${COMPUTED_FIGURES.length} checked against src/lib`);
+      }
+
+      /* THE SHARED LEGEND VOCABULARY, over every page and component rather than the templates
+         above: /coins hand-typed the funding-direction sentence and thereby kept the arrows the
+         library had deliberately removed, on a page whose arrows are price. src/lib/funding.ts
+         is excluded because it is where the constants are defined. */
+      const legendSources = [...walkAstro("src/pages"), ...walkAstro("src/components")]
+        .filter((f) => f.endsWith(".astro"))
+        .map((f) => ({ path: f, src: readFileSync(f, "utf8") }));
+      const rolled = handRolledLegends(legendSources);
+      if (rolled.length) {
+        bad++;
+        console.log(`  FAIL  ${String(rolled.length).padStart(4)}         a page writes the shared funding legend by hand`);
+        for (const l of rolled) console.log(`          ${l}`);
+      } else {
+        console.log(`  ok            none of the ${legendSources.length} page/component source(s) retype the funding-direction legend; it has one source`);
       }
     } catch (e) {
       bad++;

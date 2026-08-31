@@ -1,7 +1,7 @@
 ---
 import Base from "../../layouts/Base.astro";
 import { getSnapshot, coldStart, findPerp, getLive, oldestStamp } from "../../lib/hyperliquid.ts";
-import { usd, pct, paysClass } from "../../lib/funding.ts";
+import { usd, pct, paysClass, LEGEND_PAYS } from "../../lib/funding.ts";
 import { COINS, isLive } from "../../lib/coins.ts";
 
 import { priceDp } from "../../lib/funding.ts";
@@ -105,9 +105,20 @@ const description = "Perpetual futures prices for the major coins on Hyperliquid
       </tbody>
     </table>
   </div>
+  {/* THE LEGEND DEFINED A MARK THIS PAGE DOES NOT DRAW, AND DEFINED IT BACKWARDS. It read
+      "▲ longs pay shorts · ▼ shorts pay longs" — but the only ▲▼ anywhere in this table come
+      from `arrow(r.chg)` above, which is the 24-hour PRICE direction. So a reader looking at
+      Ethereum's "▼ 0.63%" beside a funding APR of +10.95% was told by the line underneath that
+      the ▼ meant shorts pay longs, when it meant price fell and funding was the other way.
+
+      src/lib/funding.ts:160 records this exact prohibition: LEGEND_PAYS is kept arrow-free
+      because "folding the arrows into that sentence would have them describe a mark those pages
+      do not use". This page hand-rolled the arrow-bearing wording instead of importing either
+      constant, which is how it acquired the arrows the library had deliberately removed. It
+      takes the shared constant now, and names what the arrows on THIS page actually are. */}
   <p class="legend" style="margin-top:10px">
-    ▲ longs pay shorts · ▼ shorts pay longs — colour encodes the direction of the funding payment
-    only, never price.
+    Funding APR colour: {LEGEND_PAYS}. The ▲▼ in the 24-hour change column are price direction,
+    not funding.
   </p>
 
   {pending.length > 0 && (

@@ -105,6 +105,12 @@ for (const { key, blob_id } of rows) {
       status: "ready",
       since: now - 24 * 3600_000,
       total: 33,
+      /* THE DENOMINATOR, WITHOUT WHICH THE GATE RENDERS ONLY THE DEGRADED SENTENCE. The home
+         page prints "33 of the 144 coin-venue pairs flipped" when legs is present and drops the
+         ratio when it is not — and the fixture had no legs, so the branch production actually
+         takes would have shipped never once rendered here. 144 is 48 coins on three venues,
+         which is the shape of a real window and larger than total, as it must be. */
+      legs: 144,
       rows: [
         { symbol: "BTC", venue: "HlPerp", prevApr: -0.0412, apr: 0.0231, at: now - 12 * 60_000, gapMin: 5 },
         { symbol: "ETH", venue: "BinPerp", prevApr: 0.0187, apr: -0.0094, at: now - 47 * 60_000, gapMin: 5 },
@@ -113,7 +119,7 @@ for (const { key, blob_id } of rows) {
     },
   };
   put.run("flips:24h", (() => { const id = randomBytes(40).toString("hex"); writeFileSync(join(blobDir, id), JSON.stringify(flips)); return id; })());
-  console.log(`  flips:24h  ${flips.result.rows.length} rows of ${flips.result.total}, one with a 890-minute detection gap`);
+  console.log(`  flips:24h  ${flips.result.rows.length} rows of ${flips.result.total} across ${flips.result.legs} pairs, one with a 890-minute detection gap`);
 }
 
 /* THE RESTORED BRANCH, WHICH PRODUCTION CANNOT EXERCISE.

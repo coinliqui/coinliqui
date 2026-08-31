@@ -65,14 +65,24 @@ const dayLabel = (ms: number) => new Date(ms).toLocaleDateString("en-GB", { day:
    choice this page has no basis for making, and the finding it exists to publish IS the spread
    between the ends: the highest leverage that survived every tested entry, and the one that
    failed most of them. Both are read from the same `grid` the table below renders, so the
-   sentence cannot disagree with the picture underneath it. */
+   sentence cannot disagree with the picture underneath it.
+
+   IT NAMES THE SPAN RATHER THAN CALLING IT "THE LAST N CLOSES", which is what this sentence
+   said when it shipped this morning and was wrong by a month. survivalGrid evaluates only entry
+   days with a FULL hold window ahead of them — `usable = candles.length - holdDays` — so the
+   tested set ENDS `hold` days before the most recent close. At the default hold of 30, "the last
+   90 daily closes" named 3 June to 30 August while the days actually tested were 3 May to 31
+   July: 31 of the 90 named were never in the grid. At hold=90 the two sets do not overlap at all.
+   The censoring is deliberate and candles.ts:184 explains why; the figcaption two hundred lines
+   below already printed the true span from the same grid.from/grid.to. Only the lede — the one
+   sentence written to be quoted away from the page — claimed the window it had not measured. */
 const survivalLede = (() => {
   if (!grid || !grid.levels.length) return "";
   const tested = grid.levels[0].tested;
   const worst = [...grid.levels].sort((a, b) => b.liquidated / b.tested - a.liquidated / a.tested)[0];
   if (!tested || !worst || !worst.liquidated) return "";
   const safe = [...grid.levels].filter((l) => l.liquidated === 0).sort((a, b) => b.L - a.L)[0];
-  const head = `Across the last ${tested} ${perp.symbol} daily closes, a ${hold}-day ${mapSide} at ${worst.L}× would have been closed out on ${worst.liquidated} of them, ${pct(worst.liquidated / worst.tested)}`;
+  const head = `Across ${tested} ${perp.symbol} daily closes, ${dayLabel(grid.from)} to ${dayLabel(grid.to)}, a ${hold}-day ${mapSide} at ${worst.L}× would have been closed out on ${worst.liquidated} of them, ${pct(worst.liquidated / worst.tested)}`;
   return safe ? `${head} — while ${safe.L}× survived every one.` : `${head}.`;
 })();
 

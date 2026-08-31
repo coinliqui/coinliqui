@@ -38,6 +38,7 @@ import {
   computedFigureFloor, COMPUTED_FIGURES,
   leadsWithItsSubject,
   openingFigure,
+  handRolledLegends,
   llmsHostsAgree,
 } from "./checks.mjs";
 
@@ -412,6 +413,44 @@ const cases = [
          reading only the route file would score the page that computes most on this site at 0. */
       computedFigureFloor(
         [{ route: "/x/[y]", sources: ["import L from './L.astro'", "buildLiqMap(); corridorAt(); mixUsed();"] }], {}, 3).length === 0,
+    ],
+  },
+  {
+    check: "handRolledLegends",
+    why: "/coins printed \"longs pay shorts\" with arrows under a table whose only arrows are the 24-hour PRICE change, so a reader saw a down arrow beside positive funding and was told it meant shorts pay longs — the library had already removed those arrows from LEGEND_PAYS for exactly this reason and the page never imported it",
+    fire: () => handRolledLegends([{ path: "coins/index.astro", src: '<p class="legend">\u25b2 longs pay shorts \u00b7 \u25bc shorts pay longs</p>' }]),
+    quiet: () => handRolledLegends([
+      { path: "ok.astro", src: 'import { LEGEND_PAYS } from "../lib/funding.ts";\n<p class="legend">Funding APR colour: {LEGEND_PAYS}.</p>' },
+      { path: "unrelated.astro", src: "<p>open interest and volume</p>" },
+    ]),
+    also: () => [
+      /* A COMMENT EXPLAINING THE DEFECT IS NOT THE DEFECT. Every fix in this repository is
+         written down beside the code it fixes, so a check that read comments would fire on its
+         own explanation and be deleted within the week. */
+      handRolledLegends([{ path: "c.astro", src: "/* it said longs pay shorts, which was wrong */ <p>fine</p>" }]).length === 0,
+      handRolledLegends([{ path: "c.astro", src: "// shorts pay longs was the old wording\n<p>fine</p>" }]).length === 0,
+      /* Astro wraps block comments in braces; the strip must still reach inside them. */
+      handRolledLegends([{ path: "c.astro", src: "{/* longs pay shorts, historically */}<p>fine</p>" }]).length === 0,
+      /* CONCATENATING THE CONSTANT WITH A HAND-WRITTEN HALF IS STILL HAND-WRITTEN, but importing
+         it and using it is not. The guard is what tells those apart. */
+      handRolledLegends([{ path: "d.astro", src: '<p>{LEGEND_PAYS} and \u25b2 longs pay shorts</p>' }]).length === 0,
+      handRolledLegends([{ path: "e.astro", src: "<p>\u25bc shorts pay longs</p>" }]).length === 1,
+      handRolledLegends([]).length === 0,
+      /* THE SCOPE, LOCKED. The first version matched the wording alone and fired on three more
+         pages; two of them were explaining the concept rather than labelling a mark, and were
+         right to be left alone. Both shapes are asserted quiet here so the rule cannot widen
+         back without a fixture failing.
+
+         /learn/index: binds the phrase to the SIGN, which is what an explanation does. */
+      handRolledLegends([{ path: "learn/index.astro", src: "<td>Positive: longs pay shorts. Negative: shorts pay longs.</td>" }]).length === 0,
+      /* /learn/funding-rate: definitional prose, and a live sentence whose direction is computed. */
+      handRolledLegends([{ path: "learn/funding-rate.astro", src: "<p>When it is positive, longs pay shorts; when negative, shorts pay longs.</p>" }]).length === 0,
+      /* /funding/[symbol]: a hand-rolled COLOUR legend, deliberately out of scope — the colours
+         it names are the colours it draws, and two coloured spans are not a flat constant. */
+      handRolledLegends([{ path: "funding/x.astro", src: '<b class="pays-l">amber where longs pay shorts</b> and <b class="pays-s">cyan where shorts pay longs</b>' }]).length === 0,
+      /* Arrows in a table and an explanation in a distant paragraph claim nothing about each
+         other; the binding this forbids is one line long. */
+      handRolledLegends([{ path: "f.astro", src: "<td>{arrow(chg)} 0.63%</td>\n<p>Positive funding means longs pay shorts.</p>" }]).length === 0,
     ],
   },
   {
