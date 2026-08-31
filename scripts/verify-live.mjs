@@ -450,6 +450,47 @@ console.log("\n5. sitemap");
       : ok("the contract page opens with its own subject: the funding figure, its unit, its venue and its timestamp are all inside the first 700 characters an extractor reads");
   }
 
+  /* THE SAME ASSERTION FOR THE MAP HUB, which is the second-most-fetched page on the site.
+     /liquidations opened with sixty words about what a model is and no number at all, while
+     taking 20 verified ChatGPT-User fetches a day and 15 from Applebot. It carries the extra
+     "modelled" clause because this page's figures are the only ones on the site that are not
+     observed, and an opening that quotes them without saying so is worse than one with no
+     figures in it. */
+  {
+    const lead = await fetchAs("/liquidations", "GPTBot/1.1");
+    const gaps = leadsWithItsSubject(lead.body, [
+      { label: "a price, in dollars", re: /\$[\d,]{4,}/ },
+      { label: "the venue whose book is modelled", re: /hyperliquid/i },
+      { label: "the notional price has cleared", re: /cleared \$/i },
+      { label: "that these figures are modelled rather than observed", re: /modelled/i },
+    ]);
+    gaps.length ? bad(`/liquidations — ${gaps.join("; ")}`)
+      : ok("the map hub opens with its own subject: mark, open interest, venue, cleared notional and the word modelled are all inside the first 700 characters an extractor reads");
+  }
+
+  /* THE OTHER TWO HUBS ASSISTANTS FETCH, table-driven because the assertion is identical and
+     only the vocabulary differs. /tools takes 36 Applebot fetches a day and opened with a
+     PROMISE of figures containing none ("Every calculator opens with a real contract at its
+     current price"); /unlocks had its quotable sentence written already and kept it in the
+     <meta> description while the visible lede opened with the method. Both now lead from data
+     the page had computed anyway, which is the only kind of opening that cannot go stale. */
+  for (const t of [
+    { path: "/tools", want: [
+      { label: "the contract the calculators open on", re: /\bBTC\b/ },
+      { label: "its price, in dollars", re: /\$[\d,]{4,}/ },
+      { label: "a rate, as a percentage", re: /\d+(\.\d+)?%/ },
+    ] },
+    { path: "/unlocks", want: [
+      { label: "the largest lock's share of supply", re: /\d+(\.\d+)?% of supply/ },
+      { label: "the token it belongs to", re: /[A-Z]{2,6} lock holds/ },
+    ] },
+  ]) {
+    const lead = await fetchAs(t.path, "GPTBot/1.1");
+    const gaps = leadsWithItsSubject(lead.body, t.want);
+    gaps.length ? bad(`${t.path} — ${gaps.join("; ")}`)
+      : ok(`${t.path} opens with a figure its own data computed, not with a description of the method`);
+  }
+
   /* llms.txt IS CHECKED AGAINST THE HEADER IT DESCRIBES, on production, because both halves of
      the comparison have to be the ones a machine actually receives. The file's whole audience is
      software that will not ask a follow-up question when a sentence has gone stale. */

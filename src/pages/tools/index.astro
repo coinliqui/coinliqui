@@ -11,6 +11,17 @@ const btc = snap.perps.find((p) => p.symbol === "BTC") ?? snap.perps[0];
 const widest = [...snap.perps].filter((p) => p.aprSpread != null).sort((a, b) => (b.aprSpread ?? 0) - (a.aprSpread ?? 0))[0];
 const hl = btc.venues.find((v) => v.venue === "HlPerp") ?? btc.venues[0];
 
+/* THE PAGE MADE A CLAIM ABOUT FIGURES AND SHOWED NONE. The opening sentence was "Every
+   calculator opens with a real contract at its current price, computed on the server" —
+   a promise of numbers, containing no number, in the part of the document an extractor
+   quotes. /tools takes 36 Applebot fetches a day, the second-largest share on the site
+   after /funding/{symbol}, and what they carried away was the promise.
+
+   THE FIGURES WERE ALREADY IN THIS FRONTMATTER. `btc` and `hl` are read four lines above
+   to fill the cards; the lede simply never used them. Assembled here rather than in the
+   markup because adjacent JSX expressions on separate lines emit whitespace text nodes. */
+const opensOn = `${btc.symbol} at ${usd(btc.markPx)}, funding ${pct(hl.apr)} a year on Hyperliquid`;
+
 // Only shipped tools are listed. There are no "coming soon" entries.
 // Each blurb names the specific thing the common formula gets wrong, because that is the
 // only reason to use this calculator over the twenty that already rank.
@@ -82,7 +93,8 @@ const naiveHold = hl ? SIZE_USD * hl.rate * HOLD_DAYS : null;
   <div class="page-head">
     <h1>Perpetual futures calculators</h1>
     <p>
-      Every calculator opens with a real contract at its current price, computed on the server.
+      <strong>Every calculator here opens on {opensOn}</strong>, computed on the server before the
+      page is sent — not a blank form waiting for numbers you have to find somewhere else first.
       Where a formula in common circulation is wrong, the correct result is shown next to it.
       None of them require an account.
     </p>

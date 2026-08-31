@@ -149,6 +149,41 @@ const offAxis = profile.weights.filter(([L]) => {
 const sweptTotal = map ? map.swept.reduce((a, b) => a + b, 0) : 0;
 
 /* =========================================================================================
+   THE PAGE OPENED WITH ITS METHOD AND NOT ITS SUBJECT. Measured on the live URL, fetched as
+   GPTBot: the first 300 characters of visible text were "BTC liquidation map — Where
+   liquidation levels would sit if positions were opened the way the assumptions below
+   describe…" and contained NO NUMBER AT ALL. /liquidations takes 20 verified ChatGPT-User
+   fetches a day and 15 from Applebot; what those fetches carried away was a paragraph about
+   what a model is. Every figure was already on the page — the scale note, the two stat cards,
+   the cluster table — just never in the opening sentence, which is the part an extractor
+   quotes and the part a snippet is built from. Same defect and same fix as /funding/{symbol}.
+
+   IT NAMES THE BIGGEST CLUSTER, NOT map.peak. `peak` is the largest cell in the WHOLE grid,
+   every column included, so it can be a level that price cleared a fortnight ago — writing
+   "still standing" over it would be a label asserting something the expression does not
+   compute. `clusters` is accumulated only where `end === NC`, i.e. levels still carrying
+   notional at the right-hand edge, sorted by size. That one is the honest superlative.
+
+   ASSEMBLED HERE, NOT IN THE MARKUP, and inserted INTO the existing paragraph rather than
+   above it. Adjacent JSX expressions on separate lines emit whitespace text nodes, which is
+   how " ." gets published; and `.page-head p` sets margin 0, so a second <p> would butt
+   against the first with no gap — the defect written down at Base.astro:550.
+   ========================================================================================= */
+const lede = (() => {
+  const head = `${perp.symbol} trades at ${axisPx(mark)} against ${usd(perp.oiNotional)} of open interest on Hyperliquid`;
+  const top = map?.clusters[0];
+  if (!map)
+    return { head, tail: ", the book this map is modelled from — though this contract has not accumulated enough price history for a map to be drawn from it yet." };
+  const cluster = top
+    ? `; the heaviest level still standing sits at ${axisPx(top.price)}, ${pct(Math.abs(top.distance))} ${top.price < mark ? "below" : "above"} the mark, holding ${compact(top.notional)}`
+    : "";
+  return {
+    head,
+    tail: `, the book this map is modelled from. Over ${win.label} price has traded ${axisPx(map.tradedLo)}–${axisPx(map.tradedHi)} and cleared ${compact(sweptTotal)} of modelled liquidation notional on the way${cluster}.`,
+  };
+})();
+
+/* =========================================================================================
    THE BARS THAT DID THE CLEARING, from an array the page already computed and threw away.
 
    `map.swept` carries the modelled notional price traded through PER DRAWN COLUMN, and until
@@ -208,7 +243,7 @@ const gridPrices = niceTicks(yMin, yMax, 5);
         renderings tells a reader and an extractor less than the tab does. */}
     <h1>{perp.symbol} liquidation map</h1>
     <p>
-      Where liquidation levels would sit if positions were opened the way the assumptions below
+      <strong>{lede.head}</strong>{lede.tail}{" "}Where liquidation levels would sit if positions were opened the way the assumptions below
       describe — and, the part that matters, <strong>where price has already cleared them</strong>.
       The dark corridor the price path carves through the field is not empty space; it is the
       levels the market has already taken out. This is a model, and it is labelled as one inside

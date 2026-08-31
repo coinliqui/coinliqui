@@ -91,6 +91,17 @@ const top = overhang[0];
 const description = top
   ? `One ${top.symbol} lock holds ${pct(top.heldNow / top.supply)} of supply and finished vesting on ${fmt(top.end)} — nobody has moved it. A register of token vesting, lock and emission contracts read directly from Ethereum: what each holds now, what it is still releasing, and which finished years ago with the tokens never withdrawn.`
   : "A register of token vesting, lock and emission contracts read directly from Ethereum: what each holds right now, what it is still releasing, and which finished years ago with the tokens never withdrawn.";
+
+/* THE QUOTABLE SENTENCE EXISTED AND WAS NOT ON THE PAGE. `description` above already leads
+   with the largest lock, derived live — but a <meta> description is not visible text, and the
+   visible lede opened with the method: "A register of token vesting, lock and emission
+   contracts, read directly from Ethereum." Fetched as GPTBot, the first 300 characters of
+   /unlocks carried no figure at all, while the strongest fact the page holds was sitting in
+   the head of the same document. So the head sentence leads the body too, from the same
+   `overhang[0]`, and the two cannot drift apart. */
+const lede = top
+  ? `One ${top.symbol} lock holds ${pct(top.heldNow / top.supply)} of supply${top.absorb ? `, ${usd(top.absorb.usd)} at today's price` : ""}, and finished vesting on ${fmt(top.end)}. Nobody has moved it.`
+  : "";
 ---
 
 {/* TWO DIFFERENT QUESTIONS, ANSWERED SEPARATELY. `fetchedAt` keeps the freshness pill honest
@@ -102,7 +113,7 @@ const description = top
   <div class="page-head">
     <h1>Vesting contracts, and what they still hold</h1>
     <p>
-      A register of token vesting, lock and emission contracts, read directly from Ethereum.
+      {lede && <><strong>{lede}</strong>{" "}</>}A register of token vesting, lock and emission contracts, read directly from Ethereum.
       Every figure below is an <code>eth_call</code> at one stated block — not a date copied from
       an announcement, and not a projection. The unit here is a <strong>contract and the state it
       is in</strong>, which is a different thing from a calendar of events.
