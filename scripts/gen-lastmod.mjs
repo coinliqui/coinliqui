@@ -89,7 +89,43 @@ if (CHECK) {
     const drift = [...new Set([...Object.keys(now), ...Object.keys(out)])]
       .filter((r) => now[r] !== out[r])
       .map((r) => `    ${r}: sitemap says ${now[r] ?? "(absent)"}, git says ${out[r] ?? "(absent)"}`);
-    console.error(`\n  src/data/lastmod.json has drifted from git on ${drift.length} route(s):\n${drift.join("\n")}\n\n  Run: npm run gen:lastmod\n`);
+    /* "Run: npm run gen:lastmod" WAS THE WHOLE ADVICE, AND IT WAS NOT ENOUGH. On 31 August 2026
+       this guard stopped three deploys in one session and the operator ran exactly that command
+       each time, twice still wrongly, because the fault is an ORDER and not a command. This
+       script reads COMMIT dates: run it before committing the page and it records the previous
+       one, and fix that with `--amend` and you rewrite the very date it just measured, so the
+       check fails again on the new one. Both are one-way doors that look like the fix working.
+
+       THE ADVICE IS NOW DERIVED FROM STATE RATHER THAN PRINTED BLIND. If any source behind a
+       drifting route is still uncommitted, there is no date to read yet and the instruction is
+       to commit; if they are all committed, the date exists and the instruction is to record it
+       in a commit of its own. A generic message could not tell those two apart, and they need
+       opposite actions. */
+    let uncommitted = new Set();
+    try {
+      uncommitted = new Set(
+        execFileSync("git", ["status", "--porcelain"], { encoding: "utf8" })
+          .split("\n").filter(Boolean).map((l) => l.slice(3).trim()),
+      );
+    } catch { /* no git here: fall through to the generic instruction below */ }
+    const pending = drift
+      .map((line) => line.trim().split(":")[0])
+      .filter((route) => (ROUTES[route] ?? []).some((f) => uncommitted.has(f)));
+
+    const how = pending.length
+      ? `  ${pending.length} of these route(s) have UNCOMMITTED sources: ${pending.join(", ")}\n` +
+        `  This reads commit dates, so it cannot record a date that does not exist yet.\n\n` +
+        `    1. commit the page changes\n` +
+        `    2. npm run gen:lastmod\n` +
+        `    3. commit src/data/lastmod.json as its OWN commit — not --amend, which would\n` +
+        `       rewrite the commit date this just measured and fail the check again`
+      : `  Every source behind these routes is committed, so the dates exist and only the\n` +
+        `  generated file is behind.\n\n` +
+        `    1. npm run gen:lastmod\n` +
+        `    2. commit src/data/lastmod.json as its OWN commit — not --amend, which would\n` +
+        `       rewrite the commit date this just measured and fail the check again`;
+
+    console.error(`\n  src/data/lastmod.json has drifted from git on ${drift.length} route(s):\n${drift.join("\n")}\n\n${how}\n`);
     process.exit(1);
   }
 } else {
