@@ -96,6 +96,21 @@ const NoneTag = verdict === "wrongside" ? "div" : "template";
 const ratio = stop / entry;
 const denom = side === "long" ? 1 - ratio * (1 - mmf) : ratio * (1 + mmf) - 1;
 const rawSafe = denom > 0 ? 1 / denom : Infinity;
+/* THE OTHER END OF THE SAME SOLVE, WHICH THE EM DASH BELOW DOES NOT COVER. rawSafe is the
+   leverage at which liquidation EQUALS the stop, so only L below it keeps liquidation beyond.
+   Math.floor respects that; Math.max(1, ...) does not. When the stop is far enough away on the
+   losing side that denom exceeds 1 — for a short, any stop past about twice entry — rawSafe
+   falls below 1, floor gives 0, and the clamp lifts it back to 1, a leverage strictly GREATER
+   than the value solved for. In that regime no leverage satisfies the claim at all, and the
+   card asserted that 1x did.
+
+   Worked case on this repository's own margin table 3 (maxLeverage 3, so mmf = 1/6): short,
+   entry 100, stop 200. ratio 2, denom 1.3333, rawSafe 0.75, safeLeverage 1. Short liquidation
+   at 1x is 100 * (1 + 1/1) / (1 + 1/6) = 171.43, and for a short the adverse move is upward,
+   so liquidation is reached BEFORE the 200 stop. The card read "1x / keeps liquidation beyond
+   $200.00". stopVerdict classifies this as "liq", not "wrongside", so the existing guard never
+   fired. */
+const noSafeLeverage = Number.isFinite(rawSafe) && rawSafe < 1;
 const safeLeverage = Math.max(1, Math.min(tier.maxLeverage, Math.floor(Number.isFinite(rawSafe) ? rawSafe : tier.maxLeverage)));
 
 // The harm when liquidation lands first is PREMATURE CLOSURE, not a larger loss. At high
@@ -178,8 +193,8 @@ const description = `Risk-based position sizing for ${perp.symbol} perpetuals th
           stop is on the losing side; when it is not, the denominator goes negative, rawSafe
           becomes Infinity and this card printed the contract's tier maximum as though it were
           a safety finding. An em dash is the honest output for a question with no answer. */}
-      <div class="card__value" id="out-safe">{stopUnreachable ? "—" : `${safeLeverage}×`}</div>
-      <div class="card__meta" id="out-safenote">{stopUnreachable ? "the stop is not on the losing side" : `keeps liquidation beyond ${px(stop)}`}</div>
+      <div class="card__value" id="out-safe">{stopUnreachable || noSafeLeverage ? "—" : `${safeLeverage}×`}</div>
+      <div class="card__meta" id="out-safenote">{stopUnreachable ? "the stop is not on the losing side" : noSafeLeverage ? "no leverage keeps liquidation beyond this stop" : `keeps liquidation beyond ${px(stop)}`}</div>
     </div>
   </div>
 
@@ -212,7 +227,14 @@ const description = `Risk-based position sizing for ${perp.symbol} perpetuals th
         {" "}<b id="v-margin1">{usd(marginAtRisk, 2)}</b> of margin goes with it.
         That the margin happens to be <span id="v-cmp1">{marginAtRisk < riskUsd ? "smaller" : "larger"}</span> than your
         {" "}<span id="v-risk1">{usd(riskUsd, 2)}</span> budget is beside the point: the position never got to be wrong slowly.
-        Drop to <b id="v-safe2">{safeLeverage}×</b> or move the stop closer.
+        {/* NO FIGURE IN THIS SENTENCE, DELIBERATELY. It used to repeat safeLeverage, which the
+            "Max leverage for this stop" card above already prints and already repaints — and a
+            second copy of a figure inside a verdict is exactly what staleDerivedCells exists to
+            refuse, because the client owns this whole sentence by textContent and a nested
+            element would not survive the first keystroke. The remedy points at the card. */}
+        <span id="v-safefix">{noSafeLeverage
+          ? "Move the stop closer: at this distance no leverage keeps liquidation beyond it."
+          : "Cut leverage to the maximum shown above, or move the stop closer."}</span>
     </LiqTag>
     <StopTag data-when="stop">
         <b>The stop is reachable.</b> Liquidation sits at <b id="v-liq2">{px(r.liquidationPrice)}</b>
@@ -305,8 +327,16 @@ const description = `Risk-based position sizing for ${perp.symbol} perpetuals th
         set("out-stopmove", ((Math.abs(S - E) / E) * 100).toFixed(2) + "%");
         const mv = document.getElementById("out-move");
         if (mv) mv.className = "card__value" + (alarm ? " card__value--alert" : "");
-        set("out-safe", wrong ? "—" : safe + "×");
-        set("out-safenote", wrong ? "the stop is not on the losing side" : "keeps liquidation beyond " + price(S));
+        /* THE THIRD STATE. `wrong` is denom <= 0; this is denom > 1, where the solved leverage
+           is below 1 and the Math.max clamp above lifts it back up past the answer. Mirrored
+           here because a card that is honest on first render and false after one keystroke is
+           the same defect with a delay. */
+        const noSafe = denom > 0 && 1 / denom < 1;
+        set("out-safe", wrong || noSafe ? "—" : safe + "×");
+        set("out-safenote", wrong ? "the stop is not on the losing side" : noSafe ? "no leverage keeps liquidation beyond this stop" : "keeps liquidation beyond " + price(S));
+        set("v-safefix", noSafe
+          ? "Move the stop closer: at this distance no leverage keeps liquidation beyond it."
+          : "Cut leverage to the maximum shown above, or move the stop closer.");
         /* The VERDICT is a state, not a colour. Setting className alone left the sentence
            contradicting its own box; the attribute selects which server-rendered variant shows,
            and the ids below keep its figures current. */
@@ -340,7 +370,12 @@ const description = `Risk-based position sizing for ${perp.symbol} perpetuals th
         setAll(["v-liq1", "v-liq2", "v-liq3"], price(liq));
         setAll(["v-move1", "v-move2", "v-move3", "v-move4"], ((Math.abs(liq - E) / E) * 100).toFixed(2) + "%");
         setAll(["v-stopmove1", "v-stopmove2", "v-stopmove3", "v-stopmove4"], ((Math.abs(S - E) / E) * 100).toFixed(2) + "%");
-        setAll(["v-safe1", "v-safe2"], safe + "×");
+        /* v-safe2 is gone: the LiqTag remedy is now a whole sentence written by v-safefix
+           above, because in the no-solution regime "drop to 1x" is not a remedy. v-safe1 is
+           the StopTag sentence, which is only rendered when the stop executes first — and that
+           state implies the current leverage is already below rawSafe, so rawSafe exceeds 1
+           there and the figure it prints cannot be the clamped one. */
+        setAll(["v-safe1"], safe + "×");
         setAll(["v-stop1", "v-stop2"], price(S));
         setAll(["v-margin1", "v-margin3"], money(margin));
         setAll(["v-risk1", "v-risk2", "v-risk3"], money(riskUsd));

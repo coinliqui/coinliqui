@@ -927,7 +927,7 @@ Inspection stopped: ${e instanceof Error ? e.message : String(e)}`);
               say("that writing more of the same page would move it \u2014 see the band table above for where");
               say("the queries actually are.");
             } else {
-              say(`${near.length} quer${near.length === 1 ? "y is" : "ies are"} on page two or three. These are the pages where`);
+              say(`${near.length} query-page pair${near.length === 1 ? " is" : "s are"} on page two or three. These are the pages where`);
               say("the site is already relevant and is losing to something beatable.\n");
               say("| Query | Page | Impressions | Clicks | Position |");
               say("|---|---|---:|---:|---:|");
@@ -1183,7 +1183,7 @@ async function stepCorroborate(env, now = Date.now()) {
 }
 
 // worker/build-stamp.ts
-var WORKER_BUILD = "87e3b4c5c66f";
+var WORKER_BUILD = "a7505e5981f0";
 
 // worker/ingest.ts
 var RETAIN_HOURS = 720;

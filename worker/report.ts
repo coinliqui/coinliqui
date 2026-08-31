@@ -643,7 +643,11 @@ export async function stepReport(env: ReportEnv, force = false): Promise<string 
               say("that writing more of the same page would move it — see the band table above for where");
               say("the queries actually are.");
             } else {
-              say(`${near.length} quer${near.length === 1 ? "y is" : "ies are"} on page two or three. These are the pages where`);
+              /* PAIRS, NOT QUERIES. The call two lines up asks for dimensions ["query", "page"],
+                 so Search Console returns one row per query-and-URL pair and one query ranking
+                 on two URLs is two rows. The sentence counted rows and called them queries. The
+                 table underneath has always had a Page column, so the words now match it. */
+              say(`${near.length} query-page pair${near.length === 1 ? " is" : "s are"} on page two or three. These are the pages where`);
               say("the site is already relevant and is losing to something beatable.\n");
               say("| Query | Page | Impressions | Clicks | Position |");
               say("|---|---|---:|---:|---:|");

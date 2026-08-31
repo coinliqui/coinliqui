@@ -292,7 +292,8 @@ const gridPrices = niceTicks(yMin, yMax, 5);
       <div class="scalebar">
         <Fragment set:html={paint.legend} />
         <p class="scalebar__note">
-          Modelled notional standing at a price, at a moment. Colour tops out at the busiest 0.5% of the map
+          Modelled notional standing at a price, at a moment. Colour tops out at the busiest 0.5% of the
+          cells that carry anything
           so one dominant cluster cannot drag everything else to the floor; the most crowded spot holds
           {" "}{compact(map.peak)}. A band ends where price trades through it — drawn in white,
           both as scars on the field and as the strip beneath — or fades out in four steps as the
@@ -334,7 +335,7 @@ const gridPrices = niceTicks(yMin, yMax, 5);
           <thead><tr><th class="num">#</th><th>Assumption</th><th>Value used</th><th class="num">Observed or assumed</th></tr></thead>
           <tbody>
             <tr><td class="num">1</td><td>Total notional modelled</td><td>Equal to <a class="link" href="/open-interest">Hyperliquid's open interest</a> in {perp.symbol}, {usd(perp.oiNotional)} — one venue's book, not the market's</td><td class="num">observed</td></tr>
-            <tr><td class="num">2</td><td>When positions were opened</td><td>Spread over the bars of the window in proportion to each bar's traded volume</td><td class="num">observed</td></tr>
+            <tr><td class="num">2</td><td>When positions were opened</td><td>Spread over the bars of the window in proportion to each bar's traded volume <em>as a share of its own trailing {POSITION_LIFE_DAYS}-day window</em>, which is what stops a rising market from loading every cohort onto its latest bars</td><td class="num">assumed</td></tr>
             <tr class="is-active"><td class="num">3</td><td>Leverage mix</td><td><strong>{profile.label}</strong> — {profile.note}</td><td class="num">assumed</td></tr>
             <tr><td class="num">4</td><td>Direction</td><td>Half long, half short at every leverage</td><td class="num">assumed</td></tr>
             <tr><td class="num">5</td><td>How long a position stays open</td><td>A bounded life of {POSITION_LIFE_DAYS} days, decaying in four tranches. Removed earlier if price trades through its level.</td><td class="num">assumed</td></tr>

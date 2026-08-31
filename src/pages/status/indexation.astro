@@ -91,7 +91,7 @@ const utc = (ms: number) => new Date(ms).toISOString().slice(0, 16).replace("T",
       <div>
         <b>A run is in progress</b> for {progress.week} — currently in the <code>{progress.phase}</code>
         {" "}phase. A full report is roughly 140 subrequests against a 50-per-invocation ceiling, so it
-        walks itself across consecutive five-minute ticks and finishes in about twenty minutes.
+        walks itself across consecutive five-minute ticks, twenty URLs at a time.
       </div>
     </div>
   )}
