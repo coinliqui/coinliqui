@@ -38,7 +38,7 @@ import { readdirSync, readFileSync } from "node:fs";
 /* Source is read as CODE by default — see scripts/lib/source.mjs. The two checks below that
    want the prose say so at their call site, with the reason. */
 import { readSource, readRaw } from "./lib/source.mjs";
-import { cssFor, undefinedClasses, undefinedVars, rawEnums, searchIndexGaps, unnamedUpstreams, duplicateRuleImplementations, uncoveredRoutes, unreadableText, chartAgreement, requestedLeverageLabels, inlineScriptSyntax, flipTableColour, colourPalettes, colourLanguageDrift, colourLegend, publishesAPerson, fixtureGaps, staleDerivedCells, basisSelfConsistent, sitemapLastmodHonesty, breadcrumbAgreement, founderAgreement, readmeCounts, botPolicyReasons, contradictoryStates, hiddenFromEveryone, pageWeight, weightFaults, dateModifiedAgreement, phantomInlineElements, malformedAttributes, uncitedPermissionClaims, unconditionalCadenceClaims, staleCalculatorFigures, controlGroupOverflow, stampSurfacesAgree, symbolAddressing, computedFigureFloor, COMPUTED_FIGURES} from "./checks.mjs";
+import { cssFor, undefinedClasses, undefinedVars, rawEnums, searchIndexGaps, unnamedUpstreams, duplicateRuleImplementations, uncoveredRoutes, unreadableText, chartAgreement, requestedLeverageLabels, inlineScriptSyntax, flipTableColour, colourPalettes, colourLanguageDrift, colourLegend, publishesAPerson, fixtureGaps, staleDerivedCells, basisSelfConsistent, sitemapLastmodHonesty, breadcrumbAgreement, founderAgreement, readmeCounts, botPolicyReasons, contradictoryStates, hiddenFromEveryone, pageWeight, weightFaults, dateModifiedAgreement, phantomInlineElements, malformedAttributes, uncitedPermissionClaims, unconditionalCadenceClaims, staleCalculatorFigures, controlGroupOverflow, stampSurfacesAgree, symbolAddressing, computedFigureFloor, COMPUTED_FIGURES, openingFigure, PROSE_ROUTES} from "./checks.mjs";
 
 /* The SERVER side of each duplicated formatter, transcribed from the file that owns it and
    named here so the pairing is explicit. Transcription is the honest cost of having no bundler:
@@ -344,6 +344,16 @@ for (const path of ROUTES) {
     const v = undefinedVars(body, css);
     const e = rawEnums(body);
     for (const d of chartAgreement(body)) content.push(`chart disagrees with the page: ${d}`);
+    /* THE OPENING MUST CARRY A FIGURE, asked of every warm route rather than of the three the
+       crawler log happened to name. Query strings are stripped first: /liquidations?symbol=BTC
+       and /liquidations are the same template and the same lede, and an exemption keyed on the
+       decorated path would silently stop applying the day a control was added. */
+    {
+      const route = path.split("?")[0];
+      if (status === 200 && !(route in PROSE_ROUTES) && !openingFigure(body)) {
+        content.push("the opening 700 characters carry no figure — a page reading the live store that describes its method instead of stating a reading");
+      }
+    }
     /* Warm only, and only the homepage — the flip feed exists nowhere else. This is also the
        assertion that keeps the D1 fixture honest: if it is empty the feed renders a placeholder
        and this fails, rather than every check on that table silently having nothing to look at. */

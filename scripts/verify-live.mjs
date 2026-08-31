@@ -12,7 +12,7 @@
    — this runs against production and its whole claim is that it asserts what a client on the
    open internet receives. underLinked() decides nothing about the site; it turns a count into
    a sentence, and it lives in checks.mjs so it is covered by the gate's own fixture suite. */
-import { underLinked, duplicateHeadMetadata, leadsWithItsSubject, llmsHostsAgree } from "./checks.mjs";
+import { underLinked, duplicateHeadMetadata, leadsWithItsSubject, llmsHostsAgree, openingFigure, PROSE_ROUTES } from "./checks.mjs";
 
 const ORIGIN = process.argv[2] || "https://coinliqui.com";
 const CRAWLERS = [
@@ -355,6 +355,12 @@ console.log("\n5. sitemap");
      are already in hand. See duplicateHeadMetadata() for what two URLs sharing one title
      costs, and for why title LENGTH is deliberately not checked here. */
   const heads = [];
+  /* THE OPENING-FIGURE FLOOR, ON PRODUCTION, FOR EVERY SITEMAP URL. The build gate already
+     applies it to each template; this applies it to each URL, which is a different claim —
+     133 of them against the smoke run's subset, so a contract whose figures degrade on the
+     edge alone is caught here and nowhere else. Not one extra request: this walk fetches every
+     page already. */
+  const figureless = [];
   const linkNorm = (h) => { const p = h.split("#")[0].split("?")[0]; return p.length > 1 ? p.replace(/\/$/, "") : p; };
   for (const u of urls) {
     const r = await fetchAs(pathOf(u) || "/", "GPTBot/1.1");
@@ -365,6 +371,7 @@ console.log("\n5. sitemap");
       for (const t of new Set([...main.matchAll(/href="(\/[^"]*)"/g)].map((m) => linkNorm(m[1])))) {
         if (t !== self && inbound.has(t)) inbound.set(t, inbound.get(t) + 1);
       }
+      if (!(self in PROSE_ROUTES) && !openingFigure(r.body)) figureless.push(self);
       heads.push({
         path: self,
         title: (r.body.match(/<title>([\s\S]*?)<\/title>/) ?? [, ""])[1].trim(),
@@ -428,6 +435,9 @@ console.log("\n5. sitemap");
       hollow.push(u);
     }
   }
+  figureless.length
+    ? bad(`opening 700 characters carry no figure on ${figureless.length} URL(s): ${figureless.slice(0, 8).join(", ")}`)
+    : ok(`every sitemap URL that owes a figure states one in the first 700 characters an extractor reads — ${Object.keys(PROSE_ROUTES).length} prose pages exempt, each with a recorded reason`);
   broken.length ? bad(`non-200: ${broken.join(", ")}`) : ok("every sitemap URL 200 as GPTBot");
   thin.length ? bad(`missing brand: ${thin.join(", ")}`) : ok("every sitemap URL carries the brand");
   cut.length ? bad(`TRUNCATED — 200 with no </html>, the render threw mid-stream: ${cut.join(", ")}`)

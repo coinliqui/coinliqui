@@ -45,7 +45,13 @@ const description =
 <Base title={title} description={description} fetchedAt={snap.fetchedAt} namesFounder>
   <div class="page-head">
     <h1>About {SITE.name}</h1>
-    <p>{IDENTITY.summary}</p>
+    {/* THE IDENTITY SENTENCE IS A CONSTANT AND THE PAGE IS NOT. IDENTITY.summary is shared with
+        the JSON-LD, llms.txt and the meta description, so it cannot carry a live figure — but
+        this page reads the store, prints the covered count 15 lines down and the floor twice
+        below that, and still opened with 700 characters containing no number. The two figures
+        are the ones already rendered further down, from the same snapshot, so the opening and
+        the body cannot disagree. */}
+    <p>{IDENTITY.summary} It covers {snap.perps.length} perpetual contracts today, each holding at least {usd(OI_NOTIONAL_FLOOR)} of open interest.</p>
   </div>
 
   <div class="verdict verdict--warn">

@@ -55,6 +55,27 @@ const grid =
    year. */
 const dayLabel = (ms: number) => new Date(ms).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
 
+/* THE PAGE THAT IS ENTIRELY A RESULT OPENED WITHOUT ONE. Fetched as GPTBot, the first 700
+   characters of /liquidations/survival were the honesty statement and the method — "The prices
+   are real; the closing rule is a model", then four sentences about what a cell asks — and no
+   outcome. The grid below it answers exactly the question a reader arrives with, per leverage,
+   over ninety entry days; the opening simply never said any of it.
+
+   IT NAMES THE TWO ENDS RATHER THAN A MIDDLE. A single representative leverage would be a
+   choice this page has no basis for making, and the finding it exists to publish IS the spread
+   between the ends: the highest leverage that survived every tested entry, and the one that
+   failed most of them. Both are read from the same `grid` the table below renders, so the
+   sentence cannot disagree with the picture underneath it. */
+const survivalLede = (() => {
+  if (!grid || !grid.levels.length) return "";
+  const tested = grid.levels[0].tested;
+  const worst = [...grid.levels].sort((a, b) => b.liquidated / b.tested - a.liquidated / a.tested)[0];
+  if (!tested || !worst || !worst.liquidated) return "";
+  const safe = [...grid.levels].filter((l) => l.liquidated === 0).sort((a, b) => b.L - a.L)[0];
+  const head = `Across the last ${tested} ${perp.symbol} daily closes, a ${hold}-day ${mapSide} at ${worst.L}× would have been closed out on ${worst.liquidated} of them, ${pct(worst.liquidated / worst.tested)}`;
+  return safe ? `${head} — while ${safe.L}× survived every one.` : `${head}.`;
+})();
+
 /* Built as a string: 1,000 JSX vnodes is needless Worker CPU. Presentation attributes are
    INLINE — Astro scopes `.cls{}` to `.cls[data-astro-cid-x]`, and markup injected with
    set:html never carries that attribute, so class-based styling here silently does nothing
@@ -176,6 +197,7 @@ const description = `Which leveraged ${perp.symbol} positions were liquidated an
     <p class="crumb"><a href="/liquidations">Liquidations</a> › Survival</p>
     <h1>{perp.symbol} leverage survival</h1>
     <p>
+      {survivalLede && <><strong>{survivalLede}</strong>{" "}</>}
       <strong>The prices are real; the closing rule is a model.</strong> Both come from
       <strong>Hyperliquid</strong> — its candles, and its margin table. Every cell asks one
       checkable question about an observed price path — a <strong>{mapSide}</strong> opened at

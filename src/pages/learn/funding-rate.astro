@@ -48,6 +48,18 @@ const extremes = [...perps]
   .sort((a, b) => Math.abs(b.hlApr) - Math.abs(a.hlApr))
   .slice(0, 12);
 
+/* THE DEFINITION WAS ABSTRACT ON A SITE HOLDING FIFTY LIVE ANSWERS TO IT. /learn/open-interest
+   puts the live total inside its definition — "a book with $9.85B of open interest has $9.85B of
+   long exposure facing $9.85B of short" — and reads better for it, because the reader sees the
+   abstraction and an instance of it in one breath. This page, on the same live store, opened
+   with no figure at all. Same treatment, from `hl`, which was already read above.
+
+   THE DIRECTION IS COMPUTED, NOT ASSUMED. A funding rate is signed and this one goes negative;
+   printing "longs pay shorts" over a negative rate would be a sentence the number contradicts. */
+const liveRate = hl && Number.isFinite(hl.apr)
+  ? `On Hyperliquid right now it runs ${pct(Math.abs(hl.apr))} a year on ${btc.symbol}, ${hl.apr >= 0 ? "longs paying shorts" : "shorts paying longs"}.`
+  : "";
+
 const title = "Funding rate explained: who pays, how it is calculated, what it costs";
 const description =
   "A perpetual funding rate is a payment between longs and shorts, not a fee to the exchange. " +
@@ -62,7 +74,7 @@ const description =
 
   <p class="callout">
     A funding rate is a recurring payment between the two sides of a perpetual futures
-    contract. When it is positive, everyone holding a long position pays everyone holding a
+    contract. {liveRate && <><strong>{liveRate}</strong>{" "}</>}When it is positive, everyone holding a long position pays everyone holding a
     short; when it is negative, shorts pay longs. The venue is not a party to it and takes
     none of it — it only moves the money.
   </p>

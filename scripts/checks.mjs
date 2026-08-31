@@ -2150,6 +2150,61 @@ export function computedFigureFloor(templates, exportsByFile = {}, floor = 3, re
  *   want   [{ label, re }] — each must match inside the opening
  *   chars  how much of the visible text counts as "the opening"
  */
+/**
+ * THE SAME QUESTION, ASKED OF EVERY PAGE INSTEAD OF THREE.
+ *
+ * leadsWithItsSubject() below is precise and hand-aimed: it knows /funding/{symbol} must say
+ * "funding" and a percentage. Writing one of those per template does not scale, and the three
+ * that existed were aimed at the three pages the crawler log happened to name. A walk of every
+ * template on 31 August 2026 found TWELVE opening with no figure at all — including the two
+ * calculators whose siblings both open on a live price, the /learn hub whose own sentence is
+ * "four questions this site answers with numbers", and /liquidations/survival, a page that is
+ * nothing but a result and led with its method.
+ *
+ * SO THE FLOOR IS THE WEAKER, UNIVERSAL CLAIM: a page that reads the live store must put at
+ * least one figure in the part an extractor quotes. It cannot say WHICH figure — only the
+ * hand-aimed checks can — but it fails the whole class the moment a lede is rewritten into
+ * prose, which is how all twelve got that way.
+ *
+ * WHAT COUNTS IS DELIBERATELY NARROW: a dollar amount, a percentage, or a grouped integer.
+ * A bare "3" matches nothing, because "three venues" and "5 February" are prose, not readings.
+ */
+export function openingFigure(html, chars = 700) {
+  const text = String(html ?? "")
+    .replace(/<(script|style|svg|template)\b[\s\S]*?<\/\1>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&[a-z#0-9]+;/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const m = text.slice(0, chars).match(/\$[\d,]+(?:\.\d+)?[KMB]?|\d+(?:\.\d+)?%|\b\d{1,3}(?:,\d{3})+\b/);
+  return m ? m[0] : null;
+}
+
+/**
+ * THE PAGES THAT OWE NO FIGURE, each with the reason, because an exemption list without one
+ * becomes a place to hide a defect. Every entry here is a page that reads NOTHING from the live
+ * store — which is a checkable property, not a matter of taste: with one exception, all of them
+ * are also the routes listed in gen-lastmod.mjs, whose lastmod comes from a commit precisely
+ * because no tick can change what they show.
+ */
+export const PROSE_ROUTES = {
+  "/methodology": "explains how the rates are annualised; states no reading of its own",
+  "/methodology/liquidations": "argues against publishing a liquidation total — its subject is a number this site refuses to print",
+  "/data-sources": "a register of upstreams and their terms, not of readings",
+  "/privacy": "legal text",
+  "/terms": "legal text",
+  "/learn/liquidation-heatmap": "explains a method; commit-dated for that reason",
+  "/learn/liquidation-price": "explains a method; commit-dated for that reason",
+  "/status": "operational, addressed to whoever runs the ingest, and in no sitemap",
+  "/status/indexation": "a weekly report whose opening states its provenance; its audience is the operator",
+  "/watchlist": "noindex, and its contents come from the reader's own browser",
+  /* THE ERROR BRANCHES ARE NOT LISTED HERE. /404 and /rail were the only two routes the floor
+     caught on its first run, and adding them by name would have been a guess dressed as a
+     verdict — /liquidations?symbol=NOTACOIN renders a 404 too and passes, so the list would
+     have been wrong about its own membership. The caller exempts them by STATUS instead: a
+     page that is not a 200 is not a page that read anything. */
+};
+
 export function leadsWithItsSubject(html, want, chars = 700) {
   const text = String(html ?? "")
     .replace(/<(script|style|svg|template)\b[\s\S]*?<\/\1>/gi, " ")

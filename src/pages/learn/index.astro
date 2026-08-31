@@ -40,6 +40,15 @@ const widest = perps
   .filter((p) => p.aprSpread !== null && Number.isFinite(p.aprSpread))
   .sort((a, b) => (b.aprSpread as number) - (a.aprSpread as number))[0];
 
+/* "FOUR QUESTIONS THIS SITE ANSWERS WITH NUMBERS", AND NOT ONE NUMBER IN THE OPENING. The
+   sentence was accurate and the page did not keep it: fetched as GPTBot, the first 700
+   characters of /learn carried no figure at all, while `totalOi`, `perps.length` and `widest`
+   were already computed above to fill the cards below. Its sibling /learn/open-interest weaves
+   the live total straight into the definition; this hub described the method instead. */
+const lede = widest
+  ? `Across ${perps.length} contracts this site is reading ${usd(totalOi)} of open interest right now, and the widest funding spread between venues is ${widest.symbol} at ${pct(widest.aprSpread as number)} a year.`
+  : "";
+
 const title = "Perpetual futures explained";
 const description =
   "Funding rates, liquidation maps, open interest and maintenance margin, explained with " +
@@ -51,7 +60,8 @@ const description =
   <div class="page-head">
     <h1>Perpetual futures explained</h1>
     <p>
-      Four questions this site answers with numbers, answered here in words first. Every
+      {lede && <><strong>{lede}</strong>{" "}</>}Four questions this site answers with numbers,
+      answered here in words first. Every
       explainer names its sources, states what the figure cannot tell you, and links to the
       live page it describes.
     </p>

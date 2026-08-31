@@ -37,6 +37,7 @@ import {
   duplicateHeadMetadata,
   computedFigureFloor, COMPUTED_FIGURES,
   leadsWithItsSubject,
+  openingFigure,
   llmsHostsAgree,
 } from "./checks.mjs";
 
@@ -411,6 +412,34 @@ const cases = [
          reading only the route file would score the page that computes most on this site at 0. */
       computedFigureFloor(
         [{ route: "/x/[y]", sources: ["import L from './L.astro'", "buildLiqMap(); corridorAt(); mixUsed();"] }], {}, 3).length === 0,
+    ],
+  },
+  {
+    check: "openingFigure",
+    why: "a walk of every template found twelve opening with no figure at all — two calculators whose siblings both open on a live price, the /learn hub whose own sentence is \"four questions this site answers with numbers\", and /liquidations/survival, a page that is nothing but a result and led with its method",
+    /* INVERTED, DELIBERATELY. openingFigure returns the figure it found, so the FAULT is null
+       and the clean page is a truthy string. The booleans are written out rather than relying
+       on the runner's Boolean(f), which would read a found figure as "the check fired". */
+    fire: () => openingFigure("<h1>Leverage calculator</h1><p>The advertised maximum applies to the smallest tier only.</p>") === null,
+    quiet: () => openingFigure("<h1>Leverage calculator</h1><p>Opens on BTC at $78,477.00, advertised at 40x.</p>") === null,
+    also: () => [
+      /* THE WINDOW IS THE POINT, exactly as for leadsWithItsSubject: a page with the figure
+         2,000 characters down is a page an extractor truncates before reaching it. */
+      openingFigure(`<p>${"method and provenance and assumptions. ".repeat(40)}$1,234</p>`) === null,
+      openingFigure(`<p>${"method and provenance and assumptions. ".repeat(40)}$1,234</p>`, 5000) === "$1,234",
+      /* MARKUP IS NOT TEXT. A figure in an attribute, a script or an SVG label has not been
+         said to anybody — and this site's pages are 85-90% SVG by weight, so a check reading
+         raw HTML would pass every one of them on axis tick labels alone. */
+      openingFigure('<div data-oi="$9.85B"><script>var x = "12.5%"</script><svg><text>$44,000</text></svg><p>words only</p></div>') === null,
+      /* A CLOCK IS NOT A READING, AND NEITHER IS A DATE. The homepage opens on a UTC stamp and
+         /liquidations/sweep on "5 February 2026"; if those counted, the two pages this whole
+         check exists for would have passed it while saying nothing. */
+      openingFigure("<p>2026-08-31 11:07 UTC. Three venues, read on 5 February 2026.</p>") === null,
+      /* The three accepted forms, so a regex narrowed later fails here rather than silently. */
+      openingFigure("<p>$9.85B of open interest</p>") === "$9.85B",
+      openingFigure("<p>funding at 10.95% a year</p>") === "10.95%",
+      openingFigure("<p>1,234 contracts</p>") === "1,234",
+      openingFigure("") === null,
     ],
   },
   {
