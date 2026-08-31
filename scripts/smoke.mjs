@@ -38,7 +38,7 @@ import { readdirSync, readFileSync } from "node:fs";
 /* Source is read as CODE by default — see scripts/lib/source.mjs. The two checks below that
    want the prose say so at their call site, with the reason. */
 import { readSource, readRaw } from "./lib/source.mjs";
-import { cssFor, undefinedClasses, undefinedVars, rawEnums, searchIndexGaps, unnamedUpstreams, duplicateRuleImplementations, uncoveredRoutes, unreadableText, chartAgreement, requestedLeverageLabels, inlineScriptSyntax, flipTableColour, colourPalettes, colourLanguageDrift, colourLegend, publishesAPerson, fixtureGaps, staleDerivedCells, basisSelfConsistent, sitemapLastmodHonesty, breadcrumbAgreement, founderAgreement, readmeCounts, botPolicyReasons, contradictoryStates, hiddenFromEveryone, pageWeight, weightFaults, dateModifiedAgreement, phantomInlineElements, malformedAttributes, uncitedPermissionClaims, unconditionalCadenceClaims, staleCalculatorFigures, controlGroupOverflow, stampSurfacesAgree, symbolAddressing} from "./checks.mjs";
+import { cssFor, undefinedClasses, undefinedVars, rawEnums, searchIndexGaps, unnamedUpstreams, duplicateRuleImplementations, uncoveredRoutes, unreadableText, chartAgreement, requestedLeverageLabels, inlineScriptSyntax, flipTableColour, colourPalettes, colourLanguageDrift, colourLegend, publishesAPerson, fixtureGaps, staleDerivedCells, basisSelfConsistent, sitemapLastmodHonesty, breadcrumbAgreement, founderAgreement, readmeCounts, botPolicyReasons, contradictoryStates, hiddenFromEveryone, pageWeight, weightFaults, dateModifiedAgreement, phantomInlineElements, malformedAttributes, uncitedPermissionClaims, unconditionalCadenceClaims, staleCalculatorFigures, controlGroupOverflow, stampSurfacesAgree, symbolAddressing, computedFigureFloor, COMPUTED_FIGURES} from "./checks.mjs";
 
 /* The SERVER side of each duplicated formatter, transcribed from the file that owns it and
    named here so the pairing is explicit. Transcription is the honest cost of having no bundler:
@@ -432,6 +432,58 @@ for (const path of ROUTES) {
     } catch (e) {
       bad++;
       console.log(`  FAIL          upstream comparison failed: ${e.message}`);
+    }
+    try {
+      /* ======================================================================================
+         A TEMPLATE THAT MINTS MANY URLS AND COMPUTES NOTHING ON EACH OF THEM.
+
+         Scoped by the SHAPE of the route rather than by a list: `[param].astro` is what makes a
+         template multi-instance, so a new one is held to the floor the day it ships without
+         anybody remembering to enrol it. A singleton cannot be a scaled-content problem.
+
+         COMPONENTS ARE READ WITH THE TEMPLATE, one level deep. /liquidations/[symbol] delegates
+         its entire body to LiqMap.astro; counting only the route file would score the page that
+         does the most computation on this site at zero.
+
+         THE EXPORT SCAN HANDLES RE-EXPORTS, and the first version did not. src/lib/funding.ts
+         re-exports carryCost and fifteen others from public/shared.js with `export { … } from`,
+         so a scan matching only `export function|const` reported carryCost as missing and the
+         check correctly refused to trust its own registry. That refusal is the point of it —
+         a registry entry naming a function that no longer exists counts nothing on every page
+         and says nothing, which is how a floor quietly stops being a floor. */
+      const walkAstro = (d) => readdirSync(d, { withFileTypes: true }).flatMap((e) =>
+        e.isDirectory() ? walkAstro(`${d}/${e.name}`) : [`${d}/${e.name}`]);
+      const resolveRel = (from, rel) => {
+        const parts = from.split("/").slice(0, -1);
+        for (const seg of rel.split("/")) { if (seg === "..") parts.pop(); else if (seg !== ".") parts.push(seg); }
+        return parts.join("/");
+      };
+      const multi = walkAstro("src/pages").filter((f) => /\[[^\]]+\]\.astro$/.test(f));
+      const templates = multi.map((f) => {
+        const src = readFileSync(f, "utf8");
+        const kids = [...src.matchAll(/import\s+\w+\s+from\s+"([^"]*\.astro)"/g)]
+          .map((m) => { try { return readFileSync(resolveRel(f, m[1]), "utf8"); } catch { return ""; } });
+        return { route: f.replace("src/pages", ""), sources: [src, ...kids] };
+      });
+      const exportsByFile = Object.fromEntries(readdirSync("src/lib").filter((f) => f.endsWith(".ts")).map((f) => {
+        const src = readFileSync(`src/lib/${f}`, "utf8");
+        const direct = [...src.matchAll(/^export (?:async )?(?:function|const) (\w+)/gm)].map((m) => m[1]);
+        /* `export { a, b } from "…"` and `export { a }` — both bind the name for an importer. */
+        const braced = [...src.matchAll(/^export \{([^}]*)\}/gm)]
+          .flatMap((m) => m[1].split(",").map((x) => x.trim().split(/\s+as\s+/).pop()).filter(Boolean));
+        return [f, [...direct, ...braced]];
+      }));
+      const thinT = computedFigureFloor(templates, exportsByFile);
+      if (thinT.length) {
+        bad++;
+        console.log(`  FAIL  ${String(thinT.length).padStart(4)}         a multi-URL template does not earn its URLs`);
+        for (const l of thinT) console.log(`          ${l}`);
+      } else {
+        console.log(`  ok            all ${templates.length} multi-URL template(s) publish at least 3 figures this site computes, from a registry of ${COMPUTED_FIGURES.length} checked against src/lib`);
+      }
+    } catch (e) {
+      bad++;
+      console.log(`  FAIL          computed-figure floor could not be checked: ${e.message}`);
     }
     try {
       /* ======================================================================================

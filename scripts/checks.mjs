@@ -2049,3 +2049,77 @@ export function duplicateHeadMetadata(rows) {
   }
   return out;
 }
+
+/**
+ * A TEMPLATE THAT PRODUCES MANY URLS MUST COMPUTE SOMETHING ON EACH OF THEM.
+ *
+ * WHY THIS EXISTS. On 27 August 2026 this site shipped forty-nine `/liquidations/{symbol}`
+ * pages in one day, with 62% five-gram overlap between any two siblings. That is the exact
+ * shape Google's scaled-content-abuse policy is aimed at, and the policy is method-agnostic:
+ * it does not ask how the pages were made, it asks whether each one carries real value that
+ * the others do not. The sanction lands on the domain, not the page.
+ *
+ * I argued at the time that each map page carries its own heatmap, its own cluster table and
+ * its own swept-bars section — that it is a COMPUTATION PER ENTITY rather than a variable
+ * substituted into a template. I still think that is true. It was also an argument rather than
+ * a measurement, made after the pages had shipped, and this file exists because arguments made
+ * after shipping are the ones this repository keeps having to unpick.
+ *
+ * WHAT COUNTS, AND WHY IT IS A LIST RATHER THAN A HEURISTIC. The discriminating question is
+ * not "does this page have numbers" — every page has numbers, and most of them are upstream's.
+ * It is whether the page publishes figures UPSTREAM DOES NOT SUPPLY. Hyperliquid gives a mark,
+ * an open interest, a raw funding rate and a tier table; it does not give an APR normalised
+ * across settlement intervals, a venue spread, a tier-correct liquidation price, a maintenance
+ * margin fraction, a corridor, a modelled liquidation surface or a survival counterfactual.
+ * Which functions cross that line is a judgement, so it is written down and dated rather than
+ * inferred from a name, and every entry says what upstream is missing.
+ *
+ * CHART PAINTING AND NUMBER FORMATTING ARE DELIBERATELY EXCLUDED. buildPriceChart, paintHeatMap
+ * and rawRate present a figure; they do not produce one. Counting them would let a page pass
+ * this floor by drawing upstream's numbers prettily, which is the thing the floor is for.
+ *
+ * ONLY MULTI-INSTANCE TEMPLATES ARE HELD TO IT. A singleton like /about or /methodology cannot
+ * be a scaled-content problem — there is one of it. The rule is scoped by the shape of the
+ * route, `[param].astro`, so nothing has to be added to a list when a template ships.
+ */
+export const COMPUTED_FIGURES = [
+  ["toApr", "a raw per-interval funding rate normalised to APR — venues publish the rate, not the annualisation, and the interval differs per venue"],
+  ["aprSpread", "the gap between two venues' annualised funding on the same contract — nobody publishes it because it spans providers"],
+  ["nextSettlement", "the next funding settlement, CORRECTED: Hyperliquid's own nextFundingTime sits in the past on every contract"],
+  ["maintenanceMarginFraction", "maintenance margin at a tier — the venue publishes tiers and max leverage, not the fraction"],
+  ["liquidationPrice", "a tier-correct liquidation price, which no venue publishes for a hypothetical position"],
+  ["naiveLiquidationPrice", "the formula in general circulation, computed alongside the correct one so the gap between them is visible"],
+  ["nextTierBoundary", "the notional at which maintenance margin steps, derived from the table"],
+  ["corridorAt", "how far price must travel before a position at a given leverage is closed"],
+  ["mixUsed", "the leverage weights renormalised over the rungs this contract's cap leaves in play"],
+  ["buildLiqMap", "the modelled liquidation density surface: clusters, swept notional, clipped share — no venue publishes position distribution"],
+  ["survivalGrid", "the counterfactual: which leveraged entries the rules would have closed, over the real price path"],
+  ["aggregate", "the candle series resampled to a timeframe the venue does not serve"],
+  ["fundingByBar", "funding aligned to the bars of a chart, which arrives as an unaligned series"],
+  ["carryCost", "what holding a position costs over a horizon at that venue's own settlement cadence"],
+];
+
+/**
+ * `templates` is [{ route, sources: [source, ...] }] — the template plus every component it
+ * renders, because a route that delegates its whole body to a component computes through it.
+ * `exportsByFile` maps a lib filename to its exported names, so a registry entry that no longer
+ * exists fails here rather than silently counting nothing.
+ */
+export function computedFigureFloor(templates, exportsByFile = {}, floor = 3, registry = COMPUTED_FIGURES) {
+  const out = [];
+  const known = new Set(Object.values(exportsByFile).flat());
+  if (known.size) {
+    const gone = registry.map(([fn]) => fn).filter((fn) => !known.has(fn));
+    /* A REGISTRY ENTRY THAT NO LONGER EXISTS COUNTS NOTHING AND SAYS NOTHING, which is how a
+       floor quietly stops being a floor. It is a failure, not a warning. */
+    if (gone.length) out.push(`COMPUTED_FIGURES names ${gone.length} function(s) src/lib no longer exports: ${gone.join(", ")} — the floor is counting them as absent from every page`);
+  }
+  for (const t of templates ?? []) {
+    const src = (t.sources ?? []).join("\n");
+    const hits = registry.map(([fn]) => fn).filter((fn) => new RegExp(`\\b${fn}\\s*\\(`).test(src));
+    if (hits.length < floor) {
+      out.push(`${t.route} publishes ${hits.length} figure(s) this site computes (${hits.join(", ") || "none"}), under the floor of ${floor} — a template that mints many URLs has to earn each one`);
+    }
+  }
+  return out;
+}

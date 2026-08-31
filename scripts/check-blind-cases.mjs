@@ -35,6 +35,7 @@ import {
   staleAnnouncerState,
   underLinked,
   duplicateHeadMetadata,
+  computedFigureFloor, COMPUTED_FIGURES,
 } from "./checks.mjs";
 
 /* Enough page for a check to have something to read. Deliberately minimal: a fixture that is
@@ -383,6 +384,34 @@ const cases = [
     ],
   },
   {
+    check: "computedFigureFloor",
+    why: "forty-nine templated pages shipped in one day with 62% sibling overlap — the shape Google's scaled-content policy is aimed at, and the only defence offered at the time was an argument made after they had shipped",
+    fire: () => computedFigureFloor(
+      [{ route: "/coins/[coin]", sources: ["const p = perp.markPx; const chart = aggregate(d, 1);"] }], {}, 3),
+    quiet: () => [
+      ...computedFigureFloor(
+        [{ route: "/liquidations/[symbol]", sources: ["buildLiqMap({}); corridorAt(1,2,3); mixUsed(a,b); aggregate(x,1);"] }], {}, 3),
+      ...computedFigureFloor([], {}, 3),
+    ],
+    /* THE FOUR WAYS THIS FLOOR CAN BE FOOLED, and it was written knowing them. */
+    also: () => [
+      /* A REGISTRY ENTRY THAT NO LONGER EXISTS counts nothing on every page and says nothing.
+         This is not hypothetical: the first run reported carryCost missing because the caller's
+         export scan did not understand `export { … } from "…"`, which is how src/lib/funding.ts
+         re-exports sixteen names. The check refusing to trust its own list is what surfaced a
+         bug in the scan rather than a phantom finding about the site. */
+      computedFigureFloor([], { "funding.ts": ["toApr"] }, 3).some((f) => /no longer exports/.test(f)),
+      computedFigureFloor([], { "funding.ts": COMPUTED_FIGURES_NAMES() }, 3).length === 0,
+      /* A MENTION IS NOT A CALL. A page that names buildLiqMap in a comment computes nothing. */
+      computedFigureFloor(
+        [{ route: "/x/[y]", sources: ["/* see buildLiqMap and corridorAt and mixUsed */"] }], {}, 3).length === 1,
+      /* THE COMPONENT COUNTS. /liquidations/[symbol] delegates its whole body to LiqMap.astro;
+         reading only the route file would score the page that computes most on this site at 0. */
+      computedFigureFloor(
+        [{ route: "/x/[y]", sources: ["import L from './L.astro'", "buildLiqMap(); corridorAt(); mixUsed();"] }], {}, 3).length === 0,
+    ],
+  },
+  {
     check: "botPolicyReasons",
     why: "excluding a crawler without saying why is a decision nobody can review later",
     fire: () => botPolicyReasons(`const BLOCKED = [{ ua: "SomeBot", why: "" }];`),
@@ -555,6 +584,8 @@ const cases = [
   if (!vbad) console.log(`  ok    stampVerdict             names which half is behind, and tells "not ticked yet" from "ticked and stale"`);
   else bad0 += vbad;
 }
+
+const COMPUTED_FIGURES_NAMES = () => COMPUTED_FIGURES.map(([fn]) => fn);
 
 let bad = bad0;
 for (const c of cases) {

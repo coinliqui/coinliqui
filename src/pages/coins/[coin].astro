@@ -2,6 +2,8 @@
 import Base from "../../layouts/Base.astro";
 import { getSnapshot, coldStart, findPerp, getLive, oldestStamp } from "../../lib/hyperliquid.ts";
 import { usd, pct, VENUE_LABEL, paysClass, paysLabel, carryCost, type Venue } from "../../lib/funding.ts";
+import { maintenanceMarginFraction, corridorAt, type MarginTable } from "../../lib/margin.ts";
+import tables from "../../data/margin-tables.json";
 import { findCoin, isLive, liveCoins } from "../../lib/coins.ts";
 import { liqMapHref } from "../../lib/routes.ts";
 import { getCandles, getHourly, getM15 } from "../../lib/candles.ts";
@@ -102,6 +104,36 @@ const by = new Map((perp?.venues ?? []).map((v) => [v.venue, v]));
 const hl = by.get("HlPerp");
 /** What a $10,000 leveraged long pays (or receives) in a week, at the current rate. */
 const week = (apr: number) => carryCost(10_000, apr, 7);
+
+/* =========================================================================================
+   THE OTHER HALF OF "WHAT LEVERAGE COSTS", WHICH THIS PAGE PROMISED IN ITS TITLE AND DID NOT
+   SHOW.
+
+   The section below it costs a position in FUNDING. The cost nobody quotes is the distance
+   price is allowed to travel before the position is closed, and it is the half this site can
+   compute and the venues do not publish: Hyperliquid gives a tier table and a maximum
+   leverage, not a maintenance margin fraction and not a corridor.
+
+   MEASURED, NOT SUSPECTED. The computed-figure floor added on 31 August 2026 scored this
+   template at TWO figures it computes — an aggregated candle series and a weekly carry — under
+   a floor of three, and it was the only template on the site under it. Three other readings
+   agreed: 68% five-gram overlap between sibling coin pages against /funding/{symbol}'s 10%,
+   545 words against 3,187, and 8 Search Console impressions across five pages against 392
+   across twenty-five. The coin pages were the site's price table with a chart on it.
+
+   DERIVED, NOT MODELLED, and the note under the table says so. Every figure here is arithmetic
+   over the published tier and the live mark. Nothing on this page assumes a position
+   distribution — that is the map, and it is linked rather than imitated.
+   ========================================================================================= */
+const marginTable = perp ? (tables as Record<string, MarginTable>)[String(perp.marginTableId)] : undefined;
+const tier1 = marginTable ? [...marginTable.marginTiers].sort((a, b) => a.lowerBound - b.lowerBound)[0] : undefined;
+/* The cap, then three rungs beneath it. A general-audience page does not need the seven the
+   liquidation map draws; it needs the shape, and the shape is legible in four rows. */
+const rungs = tier1 && perp
+  ? [...new Set([1, 0.6, 0.4, 0.25].map((f) => Math.max(2, Math.round(tier1.maxLeverage * f))))]
+      .filter((L) => L >= 2 && L <= tier1.maxLeverage)
+      .map((L) => corridorAt(perp.markPx, L, maintenanceMarginFraction(tier1.maxLeverage)))
+  : [];
 
 /* --- the chart: two modes, four timeframes, all server-rendered ------------------------
    The mode is a GET parameter and the switch is a submit button, exactly like the timeframe
@@ -365,6 +397,48 @@ const description = `Live ${coin.name} (${coin.symbol}) perpetual price from Hyp
       </tbody>
     </table>
   </div>
+
+  {rungs.length > 0 && perp && tier1 && (
+    <>
+      <h2 class="section">How far {coin.symbol} can move before each leverage closes you</h2>
+      <p class="section-note" style="max-width:88ch">
+        No model and no assumption about who holds what. Given {coin.name}'s published margin
+        tier — {tier1.maxLeverage}× maximum, {pct(maintenanceMarginFraction(tier1.maxLeverage), 3)} maintenance
+        margin — and a mark of {usd(perp.markPx, dp)}, these prices are arithmetic. The corridor is the
+        whole width a position survives: cross either end and it is closed, whatever the funding
+        was doing.
+      </p>
+      <div class="panel" style="max-width:720px">
+        <table class="tbl">
+          <thead>
+            <tr>
+              <th class="num">Leverage</th>
+              <th class="num">Long closed at</th>
+              <th class="num">Move down</th>
+              <th class="num">Short closed at</th>
+              <th class="num">Corridor width</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rungs.map((r) => (
+              <tr class={r.L === tier1.maxLeverage ? "is-active" : undefined}>
+                <td class="num">{r.L}×{r.L === tier1.maxLeverage ? " · max" : ""}</td>
+                <td class="num">{usd(r.longLiq, dp)}</td>
+                <td class="num">−{(r.longDist * 100).toFixed(2)}%</td>
+                <td class="num">{usd(r.shortLiq, dp)}</td>
+                <td class="num">{(r.corridor * 100).toFixed(2)}%</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p class="section-note">
+        These are the levels for one position. Where the market's levels sit — modelled, with the
+        assumptions printed beside them — is the
+        {" "}<a class="link" href={liqMapHref(coin.symbol)}>{coin.symbol} liquidation map</a>.
+      </p>
+    </>
+  )}
 
   <h2 class="section">Where the numbers come from</h2>
   <p class="prose">
