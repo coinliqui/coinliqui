@@ -62,6 +62,12 @@ interface Template {
 }
 interface State {
   week: string;
+  /* HOW MUCH THE COVERED SET MOVED, carried out of the coverage phase so section B can say
+     whether its own averages are comparable to last week's. It was computed, printed and
+     thrown away, and section B went on presenting an impression-weighted average as if the
+     thing being averaged had not changed size underneath it. */
+  joined?: number;
+  prevUrls?: number;
   phase: "coverage" | "inspect" | "search" | "crawlers" | "done";
   i: number;
   lines: string[];
@@ -386,6 +392,8 @@ export async function stepReport(env: ReportEnv, force = false): Promise<string 
         if (!joined.length && !left.length) {
           say(`No change against ${prevDoc?.week ?? "the previous reading"}: the same ${nowUrls.length} URLs, not merely the same count.`);
         } else {
+          st.joined = joined.length;
+          st.prevUrls = prevUrls.length;
           say(`Against ${prevDoc?.week ?? "the previous reading"} — ${prevUrls.length} URLs then, ${nowUrls.length} now.\n`);
           if (joined.length) say(`**Joined (${joined.length}):** ${joined.map((u) => `\`${u}\``).join(", ")}`);
           if (left.length) say(`\n**Left (${left.length}):** ${left.map((u) => `\`${u}\``).join(", ")}`);
@@ -561,6 +569,28 @@ export async function stepReport(env: ReportEnv, force = false): Promise<string 
             const pos = imp ? r.reduce((a, x) => a + x.position * x.impressions, 0) / imp : 0;
             say(`| \`${t.name}\` | ${imp} | ${r.reduce((a, x) => a + x.clicks, 0)} | ${pos ? pos.toFixed(1) : "—"} | ${r.length}/${t.urls.length} |`);
           }
+          /* =====================================================================================
+             AVERAGE POSITION IS NOT COMPARABLE TO LAST WEEK WHEN THE COVERED SET GREW, and this
+             report spent a week telling its reader the opposite. Its own guide said "position
+             before impressions — average position per template moves earlier and more honestly",
+             and on 31 August 2026 that sentence was actively misleading: 54 URLs joined, every
+             template's average collapsed — /liquidations from 40.2 to 263.5 — while impressions
+             rose 35%. A template that starts surfacing for more queries surfaces for the DEEP
+             ones first, and an impression-weighted average falls without a single existing query
+             losing a place.
+
+             THE CAVEAT GOES WHERE THE NUMBER IS. A warning in a guide at the foot of the page is
+             read once; a line under the table is read by whoever is looking at the figure it is
+             about. It prints only when the condition holds, so it does not become furniture. */
+          if (st!.joined) {
+            say(`\n> **These averages are not comparable to the previous reading.** ${st!.joined} URL(s) joined the`);
+            say(`> covered set since it, taking the total from ${st!.prevUrls ?? "?"} to ${st!.urls?.length ?? "?"}. A template that`);
+            say(`> starts appearing for more queries appears for the deepest ones first, so an`);
+            say(`> impression-weighted average falls even when no existing query lost a place.`);
+            say(`> The band table below counts queries rather than weighting them, and is the`);
+            say(`> half of this section that survives a change in the covered set.`);
+          }
+
           const q = await api(base, { startDate: start, endDate: end, dimensions: ["query"], rowLimit: 500 });
           if (q.rows?.length) {
             say("\n### Top queries\n");
@@ -754,8 +784,13 @@ export async function stepReport(env: ReportEnv, force = false): Promise<string 
   say("1. **Section A must be all green.** A URL a crawler cannot fetch is not an indexing problem.");
   say("2. **Indexed share by template, not by page.** One template stuck in *Discovered — currently");
   say("   not indexed* past week 6 is a thin-template problem; scattered pages are just latency.");
-  say("3. **Position before impressions.** Impressions on a new domain arrive late and jump around;");
-  say("   average position per template moves earlier and more honestly.");
+  say("3. **Average position is only comparable when the covered set is.** The guidance here used");
+  say("   to be \"position before impressions — it moves earlier and more honestly\", and the week");
+  say("   of 31 August 2026 refuted it: 54 URLs joined, every template's average collapsed —");
+  say("   /liquidations from 40.2 to 263.5 — and not one existing query had lost a place. A");
+  say("   template that starts appearing for more queries appears for the deepest ones first.");
+  say("   Read the BAND table instead when URLs joined: it counts queries rather than weighting");
+  say("   them by impressions, so a query moving from 51+ into 11-25 is a real move either way.");
   say("4. **Crawler fetches are the leading indicator.** If they are zero, nothing downstream can");
   say("   move, and the cause is access rather than quality.");
   say("5. **\"One push away\" is the only section that suggests an action.** Everything else here");

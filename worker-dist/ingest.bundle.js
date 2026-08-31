@@ -742,6 +742,8 @@ Every URL on this site is enumerated from that document. Until it parses, covera
           if (!joined.length && !left.length) {
             say(`No change against ${prevDoc?.week ?? "the previous reading"}: the same ${nowUrls.length} URLs, not merely the same count.`);
           } else {
+            st.joined = joined.length;
+            st.prevUrls = prevUrls.length;
             say(`Against ${prevDoc?.week ?? "the previous reading"} \u2014 ${prevUrls.length} URLs then, ${nowUrls.length} now.
 `);
             if (joined.length) say(`**Joined (${joined.length}):** ${joined.map((u) => `\`${u}\``).join(", ")}`);
@@ -889,6 +891,15 @@ Inspection stopped: ${e instanceof Error ? e.message : String(e)}`);
             const pos = imp ? r.reduce((a, x) => a + x.position * x.impressions, 0) / imp : 0;
             say(`| \`${t.name}\` | ${imp} | ${r.reduce((a, x) => a + x.clicks, 0)} | ${pos ? pos.toFixed(1) : "\u2014"} | ${r.length}/${t.urls.length} |`);
           }
+          if (st.joined) {
+            say(`
+> **These averages are not comparable to the previous reading.** ${st.joined} URL(s) joined the`);
+            say(`> covered set since it, taking the total from ${st.prevUrls ?? "?"} to ${st.urls?.length ?? "?"}. A template that`);
+            say(`> starts appearing for more queries appears for the deepest ones first, so an`);
+            say(`> impression-weighted average falls even when no existing query lost a place.`);
+            say(`> The band table below counts queries rather than weighting them, and is the`);
+            say(`> half of this section that survives a change in the covered set.`);
+          }
           const q = await api(base, { startDate: start, endDate: end, dimensions: ["query"], rowLimit: 500 });
           if (q.rows?.length) {
             say("\n### Top queries\n");
@@ -1030,8 +1041,13 @@ ${pct1}% of the requests carrying a crawler's name were verified as that crawler
   say("1. **Section A must be all green.** A URL a crawler cannot fetch is not an indexing problem.");
   say("2. **Indexed share by template, not by page.** One template stuck in *Discovered \u2014 currently");
   say("   not indexed* past week 6 is a thin-template problem; scattered pages are just latency.");
-  say("3. **Position before impressions.** Impressions on a new domain arrive late and jump around;");
-  say("   average position per template moves earlier and more honestly.");
+  say("3. **Average position is only comparable when the covered set is.** The guidance here used");
+  say('   to be "position before impressions \u2014 it moves earlier and more honestly", and the week');
+  say("   of 31 August 2026 refuted it: 54 URLs joined, every template's average collapsed \u2014");
+  say("   /liquidations from 40.2 to 263.5 \u2014 and not one existing query had lost a place. A");
+  say("   template that starts appearing for more queries appears for the deepest ones first.");
+  say("   Read the BAND table instead when URLs joined: it counts queries rather than weighting");
+  say("   them by impressions, so a query moving from 51+ into 11-25 is a real move either way.");
   say("4. **Crawler fetches are the leading indicator.** If they are zero, nothing downstream can");
   say("   move, and the cause is access rather than quality.");
   say('5. **"One push away" is the only section that suggests an action.** Everything else here');
@@ -1158,10 +1174,10 @@ async function stepCorroborate(env, now = Date.now()) {
 }
 
 // worker/build-stamp.ts
-var WORKER_BUILD = "9ce5f2b90450";
+var WORKER_BUILD = "285888ad1e60";
 
 // worker/ingest.ts
-var RETAIN_HOURS = 72;
+var RETAIN_HOURS = 720;
 var CANDLE_REFRESH_HOURS = 12;
 var HOURLY_REFRESH_HOURS = 2;
 var M15_REFRESH_HOURS = 2;

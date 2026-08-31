@@ -40,8 +40,32 @@ interface Env {
   CF_ZONE_ID?: string;
 }
 
-/** Snapshots older than this are pruned; the flip feed only looks back 24h. */
-const RETAIN_HOURS = 72;
+/**
+ * HOW LONG THE FUNDING SERIES IS KEPT, AND WHY IT IS NO LONGER THREE DAYS.
+ *
+ * 72 hours was enough for everything reading this table: the flip feed looks back 24h and the
+ * charts read the venue's own candles. What it was not enough for is the thing this site has
+ * that nobody else does — a record. "The widest venue spread on Hyperliquid this month, on this
+ * date, here is the series it came from" is a fact somebody can cite; "the widest spread right
+ * now" is a reading off an instrument, and it is gone in a minute. At 72 hours every claim of
+ * the first kind was a claim about three days, which on a site whose whole argument is that
+ * every figure is checkable would be the weakest sentence on it.
+ *
+ * MEASURED BEFORE CHANGING IT, 31 August 2026:
+ *
+ *     funding_snapshot   124,416 rows over 3 days = 41,472 rows/day, 53 symbols x 3 venues
+ *     whole database     11.9 MB
+ *     at 30 days         ~1.24M rows, roughly 120 MB
+ *
+ * RETENTION COSTS STORAGE, NOT WRITES. The row is written either way; the only question is
+ * whether it is deleted three days later. So this buys a month of history at no change to the
+ * write budget the comment below spends four paragraphs defending — which is the one number
+ * that has actually been scarce on this project.
+ *
+ * The flip feed is unaffected: it still looks back 24h, and the canary rows below keep their
+ * own 168-hour window.
+ */
+const RETAIN_HOURS = 720;
 
 /**
  * WRITE BUDGET. THE NUMBER THAT STOOD HERE WAS WRONG BY A FACTOR OF THREE.
