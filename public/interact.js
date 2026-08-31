@@ -17,11 +17,18 @@ const { paysClass, paysLabel, carryCost, spreadOf, pct, changeWords, ageWords, n
 /* =========================================================================================
    Interaction layer. Vanilla, no dependencies.
 
-   THE RULE THIS FILE OBEYS: it never produces a number. Every value it shows was already in
-   the HTML at first byte — the crosshair reads the same point list the chart was drawn from,
-   and the heatmap readout reads the fill of the rect under the cursor and inverts the ramp
-   the server published. If this script fails to load the page loses responsiveness and not
-   one figure.
+   THE RULE THIS FILE OBEYS: it never ORIGINATES a figure. Every number it shows is one the
+   server either already published in the HTML or publishes at /api/live.json, and every
+   arithmetic step it takes mirrors a server expression that must give the same answer. The
+   crosshair reads the same point list the chart was drawn from; the heatmap readout reads the
+   fill of the rect under the cursor and inverts the ramp the server published. If this script
+   fails to load the page loses responsiveness and not one figure.
+
+   It used to say "it never produces a number. Every value it shows was already in the HTML at
+   first byte". Both halves were false: paint() fetches /api/live.json after first byte, and the
+   position-size mirror solves for a leverage with Math.floor and a clamp. The wording matters
+   because it decides what gets checked — under it, every client expression has a server
+   original to agree with, which is why the position-size card was fixed on both sides at once.
 
    THE OTHER RULE: it writes presentation attributes, never classes, onto generated SVG.
    Astro scopes `<style>` selectors to a data-astro-cid attribute that markup injected with
@@ -337,8 +344,13 @@ const { paysClass, paysLabel, carryCost, spreadOf, pct, changeWords, ageWords, n
      TWO AXES, ONE MECHANISM. A contract page switches timeframe only; a coin page switches
      timeframe and candle-versus-line. Both are GET submit buttons so a crawler sees one URL
      and a reader without JavaScript still gets the panel from the server. With JavaScript the
-     click is intercepted and the already-rendered panel is revealed, which is why every
-     combination is in the page at first byte rather than fetched.
+     click is intercepted and a panel already in the document is revealed without a request;
+     one that is not there is fetched once by fetchPanel below and kept, so the second press of
+     the same button is instant.
+
+     It said "every combination is in the page at first byte rather than fetched" — the opposite
+     of what fetchPanel does, and readable as a promise about page weight. The panels are a
+     lazily filled cache, not a preloaded set.
 
      A panel is keyed `tf` when there is one axis and `tf.mode` when there are two. The hidden
      carry inputs keep the OTHER axis when a no-JS submit happens, so pressing "Line" cannot

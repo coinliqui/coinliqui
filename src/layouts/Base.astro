@@ -128,9 +128,16 @@ const age = ageWords;
    codeStamp(). Two of our own surfaces, one fact, disagreeing by omission: a crawler
    comparing them saw a lastmod claim the document would not corroborate.
 
-   Same function as the sitemap now, so they cannot drift. Routes with neither a market
-   timestamp nor a committed date (/terms, /about) still emit no node, which is the same
-   answer the sitemap gives them and the correct way to say "I do not know". */
+   Same function as the sitemap now, so they cannot drift. A route with neither a market
+   timestamp nor a committed date still emits no node, which is the same answer the sitemap
+   gives it and the correct way to say "I do not know".
+
+   IT USED TO NAME /terms AND /about AS THE EXAMPLES, and both had stopped being examples.
+   /terms is in gen-lastmod.mjs ROUTES, so codeStamp returns a committed date for it; /about
+   passes fetchedAt because it reads the live store, which is exactly why gen-lastmod took it
+   OUT of ROUTES. Both emit a node. The rule is right and the two illustrations of it were
+   the only part that was wrong, so they are gone rather than replaced: an example that has to
+   be re-checked every time the lastmod list changes is a second thing to keep true. */
 const modified = modifiedProp ?? (fetchedAt ? new Date(fetchedAt).toISOString() : codeStamp(path));
 const pageNode = modified && !noindex && {
   "@type": "WebPage",
@@ -975,9 +982,21 @@ const schema = {
          nothing and the control would render as unstyled text. That has shipped here before,
          on generated SVG, three times.
 
-         The header looks IDENTICAL until the pointer arrives. These tables are read far more
-         often than they are sorted, and a column of blue affordances across every heading
-         would make the chrome louder than the figures underneath it. */
+         THE INDICATOR IS DRAWN AT REST, and this comment used to say the opposite — "the header
+         looks IDENTICAL until the pointer arrives" — with a rationale for keeping it that way.
+         It was already false when read: .th-sort__dir::before and ::after set opacity .28
+         unconditionally, so every sortable heading carries the twin arrows before any pointer
+         exists, and hover lifts them to .6. That is the deliberate change, made because a
+         sortable table that looks unsortable is not discoverable, and it follows the convention
+         every data grid uses.
+
+         The comment mattered more than most stale ones because it did not merely describe the
+         old state, it ARGUED for it — so the next reader, believing the arrows were a
+         regression, would have deleted them and undone the change on the comment's authority.
+
+         The constraint it was protecting is real and survives: the resting arrows are .28 and
+         currentColor, not an accent, so a column of headings stays quieter than the figures
+         under it. Quiet, not invisible. */
       th .th-sort {
         display: block; width: 100%; padding: 0; margin: 0; border: 0; background: none;
         font: inherit; color: inherit; text-align: inherit; letter-spacing: inherit;
