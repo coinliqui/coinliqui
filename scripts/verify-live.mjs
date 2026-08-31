@@ -12,7 +12,7 @@
    — this runs against production and its whole claim is that it asserts what a client on the
    open internet receives. underLinked() decides nothing about the site; it turns a count into
    a sentence, and it lives in checks.mjs so it is covered by the gate's own fixture suite. */
-import { underLinked, duplicateHeadMetadata, leadsWithItsSubject } from "./checks.mjs";
+import { underLinked, duplicateHeadMetadata, leadsWithItsSubject, llmsHostsAgree } from "./checks.mjs";
 
 const ORIGIN = process.argv[2] || "https://coinliqui.com";
 const CRAWLERS = [
@@ -448,6 +448,18 @@ console.log("\n5. sitemap");
     ]);
     gaps.length ? bad(`/funding/btc — ${gaps.join("; ")}`)
       : ok("the contract page opens with its own subject: the funding figure, its unit, its venue and its timestamp are all inside the first 700 characters an extractor reads");
+  }
+
+  /* llms.txt IS CHECKED AGAINST THE HEADER IT DESCRIBES, on production, because both halves of
+     the comparison have to be the ones a machine actually receives. The file's whole audience is
+     software that will not ask a follow-up question when a sentence has gone stale. */
+  {
+    const llms = await fetchAs("/llms.txt", "GPTBot/1.1");
+    const cspHeader = (await fetchAs("/", "Mozilla/5.0")).headers.get("content-security-policy") ?? "";
+    const scriptSrc = (cspHeader.match(/(?:^|;)\s*script-src ([^;]*)/) ?? [, ""])[1].trim();
+    const drift = llmsHostsAgree(llms.body, scriptSrc);
+    drift.length ? bad(`llms.txt and the live Content-Security-Policy disagree:\n          ${drift.join("\n          ")}`)
+      : ok("llms.txt names exactly the script hosts the live header permits — the file's claim about the site is the site");
   }
 
   const dupHeads = duplicateHeadMetadata(heads);

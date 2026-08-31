@@ -37,6 +37,7 @@ import {
   duplicateHeadMetadata,
   computedFigureFloor, COMPUTED_FIGURES,
   leadsWithItsSubject,
+  llmsHostsAgree,
 } from "./checks.mjs";
 
 /* Enough page for a check to have something to read. Deliberately minimal: a fixture that is
@@ -438,6 +439,33 @@ const cases = [
       leadsWithItsSubject('<div data-kind="funding"><script>var funding=1</script><p>price only</p></div>',
         [{ label: "the funding rate", re: /funding/i }]).length === 1,
       leadsWithItsSubject("", [{ label: "anything", re: /x/ }]).length === 1,
+    ],
+  },
+  {
+    check: "llmsHostsAgree",
+    why: "llms.txt said the CSP names exactly one script host on a morning when it named two — a precise, checkable claim addressed to machines that will not ask a follow-up question, wrong for as long as nobody happened to reread the file",
+    fire: () => llmsHostsAgree(
+      "The Content-Security-Policy names exactly one host, static.cloudflareinsights.com, in script-src.",
+      "'self' 'unsafe-inline' https://static.cloudflareinsights.com https://www.googletagmanager.com"),
+    quiet: () => [
+      ...llmsHostsAgree(
+        "The Content-Security-Policy names exactly two hosts in script-src, static.cloudflareinsights.com and www.googletagmanager.com.",
+        "'self' 'unsafe-inline' https://static.cloudflareinsights.com https://www.googletagmanager.com"),
+      ...llmsHostsAgree("It names no host at all in script-src.", "'self' 'unsafe-inline'"),
+    ],
+    also: () => [
+      /* THE OTHER DIRECTION: a host the file still advertises after the header stopped
+         permitting it is a claim the site cannot support, and is exactly as wrong. */
+      llmsHostsAgree("script-src permits static.cloudflareinsights.com.", "'self'").length === 1,
+      /* READING NOTHING IS NOT AGREEING. If the sentence this anchors on is ever reworded away,
+         the check must say so rather than returning an empty list that looks like a pass — the
+         failure mode every silent instrument in this repository has had. */
+      llmsHostsAgree("A file with no such sentence.", "'self' https://x.test").length === 1,
+      /* The site's own domain appears in that sentence and is not an off-origin script host. */
+      llmsHostsAgree("script-src on https://coinliqui.com permits static.cloudflareinsights.com.",
+        "'self' https://static.cloudflareinsights.com").length === 0,
+      /* Subdomains are distinct hosts: www.googletagmanager.com is not googletagmanager.com. */
+      llmsHostsAgree("script-src names googletagmanager.com.", "'self' https://www.googletagmanager.com").length === 2,
     ],
   },
   {

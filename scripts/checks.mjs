@@ -2162,3 +2162,56 @@ export function leadsWithItsSubject(html, want, chars = 700) {
     .filter((w) => !w.re.test(opening))
     .map((w) => `the opening ${chars} characters do not mention ${w.label} — an extractor that truncates answers with whatever came first instead`);
 }
+
+/**
+ * llms.txt MAKES CHECKABLE CLAIMS ABOUT THIS SITE, AND ONE OF THEM WENT FALSE IN A MORNING.
+ *
+ * The file exists to be read by machines that will not ask a follow-up question. On
+ * 31 August 2026 it said "One analytics script runs, and it is the only off-origin code on the
+ * site" and "the Content-Security-Policy names exactly one host, static.cloudflareinsights.com,
+ * in script-src". Google Analytics had been restored that morning; there were two counters and
+ * two hosts. The claim was precise, checkable, addressed to an audience that cannot notice, and
+ * wrong for as long as nobody happened to reread the file.
+ *
+ * Same class as the /privacy page that promised GA "is gone and is not coming back" — a
+ * sentence that was true when written and became a statement the site could not support.
+ * Prose does not have a gate unless somebody gives it one.
+ *
+ * ANCHORED ON THE SENTENCE THAT MAKES THE CLAIM, not on every hostname in the file. llms.txt
+ * names coinliqui.com, liqui.io, coinliq.com and several Google endpoints for reasons that have
+ * nothing to do with script permissions, so collecting hostnames indiscriminately would compare
+ * a disambiguation paragraph against a security header. The claim lives in the sentence that
+ * says "script-src", and that is what this reads.
+ *
+ * BOTH DIRECTIONS. A host the header permits and the file does not mention is an undisclosed
+ * third party on a page that claims to disclose them all; a host the file names and the header
+ * does not permit is a claim the site no longer supports. Neither is worse than the other.
+ *
+ *   llms       the rendered llms.txt
+ *   scriptSrc  the script-src directive from the live Content-Security-Policy
+ */
+export function llmsHostsAgree(llms, scriptSrc) {
+  const out = [];
+  const sentences = String(llms ?? "").split(/(?<=\.)\s+/).filter((x) => /script-src/i.test(x));
+  if (!sentences.length) {
+    return [`llms.txt no longer contains a sentence about script-src — this check is reading nothing, which is not the same as agreeing`];
+  }
+  const hostRe = /\b((?:[a-z0-9-]+\.)+[a-z]{2,})\b/gi;
+  const claimed = new Set(
+    sentences.flatMap((s) => [...s.matchAll(hostRe)].map((m) => m[1].toLowerCase()))
+      /* The site's own domain is not an off-origin script host, and 'self' is not a hostname. */
+      .filter((h) => !h.endsWith("coinliqui.com")),
+  );
+  const permitted = new Set(
+    String(scriptSrc ?? "").split(/\s+/).filter(Boolean)
+      .map((tok) => { if (tok.startsWith("'")) return null; try { return new URL(tok.includes("://") ? tok : `https://${tok}`).hostname.toLowerCase(); } catch { return null; } })
+      .filter(Boolean),
+  );
+  for (const h of permitted) {
+    if (!claimed.has(h)) out.push(`the header permits ${h} to serve a script and llms.txt does not mention it where it describes script-src — an undisclosed third party on a page whose purpose is disclosure`);
+  }
+  for (const h of claimed) {
+    if (!permitted.has(h)) out.push(`llms.txt names ${h} as a script host and the live header does not permit it — a claim the site no longer supports`);
+  }
+  return out;
+}

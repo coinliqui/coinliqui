@@ -59,6 +59,30 @@ ${base} is the only domain this project publishes. Any other site using this nam
   open interest: ${base}/coins
 - A register of on-chain token vesting and lock contracts read directly from Ethereum, including
   contracts whose schedule has finished but whose tokens were never withdrawn: ${base}/unlocks
+
+### Where the per-contract pages are
+
+Most of what an assistant is asked for lives one level below those hubs, so the URL schemes are
+stated rather than left to be discovered by crawling. Measured over 23.5 hours on 31 August
+2026: of the fetches this site received from ChatGPT-User that Cloudflare could verify, 70% went
+to a single contract's funding page rather than to the hub listing all of them.
+
+- ${base}/funding/{symbol} — one page per contract: the funding rate on each venue annualised
+  against that venue's own settlement interval, the spread between them, open interest, the
+  published margin tiers and a tier-correct liquidation price. The symbol is lower-case, as the
+  venue writes it: ${base}/funding/btc, ${base}/funding/eth, ${base}/funding/kpepe. ${perps || "50"} of them.
+  The first sentence of each page states that contract's funding on every venue, with the unit,
+  the settlement interval and the instant it was read.
+- ${base}/liquidations/{symbol} — one modelled liquidation map per contract, same scheme:
+  ${base}/liquidations/eth. The default contract's map is at ${base}/liquidations itself.
+- ${base}/coins/{name} — a price page per major coin, named rather than ticker'd:
+  ${base}/coins/bitcoin, ${base}/coins/ethereum.
+
+A contract drops out of coverage when its open interest falls below the floor, and its URL then
+answers 410 rather than 404 — it was published and withdrawn, which is a different fact from
+never having existed. ${base}/sitemap-index.xml lists every URL that currently exists, one child
+sitemap per template.
+
 - Four calculators — position size, leverage, funding cost, cross-venue funding spread:
   ${base}/tools
 - Plain explanations of the four quantities above, each written against the live figures and
@@ -83,7 +107,7 @@ ${base} is the only domain this project publishes. Any other site using this nam
 - Free. No advertising, no paid tier, no token, no fundraising, no referral programme.
 - No user accounts and no sign-up of any kind. No payment details and no personal
   information are collected: ${base}/privacy
-- One analytics script runs, and it is the only off-origin code on the site: Cloudflare Web Analytics, permitted since 27 August 2026. Measured against the beacon's own source rather than taken on trust — it sets no cookie and no browser storage, reads location.pathname and location.origin and never location.href or location.search (so no calculator input reaches it), performs no fingerprinting, and posts to /cdn-cgi/rum on this origin. The Content-Security-Policy names exactly one host, static.cloudflareinsights.com, in script-src and no host at all in connect-src, img-src or font-src. It does still carry 'unsafe-inline' for script-src, which permits any inline script in the document rather than only ours, because several calculators render inline blocks; that is the largest remaining weakness in the header, larger than the one named host, and is stated here rather than rounded off.
+- Two analytics counters run, and they are the only off-origin code on the site. CLOUDFLARE WEB ANALYTICS, permitted since 27 August 2026: measured against the beacon's own source rather than taken on trust — it sets no cookie and no browser storage, reads location.pathname and location.origin and never location.href or location.search (so no calculator input reaches it), performs no fingerprinting, and posts to /cdn-cgi/rum on this origin. GOOGLE ANALYTICS 4, restored 31 August 2026 after being removed on 19 August: it DOES set cookies — _ga and _ga_<property> — and it does send data to a third party, both of which the Cloudflare counter does not. Its advertising features are switched off in the configuration call rather than merely unused: allow_google_signals false, allow_ad_personalization_signals false, anonymize_ip true, and those flags are visible in the request the page makes. There is no consent banner, which a strict reading of the ePrivacy Directive would want, and blocking www.googletagmanager.com stops it entirely without affecting anything else on the site. The Content-Security-Policy therefore names exactly two hosts in script-src, static.cloudflareinsights.com and www.googletagmanager.com, and Google's analytics hosts in connect-src and img-src; naming a host permits that host and not our tag, since CSP has no notion of whose script it is. It does still carry 'unsafe-inline' for script-src, which permits any inline script in the document rather than only ours, because several calculators render inline blocks; that is the largest remaining weakness in the header, larger than the named hosts, and is stated here rather than rounded off.
 - Every displayed number is server-rendered at first byte, so a crawler that runs no JavaScript
   sees exactly what a person sees.
 - Nothing on the site is financial advice, a signal, or a price forecast.
