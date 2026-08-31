@@ -1009,9 +1009,18 @@ ${pct1}% of the requests carrying a crawler's name were verified as that crawler
     say("never reaches the origin. It makes the zone's 5xx rate read about 20% while the Pages");
     say("Function's own error count is zero. Neither number is wrong; they count different things.");
   } catch (e) {
-    say(`Not available: ${e instanceof Error ? e.message : String(e)}.
+    say(`Not collected here: ${e instanceof Error ? e.message : String(e)}.
 `);
-    say("Setup for this section is in DEPLOY.md.");
+    say("**By decision, not omission.** A long-lived analytics credential inside a worker that");
+    say("runs unattended every five minutes is a key carried for no good reason, so the zone");
+    say("analytics are read from the operator's machine instead \u2014 `npm run crawlers`, using the");
+    say("wrangler OAuth token already there. Nothing was handed to this worker.\n");
+    say("What that costs: this section would have kept a weekly series, and the local reader");
+    say("samples a single day \u2014 the free plan refuses a wider range. The first sample, taken");
+    say("2026-08-31, is why it matters at all: ~819 VERIFIED AI-side fetches a day against");
+    say("Googlebot's 19, and 704 requests wearing a crawler's name that Cloudflare could not");
+    say("verify. None of it reaches Search Console, GA4 or the pageview counter, because a");
+    say("crawler runs no JavaScript.");
   }
   say("\n## D. Legal reading age\n");
   {
@@ -1174,7 +1183,7 @@ async function stepCorroborate(env, now = Date.now()) {
 }
 
 // worker/build-stamp.ts
-var WORKER_BUILD = "285888ad1e60";
+var WORKER_BUILD = "dc6c4c5484ed";
 
 // worker/ingest.ts
 var RETAIN_HOURS = 720;

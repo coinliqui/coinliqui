@@ -737,8 +737,29 @@ export async function stepReport(env: ReportEnv, force = false): Promise<string 
     say("never reaches the origin. It makes the zone's 5xx rate read about 20% while the Pages");
     say("Function's own error count is zero. Neither number is wrong; they count different things.");
   } catch (e) {
-    say(`Not available: ${e instanceof Error ? e.message : String(e)}.\n`);
-    say("Setup for this section is in DEPLOY.md.");
+    /* THIS IS A DECISION, NOT AN UNFINISHED SETUP STEP, and the old wording said the opposite.
+       It read "Not available: CF_ANALYTICS_TOKEN is not set. Setup for this section is in
+       DEPLOY.md", which tells a reader there is a task outstanding. On 31 August 2026 the owner
+       declined to put a long-lived analytics credential inside a service that runs unattended
+       every five minutes, which is the right instinct: the least privilege a running process
+       can hold is none. The zone analytics are readable from the operator's own machine with
+       the wrangler OAuth token that is already there, so the measurement moved rather than
+       being dropped — see scripts/crawlers.mjs.
+
+       WHAT IS GENUINELY LOST is accumulation. `npm run crawlers` samples one day, because the
+       free plan refuses a wider range; this section would have kept a weekly series. That is a
+       real cost and it is named here rather than glossed. */
+    say(`Not collected here: ${e instanceof Error ? e.message : String(e)}.\n`);
+    say("**By decision, not omission.** A long-lived analytics credential inside a worker that");
+    say("runs unattended every five minutes is a key carried for no good reason, so the zone");
+    say("analytics are read from the operator's machine instead — `npm run crawlers`, using the");
+    say("wrangler OAuth token already there. Nothing was handed to this worker.\n");
+    say("What that costs: this section would have kept a weekly series, and the local reader");
+    say("samples a single day — the free plan refuses a wider range. The first sample, taken");
+    say("2026-08-31, is why it matters at all: ~819 VERIFIED AI-side fetches a day against");
+    say("Googlebot's 19, and 704 requests wearing a crawler's name that Cloudflare could not");
+    say("verify. None of it reaches Search Console, GA4 or the pageview counter, because a");
+    say("crawler runs no JavaScript.");
   }
 
   /* ---------------------------------------------------------------------------------------
