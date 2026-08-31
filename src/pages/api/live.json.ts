@@ -2,7 +2,13 @@ import type { APIRoute } from "astro";
 import { getSnapshot, getLive } from "../../lib/hyperliquid.ts";
 
 /**
- * The live layer, and the only network call any page makes after it has loaded.
+ * The live layer: the only network call any page makes to fetch DATA after it has loaded.
+ *
+ * NOT "the only network call", which is what this line said while the paragraph directly below
+ * it explained that analytics now runs. A summary sentence that its own body retires two lines
+ * later is the same defect this codebase keeps finding in the pages, and it is worth no less
+ * here: two analytics counters load on every page, so the honest claim is about data, not about
+ * traffic.
  *
  * SAME ORIGIN, deliberately — and the reason changed while the design stayed right. It used
  * to be that /privacy promised no off-origin request on page read; that claim is retired and

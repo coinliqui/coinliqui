@@ -26,6 +26,16 @@ const perps = [...snap.perps];
 const totalOi = perps.reduce((s, p) => s + p.oiNotional, 0);
 const totalVol = perps.reduce((s, p) => s + p.dayNtlVlm, 0);
 const btc = perps.find((p) => p.symbol === "BTC") ?? perps[0];
+/* THE SENTENCE SAID "LARGEST" AND THE EXPRESSION SAID "BTC". The paragraph below prints "The
+   largest book covered today is {btc.symbol}, at {usd(btc.oiNotional)}" from the lookup above,
+   which finds BTC by NAME and falls back to perps[0] only when BTC is absent. It has been
+   accidentally true for as long as BTC has held the largest book, and would go quietly false
+   the first day it does not — the failure mode this codebase keeps finding, where a superlative
+   is asserted by a label and never computed. `perps` is a plain copy of snap.perps here, not a
+   sorted one, so the maximum is taken explicitly rather than assumed from position. */
+const biggest = perps.length
+  ? perps.reduce((a, b) => (b.oiNotional > a.oiNotional ? b : a))
+  : null;
 
 /* Fastest-churning books: volume as a multiple of the position base. A different sort from
    /open-interest, which leads with size — this page is about what the ratio means. */
@@ -167,8 +177,8 @@ const description =
     there are none. A contract that leaves coverage answers
     {" "}<a class="link" href="/retired">410 Gone</a> rather than quietly redirecting, so a
     crawler is told the page is over rather than left guessing.
-    {btc && (
-      <span>{" "}The largest book covered today is {btc.symbol}, at {usd(btc.oiNotional)}.</span>
+    {biggest && (
+      <span>{" "}The largest book covered today is {biggest.symbol}, at {usd(biggest.oiNotional)}.</span>
     )}
   </p>
 

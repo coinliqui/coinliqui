@@ -96,7 +96,13 @@ const description =
         <tr>
           <td><a href="/funding">Contracts covered</a></td>
           <td class="num">{perps.length}</td>
-          <td>Every Hyperliquid perpetual whose open interest clears {usd(OI_NOTIONAL_FLOOR)}. The floor, and why there is one, is on <a class="link" href="/data-sources">Data sources</a>.</td>
+          {/* "EVERY" WAS THE WRONG QUANTIFIER FOR A CAPPED SET. The cell prints perps.length,
+              which is `eligible.slice(0, SYMBOL_CAP)` — the largest 50 by open interest — while
+              the note beside it claimed every perpetual clearing the floor. Today 59 clear it
+              and 50 are published; /about prints both numbers on the same store, so the site
+              contradicted itself across two pages. The count is the published set, so the note
+              says which set it is and names the eligible one beside it. */}
+          <td>The largest {perps.length} by open interest of the {snap.eligibleCount} Hyperliquid perpetuals clearing {usd(OI_NOTIONAL_FLOOR)}. The floor, and why there is one, is on <a class="link" href="/data-sources">Data sources</a>.</td>
         </tr>
         <tr>
           <td><a href="/open-interest">Open interest</a></td>
