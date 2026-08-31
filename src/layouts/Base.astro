@@ -1149,27 +1149,29 @@ const schema = {
     {GA_ENABLED && !GA_DEFER && (
       <script async is:inline src={`https://www.googletagmanager.com/gtag/js?id=${GA_MEASUREMENT_ID}`}></script>
     )}
+    {/* THE QUERY STRING IS STRIPPED BEFORE GA SEES IT, and it was not. Measured on the live site
+        on 31 August 2026: the collect request for
+        /tools/position-size?side=short&entry=78000&stop=200000 carried
+        dl=https%3A%2F%2Fcoinliqui.com%2Ftools%2Fposition-size%3Fside%3Dshort%26entry%3D78000%26stop%3D200000
+        — figures a reader typed into a calculator, sent to Google, on a site whose /privacy page
+        says the Cloudflare beacon rebuilds the URL from origin and path precisely so that cannot
+        happen. One counter kept the promise; the other was never told to.
+
+        page_location is assigned per render rather than set in GA_CONFIG, because a constant
+        there would report every page in the property as one URL. Both counters now see origin
+        and path and nothing else.
+
+        THIS EXPLANATION LIVES OUT HERE, and that is the second lesson. Written inside the
+        script it SHIPS: is:inline means the body is served verbatim to every reader, and the
+        first draft of this comment put /open-interest 73 bytes over its wire budget. The gate
+        caught it. Astro comments are compiled away; script comments are payload. */}
     {GA_ENABLED && (
       <script is:inline define:vars={{ GA_ID: GA_MEASUREMENT_ID, DEFER: GA_DEFER, CFG: GA_CONFIG }}>
         window.dataLayer = window.dataLayer || [];
         function gtag() { window.dataLayer.push(arguments); }
         gtag("js", new Date());
-        /* THE QUERY STRING IS STRIPPED BEFORE GA SEES IT, and it was not. Measured on the live
-           site on 31 August 2026: the collect request for
-           /tools/position-size?side=short&entry=78000&stop=200000 carried
-           dl=https%3A%2F%2Fcoinliqui.com%2Ftools%2Fposition-size%3Fside%3Dshort%26entry%3D78000%26stop%3D200000
-           — the figures a reader typed into a calculator, sent to Google, on a site whose
-           /privacy page states that the Cloudflare beacon deliberately rebuilds the URL from
-           the origin and the path so that exactly this cannot happen. One counter kept the
-           promise and the other did not, and the page said the leak had stopped when the tag
-           came out. The tag came back on 27 August.
-
-           page_location is set per render rather than in GA_CONFIG, because a constant there
-           would report every page in the property as the same URL. This is the same rule the
-           beacon already follows, so both counters now see origin + path and nothing else. */
-        gtag("config", GA_ID, Object.assign({}, CFG, {
-          page_location: location.origin + location.pathname,
-        }));
+        CFG.page_location = location.origin + location.pathname;   // origin + path only; see above
+        gtag("config", GA_ID, CFG);
 
         /* The queue above is safe to fill before gtag.js exists — that is what dataLayer is
            for — so deferring the LOADER changes when the hit is sent, not whether it is. */
