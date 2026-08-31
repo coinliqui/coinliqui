@@ -74,6 +74,54 @@ const liq = liquidationPrice({ entryPrice: p.markPx, positionSize: 1, leverage: 
    contract — see nextSettlement() in src/lib/funding.ts — so this card announced a settlement
    that had already happened, on all 50 contract pages, every hour of every day. */
 const nextSettleAt = hl ? nextSettlement(hl.nextFundingTime, hl.intervalHours) : null;
+
+/* =========================================================================================
+   THE ANSWER, IN ONE SENTENCE, AT THE TOP — because this template is what the AI assistants
+   actually fetch, and it was not leading with the thing it is named after.
+
+   MEASURED 31 August 2026 over 23.5 hours of verified Cloudflare bot traffic: ChatGPT-User
+   made 392 verified fetches of this site and 275 of them — 70% — landed on
+   /funding/{symbol}, across 36 different contracts. Not the hub, not the homepage: the long
+   tail of individual coins. Somebody asks an assistant what a coin's funding rate is, and the
+   assistant comes here.
+
+   WHAT IT FOUND WHEN IT ARRIVED. The first 900 characters of this page, tags stripped, read:
+   price, twelve-month change, period high, period low, period volume, oracle index, open
+   interest, max leverage, then a paragraph about where each of those comes from. The funding
+   rate — the first noun in this page's own <title> — was not in them. An extractor will still
+   find it further down; one that truncates answers with the price instead.
+
+   SO THIS IS A SENTENCE, NOT A FIGURE. Everything in it is already on the page; what it adds
+   is that the number, its unit, its venue, its settlement interval and the time it was read
+   sit in one liftable clause. That is the shape a citation takes.
+
+   ANNUALISED, AND IT SAYS SO. The venues quote a rate per settlement and settle on different
+   intervals — hourly on Hyperliquid, four or eight hours elsewhere — so the quoted numbers are
+   not comparable and the annualised ones are. Stating the APR without saying it is an APR
+   would be the same trap the whole site exists to point out.
+   ========================================================================================= */
+const quotable = (() => {
+  const live = ORDER.map((v) => ({ v, f: by.get(v) })).filter((x) => x.f && Number.isFinite(x.f.apr));
+  if (!live.length) return null;
+  const lead = live[0];
+  const rest = live.slice(1);
+  /* ASSEMBLED HERE, NOT IN THE MARKUP. Adjacent JSX expressions on separate lines render a
+     whitespace text node between them, so a version built out of {…} fragments produced
+     "settlement , against" and "(8h) ." — a stray space before a comma, in the one sentence on
+     this page written to be quoted verbatim. The markup below splits the string only where an
+     element is genuinely needed, and those splits sit on one line. */
+  const head = `${p.symbol} funding on ${VENUE_LABEL[lead.v]} is ${pct(lead.f!.apr)} a year`;
+  const interval = Number.isFinite(lead.f!.intervalHours) ? ` at its ${lead.f!.intervalHours}-hour settlement` : "";
+  const others = rest.length
+    ? `, against ${rest.map((x) => `${pct(x.f!.apr)} on ${VENUE_LABEL[x.v]}${Number.isFinite(x.f!.intervalHours) ? ` (${x.f!.intervalHours}h)` : ""}`).join(" and ")}`
+    : "";
+  return {
+    head,
+    tail: `${interval}${others}. Annualised, because the venues settle on different intervals and their quoted rates are not comparable until they are. Read at `,
+    stamp: `${new Date(snap.fetchedAt).toISOString().slice(0, 16).replace("T", " ")} UTC`,
+    iso: new Date(snap.fetchedAt).toISOString(),
+  };
+})();
 const nextFunding = nextSettleAt ? new Date(nextSettleAt) : null;
 
 const dp = priceDp(p.markPx);
@@ -219,6 +267,13 @@ const description = `What a ${p.symbol} perpetual costs to hold, against ${usd(p
   <div class="page-head">
     <p class="crumb"><a href="/funding">Funding</a> › {p.symbol}</p>
     <h1>{p.symbol} perpetual</h1>
+    {quotable && (
+      <p class="answer">
+        {/* ONE LINE, because adjacent expressions on separate lines render a space between
+            them — see the note where this string is assembled. */}
+        <strong>{quotable.head}</strong>{quotable.tail}<time datetime={quotable.iso}>{quotable.stamp}</time>{"."}
+      </p>
+    )}
   </div>
 
   <div class="hero">
@@ -540,6 +595,10 @@ const description = `What a ${p.symbol} perpetual costs to hold, against ${usd(p
       attributes, about 55 KB of the raw HTML, restating one constant. The variable is set
       once, on the chart panel that actually reads it. */}
   <style>
+    /* Not .lede: that name means the 21px intro on the homepage. This is a plain paragraph
+       that happens to be first — the weight is on the figure inside it, not on the block. */
+    .answer { margin: var(--gap-block) 0 0; max-width: 78ch; color: var(--text-dim); }
+    .answer strong { color: var(--text); }
     .hero__span { font-size: var(--fs-sm); color: var(--text-faint); }
     .tfbar { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin: var(--inset-panel) 0 var(--gap-block); }
     .tfbar__note { font-size: var(--fs-xs); color: var(--text-faint); }

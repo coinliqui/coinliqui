@@ -2123,3 +2123,42 @@ export function computedFigureFloor(templates, exportsByFile = {}, floor = 3, re
   }
   return out;
 }
+
+/**
+ * A PAGE THAT DOES NOT LEAD WITH THE THING IT IS NAMED AFTER.
+ *
+ * MEASURED, and the measurement is why this exists at all. Over 23.5 hours on 31 August 2026,
+ * ChatGPT-User made 392 VERIFIED fetches of this site and 275 of them — 70% — landed on
+ * /funding/{symbol}, spread across 36 different contracts. Somebody asks an assistant what a
+ * coin's funding rate is and the assistant comes to that page.
+ *
+ * What it found on arrival: the first 900 characters of visible text were price, twelve-month
+ * change, period high, period low, period volume, oracle index, open interest, max leverage and
+ * a paragraph of provenance. The funding rate — the first noun in the page's own <title> — was
+ * not among them. An extractor reading the whole document still finds it; one that truncates
+ * answers with the price.
+ *
+ * SO THE RULE IS ABOUT THE OPENING, NOT THE PAGE. Everything was present and correct; what was
+ * wrong was the order. This asserts that the terms a page is named for appear in its first
+ * stretch of readable text, which is the part any summariser is guaranteed to have read.
+ *
+ * NOT A KEYWORD COUNT. It takes the terms from the caller, because "what this page is about" is
+ * a judgement — the caller states it, and the check holds the page to it. A rule that inferred
+ * the subject from the title would fire on every page whose title contains a common word.
+ *
+ *   html   the rendered document
+ *   want   [{ label, re }] — each must match inside the opening
+ *   chars  how much of the visible text counts as "the opening"
+ */
+export function leadsWithItsSubject(html, want, chars = 700) {
+  const text = String(html ?? "")
+    .replace(/<(script|style|svg|template)\b[\s\S]*?<\/\1>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&[a-z#0-9]+;/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const opening = text.slice(0, chars);
+  return (want ?? [])
+    .filter((w) => !w.re.test(opening))
+    .map((w) => `the opening ${chars} characters do not mention ${w.label} — an extractor that truncates answers with whatever came first instead`);
+}

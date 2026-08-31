@@ -12,7 +12,7 @@
    — this runs against production and its whole claim is that it asserts what a client on the
    open internet receives. underLinked() decides nothing about the site; it turns a count into
    a sentence, and it lives in checks.mjs so it is covered by the gate's own fixture suite. */
-import { underLinked, duplicateHeadMetadata } from "./checks.mjs";
+import { underLinked, duplicateHeadMetadata, leadsWithItsSubject } from "./checks.mjs";
 
 const ORIGIN = process.argv[2] || "https://coinliqui.com";
 const CRAWLERS = [
@@ -433,6 +433,23 @@ console.log("\n5. sitemap");
   cut.length ? bad(`TRUNCATED — 200 with no </html>, the render threw mid-stream: ${cut.join(", ")}`)
              : ok(`every one of the ${urls.length} sitemap URLs answered 200 with a complete HTML document — no empty bodies, no truncation, not a sample`);
   hollow.length ? bad(`contract page with no chart panel: ${hollow.join(", ")}`) : ok("every contract page renders a chart, or says why it cannot yet");
+  /* THE TEMPLATE THE ASSISTANTS ACTUALLY READ must open with what it is named after. Measured
+     31 August 2026: 275 of ChatGPT-User's 392 verified fetches landed on /funding/{symbol},
+     across 36 contracts, and the opening of that page was price, high, low, volume, oracle,
+     open interest and provenance — no funding figure. Checked on production rather than in the
+     build, because what an extractor receives is what the edge served it. */
+  {
+    const lead = await fetchAs("/funding/btc", "GPTBot/1.1");
+    const gaps = leadsWithItsSubject(lead.body, [
+      { label: "the funding rate it is named after", re: /funding/i },
+      { label: "a rate, as a percentage", re: /\d+(\.\d+)?%/ },
+      { label: "the venue the figure belongs to", re: /hyperliquid|binance|bybit/i },
+      { label: "when it was read", re: /UTC/ },
+    ]);
+    gaps.length ? bad(`/funding/btc — ${gaps.join("; ")}`)
+      : ok("the contract page opens with its own subject: the funding figure, its unit, its venue and its timestamp are all inside the first 700 characters an extractor reads");
+  }
+
   const dupHeads = duplicateHeadMetadata(heads);
   dupHeads.length ? bad(`published URL(s) whose head does not identify them uniquely:\n          ${dupHeads.join("\n          ")}`)
     : ok(`all ${heads.length} published URLs carry a title and a meta description, and no two share either`);

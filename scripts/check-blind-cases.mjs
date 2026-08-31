@@ -36,6 +36,7 @@ import {
   underLinked,
   duplicateHeadMetadata,
   computedFigureFloor, COMPUTED_FIGURES,
+  leadsWithItsSubject,
 } from "./checks.mjs";
 
 /* Enough page for a check to have something to read. Deliberately minimal: a fixture that is
@@ -409,6 +410,34 @@ const cases = [
          reading only the route file would score the page that computes most on this site at 0. */
       computedFigureFloor(
         [{ route: "/x/[y]", sources: ["import L from './L.astro'", "buildLiqMap(); corridorAt(); mixUsed();"] }], {}, 3).length === 0,
+    ],
+  },
+  {
+    check: "leadsWithItsSubject",
+    why: "/funding/{symbol} takes 70% of this site's verified ChatGPT-User fetches and its opening 900 characters did not contain the words funding or a rate — an extractor that truncates would answer with the price",
+    fire: () => leadsWithItsSubject(
+      "<h1>BTC perpetual</h1><p>$78,595.00, down 12.6% over 220 daily bars. Period high $90,587. Open interest $2.87B.</p>",
+      [{ label: "the funding rate", re: /funding/i }, { label: "a percentage", re: /\d+(\.\d+)?%/ }]),
+    quiet: () => [
+      ...leadsWithItsSubject(
+        "<h1>BTC perpetual</h1><p>BTC funding on Hyperliquid is 10.95% a year at its 1-hour settlement.</p>",
+        [{ label: "the funding rate", re: /funding/i }, { label: "a percentage", re: /\d+(\.\d+)?%/ }]),
+      ...leadsWithItsSubject("<p>anything</p>", []),
+    ],
+    also: () => [
+      /* THE WINDOW IS THE WHOLE POINT. The same document passes when the check reads far enough
+         and fails when it reads only the opening — which is exactly the difference between an
+         extractor that consumed the page and one that truncated. A version that scanned the
+         whole body would have reported this page as fine, because the figure IS on it. */
+      leadsWithItsSubject(`<p>${"price and volume and open interest. ".repeat(30)} funding 10.9%</p>`,
+        [{ label: "the funding rate", re: /funding/i }], 700).length === 1,
+      leadsWithItsSubject(`<p>${"price and volume and open interest. ".repeat(30)} funding 10.9%</p>`,
+        [{ label: "the funding rate", re: /funding/i }], 5000).length === 0,
+      /* MARKUP IS NOT TEXT: a term hidden in an attribute, a script or an SVG has not been said
+         to a reader, and a check counting raw HTML would accept it. */
+      leadsWithItsSubject('<div data-kind="funding"><script>var funding=1</script><p>price only</p></div>',
+        [{ label: "the funding rate", re: /funding/i }]).length === 1,
+      leadsWithItsSubject("", [{ label: "anything", re: /x/ }]).length === 1,
     ],
   },
   {
