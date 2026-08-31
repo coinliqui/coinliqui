@@ -254,7 +254,12 @@ const { paysClass, paysLabel, carryCost, spreadOf, pct, changeWords, ageWords, n
       const ri = Math.max(0, Math.min(rows - 1, Math.floor(((y - plotY) / plotH) * rows)));
       const bandLo = pHi - ((ri + 1) / rows) * (pHi - pLo);
       const bandHi = pHi - (ri / rows) * (pHi - pLo);
-      setPill(py, axisX + 5, y - 10, "$" + nf(price, 0));
+      /* PRICE DECIMALS COME FROM THE SERVER, and were hard-coded to zero. The axis beside this
+         pill is drawn with axisDp(mark), so on any contract priced under a dollar the axis read
+         $0.0084 and the crosshair reading the same pixel read "$0". data-dp carries the same
+         value the axis used, so the two cannot disagree; 0 is the fallback for a map rendered
+         before this attribute existed. */
+      setPill(py, axisX + 5, y - 10, "$" + nf(price, +(svg.dataset.dp || 0)));
       setPill(tx, x, axisY || plotY + plotH + 5, stamp(t0 + ci * stepMs, true), plotX, axisX);
 
       const fill = target && target.getAttribute ? target.getAttribute("fill") : null;
@@ -277,8 +282,9 @@ const { paysClass, paysLabel, carryCost, spreadOf, pct, changeWords, ageWords, n
         : i > 0 ? `${compactUsd(bound(i - 0.5))} – ${compactUsd(bound(i + 0.5))}`
         : null;
       const isCell = i >= 0;
+      const dp = +(svg.dataset.dp || 0);   // same source as the axis; see the crosshair pill above
       showTip(
-        `<div class="tip__h">$${nf(bandLo, 0)} – $${nf(bandHi, 0)}</div>` +
+        `<div class="tip__h">$${nf(bandLo, dp)} – $${nf(bandHi, dp)}</div>` +
         `<div class="tip__g">` +
         (band
           ? `<span>Modelled</span><b>${band}</b>`

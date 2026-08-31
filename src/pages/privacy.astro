@@ -120,7 +120,7 @@ const updated = "27 August 2026";
         </tr>
         <tr>
           <td>The data goes to this domain, not a third one</td>
-          <td class="reason">The measurement is posted to <code>/cdn-cgi/rum</code> on this origin. That is why this site's <code>connect-src</code> is still <code>'self'</code> — no off-origin host is permitted to receive a request from any page here.</td>
+          <td class="reason">The measurement is posted to <code>/cdn-cgi/rum</code> on this origin, so this counter sends nothing to a third party. The site's <code>connect-src</code> is no longer <code>'self'</code> alone: it also names Google's analytics hosts, because the second counter does. That difference is set out below.</td>
         </tr>
       </tbody>
     </table>
@@ -231,16 +231,22 @@ const updated = "27 August 2026";
     not appear in a log line, use a representative figure.
   </p>
   <p class="prose">
-    Those request logs are still the only place the values go, and the analytics above does not
-    change that: the beacon rebuilds the URL from the origin and the path, so a figure typed
-    into a field named <code>capital</code> is not part of what it sends. That is a measurement
-    of the script, stated in the table above, not an assurance.
+    Those request logs are the only place the values go. Both counters rebuild the URL from the
+    origin and the path, so a figure typed into a field named <code>capital</code> is not part of
+    what either one sends. That is a measurement of the two requests, not an assurance.
   </p>
   <p class="prose">
-    It was not always true. While Google Analytics ran, the full URL of every page view — query
-    string included — was sent to Google as part of the standard page-view event. That was true
-    from the day the tag went in, it was not described on this page, and it stopped when the tag
-    came out.
+    <strong>It has not always been true, and this page said it had stopped when it had not.</strong>
+    The Google tag sends the full URL of every page view — query string included — unless it is
+    told otherwise, and it was not told otherwise. That was the case from the day the tag first
+    went in, through its removal on 19&nbsp;August&nbsp;2026, and again from its restoration on
+    27&nbsp;August; the paragraph here described it in the past tense throughout those last four
+    days, saying the sending had ended when the tag came out. It had not: the tag came back.
+    Measured on 31&nbsp;August&nbsp;2026, loading the position-size calculator with figures in
+    its URL produced a request to Google carrying that whole URL, those figures included. On the
+    same day the tag was configured with <code>page_location</code> set to the origin and the
+    path — the rule the Cloudflare beacon already followed — and re-measured. Nothing about the
+    request logs above changed; what changed is that Google no longer receives the query string.
   </p>
 
   <h2 class="section">Hosting</h2>
