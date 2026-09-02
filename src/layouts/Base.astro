@@ -849,6 +849,73 @@ const schema = {
       .magnitude__track { flex: 0 0 56px; height: 4px; border-radius: 2px; background: var(--surface-3); overflow: hidden; }
       .magnitude__fill { display: block; height: 100%; border-radius: 2px; background: var(--text-faint); }
 
+      /* THE SIGNED SIBLING OF .magnitude, for quantities that have a direction as well as a
+         size. A funding rate is the case: paysClass already colours the NUMBER amber or cyan,
+         which says which side pays, and says nothing about how much. The bar carries the
+         magnitude and the colour carries the direction, so the two halves of one fact are read
+         at a glance instead of one of them being read and the other spelled out.
+
+         Same 56px track and 4px bar as .magnitude on purpose — a table showing both should read
+         as one family of marks, not two charts. The centre line is the zero, and it is drawn
+         rather than implied, because a bar growing leftwards from an invisible origin is a bar
+         nobody can measure against anything. Colours are the site's own --pays-l and --pays-s,
+         never green and red: those belong to the candles. */
+      .diverge { position: relative; flex: 0 0 56px; height: 4px; border-radius: 2px; background: var(--surface-3); overflow: hidden; }
+      .diverge::before { content: ""; position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: var(--border); }
+      .diverge__fill { position: absolute; top: 0; bottom: 0; }
+      .diverge__fill--l { left: 50%; background: var(--pays-l); }
+      .diverge__fill--s { right: 50%; background: var(--pays-s); }
+
+      /* THE SMALL FIGURES, AND THE ONE THING THEY MUST NOT INHERIT FROM .chart. A chart below
+         760px is given `min-width: 1140px` and scrolled sideways, because 220 candles cannot be
+         read in 317 pixels. Nothing in src/lib/viz.ts has that problem: a distribution is twenty
+         bars and a ladder is three marks, so they fit the column at every width and must never
+         scroll. Same well, same corner radius as the charts, so they read as the same family. */
+      /* CAPPED, BECAUSE A FIGURE IS NOT A CHART. Left to fill a 1180px column a 600x120 viewBox
+         renders 236px tall — a mostly empty well with twenty small bars adrift in it, and every
+         geometry inside it scaled to twice the size it was drawn at. 720px keeps the scale range
+         between 0.53 on a phone and 1.2 on a desktop, which is the band these were drawn for. */
+      .viz { display: block; margin: 0 0 var(--gap-block); max-width: 720px; }
+      .viz > svg { display: block; width: 100%; height: auto; }
+      .viz__axis { position: relative; display: flex; justify-content: space-between; font: 500 var(--fs-xs)/1 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--text-faint); margin-top: 6px; }
+      .viz__zero { position: absolute; transform: translateX(-50%); color: var(--text-dim); }
+      .viz figcaption { font-size: var(--fs-sm); color: var(--text-faint); margin-top: var(--gap-pair); max-width: 84ch; line-height: 1.55; }
+
+      /* RANKED BARS, IN HTML, because the figure is mostly words. Drawn in an SVG the labels
+         would inherit the viewBox scale — 0.53 on a phone against 1.2 in a desktop column — and
+         stop being selectable, searchable or extractable. Here they are ordinary type at the
+         stylesheet's size, and the bar is one div. Same track colour and radius as .magnitude,
+         which has been doing this in tables since before the figures existed; this is the same
+         mark given a row of its own. */
+      .bars { display: grid; grid-template-columns: auto 1fr auto; gap: 6px var(--gap-block); align-items: center; margin: 0 0 var(--gap-block); }
+      .bars__label { font-weight: 500; }
+      .bars__label a { text-decoration: none; }
+      .bars__label a:hover { color: var(--accent); }
+      .bars__track { height: 10px; border-radius: 3px; background: var(--surface-3); overflow: hidden; }
+      .bars__fill { display: block; height: 100%; border-radius: 3px; background: var(--text-dim); }
+      .bars__value { font-variant-numeric: tabular-nums; color: var(--text); white-space: nowrap; }
+
+      /* A SCALE WITH MARKS ON IT: entry, stop and liquidation as positions rather than as three
+         numbers in three cards. The order and the spacing are the whole fact — whether the stop
+         is reached before the liquidation, and by how far — and that is a picture, not a
+         sentence. Marks are placed with a left percentage the page computes, so the geometry is
+         CSS and the labels are type. */
+      .scale { position: relative; height: 58px; margin: var(--gap-block) 0; }
+      .scale__line { position: absolute; left: 0; right: 0; top: 26px; height: 2px; background: var(--border); border-radius: 1px; }
+      .scale__mark { position: absolute; top: 18px; width: 2px; height: 18px; background: var(--text-dim); transform: translateX(-50%); }
+      .scale__mark--l { background: var(--pays-l); }
+      .scale__mark--s { background: var(--pays-s); }
+      .scale__tag { position: absolute; transform: translateX(-50%); font-size: var(--fs-xs); white-space: nowrap; color: var(--text-faint); }
+      /* THE END TAGS ARE ANCHORED, NOT CENTRED. Centring a label on a mark near either end pushes
+         half of it past the column: measured at 375px, the outermost tags overflowed by 4px each,
+         and a longer price would take more. The mark itself stays where the value is; only the
+         label stops being centred on it. */
+      .scale__tag--start { transform: translateX(0); }
+      .scale__tag--end { transform: translateX(-100%); }
+      .scale__tag--up { top: 0; }
+      .scale__tag--down { top: 40px; }
+      .scale__tag b { display: block; color: var(--text); font-variant-numeric: tabular-nums; }
+
       .legend { font-size: var(--fs-sm); color: var(--text-faint); margin: 0 0 var(--gap-block); }
       .legend b { font-weight: 500; }
 

@@ -7,6 +7,18 @@ const snap = await getSnapshot((Astro.locals as any)?.runtime?.env?.SNAPSHOT, im
 if (!snap.available) return coldStart();
 const rows = [...snap.perps].sort((a, b) => b.oiNotional - a.oiNotional);
 const total = rows.reduce((s, p) => s + p.oiNotional, 0);
+
+/* CONCENTRATION IS THE QUESTION THIS PAGE COULD NOT ANSWER AT A GLANCE. A sorted table says BTC
+   is first; it does not say that the top eight are most of the book, which is the fact a reader
+   is actually after and the one that changes what open interest means. Ten ranked bars answer it
+   in one look, and the share each carries is printed beside it so the picture is a second reading
+   of a number rather than the only place it appears.
+
+   HTML, NOT AN SVG: this figure is nine parts label and value to one part geometry, and text in a
+   viewBox scales with the figure, cannot be selected and cannot be extracted. See `.bars`. */
+const topOi = rows.slice(0, 10);
+const topShare = total > 0 ? topOi.reduce((s, p) => s + p.oiNotional, 0) / total : 0;
+const maxOi = topOi.length ? topOi[0].oiNotional : 1;
 ---
 <Base title="Hyperliquid perpetual open interest" description="Hyperliquid open interest and 24-hour volume for BTC, ETH, SOL and every other perpetual covered here, with turnover — volume as a multiple of open interest — which says how fast positioning is churning." fetchedAt={snap.fetchedAt}>
   <div class="page-head">
@@ -29,6 +41,24 @@ const total = rows.reduce((s, p) => s + p.oiNotional, 0);
     </p>
   </div>
   <p style="margin:0 0 20px;max-width:74ch"><strong class="num">{usd(total)}</strong> across {rows.length} coins. The turnover column is 24h volume divided by open interest: a high number means the position base is churning rather than accumulating. <a class="link" href="/learn/open-interest">What open interest does and does not tell you →</a></p>
+  {topOi.length > 1 && (
+    <figure class="viz" style="max-width:640px">
+      <figcaption style="margin:0 0 10px">
+        The ten largest books, and what they are of the {usd(total)} total. Together they hold
+        {" "}<b>{pct(topShare)}</b> of it.
+      </figcaption>
+      <div class="bars">
+        {topOi.map((p) => (
+          <>
+            <span class="bars__label"><a href={`/funding/${p.symbol.toLowerCase()}`}>{p.symbol}</a></span>
+            <span class="bars__track"><span class="bars__fill" style={`width:${Math.max(2, (p.oiNotional / maxOi) * 100)}%`}></span></span>
+            <span class="bars__value">{usd(p.oiNotional)} <span class="faint">{pct(p.oiNotional / total)}</span></span>
+          </>
+        ))}
+      </div>
+    </figure>
+  )}
+
   <div class="panel"><table class="tbl" data-sortable>
     <thead><tr><th>Coin</th><th class="num">Open interest <span class="thscope">Hyperliquid</span></th><th class="num">24h volume <span class="thscope">Hyperliquid</span></th><th class="num">Turnover (24h volume ÷ OI)</th><th class="num">Max leverage</th></tr></thead>
     <tbody>

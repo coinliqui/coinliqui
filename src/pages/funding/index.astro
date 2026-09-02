@@ -4,6 +4,7 @@ import { getSnapshot, coldStart, getLive } from "../../lib/hyperliquid.ts";
 import { VENUE_LABEL, pct, usd, rawRate, paysClass, paysArrow, LEGEND_FUNDING, type Venue } from "../../lib/funding.ts";
 
 import { freshness, ageWords, minutesSince } from "../../lib/freshness.ts";
+import { distribution } from "../../lib/viz.ts";
 const env = (Astro.locals as any)?.runtime?.env;
 const snap = await getSnapshot(env?.SNAPSHOT, import.meta.env.DEV);
 const live = await getLive(env?.SNAPSHOT);
@@ -18,6 +19,25 @@ const rows = snap.perps
   .map((p) => ({ p, by: new Map(p.venues.map((v) => [v.venue, v])), spread: p.aprSpread }))
   .sort((a, b) => (b.spread ?? -Infinity) - (a.spread ?? -Infinity));
 const widest = rows[0];
+
+/* THE TABLE ANSWERS "WHAT IS ETH PAYING" AND NOTHING ANSWERED "WHAT IS THE MARKET DOING".
+   Fifty rows hold that second answer and make a reader assemble it by scrolling. The figure is
+   the same column read at once: where the mass sits, and which tail is longer. Both numbers
+   under it are stated in the caption, so the picture is a second reading of a sentence rather
+   than the only place a fact appears. */
+const maxOi = Math.max(...snap.perps.map((p) => p.oiNotional).filter((v) => Number.isFinite(v)), 1);
+const hlAprs = snap.perps.map((p) => p.hlApr).filter((v) => Number.isFinite(v));
+const payLongs = hlAprs.filter((v) => v > 0).length;
+const paysShorts = hlAprs.filter((v) => v < 0).length;
+const sortedAprs = [...hlAprs].sort((a, b) => a - b);
+const medianApr = sortedAprs.length
+  ? sortedAprs.length % 2
+    ? sortedAprs[(sortedAprs.length - 1) / 2]
+    : (sortedAprs[sortedAprs.length / 2 - 1] + sortedAprs[sortedAprs.length / 2]) / 2
+  : NaN;
+const aprFigure = distribution(hlAprs, {
+  title: `Distribution of Hyperliquid funding across ${hlAprs.length} contracts, annualised`,
+});
 
 
 const title = "Crypto funding rates, normalised to APR";
@@ -39,6 +59,32 @@ const description =
   </div>
 
   <p class="legend">{LEGEND_FUNDING}. Every other figure is neutral.</p>
+
+  {aprFigure && (
+    <figure class="viz">
+      <Fragment set:html={aprFigure.svg} />
+      {/* THE AXIS IS HTML. Inside the viewBox it would be 9px on a phone and 35px on a desktop
+          column; here it is one size the stylesheet chooses, and a reader can select it. */}
+      <div class="viz__axis">
+        <span>{pct(aprFigure.lo)}</span>
+        {aprFigure.zeroAt !== null && <span class="viz__zero" style={`left:${aprFigure.zeroAt}%`}>0%</span>}
+        <span>{pct(aprFigure.hi)}</span>
+      </div>
+      <figcaption>
+        Where Hyperliquid&rsquo;s funding sits across all {hlAprs.length} contracts, annualised.
+        {" "}<b>{payLongs}</b> pay longs&rarr;shorts, <b>{paysShorts}</b> pay shorts&rarr;longs, and the
+        median is <b>{pct(medianApr)}</b>. Each bar counts the contracts in that band; the centre
+        band straddles zero and is drawn neutral because its sign is an artefact of where the
+        bucket edges fall.
+        {aprFigure.over > 0 && (
+          <> The axis covers the middle of the range rather than its extremes, so <b>{aprFigure.over}</b>
+          {" "}contract{aprFigure.over === 1 ? "" : "s"} further out {aprFigure.over === 1 ? "sits" : "sit"} in the
+          end bands — without that, one contract at {pct(Math.max(...hlAprs.map(Math.abs)))} would
+          flatten every other bar to nothing.</>
+        )}
+      </figcaption>
+    </figure>
+  )}
 
   <p class="clock" style="margin:0 0 12px">
     {fresh.note} Open interest and 24-hour volume come from the snapshot taken
@@ -76,7 +122,12 @@ const description =
               );
             })}
             <td class="num" data-repaint={spread != null ? "spread" : undefined} data-sym={p.symbol}>{spread != null ? pct(spread) : <span class="faint">—</span>}</td>
-            <td class="num">{usd(p.oiNotional)}</td>
+            <td class="num">
+              <span class="magnitude">
+                <span class="magnitude__track"><span class="magnitude__fill" style={`width:${Math.max(3, Math.round((p.oiNotional / maxOi) * 100))}%`}></span></span>
+                <span>{usd(p.oiNotional)}</span>
+              </span>
+            </td>
             <td class="num">{usd(p.dayNtlVlm)}</td>
           </tr>
         ))}
