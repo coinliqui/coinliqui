@@ -857,7 +857,16 @@ console.log("\n11. page weight on the wire");
 {
   const BUDGET = [
     ["/", 8_000], ["/funding", 9_500], ["/funding/btc", 92_000], ["/coins/bitcoin", 72_000],
-    ["/open-interest", 6_500], ["/liquidations", 60_000], ["/liquidations/survival", 30_000],
+    /* RAISED 6,500 -> 9,000 ON 2 SEPTEMBER, on purpose, in a diff, with the reason. The page
+       gained the ranked-bar figure — the ten largest books with their share of the total — and
+       came in at 7,011b, 511 over. The ratchet is doing exactly what the paragraph above says it
+       is for: it did not judge the figure, it noticed the page grew and made someone say why.
+
+       Why it is worth the bytes: this page had NO visual at all, which was the whole complaint,
+       and 511b over the wire buys the one thing a sorted table cannot say — that the top ten are
+       most of the book. The new ceiling is the observed size plus the usual quarter of headroom,
+       not a round number picked to stop the alarm. */
+    ["/open-interest", 9_000], ["/liquidations", 60_000], ["/liquidations/survival", 30_000],
     ["/unlocks", 14_000], ["/watchlist", 12_000], ["/tools/leverage", 8_000],
     /* RAISED 8,000 -> 10,600 ON 19 AUGUST, on purpose, in a diff, with the reason — which is what
        the paragraph above demands of anyone who touches these numbers. The ratchet did its job: it
