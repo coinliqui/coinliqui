@@ -277,6 +277,31 @@ console.log(failures ? `\n${failures} failure(s) across ${MODES.length} run(s) �
 process.exit(failures ? 1 : 0);
 
 async function runMode(extraArgs, name) {
+/* THE PORT MUST BE OURS BEFORE ANYTHING IS BELIEVED, and for one evening it was not. A stray
+   `python -m http.server 8791` — nothing to do with this project, reparented to init and
+   forgotten — was listening on the smoke port. wrangler failed to bind and exited; `up()` then
+   asked for /robots.txt, got an answer from the SQUATTER, and declared the worker ready. The run
+   proceeded to test a directory listing: "/" came back 200 with 48KB of file index, every other
+   route came back 404, and the gate reported 104 failures against a site that was in fact
+   correct — verified by serving the same dist by hand, where every route answered 503 exactly as
+   the cold pass expects.
+
+   A gate that reports someone else's server as this site's failures is worse than one that does
+   not run, because the failures look real and cost an evening. `up()` cannot tell the difference
+   — anything that answers 200 looks alive — so the check happens BEFORE the spawn, where the
+   question is simply whether the port is free. */
+{
+  const busy = await fetch(`http://127.0.0.1:${PORT}/`, { signal: AbortSignal.timeout(1500) })
+    .then(() => true)
+    .catch(() => false);
+  if (busy) {
+    console.error(`smoke: port ${PORT} is already answering before wrangler was started.`);
+    console.error(`       Something else is listening there, and every route this run reports`);
+    console.error(`       would be that server's answer rather than the site's. Free it first:`);
+    console.error(`         lsof -nP -iTCP:${PORT} -sTCP:LISTEN`);
+    process.exit(1);
+  }
+}
 const srv = spawn("npx", ["wrangler", "pages", "dev", "dist", "--port", String(PORT), "--ip", "127.0.0.1", ...extraArgs], {
   stdio: ["ignore", "pipe", "pipe"],
 });
