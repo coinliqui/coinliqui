@@ -903,9 +903,18 @@ const schema = {
         .chart {
           overflow-x: auto; overscroll-behavior-x: contain;
           /* Both edges fade: the chart opens scrolled to the newest bars, so there is more of
-             it to the LEFT, and a right-only cue would point the wrong way. */
-          -webkit-mask-image: linear-gradient(to right, transparent, #000 24px, #000 calc(100% - 24px), transparent);
-                  mask-image: linear-gradient(to right, transparent, #000 24px, #000 calc(100% - 24px), transparent);
+             it to the LEFT, and a right-only cue would point the wrong way.
+
+             TEN PIXELS, NOT TWENTY-FOUR, AND THE OLD NUMBER WAS NEVER SIZED FOR THIS WIDTH.
+             This rule applies ONLY below 760px, and 24px a side is a figure that belongs to a
+             wide container. Measured on a 375px phone: the chart window is 317px, so 48px of
+             fade covered 15.1% of everything the reader could see of the chart — against 4.4%
+             for the same 48px in a 1100px column, which is the proportion the value was chosen
+             at. An affordance that dims a sixth of the thing it is an affordance for has
+             stopped being one. At 10px a side it costs 6.3%, which is the desktop proportion
+             restored, and the cue is still legible because it sits against a hard edge. */
+          -webkit-mask-image: linear-gradient(to right, transparent, #000 10px, #000 calc(100% - 10px), transparent);
+                  mask-image: linear-gradient(to right, transparent, #000 10px, #000 calc(100% - 10px), transparent);
         }
         /* 720px put the axis type at 6.3 CSS px. 1140 keeps it at ~10px, which is the whole
            point of scrolling rather than scaling. */
@@ -1059,18 +1068,54 @@ const schema = {
 
 @media (max-width: 900px) {
         .app, .is-collapsed .app { grid-template-columns: minmax(0,1fr); }
-        .topbar { padding: 0 16px; }
         .page { margin: 0 12px 12px; padding: 16px 16px 24px; min-height: 0; }
-        /* THE AGE STAYS ON MOBILE. This used to hide every span in the pill so the cluster
-           could be two even 40px controls — a layout convenience that cost the site its
-           central claim. What a phone showed was a bare clock glyph: an icon that IMPLIES
-           currency while stating no age, on a site whose entire argument is that it tells you
-           exactly how old every number is. It also hid `.freshness__off`, so the
-           connection-lost warning — the thing that exists to be seen — was invisible on
-           mobile, and a stale held value looked exactly like a fresh one.
-           Only the word "Updated" goes; the time and the failure state stay. */
-        .freshness { padding: 0 10px; gap: 6px; }
+        /* THE PILL GOES ON MOBILE, THE AGE DOES NOT, AND THE FAILURE STATE STILL APPEARS.
+           An earlier version of this block hid every span inside the pill so the cluster could
+           be two even 40px controls, and what a phone showed was a bare clock glyph: an icon
+           IMPLYING currency while stating no age, on a site whose whole argument is that it
+           says exactly how old every number is. That fix — keep the time, drop only the word
+           "Updated" — was right about the danger and wrong about the remedy, because it left
+           103px of duplicate in a 375px bar.
+
+           Measured before removing anything, at 375px on /funding/btc: navtoggle 44, search
+           124, freshness 103, pin 40. The search field was a third of the screen and its
+           placeholder was ellipsised mid-word, which the comment on `.search input` describes
+           and then shrugs at. The pill was the second-largest control in the bar and the only
+           one saying something the page says again.
+
+           IT IS SAID AGAIN, AND THAT WAS CHECKED RATHER THAN ASSUMED. All eleven top-level
+           pages state the age in <main>: /funding/btc "the snapshot taken 3 min ago", the hubs
+           an absolute "2026-09-02 07:28 UTC", /unlocks its block height and date. So hiding
+           the pill removes a duplicate, not the claim — which is what separates this from the
+           change above that hid the age and left an icon implying it.
+
+           THE CONNECTION-LOST STATE IS THE PART THAT MUST SURVIVE, and it does: interact.js
+           sets [data-lost] when the reader's own connection drops, and the pill comes back at
+           that moment and only then. A phone with a working connection gets the width; a phone
+           that has stopped receiving updates gets the warning, which is the one thing here
+           that exists to be seen. */
+        .freshness { display: none; }
+        .freshness[data-lost] { display: inline-flex; padding: 0 10px; gap: 6px; }
         .freshness__word { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+        /* With the pill gone the field takes every pixel the bar is not using for the two
+           controls that are destinations. The 560px desktop cap is meaningless here and only
+           ever bound at widths this query does not cover. */
+        .search { max-width: none; }
+        /* AND THE PLACEHOLDER FITS, WHICH TOOK A SECOND MEASUREMENT TO GET RIGHT. Comparing a
+           hidden span against the field's content box said the string was 2px too long, so the
+           first attempt shaved 4px off the input padding and called it solved. Writing the
+           placeholder into the field as a VALUE and comparing scrollWidth against clientWidth
+           said 17px — the honest number, and one that four pixels of padding was never going
+           to close. Two methods, one of them wrong, and the cheap one was the wrong one.
+
+           So the width comes from the bar instead. 12px matches `.page`, which already sits at
+           `margin: 0 12px`, so the field, the hamburger and the pin now line up with the content
+           beneath them rather than sitting 4px inside it — the gap was never deliberate. The
+           text is not shortened: the comment on `.search input` is right that it is the one
+           line telling a reader what the box searches, and a placeholder cannot differ between
+           viewports anyway. */
+        .topbar { padding: 0 12px; gap: 10px; }
+        .search input { padding: 0 14px 0 44px; }
         .cta { padding: 0; width: 40px; justify-content: center; }
         .cta__label { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
         /* ── MOBILE NAVIGATION: A DRAWER, NOT A TAB BAR ──────────────────────────────
