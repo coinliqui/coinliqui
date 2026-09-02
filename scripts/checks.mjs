@@ -60,6 +60,63 @@ export async function cssFor(html, origin) {
    Declared here, beside the functions, so adding one is a decision instead of an accident. */
 export const MEASUREMENT_EXPORTS = ["pageWeight", "colourPalettes"];
 
+/**
+ * A COOKIE-DRIVEN STATE THE GATE HAD NEVER RENDERED, AT A WIDTH IT WAS NEVER DESIGNED FOR.
+ *
+ * `rail=0` is a DESKTOP preference. The collapse control writes it, and an inline script in
+ * <head> puts `.is-collapsed` on <html> before first paint — on every viewport, because a
+ * cookie knows nothing about screen width. The mobile media query undid exactly one of the
+ * collapsed rules, `.is-collapsed .app`, and left the rest: the labels stayed clipped to 1px,
+ * the items kept `width: 48px; margin: 0 auto`, the wordmark stayed hidden.
+ *
+ * So a phone whose browser had ever collapsed the rail opened the navigation drawer as a
+ * centred column of eleven unlabelled glyphs, with no wordmark and no group headings. Reported
+ * from a real iPhone on 1 September 2026; reproduced at 375px with the cookie set, where
+ * .nav-item__label computed to width 1px and clip-path inset(50%).
+ *
+ * NOTHING COULD HAVE CAUGHT IT, WHICH IS THE POINT. The smoke pass renders every route and the
+ * degraded pass renders every "not yet" branch, but both send no cookies, so `.is-collapsed`
+ * had never been rendered by the gate at any width. This is the same shape as the fixtures that
+ * exist so the gate renders the branch production shows — and the collapsed rail had no fixture.
+ *
+ * THE CHECK IS STATIC AND EXACT rather than a rendering: every `.is-collapsed X` selector that
+ * appears OUTSIDE the mobile media query must also appear INSIDE it, because a collapsed rule
+ * with no mobile counterpart is a desktop decision that survives into the drawer. It needs no
+ * browser, no cookie and no viewport — only the stylesheet the page already serves.
+ */
+export function collapsedStateEscapesMobile(css, breakpoint = "max-width: 900px") {
+  const text = String(css ?? "");
+  /* The mobile block is found by its condition text and taken to the matching brace, counting
+     depth — a media query contains whole rules, so a naive slice to the next "}" would end at
+     the first declaration block inside it and report every rule after that as missing. */
+  /* MATCHED BY SHAPE, NOT BY THE STRING. The served stylesheet is minified, so the condition
+     arrives as `@media (max-width:900px)` with no space after the colon. An indexOf on the
+     authored spelling found nothing, `inside` stayed empty, and the check reported every
+     collapsed rule as unreset — including the ones that were. A gate that fires on a correct
+     stylesheet is worse than no gate, and this is the first thing it did. */
+  const cond = String(breakpoint).trim().split(/\s*:\s*/);
+  const head = new RegExp(`@media\\s*\\(\\s*${cond[0]}\\s*:\\s*${cond[1]}\\s*\\)`);
+  const at = text.search(head);
+  let inside = "";
+  if (at >= 0) {
+    const open = text.indexOf("{", at);
+    let depth = 0;
+    for (let i = open; i < text.length; i++) {
+      if (text[i] === "{") depth++;
+      else if (text[i] === "}" && --depth === 0) { inside = text.slice(open, i); break; }
+    }
+  }
+  const outside = at >= 0 ? text.slice(0, at) + text.slice(at + inside.length) : text;
+  const collapsed = (chunk) => new Set(
+    [...String(chunk).matchAll(/\.is-collapsed\s+([^,{}]+)/g)].map((m) => m[1].trim().replace(/\s+/g, " ")),
+  );
+  const declared = collapsed(outside);
+  const reset = collapsed(inside);
+  return [...declared]
+    .filter((sel) => !reset.has(sel))
+    .map((sel) => `.is-collapsed ${sel} has no counterpart inside @media (${breakpoint}) — a desktop rail preference that survives into the mobile drawer`);
+}
+
 export function undefinedClasses(html, css) {
   const defined = new Set([...css.matchAll(/\.(-?[_a-zA-Z][\w-]*)/g)].map((m) => m[1]));
   const used = new Set();

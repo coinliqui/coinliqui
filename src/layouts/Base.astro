@@ -1095,6 +1095,34 @@ const schema = {
            a POST and a full reload to do what an anchor does for free. */
         .rail__collapse { display: none !important; }
         .rail__close { display: inline-flex; }
+
+        /* THE COLLAPSED STATE ITSELF HAS TO GO, AND ONLY THE GRID WAS BEING UNDONE. `rail=0` is
+           a DESKTOP preference, written to a cookie by the collapse control above and read by
+           the inline script in <head>, which puts .is-collapsed on <html> before first paint —
+           on every viewport, because a cookie knows nothing about screen width. This block
+           already reset `.is-collapsed .app` back to one column and stopped there, so every
+           other collapsed rule survived into the drawer: the labels stayed clipped to 1px, the
+           items kept `width: 48px; margin: 0 auto`, and the wordmark stayed hidden.
+
+           What a phone showed was the drawer as a centred column of bare icons with no text and
+           no brand — reported from a real iPhone, then reproduced at 375px with the cookie set:
+           .nav-item__label computed to width 1px and clip-path inset(50%), .nav-item to 48px
+           wide with margin-left 93.5px. Eleven unlabelled glyphs are not a navigation; on a rail
+           the icon has its label beside it, and collapsing is a trade a reader makes knowingly
+           for horizontal room they do not have here anyway, since the drawer is an overlay.
+
+           So the drawer is always the expanded rail, whatever the cookie says. The values below
+           are the base ones restored verbatim — .nav-item padding 0 16px, .nav-group__title its
+           own three-value padding, .brand 0 8px — rather than plausible-looking substitutes. */
+        .is-collapsed .nav-item__label,
+        .is-collapsed .nav-group__title,
+        .is-collapsed .brand span {
+          position: static; width: auto; height: auto; margin: 0; padding: 0;
+          border: 0; overflow: visible; clip-path: none; white-space: nowrap;
+        }
+        .is-collapsed .nav-item { justify-content: flex-start; padding: 0 16px; width: auto; margin: 0; }
+        .is-collapsed .nav-group__title { display: block; padding: var(--gap-block) var(--inset-control-x) var(--gap-tight); }
+        .is-collapsed .brand { padding: 0 8px; }
         .navtoggle {
           display: grid; place-items: center; width: 44px; height: 44px; flex: 0 0 44px;
           margin-left: -8px; border-radius: var(--r-pill); color: var(--text-dim);

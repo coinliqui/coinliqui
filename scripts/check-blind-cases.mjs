@@ -39,6 +39,7 @@ import {
   leadsWithItsSubject,
   openingFigure,
   handRolledLegends,
+  collapsedStateEscapesMobile,
   llmsHostsAgree,
 } from "./checks.mjs";
 
@@ -413,6 +414,43 @@ const cases = [
          reading only the route file would score the page that computes most on this site at 0. */
       computedFigureFloor(
         [{ route: "/x/[y]", sources: ["import L from './L.astro'", "buildLiqMap(); corridorAt(); mixUsed();"] }], {}, 3).length === 0,
+    ],
+  },
+  {
+    check: "collapsedStateEscapesMobile",
+    why: "a phone whose browser had ever collapsed the desktop rail opened the navigation drawer as a centred column of eleven unlabelled icons — the mobile media query undid only .is-collapsed .app and left the rules that clip every label, and the gate sends no cookies so it had never rendered the collapsed state at any width",
+    fire: () => collapsedStateEscapesMobile(
+      ".is-collapsed .nav-item__label{width:1px}@media (max-width: 900px){.app,.is-collapsed .app{grid-template-columns:1fr}}"),
+    quiet: () => collapsedStateEscapesMobile(
+      ".is-collapsed .nav-item__label{width:1px}@media (max-width: 900px){.is-collapsed .nav-item__label{width:auto}}"),
+    also: () => [
+      /* THE BLOCK IS TAKEN TO ITS MATCHING BRACE, not to the next one. A media query holds whole
+         rules, so a naive slice ends at the first declaration block inside it and every rule
+         after that reads as missing — which would have made this check fire on a stylesheet
+         that is correct, the one way a gate loses its authority fastest. */
+      collapsedStateEscapesMobile(
+        ".is-collapsed .a{x:1}@media (max-width: 900px){.z{q:1}.is-collapsed .a{x:2}}").length === 0,
+      /* A selector list inside the reset counts: `.app, .is-collapsed .app` is how the one rule
+         that WAS reset is written. */
+      collapsedStateEscapesMobile(
+        ".is-collapsed .app{a:1}@media (max-width: 900px){.app,.is-collapsed .app{b:1}}").length === 0,
+      /* Whitespace between the compound parts is normalised, or `.brand  span` and `.brand span`
+         would read as two different selectors and one of them would look unreset forever. */
+      collapsedStateEscapesMobile(
+        ".is-collapsed .brand  span{x:1}@media (max-width: 900px){.is-collapsed .brand span{x:2}}").length === 0,
+      /* Every collapsed selector is named, not just the first: the real defect left five. */
+      collapsedStateEscapesMobile(
+        ".is-collapsed .a{x:1}.is-collapsed .b{x:1}@media (max-width: 900px){.is-collapsed .a{x:2}}").length === 1,
+      /* No media block at all is the worst case, not a pass. */
+      collapsedStateEscapesMobile(".is-collapsed .a{x:1}").length === 1,
+      collapsedStateEscapesMobile("").length === 0,
+      /* MINIFIED IS THE FORM IT ACTUALLY MEETS. The served stylesheet has no space after the
+         colon, and the first version matched the authored spelling with indexOf — so on the
+         real site it found no media block and reported all five correct resets as missing. */
+      collapsedStateEscapesMobile(
+        ".is-collapsed .a{x:1}@media (max-width:900px){.is-collapsed .a{x:2}}").length === 0,
+      collapsedStateEscapesMobile(
+        ".is-collapsed .a{x:1}@media(max-width :900px){.is-collapsed .a{x:2}}").length === 0,
     ],
   },
   {
