@@ -56,7 +56,30 @@ import { cssFor, undefinedClasses, undefinedVars, rawEnums, searchIndexGaps, unn
 /* Read out of the source, never transcribed here — see colourPalettes(). */
 const PALETTE = colourPalettes(readSource("src/lib/chart.ts"), readSource("src/layouts/Base.astro"));
 
-const PORT = 8791;
+/* THE PORT IS CHOSEN, NOT DECLARED, and the reason is another project on this machine.
+   8791 was hard-coded here, and a preview server for a DIFFERENT site — `python -m http.server
+   8791` serving sqady/site/dist — holds it whenever that project is being worked on. wrangler
+   then failed to bind and exited, `up()` asked the squatter for /robots.txt, got a 200 from a
+   directory listing and declared the worker ready. The run tested that directory: "/" came back
+   200 with 48KB of file index, every other route 404, and the gate reported 104 failures against
+   a build that was perfect — confirmed by serving the same dist by hand, where every route
+   answered 503 exactly as the cold pass expects.
+
+   Refusing to run when the port is busy was the first fix and it is still here, below, because
+   testing someone else's server must never be possible. But refusing is not enough: it makes
+   this repository's gate hostage to an unrelated preview, and the answer to a collision is to
+   stop colliding. The first silent port at or above the base is taken, so both can run at once. */
+const BASE_PORT = 8791;
+const free = async (port) =>
+  !(await fetch(`http://127.0.0.1:${port}/`, { signal: AbortSignal.timeout(900) })
+    .then(() => true)
+    .catch(() => false));
+let chosen = BASE_PORT;
+for (let p = BASE_PORT; p < BASE_PORT + 24; p++) {
+  if (await free(p)) { chosen = p; break; }
+}
+const PORT = chosen;
+if (PORT !== BASE_PORT) console.log(`  smoke: ${BASE_PORT} is in use by something else; running on ${PORT}`);
 /* WHAT EACH RENDERED PAGE SAID ABOUT ITS OWN LAST CHANGE, kept so it can be compared with what
    the SITEMAP says about the same URL further down. The two claims are made in different files
    by different code and had never been put side by side — see stampSurfacesAgree(). */
@@ -291,9 +314,10 @@ async function runMode(extraArgs, name) {
    — anything that answers 200 looks alive — so the check happens BEFORE the spawn, where the
    question is simply whether the port is free. */
 {
-  const busy = await fetch(`http://127.0.0.1:${PORT}/`, { signal: AbortSignal.timeout(1500) })
-    .then(() => true)
-    .catch(() => false);
+  /* Proved silent when the port was chosen, and proved again here: the two moments are seconds
+     apart and something can bind in between. A gate that tests another server is the one failure
+     mode that cannot be noticed from its own output. */
+  const busy = !(await free(PORT));
   if (busy) {
     console.error(`smoke: port ${PORT} is already answering before wrangler was started.`);
     console.error(`       Something else is listening there, and every route this run reports`);
