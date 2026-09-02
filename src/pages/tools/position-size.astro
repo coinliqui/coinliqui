@@ -7,6 +7,7 @@ import { liquidationPrice, tierFor, maintenanceMarginFraction, type MarginTable,
 import tables from "../../data/margin-tables.json";
 
 import Advisory from "../../components/Advisory.astro";
+import Figure from "../../components/Figure.astro";
 import Interests from "../../components/Interests.astro";
 import { priceDp } from "../../lib/funding.ts";
 const snap = await getSnapshot((Astro.locals as any)?.runtime?.env?.SNAPSHOT, import.meta.env.DEV);
@@ -189,32 +190,41 @@ const description = `Risk-based position sizing for ${perp.symbol} perpetuals th
     <button class="btn btn--primary" type="submit">Calculate</button>
   </form>
 
-  {/* NOT aria-hidden, AND THE GATE REFUSED THE FIRST VERSION THAT WAS. It looked decorative —
-      a rule and three ticks — so it was marked hidden from assistive technology, and
-      hiddenFromEveryone pointed out what that actually buried: "Liquidation $57,520.71 Stop
-      $59,957.35 Entry $63,113.00" is not decoration, it is the ordered triple this page exists
-      to state, and nowhere else does it appear in that order. A reader using a screen reader
-      wants exactly that sequence. Only the LINE and the ticks are decoration, and they carry no
-      text to hide. */}
-  <div class="scale">
-    <span class="scale__line"></span>
-    {scaleRows.map((m) => (
-      <>
-        <span class:list={["scale__mark", m.tone === "l" && "scale__mark--l", m.tone === "s" && "scale__mark--s"]} style={`left:${scaleAt(m.at)}%`}></span>
-        <span
-          class:list={["scale__tag", m.up ? "scale__tag--up" : "scale__tag--down",
-            scaleAt(m.at) < 15 && "scale__tag--start", scaleAt(m.at) > 85 && "scale__tag--end"]}
-          style={`left:${scaleAt(m.at)}%`}>{m.label}<b>{m.value}</b></span>
-      </>
-    ))}
-  </div>
-  <p class="legend">
-    Entry, stop and liquidation to scale. {verdict === "liq"
-      ? <>Liquidation sits between the entry and the stop, so <b>the stop never executes</b>.</>
-      : verdict === "wrongside"
-        ? <>The stop is not on the losing side of the entry, so nothing here can reach it.</>
-        : <>The stop is reached first, so the loss is bounded by what you budgeted.</>}
-  </p>
+  <Figure
+    title={`${perp.symbol} ${side} \u2014 where the stop sits against liquidation`}
+    lead={pct(liqMove)}
+    leadNote={`from entry to liquidation at ${leverage}\u00d7 \u00b7 your stop is ${pct(stopMove)} away`}
+    fetchedAt={snap.fetchedAt}
+    modelled>
+    {/* NOT aria-hidden, AND THE GATE REFUSED THE FIRST VERSION THAT WAS. It looked decorative —
+        a rule and three ticks — so it was marked hidden from assistive technology, and
+        hiddenFromEveryone pointed out what that actually buried: "Liquidation $57,520.71 Stop
+        $59,957.35 Entry $63,113.00" is not decoration, it is the ordered triple this page exists
+        to state, and nowhere else does it appear in that order. */}
+    <div class="scale">
+      <span class="scale__line"></span>
+      {scaleRows.map((m) => (
+        <>
+          <span class:list={["scale__mark", m.tone === "l" && "scale__mark--l", m.tone === "s" && "scale__mark--s"]} style={`left:${scaleAt(m.at)}%`}></span>
+          <span
+            class:list={["scale__tag", m.up ? "scale__tag--up" : "scale__tag--down",
+              scaleAt(m.at) < 15 && "scale__tag--start", scaleAt(m.at) > 85 && "scale__tag--end"]}
+            style={`left:${scaleAt(m.at)}%`}>{m.label}<b>{m.value}</b></span>
+        </>
+      ))}
+    </div>
+    <p slot="note">
+      {verdict === "liq"
+        ? <><b>Liquidation sits between the entry and the stop, so the stop never executes.</b> The
+          position is closed by the venue first, and the loss is the margin rather than the amount
+          you budgeted.</>
+        : verdict === "wrongside"
+          ? <>The stop is not on the losing side of the entry, so nothing modelled here can reach it.</>
+          : <><b>The stop is reached first</b>, so the loss is bounded by what you budgeted. Liquidation
+            lies further from the entry than the stop does, which is the whole test.</>}
+      {" "}Distances are to scale; the liquidation price is the venue&rsquo;s tier-correct one.
+    </p>
+  </Figure>
 
   <div class="cards" style="margin-top:12px">
     <div class="card card--lead">

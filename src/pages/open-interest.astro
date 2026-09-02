@@ -2,6 +2,7 @@
 import Base from "../layouts/Base.astro";
 import { getSnapshot, coldStart } from "../lib/hyperliquid.ts";
 import { pct, usd } from "../lib/funding.ts";
+import Figure from "../components/Figure.astro";
 const snap = await getSnapshot((Astro.locals as any)?.runtime?.env?.SNAPSHOT, import.meta.env.DEV);
 // Cold store: 503 + Retry-After rather than a page rendered from nothing.
 if (!snap.available) return coldStart();
@@ -42,11 +43,11 @@ const maxOi = topOi.length ? topOi[0].oiNotional : 1;
   </div>
   <p style="margin:0 0 20px;max-width:74ch"><strong class="num">{usd(total)}</strong> across {rows.length} coins. The turnover column is 24h volume divided by open interest: a high number means the position base is churning rather than accumulating. <a class="link" href="/learn/open-interest">What open interest does and does not tell you →</a></p>
   {topOi.length > 1 && (
-    <figure class="viz" style="max-width:640px">
-      <figcaption style="margin:0 0 10px">
-        The ten largest books, and what they are of the {usd(total)} total. Together they hold
-        {" "}<b>{pct(topShare)}</b> of it.
-      </figcaption>
+    <Figure
+      title={`Hyperliquid open interest, ${rows.length} coins`}
+      lead={pct(topShare)}
+      leadNote={`of the ${usd(total)} book sits in the ten largest contracts`}
+      fetchedAt={snap.fetchedAt}>
       <div class="bars">
         {topOi.map((p) => (
           <>
@@ -56,7 +57,12 @@ const maxOi = topOi.length ? topOi[0].oiNotional : 1;
           </>
         ))}
       </div>
-    </figure>
+      <p slot="note">
+        Open interest is one venue&rsquo;s book, not the market&rsquo;s: these are Hyperliquid&rsquo;s
+        positions only. Bars are scaled to the largest, {usd(maxOi)}, and the percentage beside each
+        is its share of the whole book.
+      </p>
+    </Figure>
   )}
 
   <div class="panel"><table class="tbl" data-sortable>

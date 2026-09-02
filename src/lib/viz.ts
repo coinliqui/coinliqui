@@ -47,6 +47,13 @@ export interface DistributionOpts {
   h?: number;
   /** Share of the data the axis must cover. The rest is clamped into the end buckets and counted. */
   cover?: number;
+  /* WHICH COLOUR LANGUAGE THE SIGN SPEAKS, and it is not a preference. This site keeps two and
+     they are not interchangeable: amber/cyan mean the direction of a FUNDING payment, green/red
+     mean price up and down, and src/lib/chart.ts explains at length why funding is the one that
+     moved. The first breadth figure on the home page drew a 24-hour PRICE change in amber and
+     cyan — the same defect as the /coins legend that labelled price arrows with funding words,
+     committed a day later by the person who had just fixed it. */
+  tone?: "funding" | "price";
   title: string;
 }
 
@@ -82,7 +89,7 @@ export interface DistributionResult {
  * the caller is handed that count to say so.
  */
 export function distribution(values: number[], opts: DistributionOpts): DistributionResult | null {
-  const { signed = true, buckets = 21, w = 600, h = 120, cover = 0.8, title } = opts;
+  const { signed = true, buckets, w = 600, h = 120, cover = 0.8, tone = "funding", title } = opts;
   const vals = values.filter((v) => Number.isFinite(v));
   if (!vals.length) return null;
 
@@ -117,9 +124,17 @@ export function distribution(values: number[], opts: DistributionOpts): Distribu
      the caption reports what was clamped. */
   if (signed && vals.some((v) => v < 0)) lo = Math.min(lo, -step0);
 
-  /* An odd bucket count puts one bucket astride zero, so the centre bar is the contracts that
-     are near flat rather than an edge between two colours. */
-  const n = signed && buckets % 2 === 0 ? buckets + 1 : buckets;
+  /* THE BUCKET COUNT COMES FROM THE SAMPLE, and twenty-one was a number I typed. Fifty values
+     across twenty-one buckets filled six of them: the figure read as a picket fence with one
+     tall post, which is what a histogram looks like when it is asked for more resolution than
+     the data has. Square root of the count is the ordinary choice and gives seven or eight here,
+     which is also close to what Sturges gives at this size.
+
+     An odd count puts one bucket astride zero, so the centre bar is the values that are near
+     flat rather than an edge between two colours. */
+  const auto = Math.max(5, Math.min(15, Math.round(Math.sqrt(vals.length))));
+  const want = buckets ?? auto;
+  const n = signed && want % 2 === 0 ? want + 1 : want;
   const counts = new Array<number>(n).fill(0);
   const step = (hi - lo) / n;
   let over = 0;
@@ -143,14 +158,19 @@ export function distribution(values: number[], opts: DistributionOpts): Distribu
       : Math.abs(mid) < step * 0.5
         ? INK.dim
         : mid > 0
-          ? "var(--pays-l)"
-          : "var(--pays-s)";
+          ? (tone === "price" ? INK.up : "var(--pays-l)")
+          : (tone === "price" ? INK.down : "var(--pays-s)");
     body += rect(i * bw + 1, padT + plotH - bh, Math.max(1, bw - 2), bh, fill, `rx="2"`);
   }
   if (signed) {
     const zeroX = ((0 - lo) / (hi - lo)) * w;
     body += line(zeroX, padT - 2, zeroX, padT + plotH + 2, INK.zero, 1.5);
   }
+  /* A REFERENCE TO MEASURE AGAINST. Bars in an empty well can be compared with each other and
+     with nothing else; one gridline at half the tallest bucket turns "that one is big" into "that
+     one is most of them". Drawn under nothing, in the gridline ink, so it never competes. */
+  const halfY = padT + plotH / 2;
+  body += line(0, halfY, w, halfY, INK.hair, 1);
   body += line(0, padT + plotH, w, padT + plotH, INK.hair, 1);
 
   /* Where zero falls as a share of the width, so a caller can put the label at the mark rather

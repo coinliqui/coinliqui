@@ -4,6 +4,8 @@ import { SITE } from "../lib/site.ts";
 import { getSnapshot, coldStart } from "../lib/hyperliquid.ts";
 import { pct, usd, paysClass, paysArrow, paysLabel, LEGEND_FUNDING, VENUE_LABEL, type Venue } from "../lib/funding.ts";
 import { readCachedFlips, describeCoverage } from "../lib/flips.ts";
+import { distribution } from "../lib/viz.ts";
+import Figure from "../components/Figure.astro";
 
 const env = (Astro.locals as any)?.runtime?.env;
 const snap = await getSnapshot(env?.SNAPSHOT, import.meta.env.DEV);
@@ -45,6 +47,28 @@ const btc = snap.perps.find((p) => p.symbol === "BTC");
 const maxOi = Math.max(...snap.perps.map((p) => p.oiNotional || 0), 1);
 const top = snap.perps.slice(0, 15);
 const stamp = new Date(snap.fetchedAt).toISOString().slice(0, 16).replace("T", " ") + " UTC";
+
+/* MARKET BREADTH, WHICH IS THE ONE THING A FRONT PAGE OF TABLES COULD NOT SAY. Fifty 24-hour
+   changes are on this page as numbers and nowhere as a shape, so "is this a red day or a mixed
+   one" — the question a reader opens a market site to answer in one second — took reading fifty
+   rows. Unlike funding, this column genuinely spreads: it is not pinned to a venue constant, so
+   a histogram is the right figure here and was the wrong one there. */
+const changes = snap.perps.map((p) => p.change24h).filter((v) => Number.isFinite(v));
+const upCount = changes.filter((v) => v > 0).length;
+const downCount = changes.filter((v) => v < 0).length;
+const ascChg = [...changes].sort((a, b) => a - b);
+const medianChg = ascChg.length
+  ? ascChg.length % 2
+    ? ascChg[(ascChg.length - 1) / 2]
+    : (ascChg[ascChg.length / 2 - 1] + ascChg[ascChg.length / 2]) / 2
+  : NaN;
+const breadth = distribution(changes, {
+  /* PRICE, SO GREEN AND RED. The first version of this figure took the default and drew a
+     24-hour price change in the funding pair — amber for up, cyan for down — which is the same
+     mistake as a legend calling price arrows a funding direction. */
+  tone: "price",
+  title: `24-hour change across ${changes.length} Hyperliquid perpetuals`,
+});
 
 // The dated sentence is the most citable element on the site. Numbers are set in the
 // text colour at medium weight; the prose around them is dim — so it reads as a sentence,
@@ -120,6 +144,30 @@ const description =
       </div>
       <a class="btn btn--primary" href="/liquidations">Open the map</a>
     </div>
+
+    {breadth && (
+      <Figure
+        title={`24-hour change across ${changes.length} perpetuals`}
+        lead={`${upCount} up, ${downCount} down`}
+        leadNote={`median ${pct(medianChg)} \u00b7 Hyperliquid marks`}
+        fetchedAt={snap.fetchedAt}>
+        <Fragment set:html={breadth.svg} />
+        <div class="viz__axis">
+          <span>{pct(breadth.lo)}</span>
+          {breadth.zeroAt !== null && <span class="viz__zero" style={`left:${breadth.zeroAt}%`}>0%</span>}
+          <span>{pct(breadth.hi)}</span>
+        </div>
+        <p slot="note">
+          Green is a rise and red a fall — the same pair the price candles use elsewhere on this
+          site, never the amber and cyan that mean a funding direction. Each bar counts the
+          contracts whose 24-hour move landed in that band, so the tall part is where the market
+          actually is rather than where its extremes are. The centre band straddles
+          zero and stays neutral because its sign is an artefact of where the bucket edges fall.
+          {breadth.over > 0 && <> The axis covers the middle of the range, so <b>{breadth.over}</b> further
+          out {breadth.over === 1 ? "sits" : "sit"} in the end bands.</>}
+        </p>
+      </Figure>
+    )}
 
     <h2 class="section">Funding sign flips</h2>
     {/* THE SENTENCE PROMISED THE SET AND THE TABLE SHOWED A SAMPLE.

@@ -1,0 +1,100 @@
+---
+/* =========================================================================================
+   THE FRAME THAT MAKES A FIGURE SHAREABLE, and the reason it exists is a screenshot.
+
+   The first three figures on this site were correct and unusable away from the page. Cropped
+   out — which is exactly what happens to a chart worth sharing — a reader got a dark rectangle
+   with some bars in it: no title, no number, no date, no source. Every figure on CoinGlass that
+   ends up in a Telegram channel carries all four inside the image, and that is not decoration,
+   it is the difference between a picture that travels and one that does not.
+
+   SO THE CARD IS THE UNIT, not the plot. Title says what is being measured. The lead is the one
+   number a reader would repeat out loud — the takeaway, at heading size, because a figure whose
+   point has to be inferred from bar heights has not made it. Then the plot. Then a footer that
+   names the origin and the moment: a figure without a timestamp is a claim about "now" that
+   stops being true silently, which on this site is the defect everything else is built to avoid.
+
+   THE STAMP IS THE DATA'S AGE, NOT THE PAGE'S. It takes the same `fetchedAt` the freshness pill
+   and the page's own clock line take, so a card cropped from the page cannot outlive the reading
+   it was drawn from, and cannot disagree with the sentence beside it.
+   ========================================================================================= */
+import { SITE } from "../lib/site.ts";
+
+interface Props {
+  /** What is being measured. Shown at the top of the card and used as the accessible name. */
+  title: string;
+  /** The one number a reader repeats. Rendered large; omit only when there is genuinely none. */
+  lead?: string;
+  /** A short line under the lead saying what the lead is. */
+  leadNote?: string;
+  /** The snapshot the figure was drawn from. */
+  fetchedAt?: number;
+  /** Set when the figure's own numbers are modelled rather than observed. */
+  modelled?: boolean;
+  class?: string;
+}
+const { title, lead, leadNote, fetchedAt, modelled = false, class: cls } = Astro.props;
+const stamp = Number.isFinite(fetchedAt)
+  ? new Date(fetchedAt!).toISOString().slice(0, 16).replace("T", " ") + " UTC"
+  : null;
+---
+
+<figure class:list={["fig", cls]}>
+  <figcaption class="fig__head">
+    <span class="fig__title">{title}</span>
+    {lead && <strong class="fig__lead">{lead}</strong>}
+    {leadNote && <span class="fig__leadnote">{leadNote}</span>}
+  </figcaption>
+
+  <div class="fig__plot"><slot /></div>
+
+  {/* The slot below is for the sentence that would otherwise have to be inferred from the
+      picture. It sits INSIDE the card because a caption left outside is the first thing a crop
+      loses, and it is the part that says what the bars mean. */}
+  {Astro.slots.has("note") && <div class="fig__note"><slot name="note" /></div>}
+
+  <div class="fig__foot">
+    <span class="fig__brand">{SITE.name.toLowerCase()}.com</span>
+    {modelled && <span class="fig__tag">modelled</span>}
+    {stamp && <time datetime={new Date(fetchedAt!).toISOString()}>{stamp}</time>}
+  </div>
+</figure>
+
+<style is:global>
+  /* A CARD, NOT A STRIP. Same surface and corner as .panel so a figure and a table read as two
+     objects of one system, and bordered so a screenshot has an edge to end at. */
+  .fig {
+    display: block; margin: 0 0 var(--gap-block); padding: var(--inset-panel);
+    /* --r-md and --surface-2, the panel's own pair, rather than the --r-card I invented: the
+       gate's undefinedVars check caught it on the first run, which is what it is for. A figure
+       and a table beside it are two objects of one system or they are two designs. */
+    background: var(--surface-2); border: 1px solid var(--border-soft); border-radius: var(--r-md);
+    max-width: 720px;
+  }
+  .fig__head { display: block; margin: 0 0 var(--gap-block); }
+  .fig__title { display: block; font-size: var(--fs-sm); color: var(--text-dim); }
+  /* THE LEAD IS THE FIGURE'S POINT, said in type rather than left to bar heights. */
+  .fig__lead { display: block; font-size: 26px; font-weight: 600; line-height: 1.15; color: var(--text); font-variant-numeric: tabular-nums; margin-top: 2px; }
+  .fig__leadnote { display: block; font-size: var(--fs-sm); color: var(--text-faint); margin-top: 2px; }
+  .fig__plot > svg { display: block; width: 100%; height: auto; }
+  .fig__note { font-size: var(--fs-sm); color: var(--text-faint); line-height: 1.55; }
+  /* NO `:empty { display: none }` HERE, AND THE GATE WAS RIGHT ABOUT IT. hiddenFromEveryone
+     reads the stylesheet statically: it sees a display:none rule matching .fig__note, cannot
+     evaluate :empty, and reports the note's text as something only a naive extractor receives.
+     Astro can answer the question properly — Astro.slots.has() — so the element is not rendered
+     at all when there is nothing in it, and no rule has to hide anything. */
+  .fig__note p { margin: var(--gap-pair) 0 0; }
+  /* THE FOOTER TRAVELS WITH THE PICTURE. Brand and stamp are the two things a cropped figure
+     cannot be honest without: where it came from, and when it was true. */
+  .fig__foot {
+    display: flex; align-items: center; gap: var(--gap-cluster); margin-top: var(--gap-block);
+    padding-top: var(--gap-pair); border-top: 1px solid var(--border-soft);
+    font-size: var(--fs-xs); color: var(--text-faint);
+  }
+  .fig__brand { font-weight: 600; color: var(--text-dim); }
+  .fig__foot time { margin-left: auto; font-variant-numeric: tabular-nums; }
+  .fig__tag {
+    padding: 1px 6px; border-radius: var(--r-pill);
+    border: 1px solid var(--border); color: var(--text-faint);
+  }
+</style>

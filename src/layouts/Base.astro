@@ -894,6 +894,11 @@ const schema = {
       .bars__track { height: 10px; border-radius: 3px; background: var(--surface-3); overflow: hidden; }
       .bars__fill { display: block; height: 100%; border-radius: 3px; background: var(--text-dim); }
       .bars__value { font-variant-numeric: tabular-nums; color: var(--text); white-space: nowrap; }
+      /* A SIGNED BAR TAKES THE FUNDING PAIR, never green and red: those are the candles'. */
+      .bars__fill--l { background: var(--pays-l); }
+      .bars__fill--s { background: var(--pays-s); }
+      .bars__group { grid-column: 1 / -1; font-size: var(--fs-xs); color: var(--text-faint); margin-top: var(--gap-pair); }
+      .bars__group:first-child { margin-top: 0; }
 
       /* A SCALE WITH MARKS ON IT: entry, stop and liquidation as positions rather than as three
          numbers in three cards. The order and the spacing are the whole fact — whether the stop
