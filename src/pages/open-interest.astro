@@ -4,6 +4,7 @@ import { getSnapshot, coldStart } from "../lib/hyperliquid.ts";
 import { pct, usd } from "../lib/funding.ts";
 import Figure from "../components/Figure.astro";
 import StatStrip from "../components/StatStrip.astro";
+import { readOiHistory, oiChange } from "../lib/oi-history.ts";
 const snap = await getSnapshot((Astro.locals as any)?.runtime?.env?.SNAPSHOT, import.meta.env.DEV);
 // Cold store: 503 + Retry-After rather than a page rendered from nothing.
 if (!snap.available) return coldStart();
@@ -18,6 +19,13 @@ const total = rows.reduce((s, p) => s + p.oiNotional, 0);
 
    HTML, NOT AN SVG: this figure is nine parts label and value to one part geometry, and text in a
    viewBox scales with the figure, cannot be selected and cannot be extracted. See `.bars`. */
+/* THE MOVE, WHICH THIS PAGE COULD NOT SHOW UNTIL THE WORKER STARTED KEEPING IT. Open interest
+   was a level here and never a change, because nothing stored yesterday — see
+   migrations/0003_oi_snapshot.sql. The state matters as much as the number: for the first day
+   after that table exists there is no comparison to make, and the page says so rather than
+   printing a change of zero it cannot support. */
+const oiHist = await readOiHistory((Astro.locals as any)?.runtime?.env?.DB, Date.now());
+
 const stripVol = rows.reduce((t, p) => t + (Number.isFinite(p.dayNtlVlm) ? p.dayNtlVlm : 0), 0);
 const stripTurn = total > 0 ? stripVol / total : NaN;
 
@@ -53,6 +61,16 @@ const maxOi = topOi.length ? topOi[0].oiNotional : 1;
     </p>
   </div>
   <p style="margin:0 0 20px;max-width:74ch">The turnover column is 24h volume divided by open interest: a high number means the position base is churning rather than accumulating. <a class="link" href="/learn/open-interest">What open interest does and does not tell you →</a></p>
+  {oiHist.status === "warming" && (
+    <p class="clock" style="margin:0 0 12px">
+      The {oiHist.hours}-hour change column appears once there is a reading that old to compare
+      against. This site keeps open interest hourly and has
+      {" "}<b>{oiHist.covered < 1 ? "less than an hour" : `${Math.floor(oiHist.covered)} hours`}</b> of it
+      so far, so there is nothing yet to subtract from &mdash; which is a different statement from
+      a change of zero, and the reason the column is absent rather than empty.
+    </p>
+  )}
+
   <StatStrip items={[
     { label: "Coins", value: String(rows.length), href: "/coins" },
     { label: "Open interest", value: usd(total) },
@@ -84,12 +102,26 @@ const maxOi = topOi.length ? topOi[0].oiNotional : 1;
   )}
 
   <div class="panel"><table class="tbl" data-sortable>
-    <thead><tr><th>Coin</th><th class="num">Open interest <span class="thscope">Hyperliquid</span></th><th class="num">24h volume <span class="thscope">Hyperliquid</span></th><th class="num">Turnover (24h volume ÷ OI)</th><th class="num">Max leverage</th></tr></thead>
+    <thead><tr><th>Coin</th><th class="num">Open interest <span class="thscope">Hyperliquid</span></th>{oiHist.status === "ready" && <th class="num">Change <span class="thscope">{oiHist.hours}h</span></th>}<th class="num">24h volume <span class="thscope">Hyperliquid</span></th><th class="num">Turnover (24h volume ÷ OI)</th><th class="num">Max leverage</th></tr></thead>
     <tbody>
       {rows.map((p) => (
         <tr>
           <td><a href={`/funding/${p.symbol.toLowerCase()}`}>{p.symbol}</a></td>
           <td class="num">{usd(p.oiNotional)}</td>
+          {oiHist.status === "ready" && (() => {
+            const d = oiChange(oiHist, p.symbol, p.oiNotional);
+            /* AN ABSENCE, NOT A ZERO. A contract listed since the stored reading has no history,
+               and printing 0.00% for it would claim it had not moved. */
+            return d === null
+              ? <td class="num"><span class="faint">—</span></td>
+              /* NEUTRAL, AND THE GATE WAS RIGHT TO REFUSE THE FIRST VERSION. It used the funding
+                 pair, and colourLegend pointed out that this page never says what amber and cyan
+                 encode — because they encode who PAYS whom, and a book growing is not a payment.
+                 This site keeps exactly two colour languages and both are spoken for: amber and
+                 cyan are the funding direction, green and red are the candles'. A third quantity
+                 does not get to borrow one; the sign carries the sign. */
+              : <td class="num">{d >= 0 ? "+" : "\u2212"}{pct(Math.abs(d))}</td>;
+          })()}
           <td class="num">{usd(p.dayNtlVlm)}</td>
           <td class="num">{p.oiNotional > 0 ? (p.dayNtlVlm / p.oiNotional).toFixed(2) + "×" : "—"}</td>
           <td class="num">{p.maxLeverage}×</td>

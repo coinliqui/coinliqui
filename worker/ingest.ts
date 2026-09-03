@@ -260,6 +260,10 @@ interface RunResult {
   indexnow?: string;
   /** What the flip precompute did, so a stalled feed is visible in the run log. */
   flips?: string;
+  /** What the hourly open-interest write did. Absent on the eleven ticks an hour that skip it,
+   *  which is why the field is optional rather than reported as zero — a step that did not run
+   *  and a step that ran and found nothing are different facts. */
+  oi?: string;
   funding?: number;
   candleError?: string;
   /** Minutes since each bulk sweep last completed a full cycle — the only way a 2h/6h/12h
@@ -513,6 +517,36 @@ async function run(env: Env): Promise<RunResult> {
       if (!collapsed) await env.DB.batch(rows.map((r) => insert.bind(...r)));
 
       await env.DB.prepare("DELETE FROM funding_snapshot WHERE at < ?1")
+        .bind(at - RETAIN_HOURS * 3_600_000)
+        .run();
+    }
+
+    /* OPEN INTEREST OVER TIME, WHICH THIS SITE HAS NEVER KEPT. It could state what open interest
+       IS and never what it had done, because funding_snapshot stores a rate and nothing else.
+       Every aggregator in this space leads with "OI Change 24h"; the figure is not hard, the
+       reading was simply never stored, and a delta cannot be backfilled — it exists only if
+       somebody kept yesterday.
+
+       ONCE AN HOUR, ON THE FIRST TICK OF IT. The cron fires every five minutes and open interest
+       does not move on that timescale in any way a reader needs, so the minute is the gate: 50
+       rows an hour is 1,200 a day, against 14,400 for a five-minute cadence, on a worker already
+       spending ~43,000 of its 100,000 D1 row-writes a day on funding. A missed tick skips an
+       hour rather than corrupting one, and the reader takes the nearest earlier row anyway.
+
+       COLLAPSED TICKS ARE EXCLUDED, for the same reason they are excluded above: a partial fetch
+       entering history is indistinguishable from the market having moved, and every future delta
+       would inherit it as though it were data. */
+    const firstTickOfHour = new Date(at).getUTCMinutes() < 5;
+    if (!collapsed && firstTickOfHour) {
+      const oiRows = snap.perps
+        .filter((p) => Number.isFinite(p.oiNotional) && p.oiNotional > 0)
+        .map((p) => [p.symbol, p.oiNotional, at] as const);
+      if (oiRows.length) {
+        const insertOi = env.DB.prepare("INSERT INTO oi_snapshot (symbol, oi, at) VALUES (?1, ?2, ?3)");
+        await env.DB.batch(oiRows.map((r) => insertOi.bind(...r)));
+        result.oi = `${oiRows.length} symbols recorded`;
+      }
+      await env.DB.prepare("DELETE FROM oi_snapshot WHERE at < ?1")
         .bind(at - RETAIN_HOURS * 3_600_000)
         .run();
     }

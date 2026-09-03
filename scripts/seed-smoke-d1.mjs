@@ -105,7 +105,25 @@ for (let i = 1; i <= 24; i++) {
     JSON.stringify({ venues: { hyperliquid: 50 }, sweepAgeMin: { hourly: 30, daily: 300, funding: 120 } })]);
 }
 
+/* OPEN INTEREST OVER TIME, so the gate renders the branch production will show TOMORROW. The
+   table is new: on the live database it holds nothing until the worker's first hourly write, so
+   /open-interest takes the "collecting" branch for a day and then switches to a change column
+   that has never been rendered anywhere. That is the exact shape this fixture directory exists
+   to prevent — see the identity:reach and published:retired notes in the KV seeder.
+
+   Two symbols move and one does not, so the sign, the colour and a genuine zero are all on the
+   page; DOGE is deliberately ABSENT so the "listed since the stored reading" branch — an em dash
+   rather than a change of zero — is rendered too. */
+const oiAgo = (h) => now - h * 3_600_000;
+const oiRows = [];
+for (let h = 26; h >= 1; h--) {
+  oiRows.push(["BTC", 2_600_000_000 * (1 + (26 - h) * 0.002), oiAgo(h)]);
+  oiRows.push(["ETH", 1_100_000_000 * (1 - (26 - h) * 0.001), oiAgo(h)]);
+  oiRows.push(["SOL", 420_000_000, oiAgo(h)]);
+}
+
 const SCHEMA = [
+  `CREATE TABLE IF NOT EXISTS oi_snapshot (symbol TEXT NOT NULL, oi REAL NOT NULL, at INTEGER NOT NULL)`,
   `CREATE TABLE IF NOT EXISTS funding_snapshot (symbol TEXT NOT NULL, venue TEXT NOT NULL, apr REAL NOT NULL, at INTEGER NOT NULL)`,
   `CREATE TABLE IF NOT EXISTS upstream_check (at INTEGER NOT NULL, source TEXT NOT NULL, status INTEGER NOT NULL, ms INTEGER NOT NULL, ok INTEGER NOT NULL, note TEXT)`,
 ];
@@ -125,9 +143,12 @@ for (const f of files) {
   try {
     for (const s of SCHEMA) db.exec(s);
     db.exec("DELETE FROM funding_snapshot");
+    db.exec("DELETE FROM oi_snapshot");
     db.exec("DELETE FROM upstream_check");
     const insF = db.prepare("INSERT INTO funding_snapshot (symbol,venue,apr,at) VALUES (?,?,?,?)");
     for (const r of fs) insF.run(...r);
+    const insO = db.prepare("INSERT INTO oi_snapshot (symbol,oi,at) VALUES (?,?,?)");
+    for (const r of oiRows) insO.run(...r);
     const insU = db.prepare("INSERT INTO upstream_check (at,source,status,ms,ok,note) VALUES (?,?,?,?,?,?)");
     for (const r of uc) insU.run(...r);
     const n = db.prepare("SELECT count(*) n FROM funding_snapshot").get().n;
@@ -138,5 +159,5 @@ for (const f of files) {
   }
 }
 
-console.log(`seeded ${written}/${files.length} store(s) in ${d1dir}: ${fs.length} funding_snapshot rows across ${COINS.length + 3} contracts, ${uc.length} upstream_check rows`);
+console.log(`seeded ${written}/${files.length} store(s) in ${d1dir}: ${fs.length} funding_snapshot rows across ${COINS.length + 3} contracts, ${uc.length} upstream_check rows, ${oiRows.length} oi_snapshot rows over 26h — the gate renders the change column production only shows after a day`);
 if (!written) process.exit(1);

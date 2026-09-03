@@ -1183,7 +1183,7 @@ async function stepCorroborate(env, now = Date.now()) {
 }
 
 // worker/build-stamp.ts
-var WORKER_BUILD = "a7505e5981f0";
+var WORKER_BUILD = "a1e3d0bcb3ff";
 
 // worker/ingest.ts
 var RETAIN_HOURS = 720;
@@ -1346,6 +1346,16 @@ async function run(env) {
       const insert = env.DB.prepare("INSERT INTO funding_snapshot (symbol, venue, apr, at) VALUES (?1, ?2, ?3, ?4)");
       if (!collapsed) await env.DB.batch(rows.map((r) => insert.bind(...r)));
       await env.DB.prepare("DELETE FROM funding_snapshot WHERE at < ?1").bind(at - RETAIN_HOURS * 36e5).run();
+    }
+    const firstTickOfHour = new Date(at).getUTCMinutes() < 5;
+    if (!collapsed && firstTickOfHour) {
+      const oiRows = snap.perps.filter((p) => Number.isFinite(p.oiNotional) && p.oiNotional > 0).map((p) => [p.symbol, p.oiNotional, at]);
+      if (oiRows.length) {
+        const insertOi = env.DB.prepare("INSERT INTO oi_snapshot (symbol, oi, at) VALUES (?1, ?2, ?3)");
+        await env.DB.batch(oiRows.map((r) => insertOi.bind(...r)));
+        result.oi = `${oiRows.length} symbols recorded`;
+      }
+      await env.DB.prepare("DELETE FROM oi_snapshot WHERE at < ?1").bind(at - RETAIN_HOURS * 36e5).run();
     }
     try {
       const ages = {};
