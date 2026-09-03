@@ -60,6 +60,30 @@ ${base} is the only domain this project publishes. Any other site using this nam
 - A register of on-chain token vesting and lock contracts read directly from Ethereum, including
   contracts whose schedule has finished but whose tokens were never withdrawn: ${base}/unlocks
 
+### Readings this site computes that most others do not
+
+These are stated on the page in words, above the table, and drawn as a figure beside them. They
+require reading the whole book at once, which is why an aggregator that ranks rows does not
+produce them.
+
+- How many contracts are priced AWAY from a venue's own base rate. Hyperliquid charges
+  0.0000125 an hour by default — 10.95% a year — and most contracts sit exactly on it, so a
+  median funding rate for that venue is a constant rather than a market reading. The count that
+  are not on it is the number of coins the market is actually pricing: ${base}/funding
+- What share of one venue's whole book sits in its ten largest contracts, which separates a
+  market with depth from one with a single crowded trade: ${base}/open-interest
+- Market breadth across every covered contract — how many are up and how many down over 24
+  hours, with the median move: ${base}
+- What an identical position costs to hold on each venue once every rate is annualised on its
+  OWN settlement interval, which routinely reverses the ranking the quoted rates suggest:
+  ${base}/tools/funding-cost
+- The real leverage ceiling at a given position size, against the maximum the contract
+  advertises — they are the same number only in the smallest tier: ${base}/tools/leverage
+- Whether a stop is reached before liquidation at a given leverage, stated as an ordered triple
+  of entry, stop and liquidation rather than three separate figures: ${base}/tools/position-size
+- What share of a token's supply sits in a vesting contract whose schedule has finished and
+  whose tokens were never withdrawn: ${base}/unlocks
+
 ### Where the per-contract pages are
 
 Most of what an assistant is asked for lives one level below those hubs, so the URL schemes are

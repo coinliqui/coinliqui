@@ -12,7 +12,7 @@
    — this runs against production and its whole claim is that it asserts what a client on the
    open internet receives. underLinked() decides nothing about the site; it turns a count into
    a sentence, and it lives in checks.mjs so it is covered by the gate's own fixture suite. */
-import { underLinked, duplicateHeadMetadata, leadsWithItsSubject, llmsHostsAgree, openingFigure, PROSE_ROUTES } from "./checks.mjs";
+import { underLinked, duplicateHeadMetadata, leadsWithItsSubject, llmsHostsAgree, openingFigure, PROSE_ROUTES, advertisedReadingsExist } from "./checks.mjs";
 
 const ORIGIN = process.argv[2] || "https://coinliqui.com";
 const CRAWLERS = [
@@ -361,6 +361,9 @@ console.log("\n5. sitemap");
      edge alone is caught here and nowhere else. Not one extra request: this walk fetches every
      page already. */
   const figureless = [];
+  /* Which pages actually carry a card, collected in the walk that already fetches them, so the
+     promise llms.txt makes can be checked against the pages rather than against a list. */
+  const hasLead = new Map();
   const linkNorm = (h) => { const p = h.split("#")[0].split("?")[0]; return p.length > 1 ? p.replace(/\/$/, "") : p; };
   for (const u of urls) {
     const r = await fetchAs(pathOf(u) || "/", "GPTBot/1.1");
@@ -372,6 +375,7 @@ console.log("\n5. sitemap");
         if (t !== self && inbound.has(t)) inbound.set(t, inbound.get(t) + 1);
       }
       if (!(self in PROSE_ROUTES) && !openingFigure(r.body)) figureless.push(self);
+      hasLead.set(self, /class="fig__lead"/.test(r.body));
       heads.push({
         path: self,
         title: (r.body.match(/<title>([\s\S]*?)<\/title>/) ?? [, ""])[1].trim(),
@@ -435,6 +439,13 @@ console.log("\n5. sitemap");
       hollow.push(u);
     }
   }
+  {
+    const llms = await fetchAs("/llms.txt", "GPTBot/1.1");
+    const gaps = advertisedReadingsExist(llms.body, hasLead);
+    gaps.length ? bad(gaps.join("; "))
+      : ok("every reading llms.txt advertises is on a page that still computes one — the file an assistant reads to decide what this domain is for cannot promise a computation that has gone");
+  }
+
   figureless.length
     ? bad(`opening 700 characters carry no figure on ${figureless.length} URL(s): ${figureless.slice(0, 8).join(", ")}`)
     : ok(`every sitemap URL that owes a figure states one in the first 700 characters an extractor reads — ${Object.keys(PROSE_ROUTES).length} prose pages exempt, each with a recorded reason`);

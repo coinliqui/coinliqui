@@ -39,6 +39,7 @@ import {
   leadsWithItsSubject,
   openingFigure,
   leadReachesTheOpening,
+  advertisedReadingsExist,
   handRolledLegends,
   collapsedStateEscapesMobile,
   llmsHostsAgree,
@@ -490,6 +491,21 @@ const cases = [
       /* Arrows in a table and an explanation in a distant paragraph claim nothing about each
          other; the binding this forbids is one line long. */
       handRolledLegends([{ path: "f.astro", src: "<td>{arrow(chg)} 0.63%</td>\n<p>Positive funding means longs pay shorts.</p>" }]).length === 0,
+    ],
+  },
+  {
+    check: "advertisedReadingsExist",
+    why: "llms.txt tells an assistant what a domain is for, and this file has already been wrong twice about checkable things — it claimed the CSP named one script host on a morning when it named two, and dated Google Analytics' return four days late; a list of readings goes stale the moment a page stops computing one, and nothing about the page would look broken",
+    fire: () => advertisedReadingsExist("### Readings this site computes that most others do not\n\n- a: https://x.com/funding\n- b: https://x.com/open-interest\n\n### Elsewhere\n- https://x.com/other\n", new Map([["/funding", true]])),
+    quiet: () => advertisedReadingsExist("### Readings this site computes that most others do not\n\n- a: https://x.com/funding\n- b: https://x.com/open-interest\n\n### Elsewhere\n- https://x.com/other\n", new Map([["/funding", true], ["/open-interest", true]])),
+    also: () => [
+      /* The section vanishing is itself a failure: it was added to be read. */
+      advertisedReadingsExist("no section here", new Map()).length === 1,
+      /* URLs in LATER sections are not this check's business — the file names many pages that
+         are lists rather than readings, and demanding a figure on all of them would be false. */
+      advertisedReadingsExist("### Readings this site computes that most others do not\n\n- a: https://x.com/funding\n- b: https://x.com/open-interest\n\n### Elsewhere\n- https://x.com/other\n", new Map([["/funding", true], ["/open-interest", true], ["/other", false]])).length === 0,
+      /* A page present but WITHOUT a figure fails, which is the whole point. */
+      advertisedReadingsExist("### Readings this site computes that most others do not\n\n- a: https://x.com/funding\n- b: https://x.com/open-interest\n\n### Elsewhere\n- https://x.com/other\n", new Map([["/funding", true], ["/open-interest", false]])).length === 1,
     ],
   },
   {

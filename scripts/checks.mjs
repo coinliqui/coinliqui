@@ -2297,6 +2297,42 @@ export function handRolledLegends(sources) {
  * markup and the opening is stripped text, so "20&times;" and "20×" would otherwise never match
  * and the check would fail on pages that are correct.
  */
+/**
+ * llms.txt ADVERTISES READINGS, AND A READING IT NAMES MUST EXIST.
+ *
+ * The file has a section listing what this site computes that an aggregator does not — the count
+ * of contracts priced away from a venue's base rate, the concentration of a book, market breadth,
+ * the cost of one position across venues. It is the file an assistant reads to decide what a
+ * domain is FOR, and on a site fetched by assistants 43 times as often as by Googlebot that
+ * decision is most of the traffic.
+ *
+ * WHICH IS EXACTLY WHY IT NEEDS A GATE. This file has already been wrong twice about checkable
+ * things: it claimed the CSP named one script host on a morning when it named two, and it dated
+ * Google Analytics' return four days late. Both were precise, checkable, addressed to software
+ * that will not ask a follow-up question, and wrong until somebody happened to reread them. A
+ * list of readings is the same shape of promise: it goes stale the moment a page stops computing
+ * one, and nothing about the page would look broken.
+ *
+ * SO EACH URL IT NAMES MUST CARRY A FIGURE. Not a specific figure — the file describes them in
+ * prose and prose is not machine-checkable — but the fig__lead that every card renders, which is
+ * the mark of a page that computes a reading rather than listing rows.
+ */
+export function advertisedReadingsExist(llms, hasLeadByPath) {
+  const text = String(llms ?? "");
+  const start = text.indexOf("### Readings this site computes");
+  if (start < 0) return ["llms.txt no longer has a readings section — it was there to tell an assistant what this site is for"];
+  const section = text.slice(start, text.indexOf("###", start + 4) < 0 ? undefined : text.indexOf("###", start + 4));
+  const paths = [...new Set(
+    [...section.matchAll(/https?:\/\/[^\s)]*?(\/[^\s)]*)?(?=$|[\s)])/gm)]
+      .map((m) => (m[1] ?? "/").replace(/[.,;]$/, ""))
+      .filter((p) => p.startsWith("/")),
+  )];
+  if (!paths.length) return ["llms.txt's readings section names no URL at all"];
+  return paths
+    .filter((p) => hasLeadByPath.get(p) !== true)
+    .map((p) => `llms.txt advertises a reading at ${p}, and that page carries no figure — the file promises software a computation the page no longer publishes`);
+}
+
 export function leadReachesTheOpening(html, chars = 700) {
   const strip = (s) => String(s ?? "")
     .replace(/<(script|style|svg|template)\b[\s\S]*?<\/\1>/gi, " ")
