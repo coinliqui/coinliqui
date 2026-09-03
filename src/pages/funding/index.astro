@@ -64,7 +64,10 @@ const stripVol = snap.perps.reduce((t, p) => t + (Number.isFinite(p.dayNtlVlm) ?
 
 const allAprs = rows.flatMap(({ by }) => [...by.values()].map((f) => Math.abs(f.apr)).filter((v) => Number.isFinite(v))).sort((a, b) => a - b);
 const heatTop = allAprs.length ? allAprs[Math.floor(allAprs.length * 0.9)] || allAprs[allAprs.length - 1] : 1;
-const heatOf = (apr: number) => Math.min(1, Math.abs(apr) / (heatTop || 1));
+/* Quantised to six steps rather than a continuous alpha: see the .heat rules in Base.astro for
+   why that is both lighter and more legible. Step 0 means no tint at all, which is what a cell
+   at the base rate deserves. */
+const heatStep = (apr: number) => Math.min(6, Math.round(Math.min(1, Math.abs(apr) / (heatTop || 1)) * 6));
 
 
 const title = "Crypto funding rates, normalised to APR";
@@ -152,11 +155,9 @@ const description =
             {ORDER.map((v) => {
               const f = by.get(v);
               return (
-                <td
-                  class:list={["num", f && Number.isFinite(f.apr) && "heat"]}
-                  style={f && Number.isFinite(f.apr)
-                    ? `--heat:${heatOf(f.apr).toFixed(3)};--heat-hue:var(${f.apr >= 0 ? "--pays-l" : "--pays-s"})`
-                    : undefined}>
+                <td class:list={["num", f && Number.isFinite(f.apr) && heatStep(f.apr) > 0 && [
+                  "heat", `heat--${heatStep(f.apr)}`, f.apr < 0 && "heat--s",
+                ]]}>
                   {f ? (
                     <>
                       <span class={paysClass(f.apr)} data-repaint="apr" data-sym={p.symbol} data-venue={v}>{pct(f.apr)}</span>

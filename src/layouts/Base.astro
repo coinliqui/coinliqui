@@ -909,6 +909,15 @@ const schema = {
          where it was — the gate's unreadableText check measures that on every render and would
          refuse anything louder. A heatmap that makes its own numbers harder to read has traded
          the thing it was built to serve. */
+      /* SIX STEPS, AS CLASSES, NOT A PER-CELL INLINE STYLE. The first version wrote
+         `style="--heat:0.734;--heat-hue:var(--pays-l)"` onto all 143 cells and put /funding 185
+         bytes over its wire budget. Quantising is the better answer twice over: the markup
+         becomes a class name a compressor has already seen, and six legible steps read as a
+         heatmap where a thousand shades read as noise. It also takes one more inline style out
+         of a document whose CSP still needs 'unsafe-inline' for the ones that remain. */
+      .heat--1 { --heat: .18 } .heat--2 { --heat: .34 } .heat--3 { --heat: .52 }
+      .heat--4 { --heat: .70 } .heat--5 { --heat: .86 } .heat--6 { --heat: 1 }
+      .heat--s { --heat-hue: var(--pays-s) }
       .heat { position: relative; }
       .heat::before {
         content: ""; position: absolute; inset: 1px 0; border-radius: 3px; pointer-events: none;
