@@ -4,6 +4,7 @@ import { getSnapshot, coldStart, findPerp } from "../../lib/hyperliquid.ts";
 import { usd, pct, rawRate, settlementsPerYear, VENUE_LABEL, paysClass, type Venue, queryNum, paymentDirection, LEGEND_PAYS } from "../../lib/funding.ts";
 
 import Advisory from "../../components/Advisory.astro";
+import Figure from "../../components/Figure.astro";
 import Interests from "../../components/Interests.astro";
 const snap = await getSnapshot((Astro.locals as any)?.runtime?.env?.SNAPSHOT, import.meta.env.DEV);
 // Cold store: 503 + Retry-After rather than a page rendered from nothing.
@@ -33,6 +34,35 @@ const dir = paymentDirection(f.rate, side);
 // The naive reading treats the quoted rate as a DAILY number. On an hourly venue that is
 // wrong by 24x; on an 8-hour venue by 3x. It is the single most common funding error.
 const naiveCost = notional * f.rate * days * signed;
+
+/* THE SAME POSITION ON EVERY VENUE, which is the comparison this calculator exists to make and
+   the one it only ever made for the venue you had selected. Each venue settles on its own
+   interval — Hyperliquid hourly, Binance and Bybit every four or eight — so the cost of holding
+   the identical position differs by more than the quoted rates suggest, and that difference is
+   the fact worth carrying away.
+
+   Computed the same way as the headline: rate x settlements x notional, with the settlement
+   count taken from each venue's OWN interval rather than assumed to match. Bars are the
+   ABSOLUTE cost so their lengths compare; the sign is in the colour and the number. */
+const venueCosts = perp.venues
+  .filter((v) => Number.isFinite(v.rate) && Number.isFinite(v.intervalHours) && v.intervalHours > 0)
+  .map((v) => ({
+    venue: v.venue,
+    label: VENUE_LABEL[v.venue],
+    hours: v.intervalHours,
+    cost: notional * v.rate * ((days * 24) / v.intervalHours) * signed,
+  }))
+  .sort((a, b) => a.cost - b.cost);
+const costMax = Math.max(...venueCosts.map((v) => Math.abs(v.cost)), 1e-9);
+const cheapest = venueCosts[0];
+const dearest = venueCosts[venueCosts.length - 1];
+/* THE CONTRAST IS BETWEEN THE EXTREME INTERVALS, and the first version compared the cheapest
+   venue's interval with a hard-coded "eight-hour" — which rendered, on a day when the cheapest
+   was Binance, as "an 8-hour contract settles 3 times a day and an eight-hour one settles
+   three". A sentence comparing a thing to itself, printed under a figure whose whole point is
+   that the intervals differ. */
+const fastest = venueCosts.reduce((a, b) => (a.hours <= b.hours ? a : b));
+const slowest = venueCosts.reduce((a, b) => (a.hours >= b.hours ? a : b));
 
 const margin = notional / leverage;
 const costVsMargin = margin > 0 ? cost / margin : 0;
@@ -78,6 +108,35 @@ const description = `What holding a ${perp.symbol} perpetual actually costs in f
     </label>
     <button class="btn btn--primary" type="submit">Calculate</button>
   </form>
+
+  {venueCosts.length > 1 && (
+    <Figure
+      title={`Holding ${usd(notional)} of ${perp.symbol} ${side} for ${days} days`}
+      lead={usd(Math.abs(dearest.cost), 2)}
+      leadNote={`the dearest venue \u2014 ${dearest.label}; the cheapest is ${cheapest.label} at ${usd(Math.abs(cheapest.cost), 2)}`}
+      fetchedAt={snap.fetchedAt}>
+      <div class="bars">
+        {venueCosts.map((v) => (
+          <>
+            <span class="bars__label">{v.label}</span>
+            <span class="bars__track">
+              <span
+                class:list={["bars__fill", v.cost > 0 ? "bars__fill--l" : "bars__fill--s"]}
+                style={`width:${Math.max(2, (Math.abs(v.cost) / costMax) * 100)}%`}></span>
+            </span>
+            <span class="bars__value">{usd(v.cost, 2)} <span class="faint">{v.hours}h</span></span>
+          </>
+        ))}
+      </div>
+      <p slot="note">
+        The identical position, priced on each venue&rsquo;s own settlement interval rather than on
+        the assumption that they match. Amber is a cost to you, cyan is a payment received. A
+        rate that looks smaller can still cost more: {fastest.label} settles every
+        {" "}{fastest.hours}h, {Math.round((days * 24) / fastest.hours)} times over {days} days, while
+        {" "}{slowest.label} settles every {slowest.hours}h, {Math.round((days * 24) / slowest.hours)} times.
+      </p>
+    </Figure>
+  )}
 
   <div class="cards" style="margin-top:12px">
     <div class="card card--lead">

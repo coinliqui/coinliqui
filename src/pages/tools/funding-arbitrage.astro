@@ -4,6 +4,7 @@ import { getSnapshot, coldStart, findPerp } from "../../lib/hyperliquid.ts";
 import { usd, pct, rawRate, VENUE_LABEL, paysClass, type Venue, queryNum, LEGEND_PAYS } from "../../lib/funding.ts";
 
 import Advisory from "../../components/Advisory.astro";
+import Figure from "../../components/Figure.astro";
 import Interests from "../../components/Interests.astro";
 const snap = await getSnapshot((Astro.locals as any)?.runtime?.env?.SNAPSHOT, import.meta.env.DEV);
 // Cold store: 503 + Retry-After rather than a page rendered from nothing.
@@ -47,6 +48,18 @@ const ASSUMED = sameInterval ? shortLeg.intervalHours : 8;
 const naiveSpreadApr = (shortLeg.rate - longLeg.rate) * (8760 / ASSUMED);
 const naivePeriod = perLeg * naiveSpreadApr * (days / 365);
 
+/* THE TWO LEGS SIDE BY SIDE, because the trade is a DIFFERENCE and a difference is a distance.
+   The page states both rates and the spread as three numbers; drawn, the spread stops being
+   arithmetic and becomes the gap you can see between two bars. Every rate is annualised on its
+   own interval first — that is this calculator's whole argument against the naive subtraction,
+   and the figure inherits it rather than restating it. */
+const legs = [...perp.venues]
+  .filter((v) => Number.isFinite(v.apr))
+  .sort((a, b) => b.apr - a.apr)
+  .map((v) => ({ label: VENUE_LABEL[v.venue], apr: v.apr, hours: v.intervalHours,
+                 role: v.venue === shortLeg.venue ? "short" : v.venue === longLeg.venue ? "long" : "" }));
+const legMax = Math.max(...legs.map((l) => Math.abs(l.apr)), 1e-9);
+
 const title = `Funding arbitrage calculator — cross-venue spread`;
 const description = `What the funding spread between venues is actually worth on a delta-neutral position, with both legs annualised on their own settlement interval rather than assumed to match. Opens on the widest live spread.`;
 ---
@@ -75,6 +88,35 @@ const description = `What the funding spread between venues is actually worth on
     </label>
     <button class="btn btn--primary" type="submit">Calculate</button>
   </form>
+
+  {legs.length > 1 && (
+    <Figure
+      title={`${perp.symbol} funding across venues, annualised`}
+      lead={pct(spreadApr)}
+      leadNote={`the spread you collect \u2014 short ${VENUE_LABEL[shortLeg.venue]}, long ${VENUE_LABEL[longLeg.venue]}`}
+      fetchedAt={snap.fetchedAt}>
+      <div class="bars">
+        {legs.map((l) => (
+          <>
+            <span class="bars__label">{l.label}</span>
+            <span class="bars__track">
+              <span
+                class:list={["bars__fill", l.apr >= 0 ? "bars__fill--l" : "bars__fill--s"]}
+                style={`width:${Math.max(2, (Math.abs(l.apr) / legMax) * 100)}%`}></span>
+            </span>
+            <span class="bars__value">{pct(l.apr)} {l.role && <span class="faint">{l.role}</span>}</span>
+          </>
+        ))}
+      </div>
+      <p slot="note">
+        The trade is the gap between the top bar and the bottom one: you are short the venue
+        paying the most and long the venue paying the least, so the two price exposures cancel and
+        the difference is what you keep. Each rate is annualised on its own settlement interval
+        first &mdash; subtracting the quoted numbers instead would read this spread as
+        {" "}{pct(naiveSpreadApr)}.
+      </p>
+    </Figure>
+  )}
 
   <div class="cards" style="margin-top:12px">
     <div class="card card--lead">

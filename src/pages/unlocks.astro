@@ -1,5 +1,6 @@
 ---
 import Base from "../layouts/Base.astro";
+import Figure from "../components/Figure.astro";
 import Related from "../components/Related.astro";
 import { usd, pct } from "../lib/funding.ts";
 import { getSnapshot, findPerp } from "../lib/hyperliquid.ts";
@@ -88,6 +89,21 @@ const title = "On-chain vesting: what each contract still holds";
    here now, and it leads: what gets dropped from the end is the generic register description,
    not the number that makes the page worth citing. */
 const top = overhang[0];
+
+/* SHARE OF SUPPLY, RANKED, because that is the number this register exists to publish and the
+   table makes a reader compute it row by row. A lock holding forty-five percent of a token is a
+   different object from one holding two, and the difference is invisible in a column of raw
+   amounts — the supplies differ by orders of magnitude, so the biggest AMOUNT is routinely not
+   the biggest OVERHANG.
+
+   Only the overhang state is drawn: schedules that have finished with the tokens still sitting
+   there, withdrawable on no notice. A calendar cannot show these at all, which is the whole
+   argument of the page. */
+const supplyBars = overhang
+  .filter((r) => Number.isFinite(r.heldNow) && Number.isFinite(r.supply) && r.supply > 0)
+  .slice(0, 8)
+  .map((r) => ({ symbol: r.symbol, share: r.heldNow / r.supply, usd: r.absorb?.usd ?? null, end: r.end }));
+const supplyMax = Math.max(...supplyBars.map((r) => r.share), 1e-9);
 const description = top
   ? `One ${top.symbol} lock holds ${pct(top.heldNow / top.supply)} of supply and finished vesting on ${fmt(top.end)} — nobody has moved it. A register of token vesting, lock and emission contracts read directly from Ethereum: what each holds now, what it is still releasing, and which finished years ago with the tokens never withdrawn.`
   : "A register of token vesting, lock and emission contracts read directly from Ethereum: what each holds right now, what it is still releasing, and which finished years ago with the tokens never withdrawn.";
@@ -180,6 +196,31 @@ const lede = top
       </tbody>
     </table>
   </div>
+
+  {supplyBars.length > 1 && (
+    <Figure
+      title={`Finished locks still holding tokens, by share of supply`}
+      lead={pct(supplyBars[0].share)}
+      leadNote={`${supplyBars[0].symbol} \u2014 the largest, withdrawable since ${fmt(supplyBars[0].end)}`}
+      fetchedAt={new Date((reg as { verifiedAt: string }).verifiedAt).getTime()}>
+      <div class="bars">
+        {supplyBars.map((r) => (
+          <>
+            <span class="bars__label">{r.symbol}</span>
+            <span class="bars__track"><span class="bars__fill" style={`width:${Math.max(2, (r.share / supplyMax) * 100)}%`}></span></span>
+            <span class="bars__value">{pct(r.share)}{r.usd !== null && <>{" "}<span class="faint">{usd(r.usd)}</span></>}</span>
+          </>
+        ))}
+      </div>
+      <p slot="note">
+        Each bar is what one contract still holds as a share of its token&rsquo;s total supply,
+        read from the chain at a stated block rather than from an announcement. These schedules
+        have all finished: nothing here is waiting for a date, and every one of these amounts can
+        move today. The raw amounts are in the table below, where the largest of them is routinely
+        not the largest share.
+      </p>
+    </Figure>
+  )}
 
   <h2 class="section" id="overhang">{state("overhang").label}</h2>
   <p class="prose">
