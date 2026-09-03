@@ -5,6 +5,7 @@ import { VENUE_LABEL, pct, usd, rawRate, paysClass, paysArrow, LEGEND_FUNDING, t
 
 import { freshness, ageWords, minutesSince } from "../../lib/freshness.ts";
 import Figure from "../../components/Figure.astro";
+import { heatScale, heatStep as heatStepOf, type HeatScale } from "../../lib/viz.ts";
 import StatStrip from "../../components/StatStrip.astro";
 const env = (Astro.locals as any)?.runtime?.env;
 const snap = await getSnapshot(env?.SNAPSHOT, import.meta.env.DEV);
@@ -75,23 +76,12 @@ const stripVol = snap.perps.reduce((t, p) => t + (Number.isFinite(p.dayNtlVlm) ?
    real fault. Unusualness is a different quantity: "far from normal for Binance" is only
    answerable against Binance, and normalising it across venues would call every Hyperliquid cell
    unusual for the crime of being on an hourly interval. */
-const heatBy = new Map<Venue, { mid: number; scale: number }>();
+const heatBy = new Map<Venue, HeatScale>();
 for (const v of ORDER) {
-  const col = rows.map(({ by }) => by.get(v)?.apr).filter((x): x is number => Number.isFinite(x)).sort((a, b) => a - b);
-  if (!col.length) continue;
-  const mid = col[Math.floor(col.length / 2)];
-  const devs = col.map((x) => Math.abs(x - mid)).sort((a, b) => a - b);
-  const scale = devs[Math.floor(devs.length * 0.9)] || devs[devs.length - 1] || 0;
-  heatBy.set(v, { mid, scale });
+  const h = heatScale(rows.map(({ by }) => by.get(v)?.apr).filter((x): x is number => Number.isFinite(x)));
+  if (h) heatBy.set(v, h);
 }
-/* Quantised to six steps rather than a continuous alpha: see the .heat rules in Base.astro for
-   why that is both lighter and more legible. Step 0 means no tint at all, which is what a cell
-   sitting exactly where its venue usually sits deserves. */
-const heatStep = (v: Venue, apr: number) => {
-  const h = heatBy.get(v);
-  if (!h || !(h.scale > 0)) return 0;
-  return Math.min(6, Math.round(Math.min(1, Math.abs(apr - h.mid) / h.scale) * 6));
-};
+const heatStep = (v: Venue, apr: number) => heatStepOf(heatBy.get(v) ?? null, apr);
 
 
 const title = "Crypto funding rates, normalised to APR";

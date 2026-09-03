@@ -39,6 +39,51 @@ const svgOpen = (w: number, h: number, title: string) =>
   `<svg viewBox="0 0 ${w} ${h}" role="img" aria-label="${esc(title)}" preserveAspectRatio="xMidYMid meet">` +
   `<title>${esc(title)}</title>`;
 
+/**
+ * HOW HOT A CELL IS, AND WHY THIS LEFT THE PAGE IT WAS WRITTEN ON.
+ *
+ * The funding table tints each rate by how unusual it is. The first version scaled by |apr|
+ * against the 90th percentile and shipped: 109 of 140 cells landed on the top step, because this
+ * column's values pile up at one rate and a percentile of the magnitude therefore lands ON the
+ * pile. Nothing about it was false — most contracts really do charge about 11% a year — the field
+ * simply glowed everywhere and carried no information, and it was found by looking at production
+ * rather than by any test, because the arithmetic lived inside an .astro file where nothing could
+ * reach it.
+ *
+ * SO IT LIVES HERE NOW, where blind cases can hand it the shapes that broke it: every value
+ * identical, a single value, one enormous outlier, all-negative, empty. A figure's scale is
+ * exactly the kind of code that looks obviously right and fails on the data it will actually
+ * meet.
+ *
+ * THE SCALE IS DEVIATION FROM TYPICAL, per column. A contract sitting where its venue usually
+ * sits gets step 0 and no tint at all — a base rate is the absence of a view, not a reading —
+ * and the cells that glow are the ones the market has priced.
+ */
+export interface HeatScale {
+  /** The column's typical value; deviation is measured from here. */
+  mid: number;
+  /** The deviation that reaches full tint. Zero means the column is flat and nothing is tinted. */
+  scale: number;
+}
+
+export function heatScale(values: number[]): HeatScale | null {
+  const col = values.filter((v) => Number.isFinite(v)).sort((a, b) => a - b);
+  if (!col.length) return null;
+  const mid = col[Math.floor(col.length / 2)];
+  const devs = col.map((v) => Math.abs(v - mid)).sort((a, b) => a - b);
+  /* THE 90th PERCENTILE OF THE DEVIATIONS, not of the values. One contract at 96% against a
+     median of 11% would otherwise set the scale and leave every other cell colourless — the same
+     mistake as the distribution's axis, in the other direction. */
+  const scale = devs[Math.floor(devs.length * 0.9)] || devs[devs.length - 1] || 0;
+  return { mid, scale };
+}
+
+/** Six steps rather than a continuous alpha: lighter markup, and a heatmap a reader can count. */
+export function heatStep(h: HeatScale | null, value: number, steps = 6): number {
+  if (!h || !(h.scale > 0) || !Number.isFinite(value)) return 0;
+  return Math.min(steps, Math.round(Math.min(1, Math.abs(value - h.mid) / h.scale) * steps));
+}
+
 export interface DistributionOpts {
   /** Signed data centres the axis on zero and colours each side. Unsigned starts at zero. */
   signed?: boolean;
@@ -123,6 +168,15 @@ export function distribution(values: number[], opts: DistributionOpts): Distribu
      whole site is built against, so when a sign is present the axis keeps one step for it and
      the caption reports what was clamped. */
   if (signed && vals.some((v) => v < 0)) lo = Math.min(lo, -step0);
+  /* AND ZERO IS ON THE AXIS, WHICH THE COMMENT ABOVE HAS CLAIMED SINCE THE DAY IT WAS WRITTEN
+     WITHOUT THE CODE DOING IT. An all-negative column produced an axis of -0.30 to -0.05: a
+     perfectly efficient use of the width, and a figure that cannot show the one fact worth
+     showing about such a column — that every contract in it is on the same side of zero. Caught
+     by scripts/viz-cases.mjs on its first run, which is the whole reason that file exists.
+     Clamping here rather than in the percentile keeps the tails honest: zero joins the axis, it
+     does not drag the bounds past the data. */
+  if (signed) { lo = Math.min(lo, 0); }
+  const hiZ = signed ? Math.max(hi, 0) : hi;
 
   /* THE BUCKET COUNT COMES FROM THE SAMPLE, and twenty-one was a number I typed. Fifty values
      across twenty-one buckets filled six of them: the figure read as a picket fence with one
@@ -136,10 +190,10 @@ export function distribution(values: number[], opts: DistributionOpts): Distribu
   const want = buckets ?? auto;
   const n = signed && want % 2 === 0 ? want + 1 : want;
   const counts = new Array<number>(n).fill(0);
-  const step = (hi - lo) / n;
+  const step = (hiZ - lo) / n;
   let over = 0;
   for (const v of vals) {
-    if (v < lo || v > hi) over++;
+    if (v < lo || v > hiZ) over++;
     const i = Math.min(n - 1, Math.max(0, Math.floor((v - lo) / step)));
     counts[i]++;
   }
@@ -163,7 +217,7 @@ export function distribution(values: number[], opts: DistributionOpts): Distribu
     body += rect(i * bw + 1, padT + plotH - bh, Math.max(1, bw - 2), bh, fill, `rx="2"`);
   }
   if (signed) {
-    const zeroX = ((0 - lo) / (hi - lo)) * w;
+    const zeroX = ((0 - lo) / (hiZ - lo)) * w;
     body += line(zeroX, padT - 2, zeroX, padT + plotH + 2, INK.zero, 1.5);
   }
   /* A REFERENCE TO MEASURE AGAINST. Bars in an empty well can be compared with each other and
@@ -175,8 +229,8 @@ export function distribution(values: number[], opts: DistributionOpts): Distribu
 
   /* Where zero falls as a share of the width, so a caller can put the label at the mark rather
      than in the middle of a row that is only sometimes symmetric. Null when zero is an end. */
-  const zeroAt = signed && lo < 0 && hi > 0 ? ((0 - lo) / (hi - lo)) * 100 : null;
-  return { svg: svgOpen(w, h, title) + body + "</svg>", lo, hi, over, step, zeroAt };
+  const zeroAt = signed && lo < 0 && hiZ > 0 ? ((0 - lo) / (hiZ - lo)) * 100 : null;
+  return { svg: svgOpen(w, h, title) + body + "</svg>", lo, hi: hiZ, over, step, zeroAt };
 }
 
 /* THE OTHER THREE FIGURES ARE NOT HERE, AND THAT IS THE POINT OF WHAT THIS FILE LEARNED.
