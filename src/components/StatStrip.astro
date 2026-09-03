@@ -1,0 +1,76 @@
+---
+/* =========================================================================================
+   THE BAND OF LIVE FIGURES, TAKEN FROM COINGLASS AND NARROWED ON PURPOSE.
+
+   Every CoinGlass page carries four numbers along the very top — 24h volume, open interest,
+   liquidations, long/short — and that band is most of why the site reads as an instrument rather
+   than as an article. It costs them almost nothing and it answers the question a reader arrives
+   with before they have chosen a page.
+
+   THREE THINGS ARE DIFFERENT HERE, and each is the reason to copy it rather than admire it.
+
+   IT DOES NOT GO EVERYWHERE. Theirs appears above the documentation and the login screen, where
+   the total open interest of the market is noise. This is rendered by the pages that are ABOUT
+   the market and by no others: an explainer about what a funding rate is does not get a ticker.
+
+   IT COSTS NO EXTRA READ. getSnapshot() is a raw KV get with no per-request memo, so putting
+   this in the layout would have doubled the reads on every page in the site. The figures are
+   props instead, derived from the snapshot the page has already fetched — a reduce over fifty
+   objects, no I/O, and impossible to render against a different reading than the page's own.
+
+   IT DOES NOT SHOUT. Theirs colours every delta green or red and pairs them with arrows, which
+   is four decisions competing with the page underneath. These are mono figures on a hairline,
+   faint labels, no badges, and colour ONLY where a number is genuinely signed — which on this
+   site means the funding pair and nothing else.
+   ========================================================================================= */
+interface Item {
+  label: string;
+  value: string;
+  /** Signed values take the funding pair; leave unset for magnitudes. */
+  tone?: "l" | "s";
+  href?: string;
+}
+interface Props {
+  items: Item[];
+}
+const { items } = Astro.props;
+---
+
+{items.length > 0 && (
+  <div class="strip">
+    {items.map((it) => (
+      <div class="strip__cell">
+        <span class="strip__label">{it.href ? <a href={it.href}>{it.label}</a> : it.label}</span>
+        <span class:list={["strip__value", it.tone === "l" && "pays-l", it.tone === "s" && "pays-s"]}>{it.value}</span>
+      </div>
+    ))}
+  </div>
+)}
+
+<style is:global>
+  /* A HAIRLINE, NOT A BAR. The reference paints its band on a tinted ground with a border and
+     sits it above the masthead; that reads as chrome and competes with the page title. This is
+     the same information with the box taken away — figures on a rule, which is how a broadsheet
+     prints a summary and why it stays quiet at the top of a document that has its own headline. */
+  .strip {
+    display: flex; flex-wrap: wrap; gap: var(--gap-block) var(--gap-region);
+    margin: 0 0 var(--gap-block); padding-bottom: var(--gap-block);
+    border-bottom: 1px solid var(--border-soft);
+  }
+  .strip__cell { display: flex; flex-direction: column; gap: 2px; }
+  .strip__label { font-size: var(--fs-xs); color: var(--text-faint); }
+  .strip__label a { color: inherit; text-decoration: none; }
+  .strip__label a:hover { color: var(--text); }
+  /* Tabular figures, so a column of these does not shuffle sideways when a digit changes on the
+     tick — the same reason every number in the tables below is set this way. */
+  .strip__value { font-size: 17px; font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
+
+  /* THE PHONE KEEPS ALL OF THEM, and this is where the reference gives up: at 375px CoinGlass
+     scrolls its band sideways off the screen, so a phone reader sees two of four numbers and no
+     indication the others exist. Wrapping into two rows costs one line of height and loses
+     nothing. */
+  @media (max-width: 560px) {
+    .strip { gap: var(--gap-block) var(--gap-block); }
+    .strip__value { font-size: 15px; }
+  }
+</style>

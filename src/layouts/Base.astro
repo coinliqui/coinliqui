@@ -894,6 +894,28 @@ const schema = {
       .bars__track { height: 10px; border-radius: 3px; background: var(--surface-3); overflow: hidden; }
       .bars__fill { display: block; height: 100%; border-radius: 3px; background: var(--text-dim); }
       .bars__value { font-variant-numeric: tabular-nums; color: var(--text); white-space: nowrap; }
+      /* THE MATRIX READS AS A FIELD, NOT AS A LIST OF NUMBERS. CoinGlass puts a "Funding Rate
+         Heatmap" behind a toggle on a table of exactly this shape — fifty symbols by a dozen
+         venues — and the reason it works is that a reader scanning for "where is it hot" should
+         not have to compare fifty pairs of digits.
+
+         OURS IS ALWAYS ON AND CARRIES TWO CHANNELS INSTEAD OF ONE. Their heatmap colours by sign
+         and leaves magnitude to the number; the tint here is the MAGNITUDE, set per cell as an
+         alpha, while the hue stays the site's existing sign language — amber where longs pay,
+         cyan where shorts do. So the field answers "how much" and "which way" at once, and the
+         legend the page already carries still explains it without a second key.
+
+         SUBTLE ON PURPOSE. The cap is 18% alpha over the row, which leaves the figure's contrast
+         where it was — the gate's unreadableText check measures that on every render and would
+         refuse anything louder. A heatmap that makes its own numbers harder to read has traded
+         the thing it was built to serve. */
+      .heat { position: relative; }
+      .heat::before {
+        content: ""; position: absolute; inset: 1px 0; border-radius: 3px; pointer-events: none;
+        background: color-mix(in srgb, var(--heat-hue, var(--pays-l)) calc(var(--heat, 0) * 18%), transparent);
+      }
+      .heat > * { position: relative; }
+
       /* A SIGNED BAR TAKES THE FUNDING PAIR, never green and red: those are the candles'. */
       .bars__fill--l { background: var(--pays-l); }
       .bars__fill--s { background: var(--pays-s); }

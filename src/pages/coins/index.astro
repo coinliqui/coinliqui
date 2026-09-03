@@ -1,5 +1,6 @@
 ---
 import Base from "../../layouts/Base.astro";
+import StatStrip from "../../components/StatStrip.astro";
 import { getSnapshot, coldStart, findPerp, getLive, oldestStamp } from "../../lib/hyperliquid.ts";
 import { usd, pct, paysClass, LEGEND_PAYS } from "../../lib/funding.ts";
 import { COINS, isLive } from "../../lib/coins.ts";
@@ -53,6 +54,9 @@ const rows = COINS.map((c) => {
 }).sort((a, b) => (b.ntl || 0) - (a.ntl || 0));
 
 const pending = rows.filter((r) => !r.live);
+const stripOi = snap.perps.reduce((t, p) => t + (Number.isFinite(p.oiNotional) ? p.oiNotional : 0), 0);
+const stripUp = snap.perps.filter((p) => Number.isFinite(p.change24h) && p.change24h > 0).length;
+const stripDown = snap.perps.filter((p) => Number.isFinite(p.change24h) && p.change24h < 0).length;
 const dp = priceDp;
 const arrow = (n: number) => (n >= 0 ? "▲" : "▼");
 const fmtDate = (s: string) => new Date(s + "T00:00:00Z").toLocaleDateString("en-GB", { day: "numeric", month: "long", timeZone: "UTC" });
@@ -71,6 +75,13 @@ const description = "Perpetual futures prices for the major coins on Hyperliquid
       the funding rate is the mechanism that pulls it back.
     </p>
   </div>
+
+  <StatStrip items={[
+    { label: "Coins covered", value: String(rows.length) },
+    { label: "Perpetuals", value: String(snap.perps.length), href: "/funding" },
+    { label: "Open interest", value: usd(stripOi), href: "/open-interest" },
+    { label: "24h breadth", value: `${stripUp} up, ${stripDown} down` },
+  ]} />
 
   <div class="panel">
     <table class="tbl" data-sortable>
