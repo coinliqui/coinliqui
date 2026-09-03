@@ -1,6 +1,7 @@
 ---
 import Base from "../../layouts/Base.astro";
 import Related from "../../components/Related.astro";
+import Figure from "../../components/Figure.astro";
 import { getSnapshot, coldStart, OI_NOTIONAL_FLOOR } from "../../lib/hyperliquid.ts";
 import { pct, usd } from "../../lib/funding.ts";
 
@@ -44,6 +45,20 @@ const churn = perps
   .sort((a, b) => b.dayNtlVlm / b.oiNotional - a.dayNtlVlm / a.oiNotional)
   .slice(0, 12);
 
+/* THE LESSON IS "OPEN INTEREST IS NOT VOLUME", AND A RATIO SAYS IT IN ONE PICTURE. The page
+   argues it in prose and the numbers are on the page, but a reader still has to divide one
+   column by another to feel it. Turnover — a day's volume as a multiple of the position base —
+   separates a book that is being accumulated from one that is being traded around, and the
+   spread between the top and the bottom of this list is the argument.
+
+   `churn` is already sorted for exactly this and was only ever rendered as a table. */
+const turnover = churn.slice(0, 8).map((p) => ({
+  symbol: p.symbol,
+  ratio: p.dayNtlVlm / p.oiNotional,
+  oi: p.oiNotional,
+}));
+const turnoverMax = Math.max(...turnover.map((t) => t.ratio), 1e-9);
+
 const title = "Open interest explained: what it counts and what it cannot tell you";
 const description =
   "Open interest is the value of perpetual contracts currently open — a stock, not a flow. " +
@@ -55,6 +70,30 @@ const description =
   <div class="page-head">
     <h1>What open interest tells you</h1>
   </div>
+
+  {turnover.length > 1 && (
+    <Figure
+      title="Turnover \u2014 a day of volume against the position base"
+      lead={`${turnover[0].ratio.toFixed(1)}\u00d7`}
+      leadNote={`${turnover[0].symbol} traded that multiple of its own open interest in 24 hours`}
+      fetchedAt={snap.fetchedAt}>
+      <div class="bars">
+        {turnover.map((t) => (
+          <>
+            <span class="bars__label">{t.symbol}</span>
+            <span class="bars__track"><span class="bars__fill" style={`width:${Math.max(2, (t.ratio / turnoverMax) * 100)}%`}></span></span>
+            <span class="bars__value">{t.ratio.toFixed(1)}&times;{" "}<span class="faint">{usd(t.oi)} OI</span></span>
+          </>
+        ))}
+      </div>
+      <p slot="note">
+        Two contracts can hold the same open interest and be completely different objects: one
+        turning over its whole position base several times a day, the other barely moving. That is
+        the distinction this page is about, and it is the reason open interest alone does not tell
+        you whether a market is busy — only how much is currently committed to it.
+      </p>
+    </Figure>
+  )}
 
   <p class="callout">
     Open interest is the total value of perpetual contracts that are currently open. Every

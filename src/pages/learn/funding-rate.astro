@@ -1,6 +1,7 @@
 ---
 import Base from "../../layouts/Base.astro";
 import Related from "../../components/Related.astro";
+import Figure from "../../components/Figure.astro";
 import { getSnapshot, coldStart } from "../../lib/hyperliquid.ts";
 import { VENUE_LABEL, pct, usd, carryCost, rawRate, settlementsPerYear } from "../../lib/funding.ts";
 
@@ -40,6 +41,27 @@ const EXAMPLE_NOTIONAL = 10_000;
 const EXAMPLE_DAYS = 30;
 const exampleCost = btc ? carryCost(EXAMPLE_NOTIONAL, btc.hlApr, EXAMPLE_DAYS) : 0;
 
+/* ONE QUOTED RATE, THREE VENUES, THREE COMPLETELY DIFFERENT COSTS — which is this page's whole
+   lesson and the reason the rest of the site annualises anything at all. A reader who has seen
+   "0.01%" on two exchanges assumes they are comparable; they are only comparable once you know
+   how often each of them charges it.
+
+   The rate here is FIXED at 0.01% on purpose. Every other figure on this site is live, and this
+   one must not be: the point is what the interval does when the rate is held still, and a live
+   rate would move both variables at once and teach nothing. The intervals are real, taken from
+   the venues the page already names. */
+const LESSON_RATE = 0.0001;
+const cadence = [...btcVenues]
+  .filter((v) => Number.isFinite(v.intervalHours) && v.intervalHours > 0)
+  .sort((a, b) => a.intervalHours - b.intervalHours)
+  .map((v) => ({
+    label: VENUE_LABEL[v.venue],
+    hours: v.intervalHours,
+    perDay: 24 / v.intervalHours,
+    apr: LESSON_RATE * (8760 / v.intervalHours),
+  }));
+const cadenceMax = Math.max(...cadence.map((c) => c.apr), 1e-9);
+
 /* Widest absolute annualised rates on the book. NOT the widest venue spreads — that is the
    arbitrage table on /funding — but the contracts where simply holding a position costs or
    pays the most, which is what this page is about. */
@@ -71,6 +93,31 @@ const description =
   <div class="page-head">
     <h1>What a funding rate is</h1>
   </div>
+
+  {cadence.length > 1 && (
+    <Figure
+      title="The same quoted rate, on three settlement intervals"
+      lead={pct(cadence[0].apr)}
+      leadNote={`what 0.01% a settlement is worth per year on ${cadence[0].label}, against ${pct(cadence[cadence.length - 1].apr)} on ${cadence[cadence.length - 1].label}`}>
+      <div class="bars">
+        {cadence.map((c) => (
+          <>
+            <span class="bars__label">{c.label}</span>
+            <span class="bars__track"><span class="bars__fill bars__fill--l" style={`width:${Math.max(3, (c.apr / cadenceMax) * 100)}%`}></span></span>
+            <span class="bars__value">{pct(c.apr)}{" "}<span class="faint">every {c.hours}h</span></span>
+          </>
+        ))}
+      </div>
+      <p slot="note">
+        Every bar is the identical quoted rate — 0.01% per settlement — and nothing else differs
+        but how often it is charged. {cadence[0].label} settles {Math.round(cadence[0].perDay)} times
+        a day, so the same number costs {(cadenceMax / cadence[cadence.length - 1].apr).toFixed(0)}&times;
+        more over a year than it does on {cadence[cadence.length - 1].label}. This is why every rate
+        on this site is annualised before it is compared, and why a screenshot of two exchanges
+        side by side usually is not a comparison at all.
+      </p>
+    </Figure>
+  )}
 
   <p class="callout">
     A funding rate is a recurring payment between the two sides of a perpetual futures

@@ -1,6 +1,7 @@
 ---
 import Base from "../../layouts/Base.astro";
 import Related from "../../components/Related.astro";
+import Figure from "../../components/Figure.astro";
 import TABLES from "../../data/margin-tables.json";
 import { liquidationPrice, maintenanceMarginFraction, type MarginTable } from "../../lib/margin.ts";
 import { pct, usd } from "../../lib/funding.ts";
@@ -34,6 +35,22 @@ const REQUESTED_LEVERAGE = 10;
 const small = liquidationPrice({ entryPrice: ENTRY, positionSize: 10_000, leverage: REQUESTED_LEVERAGE, side: "long", table });
 const large = liquidationPrice({ entryPrice: ENTRY, positionSize: 40_000, leverage: REQUESTED_LEVERAGE, side: "long", table });
 
+/* HOW FAR THE PRICE HAS TO FALL, AT EACH LEVERAGE, from one entry. The arithmetic on this page
+   is correct and abstract: a reader follows it and still does not feel that doubling leverage
+   roughly halves the room. Five bars do that in one look, and they are computed with the same
+   liquidationPrice() the calculators and the map use — not a formula retyped for illustration,
+   which is how an explainer drifts from the thing it explains.
+
+   ENTRY is 100 so the distance reads directly as a percentage, which is the form the lesson is
+   remembered in. */
+const rungs = [2, 5, 10, 20, 40]
+  .filter((L) => L <= table.marginTiers[0].maxLeverage)
+  .map((L) => {
+    const r = liquidationPrice({ entryPrice: ENTRY, positionSize: 10_000, leverage: L, side: "long", table });
+    return { L, at: r.liquidationPrice, drop: (ENTRY - r.liquidationPrice) / ENTRY };
+  });
+const rungMax = Math.max(...rungs.map((r) => r.drop), 1e-9);
+
 const title = "How a liquidation price is actually calculated";
 const description =
   "The formula most calculators use leaves out maintenance margin, so it places the " +
@@ -45,6 +62,31 @@ const description =
   <div class="page-head">
     <h1>How a liquidation price is calculated</h1>
   </div>
+
+  {rungs.length > 1 && (
+    <Figure
+      title="How far price must fall before liquidation, by leverage"
+      lead={pct(rungs[rungs.length - 1].drop)}
+      leadNote={`the room a ${rungs[rungs.length - 1].L}\u00d7 long has, against ${pct(rungs[0].drop)} at ${rungs[0].L}\u00d7`}
+      modelled>
+      <div class="bars">
+        {rungs.map((r) => (
+          <>
+            <span class="bars__label">{r.L}&times;</span>
+            <span class="bars__track"><span class="bars__fill" style={`width:${Math.max(2, (r.drop / rungMax) * 100)}%`}></span></span>
+            <span class="bars__value">{pct(r.drop)}{" "}<span class="faint">liq {r.at.toFixed(2)}</span></span>
+          </>
+        ))}
+      </div>
+      <p slot="note">
+        One entry at {ENTRY}, one long, one venue tier table — only the leverage changes. Doubling
+        it does not quite halve the room, because the maintenance margin is subtracted before the
+        division, and that gap between the intuition and the arithmetic is exactly where positions
+        are lost. Every price here comes from the same function the calculators and the
+        liquidation map use.
+      </p>
+    </Figure>
+  )}
 
   <p class="callout">
     A liquidation price is the price at which a venue closes a position because the collateral
