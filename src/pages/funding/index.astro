@@ -53,21 +53,45 @@ const offBase = snap.perps
   .sort((a, b) => Math.abs(b.hlApr - modalApr) - Math.abs(a.hlApr - modalApr));
 const offMax = Math.max(...offBase.map((p) => Math.abs(p.hlApr - modalApr)), 1e-9);
 
-/* THE SCALE THE TINT IS READ AGAINST, taken from the whole grid rather than per column, so a
-   cell's heat means the same thing wherever it sits. Per-column normalisation would make a quiet
-   venue look as hot as a loud one, which is the failure mode of every heatmap that scales its
-   own rows. The 90th percentile rather than the maximum, for the reason the distribution learned:
-   one contract at 96% would leave every other cell colourless. */
 /* The band's figures, derived from the snapshot this page has already read. No I/O. */
 const stripOi = snap.perps.reduce((t, p) => t + (Number.isFinite(p.oiNotional) ? p.oiNotional : 0), 0);
 const stripVol = snap.perps.reduce((t, p) => t + (Number.isFinite(p.dayNtlVlm) ? p.dayNtlVlm : 0), 0);
 
-const allAprs = rows.flatMap(({ by }) => [...by.values()].map((f) => Math.abs(f.apr)).filter((v) => Number.isFinite(v))).sort((a, b) => a - b);
-const heatTop = allAprs.length ? allAprs[Math.floor(allAprs.length * 0.9)] || allAprs[allAprs.length - 1] : 1;
+/* THE TINT IS UNUSUALNESS, NOT MAGNITUDE, AND THE FIRST VERSION GOT THAT WRONG IN PUBLIC.
+   Scaling by |apr| against the 90th percentile put 109 of 140 cells on the top step: the mass of
+   this column sits at one value, so a percentile of the magnitude lands ON the mass and almost
+   every cell saturates. Nothing was false about it — most contracts really do charge about 11% a
+   year — it just answered a question nobody asks, and a field where everything is hot is a field
+   with no information in it.
+
+   So each cell is heated by how far it sits from what is TYPICAL FOR ITS OWN VENUE, measured as
+   the column's median, and normalised by that column's own 90th-percentile deviation. A contract
+   resting on Hyperliquid's base rate gets no tint, which is right — the base rate is the absence
+   of a view, not a reading — and the cells that glow are the ones the market has actually priced,
+   which is the same set the card above the table counts.
+
+   PER COLUMN, DELIBERATELY, AND THE EARLIER NOTE ARGUED THE OPPOSITE. That argument was about
+   magnitude, where per-column scaling makes a quiet venue look as loud as a busy one and is a
+   real fault. Unusualness is a different quantity: "far from normal for Binance" is only
+   answerable against Binance, and normalising it across venues would call every Hyperliquid cell
+   unusual for the crime of being on an hourly interval. */
+const heatBy = new Map<Venue, { mid: number; scale: number }>();
+for (const v of ORDER) {
+  const col = rows.map(({ by }) => by.get(v)?.apr).filter((x): x is number => Number.isFinite(x)).sort((a, b) => a - b);
+  if (!col.length) continue;
+  const mid = col[Math.floor(col.length / 2)];
+  const devs = col.map((x) => Math.abs(x - mid)).sort((a, b) => a - b);
+  const scale = devs[Math.floor(devs.length * 0.9)] || devs[devs.length - 1] || 0;
+  heatBy.set(v, { mid, scale });
+}
 /* Quantised to six steps rather than a continuous alpha: see the .heat rules in Base.astro for
    why that is both lighter and more legible. Step 0 means no tint at all, which is what a cell
-   at the base rate deserves. */
-const heatStep = (apr: number) => Math.min(6, Math.round(Math.min(1, Math.abs(apr) / (heatTop || 1)) * 6));
+   sitting exactly where its venue usually sits deserves. */
+const heatStep = (v: Venue, apr: number) => {
+  const h = heatBy.get(v);
+  if (!h || !(h.scale > 0)) return 0;
+  return Math.min(6, Math.round(Math.min(1, Math.abs(apr - h.mid) / h.scale) * 6));
+};
 
 
 const title = "Crypto funding rates, normalised to APR";
@@ -101,7 +125,11 @@ const description =
       : []),
   ]} />
 
-  <p class="legend">{LEGEND_FUNDING}. Every other figure is neutral.</p>
+  <p class="legend">
+    {LEGEND_FUNDING}. A cell is tinted by how far its rate sits from what is normal for that
+    venue, so a contract resting on the venue&rsquo;s usual rate stays plain and the ones the
+    market has actually priced stand out. Every other figure is neutral.
+  </p>
 
   <Figure
     title={`Hyperliquid funding across ${hlAprs.length} contracts, annualised`}
@@ -155,8 +183,8 @@ const description =
             {ORDER.map((v) => {
               const f = by.get(v);
               return (
-                <td class:list={["num", f && Number.isFinite(f.apr) && heatStep(f.apr) > 0 && [
-                  "heat", `heat--${heatStep(f.apr)}`, f.apr < 0 && "heat--s",
+                <td class:list={["num", f && Number.isFinite(f.apr) && heatStep(v, f.apr) > 0 && [
+                  "heat", `heat--${heatStep(v, f.apr)}`, f.apr < 0 && "heat--s",
                 ]]}>
                   {f ? (
                     <>
