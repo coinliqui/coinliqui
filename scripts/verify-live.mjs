@@ -856,7 +856,13 @@ console.log("\n10. the cache headers this repo declares are the ones served");
 console.log("\n11. page weight on the wire");
 {
   const BUDGET = [
-    ["/", 8_000], ["/funding", 9_500], ["/funding/btc", 92_000], ["/coins/bitcoin", 72_000],
+    /* RAISED 8,000 -> 9,500 ON 3 SEPTEMBER, on purpose, in a diff, with the reason. The home
+       page gained the market-breadth figure and came in at 8,018b — eighteen bytes over, which
+       is not a page that grew too much, it is a ceiling with no headroom left. A budget that
+       sits under one percent above the observed size fails on ordinary daily variance in the
+       data rather than on a change anyone made, and a ratchet that cries wolf gets raised
+       without being read. Back to the usual quarter of headroom. */
+    ["/", 9_500], ["/funding", 9_500], ["/funding/btc", 92_000], ["/coins/bitcoin", 72_000],
     /* RAISED 6,500 -> 9,000 ON 2 SEPTEMBER, on purpose, in a diff, with the reason. The page
        gained the ranked-bar figure — the ten largest books with their share of the total — and
        came in at 7,011b, 511 over. The ratchet is doing exactly what the paragraph above says it
