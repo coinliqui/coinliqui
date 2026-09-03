@@ -38,6 +38,7 @@ import {
   computedFigureFloor, COMPUTED_FIGURES,
   leadsWithItsSubject,
   openingFigure,
+  leadReachesTheOpening,
   handRolledLegends,
   collapsedStateEscapesMobile,
   llmsHostsAgree,
@@ -489,6 +490,34 @@ const cases = [
       /* Arrows in a table and an explanation in a distant paragraph claim nothing about each
          other; the binding this forbids is one line long. */
       handRolledLegends([{ path: "f.astro", src: "<td>{arrow(chg)} 0.63%</td>\n<p>Positive funding means longs pay shorts.</p>" }]).length === 0,
+    ],
+  },
+  {
+    check: "leadReachesTheOpening",
+    why: "six of the eleven figure cards led with a number that appeared nowhere in the first 700 characters of the page — the window an extractor truncates at, on a domain assistants fetch 43 times as often as Googlebot does, so the most citable fact on each page was two screens out of reach",
+    fire: () => leadReachesTheOpening(`<p>${"word ".repeat(200)}</p><strong class="fig__lead">7 of 50</strong>`),
+    quiet: () => leadReachesTheOpening(`<p>Only 7 of 50 are priced away.</p><p>${"word ".repeat(200)}</p><strong class="fig__lead">7 of 50</strong>`),
+    also: () => [
+      /* ONE NORMALISER FOR BOTH SIDES, or the check fails on pages that are correct: the lead is
+         markup and the opening is stripped text, so "20&times;" against "20×" would never match
+         and every leverage page would be reported for a defect it does not have. */
+      leadReachesTheOpening(`<p>the real ceiling is 20&times; here</p><p>${"word ".repeat(200)}</p><strong class="fig__lead">20&times;</strong>`).length === 0,
+      /* A figure inside the opening passes trivially, and should: the claim is already visible. */
+      leadReachesTheOpening('<strong class="fig__lead">7 of 50</strong><p>tail</p>').length === 0,
+      /* Pages without a card are not failures — most of the site has none. */
+      leadReachesTheOpening("<p>hello</p>").length === 0,
+      leadReachesTheOpening("").length === 0,
+      /* Every card on a page is checked, not just the first. */
+      leadReachesTheOpening(
+        `<p>${"word ".repeat(200)}</p><strong class="fig__lead">A</strong><strong class="fig__lead">B</strong>`).length === 2,
+      /* THE FACT TRAVELS, NOT THE PHRASING. The first version demanded the lead verbatim and
+         failed a home page whose opening said the same thing in a sentence. Numbers are what has
+         to reach the reader; the words around them are the page's to choose. */
+      leadReachesTheOpening(
+        `<p>17 of the 50 contracts are up over 24 hours and 33 are down.</p><p>${"word ".repeat(200)}</p><strong class="fig__lead">17 up, 33 down</strong>`).length === 0,
+      /* But a number that is genuinely absent still fails, or the loosening would have gutted it. */
+      leadReachesTheOpening(
+        `<p>17 of the contracts are up over 24 hours.</p><p>${"word ".repeat(200)}</p><strong class="fig__lead">17 up, 33 down</strong>`).length === 1,
     ],
   },
   {

@@ -99,7 +99,9 @@ const description = tierCount > 1
     <p class="crumb"><a href="/tools">Tools</a> › Leverage</p>
     <h1>Leverage calculator</h1>
     <p>
-      The advertised maximum applies to the smallest tier only. Opens on {perp.symbol} at
+      The advertised maximum applies to the smallest tier only &mdash; at the size this opens on,
+      the real ceiling is <strong>{permitted}&times;</strong> against the {headline}&times; on the
+      front of the page. Opens on {perp.symbol} at
       {" "}{px(perp.markPx)}, advertised at {perp.maxLeverage}×; this shows what that really allows
       at <strong>your</strong> notional, and what it costs in margin.
     </p>

@@ -99,7 +99,15 @@ const description =
   <div class="page-head">
       <p class="crumb">{stamp}</p>
       <h1 class="lede">{parts.map(([t, n]) => (n ? <b>{t}</b> : <span>{t}</span>))}</h1>
-      <p>Venues settle funding on different intervals, so their quoted rates are not comparable. Every rate here is annualised. <a class="link" href="/methodology">How it is computed →</a></p>
+      {/* BREADTH IN THE OPENING, because it is the one thing a reader wants before choosing a
+          page and it was only in the figure two screens down — outside the 700 characters an
+          extractor keeps. */}
+      <p>
+        {Number.isFinite(medianChg) && <><strong>{upCount} of the {changes.length} contracts are up
+        over 24 hours and {downCount} are down</strong>, a median of {pct(medianChg)}. </>}
+        Venues settle funding on different intervals, so their quoted rates are not comparable.
+        Every rate here is annualised. <a class="link" href="/methodology">How it is computed →</a>
+      </p>
     </div>
 
     <div class="cards">

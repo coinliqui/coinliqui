@@ -2278,6 +2278,51 @@ export function handRolledLegends(sources) {
   });
 }
 
+/**
+ * THE FIGURE'S POINT MUST REACH THE PART THAT GETS READ.
+ *
+ * Every card on this site leads with one number — the takeaway, the thing a reader repeats and a
+ * blogger screenshots. Measured on production once eleven of them existed: SIX of the eleven leads
+ * did not appear anywhere in the first 700 characters of the page's visible text, and ten of the
+ * eleven appeared in neither the title nor the description. The most citable fact on each page was
+ * two screens down.
+ *
+ * WHY 700 CHARACTERS IS THE TEST AND NOT A STYLE PREFERENCE. It is the window leadsWithItsSubject
+ * and openingFigure already gate, because it is roughly what an extractor keeps when it truncates
+ * — and this domain is fetched by assistants 43 times as often as by Googlebot, measured over a
+ * 23.5-hour window with Cloudflare's own bot verification. A number no assistant reaches is a
+ * number the site has not really published, however carefully it is drawn.
+ *
+ * BOTH SIDES GO THROUGH ONE NORMALISER, which is the only way this can be trusted: the lead is
+ * markup and the opening is stripped text, so "20&times;" and "20×" would otherwise never match
+ * and the check would fail on pages that are correct.
+ */
+export function leadReachesTheOpening(html, chars = 700) {
+  const strip = (s) => String(s ?? "")
+    .replace(/<(script|style|svg|template)\b[\s\S]*?<\/\1>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&(?:times|mdash|ndash|rsquo|lsquo|nbsp|amp|lt|gt|quot|#\d+|#x[0-9a-f]+);/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const opening = strip(html).slice(0, chars);
+  const leads = [...String(html ?? "").matchAll(/class="fig__lead"[^>]*>([\s\S]*?)<\/strong>/g)]
+    .map((m) => strip(m[1]))
+    .filter(Boolean);
+  /* MATCHED ON THE NUMBERS, NOT ON THE WORDING, and the first version was wrong about that. It
+     demanded the lead appear verbatim, so a home page leading "17 up, 33 down" failed while its
+     opening sentence read "17 of the 50 contracts are up over 24 hours and 33 are down" — the
+     same fact, reaching the same reader, reported as a defect. What has to travel is the figure,
+     not the phrasing, so a lead passes when every number in it is present. A lead with no digits
+     in it is compared whole, because then the words ARE the claim. */
+  const digits = (t) => t.match(/-?\d[\d,.]*/g) ?? [];
+  return leads
+    .filter((lead) => {
+      const nums = digits(lead);
+      return nums.length ? !nums.every((n) => opening.includes(n)) : !opening.includes(lead);
+    })
+    .map((lead) => `the figure leads with "${lead}" and the first ${chars} characters do not carry its numbers — the page's most citable figure is outside the window an extractor keeps`);
+}
+
 export function openingFigure(html, chars = 700) {
   const text = String(html ?? "")
     .replace(/<(script|style|svg|template)\b[\s\S]*?<\/\1>/gi, " ")

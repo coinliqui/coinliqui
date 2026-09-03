@@ -77,7 +77,9 @@ const description = `What holding a ${perp.symbol} perpetual actually costs in f
     <p class="crumb"><a href="/tools">Tools</a> › Funding cost</p>
     <h1>Funding cost calculator</h1>
     <p>
-      What it costs to hold a position, using the venue's real settlement interval.
+      What it costs to hold a position, using the venue&rsquo;s real settlement interval &mdash;
+      the same {usd(notional)} position for {days} days costs <strong>{usd(Math.abs(dearest.cost), 2)}</strong>
+      on {dearest.label} against {usd(Math.abs(cheapest.cost), 2)} on {cheapest.label}.
       Opens on {perp.symbol} at {usd(perp.markPx, 2)} on {VENUE_LABEL[f.venue]}, which settles
       every {f.intervalHours} hour{f.intervalHours === 1 ? "" : "s"}.
     </p>

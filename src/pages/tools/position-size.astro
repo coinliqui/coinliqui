@@ -156,7 +156,11 @@ const description = `Risk-based position sizing for ${perp.symbol} perpetuals th
     <p class="crumb"><a href="/tools">Tools</a> › Position size</p>
     <h1>Position size calculator</h1>
     <p>
+      {/* THE DISTANCE, IN THE OPENING. It is the page's answer and it sat only in a card below
+          the form, outside the window an extractor keeps. */}
       Risk-based sizing, checked against the price at which the position is actually closed.
+      At {leverage}&times; the liquidation sits <strong>{pct(liqMove)}</strong> from the entry
+      and the stop {pct(stopMove)} away, so {verdict === "liq" ? "the venue closes the position first" : verdict === "wrongside" ? "the stop is not on the losing side" : "the stop executes first"}.
       Opens on {perp.symbol} at {px(perp.markPx)}.
     </p>
     <Advisory />

@@ -36,6 +36,13 @@ const maxOi = topOi.length ? topOi[0].oiNotional : 1;
         a broken number rather than a narrower one. Naming the venue costs a word and turns a
         wrong-looking figure into a precise one. */}
     <p>
+      {/* THE CONCENTRATION GOES FIRST, and the gate is why. Placed a paragraph lower it fell
+          outside the 700 characters leadReachesTheOpening measures, because the scope caveat
+          above it is long — correctly long, it is the page's most important sentence. Two
+          important sentences compete for one window, so the one an extractor would QUOTE goes
+          first and the one it must not omit follows immediately. */}
+      <strong>{usd(total)} across {rows.length} coins, {pct(topShare)} of it in the ten largest
+      contracts.</strong>{" "}
       Every figure here is <strong>Hyperliquid's book alone</strong>, not the market's. It is
       the venue this site collects from directly, and it is a minority of total perpetual open
       interest — on 18 August 2026, Hyperliquid held $2.68B of BTC against $6.83B on Binance
@@ -45,7 +52,7 @@ const maxOi = topOi.length ? topOi[0].oiNotional : 1;
       cannot. <a class="link" href="/data-sources">What is collected, and what is not →</a>
     </p>
   </div>
-  <p style="margin:0 0 20px;max-width:74ch"><strong class="num">{usd(total)}</strong> across {rows.length} coins. The turnover column is 24h volume divided by open interest: a high number means the position base is churning rather than accumulating. <a class="link" href="/learn/open-interest">What open interest does and does not tell you →</a></p>
+  <p style="margin:0 0 20px;max-width:74ch">The turnover column is 24h volume divided by open interest: a high number means the position base is churning rather than accumulating. <a class="link" href="/learn/open-interest">What open interest does and does not tell you →</a></p>
   <StatStrip items={[
     { label: "Coins", value: String(rows.length), href: "/coins" },
     { label: "Open interest", value: usd(total) },

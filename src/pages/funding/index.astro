@@ -96,7 +96,10 @@ const heatStep = (v: Venue, apr: number) => {
 
 const title = "Crypto funding rates, normalised to APR";
 const description =
-  "Live funding rates for BTC, ETH, SOL and every other perpetual covered here, annualised across Hyperliquid, Binance and Bybit — with the spread between venues, open interest and 24-hour volume on every row.";
+  /* THE FRAMING, NOT THE FIGURE. The count changes every tick and a description that moves every
+     five minutes reads as unstable; the QUESTION it answers does not move, and it is the one hook
+     no other funding page offers. */
+  "Live funding rates for BTC, ETH, SOL and every other perpetual covered here, annualised across Hyperliquid, Binance and Bybit — with the spread between venues, open interest, and how many contracts are priced away from the venue's own base rate.";
 ---
 
 <Base title={title} description={description} fetchedAt={snap.fetchedAt}>
@@ -106,6 +109,14 @@ const description =
       {snap.perps.length} perpetual contracts across three venues, annualised. Hyperliquid settles
       hourly; Binance and Bybit settle every 4 or 8 hours — so comparing the quoted numbers directly
       makes the shorter interval look cheaper by exactly the interval ratio.
+      {/* THE CLAIM THAT ONLY THIS SITE MAKES, MOVED TO WHERE IT IS READ. It lived in the figure
+          card two screens down, and measured on production the first 700 characters of visible
+          text — the window an extractor truncates at, and the one this site already gates with
+          openingFigure — did not contain it. Assistants fetch this domain 43 times as often as
+          Googlebot does; a fact none of them reach is a fact the site does not really publish. */}
+      {" "}<strong>Only {offBase.length} of {hlAprs.length} contracts are priced away from
+      Hyperliquid&rsquo;s {pct(modalApr)} base rate</strong> — the rest sit exactly on it, which
+      is a venue constant rather than a view about any of them.
       {widest?.spread != null && <> The widest spread right now is <strong>{widest.p.symbol}</strong> at {pct(widest.spread)} APR.</>}
       <a class="link" href="/learn/funding-rate"> What a funding rate is →</a>
       <a class="link" href="/methodology"> How it is computed →</a>
