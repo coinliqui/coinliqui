@@ -25,6 +25,22 @@ const total = rows.reduce((s, p) => s + p.oiNotional, 0);
    after that table exists there is no comparison to make, and the page says so rather than
    printing a change of zero it cannot support. */
 const oiHist = await readOiHistory((Astro.locals as any)?.runtime?.env?.DB, Date.now());
+/* NARROWED ONCE, HERE, RATHER THAN IN THE TEMPLATE. The warming block below narrows `oiHist` for
+   everything after it as far as TypeScript is concerned, so the table's own `status === "ready"`
+   test became a comparison between two types with no overlap and the column stopped typechecking.
+   One const holds the ready shape or null, and the template asks a plain question. */
+const oiReady = oiHist.status === "ready" ? oiHist : null;
+/* THREE STATES, NOT TWO, AND PRODUCTION FOUND THE THIRD WITHIN THE HOUR. The table is created
+   empty, so between the migration and the worker's first hourly write there are ZERO readings —
+   and this line said the site "has less than an hour of it", which implies some. None and
+   nearly-none are different facts, which is the distinction this whole page is about. */
+const oiHeld = oiHist.status !== "warming"
+  ? ""
+  : oiHist.covered <= 0
+    ? "none yet"
+    : oiHist.covered < 1
+      ? "less than an hour"
+      : `${Math.floor(oiHist.covered)} hours`;
 
 const stripVol = rows.reduce((t, p) => t + (Number.isFinite(p.dayNtlVlm) ? p.dayNtlVlm : 0), 0);
 const stripTurn = total > 0 ? stripVol / total : NaN;
@@ -65,9 +81,9 @@ const maxOi = topOi.length ? topOi[0].oiNotional : 1;
     <p class="clock" style="margin:0 0 12px">
       The {oiHist.hours}-hour change column appears once there is a reading that old to compare
       against. This site keeps open interest hourly and has
-      {" "}<b>{oiHist.covered < 1 ? "less than an hour" : `${Math.floor(oiHist.covered)} hours`}</b> of it
-      so far, so there is nothing yet to subtract from &mdash; which is a different statement from
-      a change of zero, and the reason the column is absent rather than empty.
+      {" "}<b>{oiHeld}</b> of it so far, so there is nothing to subtract from &mdash; which is a
+      different statement from a change of zero, and the reason the column is absent rather than
+      empty.
     </p>
   )}
 
@@ -102,14 +118,14 @@ const maxOi = topOi.length ? topOi[0].oiNotional : 1;
   )}
 
   <div class="panel"><table class="tbl" data-sortable>
-    <thead><tr><th>Coin</th><th class="num">Open interest <span class="thscope">Hyperliquid</span></th>{oiHist.status === "ready" && <th class="num">Change <span class="thscope">{oiHist.hours}h</span></th>}<th class="num">24h volume <span class="thscope">Hyperliquid</span></th><th class="num">Turnover (24h volume ÷ OI)</th><th class="num">Max leverage</th></tr></thead>
+    <thead><tr><th>Coin</th><th class="num">Open interest <span class="thscope">Hyperliquid</span></th>{oiReady && <th class="num">Change <span class="thscope">{oiReady.hours}h</span></th>}<th class="num">24h volume <span class="thscope">Hyperliquid</span></th><th class="num">Turnover (24h volume ÷ OI)</th><th class="num">Max leverage</th></tr></thead>
     <tbody>
       {rows.map((p) => (
         <tr>
           <td><a href={`/funding/${p.symbol.toLowerCase()}`}>{p.symbol}</a></td>
           <td class="num">{usd(p.oiNotional)}</td>
-          {oiHist.status === "ready" && (() => {
-            const d = oiChange(oiHist, p.symbol, p.oiNotional);
+          {oiReady && (() => {
+            const d = oiChange(oiReady, p.symbol, p.oiNotional);
             /* AN ABSENCE, NOT A ZERO. A contract listed since the stored reading has no history,
                and printing 0.00% for it would claim it had not moved. */
             return d === null
