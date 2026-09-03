@@ -862,7 +862,12 @@ console.log("\n11. page weight on the wire");
        sits under one percent above the observed size fails on ordinary daily variance in the
        data rather than on a change anyone made, and a ratchet that cries wolf gets raised
        without being read. Back to the usual quarter of headroom. */
-    ["/", 9_500], ["/funding", 9_500], ["/funding/btc", 92_000], ["/coins/bitcoin", 72_000],
+    ["/", 9_500], /* RAISED 9,500 -> 11,500 ON 3 SEPTEMBER, on purpose, in a diff, with the reason. The page took
+       three additions in one day — the ranked figure, the stat band, and the heat classes on 143
+       cells — and came in at 9,612b. Quantising the heat gave 73 of those bytes back before this
+       number was touched, which is the order the paragraph above asks for: make it smaller first,
+       and only then decide the page is allowed to be bigger. */
+    ["/funding", 11_500], ["/funding/btc", 92_000], ["/coins/bitcoin", 72_000],
     /* RAISED 6,500 -> 9,000 ON 2 SEPTEMBER, on purpose, in a diff, with the reason. The page
        gained the ranked-bar figure — the ten largest books with their share of the total — and
        came in at 7,011b, 511 over. The ratchet is doing exactly what the paragraph above says it
