@@ -1,7 +1,8 @@
 ---
 import Base from "../../layouts/Base.astro";
 import { getSnapshot, coldStart, findPerp } from "../../lib/hyperliquid.ts";
-import { usd, pct, rawRate, VENUE_LABEL, paysClass, type Venue, queryNum, LEGEND_PAYS } from "../../lib/funding.ts";
+import { usd, pct, rawRate, toApr, VENUE_LABEL, paysClass, queryNum, LEGEND_PAYS, type VenueFunding } from "../../lib/funding.ts";
+import { extremeBy, type Extreme } from "../../lib/extreme.ts";
 
 import Advisory from "../../components/Advisory.astro";
 import Figure from "../../components/Figure.astro";
@@ -10,20 +11,281 @@ const snap = await getSnapshot((Astro.locals as any)?.runtime?.env?.SNAPSHOT, im
 // Cold store: 503 + Retry-After rather than a page rendered from nothing.
 if (!snap.available) return coldStart();
 
-// Default to the contract with the widest live spread, so the page opens on the trade that
-// actually exists right now rather than on an arbitrary symbol.
+/* Default to the contract with the widest live spread, so the page opens on the trade that
+   actually exists right now rather than on an arbitrary symbol.
+
+   THE WIDEST IS AN EXTREME OVER A SET, SO IT GOES THROUGH extremeBy AND A TIE IS CARRIED AS A TIE.
+   This was `sort(...)[0]`, and the sentence under the heading called whatever came first "the
+   widest live spread" — including a spread of 0.00%, which is not a spread. The pick itself is
+   unchanged in practice (the first contract, in snapshot order, at the maximum: what the stable
+   sort took, and what /tools mirrors); what changed is that the WORDS now come from the
+   extreme's kind, so "the widest" can only be printed of a contract that is alone at a maximum
+   that prints as more than 0.00%.
+
+   THE WORDS COMPARE WHAT IS PRINTED; THE PICK STAYS THE EXACT MAXIMUM. Read from the code path on
+   16 September 2026, not observed: the extreme took extremeBy's default tolerance of 1e-9 on the
+   exact spread, so two contracts at 40.401% and 40.404% — both printed "40.40%" here and on
+   /funding — gave one of them "the widest live spread" alone. extreme.ts asks callers to pass
+   the precision they print at; the equivalent that cannot drift from pct is to compare the printed
+   figure itself, so `widestShown` ranks parseFloat(pct(spread)) and every sentence about "widest"
+   reads from it. Rounding is monotone, so the exact maximum is always among the printed ones, and
+   the contract the page OPENS on is still `widest`, the first at the exact maximum — the rule
+   /tools mirrors to name this calculator's contract, which a printed-precision pick could break. */
 const tradable = snap.perps.filter((p) => p.venues.length >= 2);
-const widest = [...tradable].sort((a, b) => (b.aprSpread ?? 0) - (a.aprSpread ?? 0))[0];
+const widestX = extremeBy(tradable, (p) => p.aprSpread ?? NaN, "max");
+const widest = widestX.kind === "unique" ? widestX.item : widestX.kind === "tied" ? widestX.items[0] : undefined;
+const widestShown = extremeBy(tradable, (p) => parseFloat(pct(p.aprSpread ?? NaN)), "max");
+const widestSet: readonly (typeof tradable)[number][] = widestShown.kind === "unique" ? [widestShown.item] : widestShown.kind === "tied" ? widestShown.items : [];
+const widestPrinted = widestSet.length ? pct(widestSet[0].aprSpread ?? NaN) : pct(NaN);
+const widestIsSpread = widestSet.length > 0 && widestPrinted !== pct(0);
+
+/* EVERY INPUT THE SERVER REPLACES IS NOW SAID ON THE PAGE, AND THE BOUNDS ARE ONE DECLARATION.
+   Measured 16 September 2026: /tools/funding-arbitrage?symbol=BTC&capital=0&days=0 rendered 10000
+   in the capital box and "$5,000 per leg" with no word about it, while the box itself carried
+   min="0" and the page's script accepted 0. ?capital=-5000&days=-10 and ?days=100000 were replaced
+   the same way (the days box has no max, and the script repainted 100000 happily), and
+   ?symbol=HYPE — a contract /funding lists on one venue — opened on TRX without a word.
+   So capital honours 0, which is what the form and the script already said; the bounds below
+   feed queryNum, the inputs' min/max and the script alike, so the three cannot disagree again;
+   and a value the server still cannot honour produces a sentence saying what was used instead.
+   The link's text is never echoed back, only which bound it broke.
+   A box sent EMPTY is replaced as well (clear Capital, then change the coin, and the form submits
+   capital=), so it is said too; only a parameter that is absent altogether takes the default
+   silently, because nobody asked for anything else.
+
+   AND A GRAIN, BECAUSE A BOUND ON SIZE IS NOT A BOUND ON DIGITS. Read from the code path on
+   16 September 2026, not observed: ?capital=2e-21 was inside [0, 1e12], so it was honoured, and
+   the per-leg label — searched to 20 decimal places — printed "$0.00000000000000000000 per leg"
+   of a base that is not zero; ?days=1e-21 printed "0.00000000000000000000 days". Searching further
+   cannot close it: a double can need hundreds of places, and older engines refuse more than 20.
+   So each input has a grain of two decimal places (a cent; a hundredth of a day, under 15
+   minutes), declared once below and fed to the input's step, the server's reading and the
+   script's. Every honoured value is then 0 or at least 0.01, half of it at least 0.005, and 20
+   places always write such a number back exactly (17 significant digits, enough for any double,
+   starting by the third decimal place end by the 19th), so exact() below never reaches its limit
+   on a value the page accepted. A value finer than the grain
+   is replaced and said, like any other; the Calculate button will not submit one at all. */
+type Bounds = { min: number; max: number; fallback: number; places: number; grain: string };
+const CAPITAL: Bounds = { min: 0, max: 1e12, fallback: 10_000, places: 2, grain: "a cent" };
+const DAYS: Bounds = { min: 0, max: 3650, fallback: 30, places: 2, grain: "a hundredth of a day" };
+const inGrain = (n: number, places: number) => Number(n.toFixed(places)) === n;
+const stepOf = (b: Bounds) => (10 ** -b.places).toFixed(b.places);
+const readNum = (raw: string | null, b: Bounds) => {
+  const empty = raw !== null && raw.trim() === "";
+  const sent = raw !== null && !empty;
+  const n = sent ? Number(raw!.trim()) : NaN;
+  const broke = empty ? "is empty"
+    : !sent ? null
+    : !Number.isFinite(n) ? "is not a number"
+    : !Number.isFinite(queryNum(raw, NaN, b)) ? (n < b.min ? "below" : "above")
+    : !inGrain(n, b.places) ? `is finer than ${b.grain}`
+    : null;
+  return {
+    // + 0 turns ?capital=-0 into 0: toLocaleString writes negative zero as "-0".
+    value: (broke ? b.fallback : queryNum(raw, b.fallback, b)) + 0,
+    broke,
+  };
+};
+const whole = (x: number) => x.toLocaleString("en-US");
+
+/* THE PLURAL FOLLOWS THE COUNT. The card read "Gross over 1 days" and the warning "over 1 days"
+   on /tools/funding-arbitrage?symbol=CASHCAT&capital=100&days=1 (16 September 2026): " days" was
+   literal text after a number the script replaced, so no value of Days could fix it. The whole
+   phrase is now one span, written by the same rule here and in the script.
+
+   THE PER-LEG LABEL IS THE BASE THE FIGURES WERE WORKED ON, TO THE LAST DIGIT IT HAS.
+   It was usd(perLeg, 0) here and Math.round in the script, so ?symbol=BTC&capital=1 printed
+   "on $1 per leg" beside "Gross per year $0.03" — which is $0.50 × 5.84%; on $1 it would be
+   $0.06 (16 September 2026). Half a dollar rounded to a whole one doubled the stated base.
+   Now it prints the fewest decimals that give back the exact number (whole dollars when it is
+   whole, cents or more when it is not), so the label and the arithmetic share one value.
+
+   BOTH COUNTS GO THROUGH ONE FORMATTER. The first version searched to 8 places for money and
+   wrote days as `${d}`, so ?capital=0.0000000002 read "$0.00000000 per leg" and ?days=0.0000001
+   read "1e-7 days", and 3650 lacked the separator the notice gives it. The search stops at 20
+   places, a range every engine's toLocaleString accepts, and the grain above is what makes 20
+   enough: no value the page honours needs more. */
+const exact = (x: number) => {
+  let d = 0;
+  while (d < 20 && Number(x.toFixed(d)) !== x) d++;
+  return x.toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d });
+};
+const dayWords = (d: number) => (d === 1 ? "1 day" : `${exact(d)} days`);
+// Money never ends on a single decimal: $0.5 is written $0.50.
+const legWords = (x: number) => "$" + exact(x).replace(/\.\d$/, (m) => m + "0");
 
 const q = Astro.url.searchParams;
-const perp = findPerp(tradable, q.get("symbol")) ?? widest ?? snap.perps[0];
-const capital = queryNum(q.get("capital"), 10_000, { min: 1 });
-const days = queryNum(q.get("days"), 30, { min: 0, max: 3650 });
+const askedSymbol = (q.get("symbol") ?? "").trim();
+const askedPerp = askedSymbol ? findPerp(tradable, askedSymbol) : undefined;
+const perp = askedPerp ?? widest ?? snap.perps[0];
+const capitalIn = readNum(q.get("capital"), CAPITAL);
+const daysIn = readNum(q.get("days"), DAYS);
+const capital = capitalIn.value;
+const days = daysIn.value;
 
-const sorted = [...perp.venues].sort((a, b) => b.apr - a.apr);
-const shortLeg = sorted[0];          // highest APR — as a short you are paid
-const longLeg = sorted[sorted.length - 1];
-const spreadApr = shortLeg.apr - longLeg.apr;
+const notices: string[] = [];
+if (askedSymbol && !askedPerp) {
+  const known = findPerp(snap.perps, askedSymbol);
+  notices.push(known
+    ? `${known.symbol} is quoted on ${known.venues.length === 1 ? `one venue only (${VENUE_LABEL[known.venues[0].venue]})` : "no venue"} here, so there is no second leg to trade against; this shows ${perp.symbol} instead.`
+    : `The coin in the link is not one this site covers, so this shows ${perp.symbol} instead.`);
+}
+if (capitalIn.broke) {
+  notices.push(`The link’s “Capital deployed” ${capitalIn.broke === "below" ? `is less than $${whole(CAPITAL.min)}` : capitalIn.broke === "above" ? `is more than $${whole(CAPITAL.max)}` : capitalIn.broke}, so the figures use the default $${whole(CAPITAL.fallback)}.`);
+}
+if (daysIn.broke) {
+  notices.push(`The link’s “Days held” ${daysIn.broke === "below" ? `is less than ${whole(DAYS.min)}` : daysIn.broke === "above" ? `is more than ${whole(DAYS.max)}` : daysIn.broke}, so the figures use the default ${dayWords(DAYS.fallback)}.`);
+}
+
+/* THE LEGS ARE EXTREMES OVER THE VENUES, AND A TIE IS NOT A TRADE.
+   Measured 16 September 2026 on /tools/funding-arbitrage?symbol=XMR&capital=10000&days=30:
+   Binance 0.0001 per 8h, Bybit 0.0001 per 8h and Hyperliquid 0.0000125 per 1h — 10.95% a year
+   each, all three bars 100% wide, spreadApr = 0 — and the page said "Opens on XMR at 0.00% a year,
+   Binance against Bybit — the widest live spread", told the reader to short Binance and long
+   Bybit, and marked Hyperliquid "unused" at the identical rate. The legs were sorted[0] and
+   sorted[length - 1] of a set with one value in it.
+
+   Three states now, each decided from extremeBy:
+   - every venue at the same rate, or a gap that prints as 0.00% → no legs, no roles, and the page
+     says the venues are level;
+   - a spread, with one side tied (common: Hyperliquid's base rate is Binance's and Bybit's too) →
+     the figures use the first tied venue in snapshot order, and the page names the other as an
+     equal alternative and says which one the figures used;
+   - a spread with both sides alone → as before.
+
+   AN ALTERNATIVE IS WHAT PRINTS THE SAME, NOT ONLY WHAT IS BIT-EQUAL. Read from the code path, not
+   yet observed: Binance at 0.00010001 per 8h and Bybit at 0.0001 are 10.951% and 10.950% a year,
+   both printed "10.95%", and an exact comparison made Binance the short leg and marked Bybit
+   "unused" beside the same printed figure — the XMR defect at the page's own precision. So the
+   figures' legs stay the EXACT extremes (then hi − lo is the contract's aprSpread to the bit,
+   which is what /tools and /funding print for it), and any other venue printing the same rate as
+   a leg is named as its alternative.
+
+   AND EVERY NAMED PAIRING MUST PRINT THE SAME SPREAD, OR THE PAGE PRINTS MORE DECIMALS. Read from
+   the code path on 16 September 2026, not observed, in two shapes of one defect:
+   - Binance 10.9549%, Hyperliquid 10.9451%, Bybit 10.95%: the legs both print "10.95%" but the
+     gap prints "0.01%", so the page traded Binance against Hyperliquid, and Bybit, printed alike
+     to both, had no role — the bars read "10.95% short | 10.95% | 10.95% long";
+   - Binance 10.9549%, Hyperliquid 10.9451%, Bybit 3.4551%: Hyperliquid prints like Binance, so
+     the heading said "7.50% a year, Binance or Hyperliquid against Bybit", but Hyperliquid against
+     Bybit comes to 7.49%.
+   Both are two decimals being too few to tell the venues apart, so the precision is what gives:
+   `dp` is the fewest decimals, from two, at which the legs print apart AND every venue printing
+   like the short leg, against every venue printing like the long one, prints the same spread as
+   the legs themselves. Everything on this page that states this contract's rates or spread is
+   written at dp, so a role is only ever given, or withheld, on figures the reader can see differ.
+   Six is the ceiling, and upstream precision is why it is enough: predictedFundings quoted Binance
+   and Bybit to at most eight decimals per settlement and Hyperliquid to at most ten per hour
+   (counted 16 September 2026), so two different rates are at least 0.0000438% a year apart, and
+   venues still printing alike at six decimals have the same rate. If even six is not clean — only
+   float noise could do it — alternatives narrow to bit-equal rates, whose pairings are the legs'
+   spread to the bit.
+
+   AND NO TRADE MEANS NO DOLLARS. A gap under half a hundredth of a percent prints "0.00%" and the
+   page says there is nothing to collect, but the cards were multiplied by the exact gap, so a
+   capital of $1,000,000,000,000 could show thousands a year under "no spread to collect". With
+   no legs the modelled spread is 0, and every figure drawn from it agrees with the words. */
+type Leg = VenueFunding;
+const usable: Leg[] = perp.venues.filter((v) => Number.isFinite(v.apr));
+const top = extremeBy(usable, (v) => v.apr, "max");
+const bottom = extremeBy(usable, (v) => v.apr, "min");
+const setOf = (e: Extreme<Leg>): readonly Leg[] => (e.kind === "unique" ? [e.item] : e.kind === "tied" ? e.items : []);
+const hi = setOf(top)[0];
+const lo = setOf(bottom)[0];
+const range = hi && lo ? hi.apr - lo.apr : NaN;
+const level = top.kind === "tied" && top.items.length === usable.length;
+const allPrintAlike = usable.length >= 2 && usable.every((v) => pct(v.apr) === pct(usable[0].apr));
+type Pairing = readonly [Leg, Leg];
+const MAX_DP = 6;
+const DP_WORDS: Record<number, string> = { 2: "two", 3: "three", 4: "four", 5: "five", 6: "six" };
+const readAt = (d: number, alike: (a: Leg, b: Leg) => boolean) => {
+  const shortSet = [hi, ...usable.filter((v) => v !== hi && alike(v, hi))];
+  const longSet = [lo, ...usable.filter((v) => v !== lo && alike(v, lo))];
+  const legsAlike = alike(hi, lo);
+  const clash = legsAlike ? undefined : shortSet
+    .flatMap((s) => longSet.map((l): Pairing => [s, l]))
+    .find(([s, l]) => pct(s.apr - l.apr, d) !== pct(range, d));
+  return { d, shortSet, longSet, legsAlike, clash };
+};
+const printedAt = (d: number) => (a: Leg, b: Leg) => pct(a.apr, d) === pct(b.apr, d);
+const hasSpread = usable.length >= 2 && !!hi && !!lo && !level && pct(range) !== pct(0);
+let plan: ReturnType<typeof readAt> | null = null;
+for (let d = 2; hasSpread && !plan && d <= MAX_DP; d++) {
+  const at = readAt(d, printedAt(d));
+  if (!at.legsAlike && !at.clash) plan = at;
+}
+if (hasSpread && !plan) plan = readAt(MAX_DP, (a, b) => a.apr === b.apr);
+const dp = plan ? plan.d : 2;
+const trade = plan ? { short: hi, long: lo, shortSet: plan.shortSet, longSet: plan.longSet } : null;
+const spreadApr = trade ? range : 0;
+const rate = (x: number) => pct(x, dp);
+/* The quoted column is printed to the digits that give back the annualised figure beside it.
+   rawRate does that at two decimals; at dp the same search runs against dp, or a row could read
+   0.0000125 per 1h beside an annualised figure its own arithmetic does not reproduce. */
+const quoted = (v: Leg) => {
+  if (dp === 2) return rawRate(v.rate, v);
+  const trim = (d: number) => v.rate.toFixed(d).replace(/0+$/, "").replace(/\.$/, "");
+  for (let d = 7; d <= 12; d++) if (rate(toApr(Number(trim(d)), v.intervalHours)) === rate(v.apr)) return trim(d);
+  return trim(12);
+};
+
+/* Why a page that prints two decimals everywhere else prints more here, in the reader's terms:
+   the first thing two decimals would have got wrong. */
+const atTwo = plan && dp > 2 ? readAt(2, printedAt(2)) : null;
+const precisionWords = !atTwo ? ""
+  : atTwo.legsAlike
+    ? `Rates here carry ${DP_WORDS[dp]} decimals: at two, ${VENUE_LABEL[hi.venue]} and ${VENUE_LABEL[lo.venue]} would both read ${pct(hi.apr)}, and the short leg could not be told from the long.`
+    : atTwo.clash
+      ? `Rates here carry ${DP_WORDS[dp]} decimals: at two, ${VENUE_LABEL[atTwo.clash[0].venue]} against ${VENUE_LABEL[atTwo.clash[1].venue]} would read exactly like ${VENUE_LABEL[hi.venue]} against ${VENUE_LABEL[lo.venue]}, ${pct(hi.apr)} against ${pct(lo.apr)}, yet come to ${pct(atTwo.clash[0].apr - atTwo.clash[1].apr)} rather than ${pct(range)}.`
+      : "";
+
+const andList = (xs: readonly string[], joiner = "and") =>
+  xs.length <= 1 ? (xs[0] ?? "") : `${xs.slice(0, -1).join(", ")} ${joiner} ${xs[xs.length - 1]}`;
+const venueNames = (vs: readonly Leg[], joiner = "and") => andList(vs.map((v) => VENUE_LABEL[v.venue]), joiner);
+const allOf = (n: number) => (n === 2 ? "both" : n === 3 ? "all three" : `all ${n}`);
+
+const levelWords = usable.length < 2
+  ? (usable.length === 1 ? "only one venue quotes it" : "no venue quotes it")
+  : allPrintAlike
+    ? `${allOf(usable.length)} venues pay ${pct(usable[0].apr)} a year`
+    : "the venues are less than 0.01% a year apart";
+/* "Would be paid and would pay the same" is said only of an exact tie; a gap too small to print is
+   called that, since it is not nothing, only nothing this page models. */
+const levelNote = level
+  ? `so a short on one and a long on ${usable.length === 2 ? "the other" : "another"} would be paid and would pay the same.`
+  : allPrintAlike
+    ? "and the gap between them rounds to 0.00%, which this page does not model, so the dollar figures below are zero."
+    : "a gap this page does not model, so the dollar figures below are zero.";
+
+/* On a level contract the lesson this calculator exists for is still there: the QUOTED numbers
+   differ while the annualised ones do not. Said only when both are true of the rows shown. */
+const quotedGroups = new Map<string, string[]>();
+for (const v of usable) {
+  const k = `${rawRate(v.rate, v)} per ${v.intervalHours}h`;
+  quotedGroups.set(k, [...(quotedGroups.get(k) ?? []), VENUE_LABEL[v.venue]]);
+}
+const quotedWords = level && quotedGroups.size > 1 && new Set(usable.map((v) => v.intervalHours)).size > 1
+  ? [...quotedGroups].map(([k, vs]) => `${k} on ${andList(vs)}`).join(", ")
+  : null;
+
+const tieWords = trade
+  ? ([[trade.shortSet, trade.short, "short"], [trade.longSet, trade.long, "long"]] as const)
+      .filter(([set]) => set.length > 1)
+      .map(([set, pick, side]) => `${venueNames(set)} ${allOf(set.length)} pay ${rate(pick.apr)}, so ${set.length === 2 ? "either" : "any of them"} could be the ${side} leg; the figures use ${VENUE_LABEL[pick.venue]}.`)
+      .join(" ")
+  : "";
+
+/* WHAT THE OPENING SENTENCE MAY SAY ABOUT "WIDEST", decided here rather than in markup. */
+const inWidest = widestSet.includes(perp);
+const tiedOthers = widestSet.length - 1;
+const widestTail = !trade || !widestIsSpread || !inWidest
+  ? "."
+  : tiedOthers > 0
+    ? ` — tied with ${tiedOthers} other contract${tiedOthers === 1 ? "" : "s"} for the widest live spread across the venues covered here.`
+    : " — the widest live spread across the venues covered here.";
+const pointerOne = widestIsSpread && !inWidest && widestSet.length === 1 ? { symbol: widestSet[0].symbol, printed: widestPrinted } : null;
+const pointerTied = widestIsSpread && !inWidest && widestSet.length > 1 ? { n: widestSet.length, printed: widestPrinted } : null;
+const opened = askedPerp ? "Showing" : "Opens on";
 
 // Delta-neutral means margin on BOTH legs, so the capital funds two positions.
 const perLeg = capital / 2;
@@ -42,10 +304,11 @@ const grossYear = perLeg * spreadApr;
    When the legs DO share an interval there is no naive error to illustrate: the side-by-side
    reading is simply correct, and the honest counterfactual is the legs' own interval, which
    makes the two cards agree and the caption true. The 8-hour assumption only means anything
-   when the legs differ and a reader has to pick one — and then the card says which was picked. */
-const sameInterval = shortLeg.intervalHours === longLeg.intervalHours;
-const ASSUMED = sameInterval ? shortLeg.intervalHours : 8;
-const naiveSpreadApr = (shortLeg.rate - longLeg.rate) * (8760 / ASSUMED);
+   when the legs differ and a reader has to pick one — and then the card says which was picked.
+   With no legs (a level contract) there is no pair to difference, and neither card is shown. */
+const sameInterval = trade ? trade.short.intervalHours === trade.long.intervalHours : true;
+const ASSUMED = trade && sameInterval ? trade.short.intervalHours : 8;
+const naiveSpreadApr = trade ? (trade.short.rate - trade.long.rate) * (8760 / ASSUMED) : NaN;
 const naivePeriod = perLeg * naiveSpreadApr * (days / 365);
 
 /* THE TWO LEGS SIDE BY SIDE, because the trade is a DIFFERENCE and a difference is a distance.
@@ -53,15 +316,38 @@ const naivePeriod = perLeg * naiveSpreadApr * (days / 365);
    arithmetic and becomes the gap you can see between two bars. Every rate is annualised on its
    own interval first — that is this calculator's whole argument against the naive subtraction,
    and the figure inherits it rather than restating it. */
-const legs = [...perp.venues]
-  .filter((v) => Number.isFinite(v.apr))
+const roleOf = (v: Leg) => !trade ? ""
+  : v === trade.short ? "short"
+  : v === trade.long ? "long"
+  : trade.shortSet.includes(v) ? "or short"
+  : trade.longSet.includes(v) ? "or long"
+  : "";
+const legs = [...usable]
   .sort((a, b) => b.apr - a.apr)
-  .map((v) => ({ label: VENUE_LABEL[v.venue], apr: v.apr, hours: v.intervalHours,
-                 role: v.venue === shortLeg.venue ? "short" : v.venue === longLeg.venue ? "long" : "" }));
+  .map((v) => ({ label: VENUE_LABEL[v.venue], apr: v.apr, hours: v.intervalHours, role: roleOf(v) }));
 const legMax = Math.max(...legs.map((l) => Math.abs(l.apr)), 1e-9);
 
+const rows = trade
+  ? [
+      trade.short, ...trade.shortSet.filter((v) => v !== trade.short),
+      trade.long, ...trade.longSet.filter((v) => v !== trade.long),
+      ...perp.venues.filter((v) => !trade.shortSet.includes(v) && !trade.longSet.includes(v)),
+    ].map((v) => ({
+      v,
+      leg: v === trade.short ? "Short" : v === trade.long ? "Long" : roleOf(v) || "unused",
+      active: v === trade.short || v === trade.long,
+      flow: v === trade.short ? (v.apr >= 0 ? "receive" : "pay") : v === trade.long ? (v.apr >= 0 ? "pay" : "receive") : "—",
+    }))
+  : perp.venues.map((v) => ({ v, leg: "—", active: false, flow: "—" }));
+
 const title = `Funding arbitrage calculator — cross-venue spread`;
-const description = `What the funding spread between venues is actually worth on a delta-neutral position, with both legs annualised on their own settlement interval rather than assumed to match. Opens on the widest live spread.`;
+const description = `What the funding spread between venues is actually worth on a delta-neutral position, with both legs annualised on their own settlement interval rather than assumed to match.${
+  widestIsSpread ? (widestSet.length > 1 ? " Opens on a contract tied for the widest live spread." : " Opens on the widest live spread.") : ""}`;
+/* Passed to the calculator as names, not array literals: the gate's inline-script parser reads
+   define:vars by splitting on commas, and a literal inside it reads as `let CAPITAL.max` — a parse
+   failure reported against a script that is fine (smoke gate, 16 September 2026). */
+const capBounds = [CAPITAL.min, CAPITAL.max, CAPITAL.places];
+const dayBounds = [DAYS.min, DAYS.max, DAYS.places];
 ---
 
 <Base title={title} description={description} fetchedAt={snap.fetchedAt} crumb={{ href: "/tools", label: "Tools", current: "Funding arbitrage" }}>
@@ -70,21 +356,39 @@ const description = `What the funding spread between venues is actually worth on
     <h1>Funding arbitrage calculator</h1>
     <p>
       Short the venue paying the most, long the venue paying the least, hold both and collect the
-      difference. Opens on <strong>{perp.symbol} at {pct(spreadApr)} a year</strong>, {VENUE_LABEL[shortLeg.venue]}
-      {" "}against {VENUE_LABEL[longLeg.venue]} — the widest live spread across the venues covered here.
+      difference.
+      {/* The space between {opened} and <strong> is an explicit {" "}: whitespace alone between an
+          expression and an element is dropped here, and rendered "ShowingXMR" (16 September 2026).
+          The newlines between the expressions below already supply one space each. */}
+      {trade ? (
+        <>{opened}{" "}<strong>{perp.symbol} at {rate(spreadApr)} a year</strong>, {venueNames(trade.shortSet, "or")} against {venueNames(trade.longSet, "or")}{widestTail}</>
+      ) : (
+        <>{opened}{" "}<strong>{perp.symbol}</strong>, where there is no spread to collect right now: {levelWords}.{!askedPerp && !widestIsSpread && " No contract covered here has one."}</>
+      )}
+      {pointerOne && <>The widest live spread right now is <a class="link" href={`/tools/funding-arbitrage?symbol=${pointerOne.symbol}`}>{pointerOne.symbol} at {pointerOne.printed}</a>.</>}
+      {pointerTied && <>The widest live spread right now, {pointerTied.printed}, is shared by {pointerTied.n} contracts.</>}
     </p>
     <Advisory />
   </div>
+
+  {/* THE NOTICE DESCRIBES THE LINK'S FIGURES, NOT THE READER'S. It says the figures use a default
+      because the link's value was out of range; once the reader types valid values, recalc() repaints
+      every figure from them and the notice would be describing numbers no longer on the page
+      (verified locally 16 September 2026, ?symbol=BTC&days=5000, then typing 60). recalc() removes it
+      at the first repaint, so it cannot outlive the figures it explains. */}
+  {notices.length > 0 && (
+    <div id="link-notice" class="verdict verdict--warn" style="margin:0 0 12px"><div>{notices.join(" ")}</div></div>
+  )}
 
   <form method="GET" class="calc">
     <label>Coin
       <select name="symbol">{tradable.map((p) => <option value={p.symbol} selected={p.symbol === perp.symbol}>{p.symbol}</option>)}</select>
     </label>
     <label>Capital deployed (USD)
-      <input type="number" name="capital" value={capital} step="any" min="0" />
+      <input type="number" name="capital" value={capital} step={stepOf(CAPITAL)} min={CAPITAL.min} max={CAPITAL.max} />
     </label>
     <label>Days held
-      <input type="number" name="days" value={days} step="any" min="0" />
+      <input type="number" name="days" value={days} step={stepOf(DAYS)} min={DAYS.min} max={DAYS.max} />
     </label>
     <button class="btn btn--primary" type="submit">Calculate</button>
   </form>
@@ -92,8 +396,10 @@ const description = `What the funding spread between venues is actually worth on
   {legs.length > 1 && (
     <Figure
       title={`${perp.symbol} funding across venues, annualised`}
-      lead={pct(spreadApr)}
-      leadNote={`the spread you collect \u2014 short ${VENUE_LABEL[shortLeg.venue]}, long ${VENUE_LABEL[longLeg.venue]}`}
+      lead={rate(spreadApr)}
+      leadNote={trade
+        ? `the spread you collect — short ${venueNames(trade.shortSet, "or")}, long ${venueNames(trade.longSet, "or")}`
+        : `no spread to collect — ${levelWords}`}
       fetchedAt={snap.fetchedAt}>
       <div class="bars">
         {legs.map((l) => (
@@ -104,86 +410,87 @@ const description = `What the funding spread between venues is actually worth on
                 class:list={["bars__fill", l.apr >= 0 ? "bars__fill--l" : "bars__fill--s"]}
                 style={`width:${Math.max(2, (Math.abs(l.apr) / legMax) * 100)}%`}></span>
             </span>
-            <span class="bars__value">{pct(l.apr)} {l.role && <span class="faint">{l.role}</span>}</span>
+            <span class="bars__value">{rate(l.apr)} {l.role && <span class="faint">{l.role}</span>}</span>
           </>
         ))}
       </div>
-      <p slot="note">
-        The trade is the gap between the top bar and the bottom one: you are short the venue
-        paying the most and long the venue paying the least, so the two price exposures cancel and
-        the difference is what you keep. Each rate is annualised on its own settlement interval
-        first &mdash; subtracting the quoted numbers instead would read this spread as
-        {" "}{pct(naiveSpreadApr)}.
-      </p>
+      {trade ? (
+        <p slot="note">
+          The trade is the gap between the top bar and the bottom one: you are short the venue
+          paying the most and long the venue paying the least, so the two price exposures cancel and
+          the difference is what you keep.{tieWords && <>{" "}{tieWords}</>} Each rate is annualised on its own settlement interval
+          first &mdash; subtracting the quoted numbers instead would read this spread as
+          {" "}{rate(naiveSpreadApr)}.{precisionWords && <>{" "}{precisionWords}</>}
+        </p>
+      ) : (
+        <p slot="note">
+          There is no trade here: with each rate annualised on its own settlement interval, {levelWords}, {levelNote}{quotedWords && <>{" "}The quoted rates differ &mdash; {quotedWords} &mdash; only because the venues settle on different intervals.</>}
+        </p>
+      )}
     </Figure>
   )}
 
   <div class="cards" style="margin-top:12px">
     <div class="card card--lead">
       <div class="card__label">Spread captured</div>
-      <div class="card__value" id="out-spread">{pct(spreadApr)}</div>
-      <div class="card__meta">annualised · both legs on their own interval</div>
+      <div class="card__value" id="out-spread">{rate(spreadApr)}</div>
+      <div class="card__meta">{trade ? "annualised · both legs on their own interval" : "annualised · every venue on its own interval"}</div>
     </div>
+    {trade && (
+      <div class="card">
+        <div class="card__label">{sameInterval ? `Read side by side at ${ASSUMED}h` : "If both settled 8-hourly"}</div>
+        <div class="card__value dim" id="out-naive">{rate(naiveSpreadApr)}</div>
+        <div class="card__meta">{sameInterval ? `same as above — both legs settle every ${ASSUMED}h` : "the side-by-side reading, assuming 8h"}</div>
+      </div>
+    )}
     <div class="card">
-      <div class="card__label">{sameInterval ? `Read side by side at ${ASSUMED}h` : "If both settled 8-hourly"}</div>
-      <div class="card__value dim" id="out-naive">{pct(naiveSpreadApr)}</div>
-      <div class="card__meta">{sameInterval ? `same as above — both legs settle every ${ASSUMED}h` : "the side-by-side reading, assuming 8h"}</div>
-    </div>
-    <div class="card">
-      <div class="card__label">Gross over <span id="out-days">{days}</span> days</div>
+      <div class="card__label">Gross over <span id="out-days">{dayWords(days)}</span></div>
       <div class="card__value" id="out-period">{usd(grossPeriod, 2)}</div>
-      <div class="card__meta">on <span id="out-perleg">{usd(perLeg, 0)}</span> per leg · modelled at today's rate, held</div>
+      <div class="card__meta">on <span id="out-perleg" data-perleg>{legWords(perLeg)}</span> per leg · modelled at today's rate, held</div>
     </div>
     <div class="card">
       <div class="card__label">Gross per year</div>
       <div class="card__value" id="out-year">{usd(grossYear, 2)}</div>
-      <div class="card__meta">modelled: today's rate held all year, before costs</div>
+      <div class="card__meta">modelled on <span data-perleg>{legWords(perLeg)}</span> per leg: today's rate held all year, before costs</div>
     </div>
   </div>
 
-  {!sameInterval && (
+  {trade && !sameInterval && (
     <div class="verdict verdict--warn">
       <div>
-        These two venues settle on <b>different intervals</b> ({shortLeg.intervalHours}h and
-        {" "}{longLeg.intervalHours}h). Differencing the quoted rates gives
-        {" "}<b>{pct(naiveSpreadApr)}</b> where the real spread is <b>{pct(spreadApr)}</b> — a gap of
+        {VENUE_LABEL[trade.short.venue]} and {VENUE_LABEL[trade.long.venue]} settle on <b>different intervals</b> ({trade.short.intervalHours}h and
+        {" "}{trade.long.intervalHours}h). Differencing the quoted rates gives
+        {" "}<b>{rate(naiveSpreadApr)}</b> where the real spread is <b>{rate(spreadApr)}</b> — a gap of
         {/* THESE TWO WERE STATIC IN A SENTENCE ABOUT THE FORM. Change Capital or Days and the
             paragraph went on quoting the gap for the position you no longer had, with its own
             "over 30 days" agreeing with itself and contradicting the input above it. */}
-        {" "}<b id="v-gap">{usd(Math.abs(grossPeriod - naivePeriod), 2)}</b> on this position over <span id="v-days">{days}</span> days.
+        {" "}<b id="v-gap">{usd(Math.abs(grossPeriod - naivePeriod), 2)}</b> on this position over <span id="v-days">{dayWords(days)}</span>.
       </div>
     </div>
   )}
 
-  <h2 class="section">The two legs</h2>
+  <h2 class="section">{trade ? "The two legs" : "The venues"}</h2>
   <div class="panel">
     <table class="tbl">
       <thead><tr><th>Leg</th><th>Venue</th><th class="num">Quoted rate, per settlement</th><th class="num">Interval</th><th class="num">Annualised</th><th class="num">You pay or receive</th></tr></thead>
       <tbody>
-        <tr class="is-active">
-          <td><strong>Short</strong></td>
-          <td>{VENUE_LABEL[shortLeg.venue]}</td>
-          <td class="num">{rawRate(shortLeg.rate, shortLeg)}</td>
-          <td class="num">{shortLeg.intervalHours}h</td>
-          <td class:list={["num", paysClass(shortLeg.apr)]} style="font-weight:600">{pct(shortLeg.apr)}</td>
-          <td class="num">{shortLeg.apr >= 0 ? "receive" : "pay"}</td>
-        </tr>
-        <tr class="is-active">
-          <td><strong>Long</strong></td>
-          <td>{VENUE_LABEL[longLeg.venue]}</td>
-          <td class="num">{rawRate(longLeg.rate, longLeg)}</td>
-          <td class="num">{longLeg.intervalHours}h</td>
-          <td class:list={["num", paysClass(longLeg.apr)]} style="font-weight:600">{pct(longLeg.apr)}</td>
-          <td class="num">{longLeg.apr >= 0 ? "pay" : "receive"}</td>
-        </tr>
-        {perp.venues.filter((v) => v.venue !== shortLeg.venue && v.venue !== longLeg.venue).map((v) => (
+        {rows.map((r) => r.active ? (
+          <tr class="is-active">
+            <td><strong>{r.leg}</strong></td>
+            <td>{VENUE_LABEL[r.v.venue]}</td>
+            <td class="num">{quoted(r.v)}</td>
+            <td class="num">{r.v.intervalHours}h</td>
+            <td class:list={["num", paysClass(r.v.apr)]} style="font-weight:600">{rate(r.v.apr)}</td>
+            <td class="num">{r.flow}</td>
+          </tr>
+        ) : (
           <tr>
-            <td class="faint">unused</td>
-            <td class="dim">{VENUE_LABEL[v.venue]}</td>
-            <td class="num dim">{rawRate(v.rate, v)}</td>
-            <td class="num dim">{v.intervalHours}h</td>
-            <td class:list={["num", paysClass(v.apr)]}>{pct(v.apr)}</td>
-            <td class="num faint">—</td>
+            <td class="faint">{r.leg}</td>
+            <td class="dim">{VENUE_LABEL[r.v.venue]}</td>
+            <td class="num dim">{quoted(r.v)}</td>
+            <td class="num dim">{r.v.intervalHours}h</td>
+            <td class:list={["num", paysClass(r.v.apr)]}>{rate(r.v.apr)}</td>
+            <td class="num faint">{r.flow}</td>
           </tr>
         ))}
       </tbody>
@@ -227,26 +534,47 @@ const description = `What the funding spread between venues is actually worth on
       rendered 65.71% and the first keystroke in Capital or Days replaced it with 32.86%, under
       a caption still saying "both legs settle every 4h". Exactly half, silently, on an input
       event. The three constants below are now passed in, so there is nothing left to disagree
-      about — the client only multiplies them by what the reader typed. */}
-  <script is:inline define:vars={{ spreadApr, naiveApr: naiveSpreadApr }}>
+      about — the client only multiplies them by what the reader typed. out-spread and out-naive
+      are not written at all: neither depends on Capital or Days, both are already correct at
+      first byte, and writing them could only ever make them wrong.
+
+      THE BOUNDS ARE PASSED IN TOO (16 September 2026). The script accepted any C >= 0 and
+      D >= 0, so typing 100000 into Days repainted "100000 days" while the server, given the same
+      value, rendered 30. An input outside the bounds or finer than its grain (the third element of
+      CAP and DAY, the same check as inGrain), or an empty box (which the server reads as
+      "use the default"), now leaves the figures where they were — and every card that depends on
+      Capital or Days names the value it was drawn at ("over 30 days", "$5,000 per leg") — which
+      is why Gross per year now carries the per-leg base as well, written through [data-perleg].
+      exact, dayWords and legWords are the frontmatter's functions line for line: the "1 days" and
+      "$1 per leg" defects were each written twice, once here and once in the markup. The + 0 on
+      C and D is the frontmatter's too: a typed -0 is inside the bounds and would print "-0 days".
+      On a contract with no trade spreadApr arrives as 0, not as the sub-print gap, so a repaint
+      writes $0.00 like the first byte did. */}
+  <script is:inline define:vars={{ spreadApr, naiveApr: naiveSpreadApr, CAP: capBounds, DAY: dayBounds }}>
     const form = document.querySelector(".calc");
     if (form) {
       const money = (x) => (x < 0 ? "−$" : "$") + Math.abs(x).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-      const pc = (x) => (x * 100).toFixed(2) + "%";
       const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+      const exact = (x) => {
+        let d = 0;
+        while (d < 20 && Number(x.toFixed(d)) !== x) d++;
+        return x.toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d });
+      };
+      const dayWords = (d) => (d === 1 ? "1 day" : `${exact(d)} days`);
+      const legWords = (x) => "$" + exact(x).replace(/\.\d$/, (m) => m + "0");
       const recalc = () => {
-        const C = Number(form.capital.value), D = Number(form.days.value);
-        if (!(C >= 0) || !(D >= 0)) return;
+        if (form.capital.value.trim() === "" || form.days.value.trim() === "" || !Number.isFinite(spreadApr)) return;
+        const C = Number(form.capital.value) + 0, D = Number(form.days.value) + 0;
+        const ok = (x, b) => x >= b[0] && x <= b[1] && Number(x.toFixed(b[2])) === x;
+        if (!ok(C, CAP) || !ok(D, DAY)) return;
         const perLeg = C / 2;
-        /* out-spread and out-naive are not written at all: neither depends on Capital or Days,
-           both are already correct at first byte, and writing them could only ever make them
-           wrong. */
+        const stale = document.getElementById("link-notice"); if (stale) stale.remove();
         set("out-period", money(perLeg * spreadApr * (D / 365)));
         set("out-year", money(perLeg * spreadApr));
         set("v-gap", money(Math.abs(perLeg * spreadApr * (D / 365) - perLeg * naiveApr * (D / 365))));
-        set("v-days", String(D));
-        set("out-days", String(D));
-        set("out-perleg", "$" + Math.round(perLeg).toLocaleString("en-US"));
+        set("v-days", dayWords(D));
+        set("out-days", dayWords(D));
+        for (const el of document.querySelectorAll("[data-perleg]")) el.textContent = legWords(perLeg);
       };
       form.addEventListener("input", recalc);
       form.addEventListener("change", (e) => { if (e.target.name === "symbol") form.submit(); else recalc(); });

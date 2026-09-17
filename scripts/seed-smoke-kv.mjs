@@ -192,11 +192,36 @@ for (const { key, blob_id } of rows) {
     "- one list item",
     "- and a second",
     "",
+    /* THE PASSAGE REPORTS STORED BEFORE 16 SEPTEMBER CARRY. It pointed readers at a series that
+       was never printed; /status/indexation now splices the series in from index:history, and
+       without this sentence and that key the gate would only ever render the page without it. */
+    "## B. Not indexed",
+    "",
+    "**Deferred or rejected.** A single reading cannot tell them apart, so watch the series below.",
+    "",
+    "| URL | State |",
+    "|---|---|",
+    "| `/funding/btc` | Discovered |",
+    "",
   ].join("\n");
   const id = randomBytes(40).toString("hex");
-  writeFileSync(join(blobDir, id), JSON.stringify({ week: "2026-W00", at: Date.now(), tookMs: 61_000, md }));
+  const reportAt = Date.now();
+  writeFileSync(join(blobDir, id), JSON.stringify({ week: "2026-W00", at: reportAt, tookMs: 61_000, md }));
   put.run("report:latest", id);
   console.log(`  report:latest  ${md.split("\n").length} lines of markdown — /status/indexation's populated branch`);
+
+  /* Three readings a week apart, all before the report, with one change of covered set, so the
+     spliced table renders an "unchanged" row, a change row and the earliest row. */
+  const week = 7 * 24 * 3_600_000;
+  const history = [
+    { at: reportAt - week, total: 79, indexed: 41, byTemplate: [["pages", 7, 7]] },
+    { at: reportAt - 2 * week, total: 79, indexed: 41, byTemplate: [["pages", 7, 7]] },
+    { at: reportAt - 3 * week, total: 77, indexed: 38, byTemplate: [["pages", 7, 7]] },
+  ];
+  const hid = randomBytes(40).toString("hex");
+  writeFileSync(join(blobDir, hid), JSON.stringify(history));
+  put.run("index:history", hid);
+  console.log(`  index:history  ${history.length} readings — the series /status/indexation splices under a legacy report`);
 
   /* The stamp the site expects, read from the source of truth rather than typed here, so the
      row renders "current" instead of a false staleness alarm. */
@@ -257,6 +282,42 @@ for (const { key, blob_id } of rows) {
   writeFileSync(join(blobDir, id), JSON.stringify(rec));
   put.run("indexnow:state", id);
   console.log(`  indexnow:state  2 endpoints refusing, 21x, 1 URL owed each — /status renders the branch production hides`);
+}
+
+/* =========================================================================================
+   THE FUNDING SHAPE COLUMN, IN THE SHAPE THAT WOULD BREAK ITS SCALE.
+
+   check-inventory caught this before the feature shipped: spark:* is read by src/lib/sparks.ts
+   and was absent from the fixture, so every gate rendered the empty branch and the column itself
+   was never drawn by anything but a browser I happened to be looking at.
+
+   SEEDED AS THE REAL BOOK, NOT AS TIDY DATA. The whole argument for a shared axis is what happens
+   when one contract prints −60% a year while thirty-six rest on a venue constant: pinned to that
+   maximum the column is forty-nine flat lines, and scaled per row the flat ones become amplified
+   noise. So the fixture carries a mass on the base rate, a handful of priced contracts, one
+   extreme that must be clipped and counted, a series that crosses zero — the case where a single
+   hue over the whole row would be a lie — and one published contract with NO series at all, which
+   must render a dash rather than a flat line at zero. */
+{
+  const STEP = 4 * 3_600_000, N = 42;
+  const BASE = 0.0000125 * 8760;
+  const bucket = Math.floor(Date.now() / STEP) - 1;
+  const flat = (v) => Array.from({ length: N }, () => Number(v.toFixed(5)));
+  const series = {};
+  for (const sym of ["CHIP", "VIRTUAL", "ONDO", "INJ", "LDO", "NEAR", "XRP", "DOGE", "SUI", "TAO"]) series[sym] = flat(BASE);
+  series.BTC = flat(BASE);
+  series.ETH = Array.from({ length: N }, (_, i) => Number((0.02 * Math.sin(i / 4)).toFixed(5)));
+  series.SOL = flat(0.0671);
+  series.LINK = flat(-0.0103);
+  series.AAVE = Array.from({ length: N }, (_, i) => Number((-0.02 - i * 0.002).toFixed(5)));
+  series.TRUMP = Array.from({ length: N }, (_, i) => Number((i < 30 ? BASE : -0.60).toFixed(5)));
+  /* Two points only: above the floor that draws a mark, below anything that looks like a shape. */
+  series.PONS = [Number(BASE.toFixed(5)), Number((BASE * 1.4).toFixed(5))];
+  const rec = { v: 1, bucket, at: Date.now(), series };
+  const id = randomBytes(40).toString("hex");
+  writeFileSync(join(blobDir, id), JSON.stringify(rec));
+  put.run("spark:funding", id);
+  console.log(`  spark:funding  ${Object.keys(series).length} series incl. a -60% outlier to clip, a zero-crossing row and a 2-point row; published contracts without one render a dash`);
 }
 
 db.close();

@@ -235,6 +235,10 @@ const cases = [
       ...controlGroupOverflow(
         `.tf { display: inline-flex; flex-wrap: wrap; gap: var(--seg-gap); padding: 2px; }`,
         [["fixture.astro", `<div class="tf">{TIMEFRAMES.map((t) => (<button data-tf={t.key}>{t.label}</button>))}</div>`]]),
+      /* THE THIRD: a flex box whose generated links sit in a plain <ol> stack one per line. */
+      ...controlGroupOverflow(
+        `.verdict { display: flex; gap: 12px; }`,
+        [["fixture.astro", `<div class="verdict"><div><b>Two corrections.</b><ol>{fixes.map((f, k) => <li><a href={"#c" + k}>{f.label}</a></li>)}</ol></div></div>`]]),
       ...controlGroupOverflow(
         `table.tbl { border-collapse: collapse; width: 100%; }`,
         [["fixture.astro", `<table class="tbl"><tbody>{rows.map((r) => (<tr><td><a href={r.h}>{r.s}</a></td></tr>))}</tbody></table>`]]),
@@ -900,7 +904,11 @@ for (const [name, n] of Object.entries(EXEMPTION_COUNTS)) {
   if (n > 3) console.log(`  note  ${name} carries ${n} exemptions — ask what it fires on today`);
 }
 
-const PROVEN_ELSEWHERE = ["flipTableColour", "inlineScriptSyntax", "sitemapLastmodHonesty", "weightFaults"];
+/* typographyFaults is proven by scripts/overview-cases.mjs, which runs it against a fixture
+   carrying the exact whitespace node that shipped to /coins/{coin} — and again in --blind mode
+   against the tag-to-space strip that reported ten false faults, so the suite proves both that
+   the check fires and that it can tell a rendering fault from its own artefact. */
+const PROVEN_ELSEWHERE = ["flipTableColour", "inlineScriptSyntax", "sitemapLastmodHonesty", "weightFaults", "typographyFaults"];
 const TOTAL_CHECKS = [...readFileSync(new URL("./checks.mjs", import.meta.url), "utf8")
   .matchAll(/^export function (\w+)/gm)].map((m) => m[1])
   .filter((n) => !MEASUREMENT_EXPORTS.includes(n)).length;

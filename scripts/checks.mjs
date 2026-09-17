@@ -58,7 +58,11 @@ export async function cssFor(html, origin) {
    the distinction, and both used to carry their own copy — one of them as a hardcoded 25, which
    went stale the moment a check was added and printed "30 of 25 ... -5 still unfalsified".
    Declared here, beside the functions, so adding one is a decision instead of an accident. */
-export const MEASUREMENT_EXPORTS = ["pageWeight", "colourPalettes"];
+/* renderedText joins this list for the same reason the other two are on it: it returns TEXT, not
+   findings, so "has it ever been shown to fire" is not a question about it. typographyFaults, the
+   check built on top of it, does return findings and is proven to fire by overview-cases.mjs —
+   both sighted and against a deliberately naive strip. */
+export const MEASUREMENT_EXPORTS = ["pageWeight", "colourPalettes", "renderedText"];
 
 /**
  * A COOKIE-DRIVEN STATE THE GATE HAD NEVER RENDERED, AT A WIDTH IT WAS NEVER DESIGNED FOR.
@@ -1870,6 +1874,16 @@ export function controlGroupOverflow(css, sources = []) {
       const body = m[3];
       if (!/\.map\(/.test(body)) continue;
       if (!/<(button|a)\b/.test(body)) continue;
+      /* A GENERATED LIST INSIDE A PLAIN <ol> OR <ul> IS NOT A ROW. Its items are list items, one
+         per line, whatever the box around them does; the flex container holds the list, not the
+         controls. /status/indexation's corrections box — a .verdict, which is a flex row — lists
+         its corrections as <ol>{fixes.map(… <a …>)}</ol>, and this reported the box as a row that
+         runs off a phone (16 September 2026). Only an UNCLASSED list is set aside: a classed one is
+         a container in its own right, matched on its own, and its rule is read like any other. The
+         layout styles no bare ol, ul or li. */
+      const maps = [...body.matchAll(/\.map\(/g)].length;
+      const inPlainLists = [...body.matchAll(/<(ol|ul)>\s*\{[^{}]*?\.map\(/g)].length;
+      if (maps > 0 && maps === inPlainLists) continue;
       for (const cls of m[2].trim().split(/\s+/)) {
         if (!generated.has(cls)) generated.set(cls, { file, own: src });
       }
@@ -2459,4 +2473,65 @@ export function llmsHostsAgree(llms, scriptSrc) {
     if (!permitted.has(h)) out.push(`llms.txt names ${h} as a script host and the live header does not permit it — a claim the site no longer supports`);
   }
   return out;
+}
+
+/* =========================================================================================
+   TYPOGRAPHY FAULTS IN A STATED SITUATION, and the instrument that had to be corrected first.
+
+   THE DEFECT. Astro renders a whitespace text node between adjacent JSX expressions that sit on
+   separate lines. So `…a $10,000 position\n{cond ? ", paid to you" : ""}.` ships as
+   "position ." — a space before the full stop, in the one sentence on the page written to be
+   read first and quoted. It shipped on /coins/{coin} and was found by looking at the rendered
+   page, which is where the comment at the quotable sentence in /funding/[symbol] already says
+   this class of bug lives.
+
+   THE FIRST INSTRUMENT FOR IT WAS WRONG, AND WRONG IN THE DIRECTION THAT WASTES WORK. It stripped
+   every tag to a space — the strip() the other checks in this file use, which is right for asking
+   "does this text contain X" and wrong for asking "what spacing does a reader see". Under it
+   `<b>50 contracts</b>, and` reads as "50 contracts , and", so it reported a fault on all eleven
+   pages when there was one. Ten of those were the instrument describing itself.
+
+   SO INLINE ELEMENTS CLOSE UP AND BLOCK ELEMENTS DO NOT, which is what the browser does. Verified
+   against the rendered DOM: the same eleven pages come back clean here and clean in the browser,
+   and the one real fault was caught by both before it was fixed.
+   ========================================================================================= */
+const INLINE_TAGS = "a|b|i|q|s|u|em|strong|span|time|code|abbr|sup|sub|small|mark|cite|var|kbd|bdi|bdo|wbr|data|ruby|del|ins";
+
+/** Visible text with inline markup closed up, the way a browser lays it out. */
+export function renderedText(html) {
+  return String(html ?? "")
+    .replace(/<(script|style|svg|template|noscript)\b[\s\S]*?<\/\1>/gi, " ")
+    .replace(/<!--[\s\S]*?-->/g, " ")
+    /* Inline tags vanish without leaving a gap — this is the whole difference from strip(). */
+    .replace(new RegExp(`</?(?:${INLINE_TAGS})(?:\\s[^>]*)?>`, "gi"), "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ").replace(/&mdash;/gi, "—").replace(/&ndash;/gi, "–")
+    .replace(/&rsquo;/gi, "’").replace(/&lsquo;/gi, "‘").replace(/&amp;/gi, "&")
+    .replace(/&[a-z#0-9]+;/gi, " ")
+    .replace(/[ \t\r\n]+/g, " ")
+    .trim();
+}
+
+/**
+ * Faults a reader sees in the page's stated situation, which is the sentence most likely to be
+ * read and the only one that is always above the fold.
+ *
+ * Deliberately NOT a style opinion. Each of these is a rendering accident that says something
+ * false or unfinished: a gap before punctuation, two sentences run together, a value that never
+ * resolved, a number welded to the next word.
+ */
+export function typographyFaults(html, selectorClass = "overview") {
+  const blocks = [...String(html ?? "").matchAll(
+    new RegExp(`<p class="${selectorClass}[^"]*"[^>]*>([\\s\\S]*?)</p>`, "g"),
+  )].map((m) => renderedText(m[1])).filter(Boolean);
+  const faults = [];
+  for (const t of blocks) {
+    if (/ [.,;:!?]/.test(t)) faults.push(`space before punctuation: "${t.match(/\S*\s[.,;:!?]\S*/)?.[0] ?? ""}"`);
+    if (/[a-z][.,][A-Za-z]/.test(t)) faults.push(`punctuation with no space after: "${t.match(/\S*[a-z][.,][A-Za-z]\S*/)?.[0] ?? ""}"`);
+    if (/\d(?:%|[A-Za-z])[A-Z]/.test(t)) faults.push(`a figure welded to the next word: "${t.match(/\S*\d(?:%|[A-Za-z])[A-Z]\S*/)?.[0] ?? ""}"`);
+    if (/\b(?:undefined|NaN|null|Infinity)\b/.test(t)) faults.push(`an unresolved value reached the reader: "${t.match(/\S*\b(?:undefined|NaN|null|Infinity)\b\S*/)?.[0] ?? ""}"`);
+    if (/\.\s*\./.test(t)) faults.push("a doubled full stop");
+    if (/\s—\s?[.,]/.test(t)) faults.push("a dash followed by punctuation");
+  }
+  return faults;
 }

@@ -4,6 +4,7 @@ import Related from "../../components/Related.astro";
 import { getSnapshot, coldStart, OI_NOTIONAL_FLOOR } from "../../lib/hyperliquid.ts";
 import { VENUE_LABEL, pct, usd } from "../../lib/funding.ts";
 
+import { coverageRule, coverageToday } from "../../lib/coverage.ts";
 /**
  * THE EXPLAINERS' FRONT DOOR, AND THE FIRST PAGE ON THIS SITE WHOSE JOB IS A SENTENCE RATHER
  * THAN A NUMBER.
@@ -102,7 +103,7 @@ const description =
               and 50 are published; /about prints both numbers on the same store, so the site
               contradicted itself across two pages. The count is the published set, so the note
               says which set it is and names the eligible one beside it. */}
-          <td>The largest {perps.length} by open interest of the {snap.eligibleCount} Hyperliquid perpetuals clearing {usd(OI_NOTIONAL_FLOOR)}. The floor, and why there is one, is on <a class="link" href="/data-sources">Data sources</a>.</td>
+          <td>{coverageToday(snap)} The rule, and why there is one, is on <a class="link" href="/data-sources">Data sources</a>.</td>
         </tr>
         <tr>
           <td><a href="/open-interest">Open interest</a></td>

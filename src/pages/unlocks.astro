@@ -1,9 +1,11 @@
 ---
 import Base from "../layouts/Base.astro";
 import Figure from "../components/Figure.astro";
+import Overview from "../components/Overview.astro";
 import Related from "../components/Related.astro";
 import { usd, pct } from "../lib/funding.ts";
 import { getSnapshot, findPerp } from "../lib/hyperliquid.ts";
+import { extremeBy } from "../lib/extreme.ts";
 import reg from "../data/vesting-contracts.json";
 
 /**
@@ -17,7 +19,7 @@ import reg from "../data/vesting-contracts.json";
  * a first-class state rather than an absence.
  *
  * Four states, all read from the chain, none of them derivable from a date alone:
- *   releasing  paying out now, at a published rate, with the balance to keep doing it
+ *   releasing  paying out now, at a published rate, from something the read shows it can pay with
  *   overhang   schedule finished, tokens still there — withdrawable today
  *   unfunded   a forward rate published by a contract that holds nothing
  *   emptied    finished and gone, confirmed by reading the balance rather than assuming
@@ -25,12 +27,46 @@ import reg from "../data/vesting-contracts.json";
  * The last two exist because the first read of the balances produced both: Compound's
  * Reservoir publishes 0.5 COMP a block and holds zero; all four Uniswap vesters read zero and
  * are genuinely done. Neither could be told from its dates.
+ *
+ * One case is not a state, and the page says so rather than forcing it into one: a releasing
+ * contract whose last-read allowance, drawn at its published rate, would already be spent (see
+ * `forward` below). Its state is unknown until the register is re-read, so it is counted in none.
  */
 const now = Date.now();
+const DAY = 86400000;
 const d = (s: string) => Date.parse(s + "T00:00:00Z");
-const fmt = (s: string) => new Date(d(s)).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+const fmtTs = (t: number) => new Date(t).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+const fmt = (s: string) => fmtTs(d(s));
 const num = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 0 });
-const daysSince = (s: string) => Math.round((now - d(s)) / 86400000);
+const daysSince = (s: string) => Math.round((now - d(s)) / DAY);
+/* The same one-decimal-under-ten rule the days-of-volume cells use, for ratios and day counts. */
+const oneDp = (n: number) => n.toFixed(Math.abs(n) < 10 ? 1 : 0);
+/* A FUTURE DATE PRINTED AS "0.0 DAYS FROM NOW". Found by the verifier on 16 September 2026, in a
+   copy of the /unlocks slot logic run at 23 Sept 2026 06:30 UTC, about half an hour before AAVE's
+   allowance date: both the states table and the Releasing now row read "lasts to 23 Sept 2026, 0.0
+   days from now", which says the date has arrived while the row is still counted as paying (a
+   contract only leaves Releasing now once the date has passed; see `lapsed`). The words are chosen
+   from the digits oneDp actually prints, not from a threshold typed beside it, so any count that
+   would render as zero says "less than 0.1 days" instead, the same floor as the "<0.1" absorb cell. */
+const daysLeft = (n: number) => (Number(oneDp(n)) === 0 ? "less than 0.1 days" : `${oneDp(n)} days`);
+const readAt = Date.parse(reg.verifiedAt);
+
+/* NOTES IN THE DATA FILE CARRY NO NUMBERS OF THEIR OWN. Audited 16 September 2026, the COMP note
+   said "7,764,561 COMP should have reached the Comptroller by now" — a figure taken at the read
+   block, 32 days before the page's clock, and typed beside the very fields it was computed from.
+   The ENS and CRV notes did the same with "four-year", "4 November 2025", "Five years later" and
+   the held amounts, and the UNI note with "four" and "430,000,000". Notes now name a slot —
+   {span}, {end}, {heldNow}, {amount}, {count} — and the slot is filled from the row's own fields,
+   so a re-read changes the prose with the table. An unknown slot is left visible, not guessed. */
+const WORDS = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"];
+const inWords = (n: number) => WORDS[n] ?? String(n);
+const fill = (text: string, v: Record<string, string>) => text.replace(/\{(\w+)\}/g, (m, k) => v[k] ?? m);
+const scheduleFacts = (s: any) => ({
+  span: `${inWords(Math.round((d(s.end) - d(s.begin)) / (365.25 * DAY)))}-year`,
+  end: fmt(s.end),
+  heldNow: num(s.heldNow),
+  amount: s.amount == null ? "" : num(s.amount),
+});
 const badge = (k: string) => reg.provenanceScale.find((p: any) => p.key === k)!;
 const state = (k: string) => reg.states.find((s: any) => s.key === k)!;
 
@@ -50,28 +86,171 @@ const absorb = (symbol: string, tokens: number) => {
   return { days: (tokens * p.markPx) / p.dayNtlVlm, usd: tokens * p.markPx, vol: p.dayNtlVlm };
 };
 
-/* Every schedule, flattened, carrying its token's supply so a share can be computed. */
+/* Every schedule, flattened, carrying its token's supply so a share can be computed — and its
+   token's addressNote, because that note is about THIS row's address and has to be printed on
+   the row. It was in the data and never rendered, while the provenance section told readers
+   the exception was "stated on its own row" (audit, 16 September 2026: the ENS row said nothing
+   about how its address was found). */
 const schedules = (reg.tokens as any[]).flatMap((t) =>
-  t.schedules.map((s: any) => ({ ...s, symbol: t.symbol, name: t.name, supply: t.totalSupply })),
+  t.schedules.map((s: any) => ({ ...s, symbol: t.symbol, name: t.name, supply: t.totalSupply, addressNote: t.addressNote ?? null })),
 );
 const overhang = schedules
   .filter((s) => s.state === "overhang")
   .map((s) => ({ ...s, sinceEnd: daysSince(s.end), absorb: absorb(s.symbol, s.heldNow) }))
   .sort((a, b) => b.heldNow / b.supply - a.heldNow / a.supply);
 const emptied = schedules.filter((s) => s.state === "emptied");
+/* Only overhang rows have a Provenance cell to carry the note, so only they are counted. */
+const addressInferred = overhang.filter((r) => r.addressNote);
 
-const releasing = (reg.emissions as any[])
+/* WHAT SEPARATES EMPTIED FROM OVERHANG, AS A SHARE THE TABLE PRINTS, NOT ONE TYPED BESIDE IT.
+   The "Finished and emptied" meaning in the data file ended "the difference between nothing and
+   45% of a supply" — a literal. On 16 September 2026 /unlocks?days=365 printed that beside
+   45.59% in the ENS row and in the Emptied intro, which already derived it from `overhang[0]`,
+   so a re-read would have moved two figures and left the glossary behind (verifier). Both now
+   read this one value: the largest share among the overhang rows, through extremeBy so a tie
+   still yields a value and never needs a winner. With more than one row and unequal shares the
+   figure is a maximum, and says so ("as much as"); when every row ties it is what EACH holds; with
+   no row whose share can be computed the clause is dropped rather than printed as 0.00% (the old
+   intro's `?? 0` fallback), since nothing versus nothing separates nothing. */
+const overhangMost = extremeBy(overhang, (r) => r.heldNow / r.supply, "max");
+const overhangSpread: "one" | "each" | "most" = overhangMost.kind === "unique" && overhangMost.of === 1 ? "one"
+  : overhangMost.kind === "tied" && overhangMost.items.length === overhangMost.of ? "each" : "most";
+const overhangShare = overhangMost.kind === "none" ? "" : `${overhangSpread === "most" ? "as much as " : ""}${pct(overhangMost.value)} of a supply`;
+const emptiedVsOverhang = overhangMost.kind === "none" ? ""
+  : `, but ${emptied.length === 1 ? "this one holds" : "these hold"} nothing and ${overhangSpread === "one" ? "the one above holds" : overhangSpread === "each" ? "those above each hold" : "those above hold"} ${overhangShare}`;
+
+/* FORWARD TOTALS RUN FROM TODAY AND STOP WHERE THE CONTRACT'S OWN READINGS SAY THEY STOP.
+   Every horizon here used to be perDay × days, full stop, and every one was counted from no
+   stated moment. Measured on 16 September 2026 that produced three contradictions inside one
+   page. AAVE's 90- and 365-day rows printed 13,500 and 54,750 emitted while the note under
+   them said the vault was approved to spend 5,856 — the allowance the page calls the real
+   limit. "Approved to spend 39 more days" was 5,856 / 150 counted from the read on 15 August,
+   32 days earlier, so on the page's own clock about 6.9 were left, beside a 30-day column of
+   4,500. And CRV's 365-day row, 97,161,876, ran the epoch-6 rate straight across the step-down
+   the same paragraph dates to 12 August 2027.
+
+   So a window is counted from `now`, like every "days since" on this page, and each limit the
+   register has READ is applied: an allowance is converted to the date it runs out at the
+   published rate (counted from the block it was read at, since that is when it held that
+   amount), and nothing past that date is counted; an epoch step is a date past which the
+   rate is lower by an amount this register has not read, so a window crossing it keeps the
+   constant-rate figure only as an upper bound and says so. A re-read moves the dates; nothing
+   here is a literal that can outlive it.
+
+   THE TWO LIMITS ARE NOT THE SAME KIND OF LIMIT, and the first version labelled both "up to".
+   The epoch end is read (`future_epoch_time_write()`, 12 Aug 2027 at the stated block) and the
+   contract only ever lowers the rate there, so a window crossing it really is bounded above.
+   The allowance date is not read: it assumes the 5,856 AAVE has been drawn at exactly 150 a day
+   since 15 August. Claims can lag accrual and governance can raise an allowance, so "up to
+   1,025" (16 September 2026) was a ceiling only under an assumption the page never stated. An
+   allowance-cut total is now printed as what it is, "counted to" the date, with the assumption
+   said beside it — and `limit` records which kind of cut a row took, so no cell can confuse them.
+
+   AND A DATE THAT PASSES MUST MOVE THE CONTRACT, NOT ZERO THE ROW. On 23 September 2026 the
+   estimate reaches zero; the row would have read "0" over every horizon under a state then defined
+   as "holds enough to keep doing so" (see `stateSlots` for why it no longer is). `lapsed` takes such a contract out of Releasing now and out of
+   every count, and says why, until a re-read gives it a state again. */
+const forward = (e: any) => {
+  const fundedUntil = e.fundedTokens ? readAt + (e.fundedTokens / e.perDay) * DAY : null;
+  const stepAt = e.epochEnd ? d(e.epochEnd) : null;
+  const fundedLeft = fundedUntil === null ? null : Math.max(0, (fundedUntil - now) / DAY);
+  const over = (h: number) => {
+    if (fundedLeft !== null && h > fundedLeft) {
+      return { tokens: e.perDay * fundedLeft, limit: "allowance", why: `counted to ${fmtTs(fundedUntil!)}` };
+    }
+    if (stepAt !== null && now + h * DAY > stepAt) {
+      return { tokens: e.perDay * h, limit: "step", why: `rate steps down ${fmtTs(stepAt)}` };
+    }
+    return { tokens: e.perDay * h, limit: null, why: "" };
+  };
+  return { fundedUntil, fundedLeft, lapsed: fundedUntil !== null && fundedUntil <= now, stepAt, over };
+};
+/* "the 90- and 365-day rows", "the 365-day row", "every row above" — from the horizons a limit
+   actually cuts, so the sentence and the table cannot disagree about which rows it means. */
+const rowsPhrase = (hs: number[]) =>
+  hs.length === HORIZONS.length ? "every row above"
+  : hs.length === 1 ? `the ${hs[0]}-day row`
+  : `the ${hs.slice(0, -1).join("-, ")}- and ${hs[hs.length - 1]}-day rows`;
+
+const emitting = (reg.emissions as any[])
   .filter((e) => e.state === "releasing")
-  .map((e) => ({
-    ...e,
-    tokens: e.perDay * horizon,
-    shareOfSupply: (e.perDay * horizon) / e.totalSupply,
-    /* A rate with no end date is not the same as a rate that is funded. Where the contract
-       also publishes what it is allowed to spend, the runway is the real horizon. */
-    runwayDays: e.fundedTokens ? e.fundedTokens / e.perDay : null,
-    absorb: absorb(e.symbol, e.perDay * horizon),
-  }));
+  .map((e) => ({ e, f: forward(e) }));
+const releasing = emitting
+  .filter(({ f }) => !f.lapsed)
+  .map(({ e, f }) => {
+    const o = f.over(horizon);
+    return {
+      ...e,
+      tokens: o.tokens,
+      bound: o.limit === "step",
+      why: o.why,
+      shareOfSupply: o.tokens / e.totalSupply,
+      /* A rate with no end date is not the same as a rate that is funded. Where the contract
+         also publishes what it is allowed to spend, the runway is the real horizon — stated as
+         the date it ends, so it cannot silently go on meaning "from the read". */
+      fundedUntil: f.fundedUntil,
+      fundedLeft: f.fundedLeft,
+      absorb: absorb(e.symbol, o.tokens),
+    };
+  });
+const lapsed = emitting.filter(({ f }) => f.lapsed).map(({ e, f }) => ({ ...e, fundedUntil: f.fundedUntil! }));
+const lapsedWhy = (e: any) =>
+  `the allowance read on ${fmtTs(readAt)}, ${num(e.fundedTokens)} ${e.symbol}, would have been spent by ${fmtTs(e.fundedUntil)} at its published ${num(e.perDay)} ${e.symbol} a day. Claims can lag what has accrued and governance can raise an allowance, so whether it is still paying is not known until the register is re-read, and until then it is counted in no state.`;
 const unfunded = (reg.emissions as any[]).filter((e) => e.state === "unfunded");
+
+/* "HOLDS ENOUGH TO KEEP DOING SO" WAS THE DEFINITION, AND THE PAGE DISPROVED IT FOR HALF THE COUNT.
+   Audited 16 September 2026 on https://coinliqui.com/unlocks?days=365: the states table counted 2
+   contracts under "The contract is paying out at a rate it publishes on-chain, and it holds enough
+   to keep doing so", and the Releasing now table below it gave one of the two, AAVE, 150 AAVE a day
+   on an allowance that "lasts to 23 Sept 2026, 6.8 days from now" — 1,015 AAVE over 365 days
+   against the 54,750 the rate implies, and 1,015 against 1,050 even at 7. The staking contract
+   holds nothing; the Reserve pays it through an allowance. The typed sentence promised a runway for
+   every member, and no reading can: a balance, an allowance or a mint rate read at one block says
+   what a contract pays WITH, never for how long.
+
+   So the definition now carries two slots filled from the rows it counts. `paysWith` names what
+   each one pays with, from the row's `paysFrom`, and only when that row's own reading backs it (an
+   allowance or a balance above zero, a rate above zero for a minter); one unbacked or unknown row
+   drops the clause for the whole state rather than describe it as funded. `runway` does not assert
+   a runway, it dates one, from the same `fundedUntil` and `fundedLeft` the table prints, so the
+   glossary and the row cannot disagree. Which allowance runs out first goes through extremeBy on
+   the printed day, so two ending on one date are named together, not picked by array order; and
+   when that tie is every allowance on the page, "first" would rank a set against nothing, so the
+   sentence dates them together instead (checked 16 September 2026 by running this block with a
+   second 150-a-day allowance ending on 23 Sept 2026 beside AAVE's). */
+const PAYS_WITH: Record<string, { verb: string; backed: (e: any) => boolean }> = {
+  allowance: { verb: "draws on an allowance", backed: (e) => e.fundedTokens > 0 },
+  balance: { verb: "pays from its own balance", backed: (e) => e.heldNow > 0 },
+  mint: { verb: "mints new supply", backed: (e) => e.ratePerSecond > 0 },
+};
+const andList = (xs: string[]) => (xs.length < 2 ? xs.join("") : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`);
+const stateSlots = (() => {
+  const backed = releasing.length > 0 && releasing.every((r) => PAYS_WITH[r.paysFrom]?.backed(r));
+  const paysWith = backed
+    ? `, and the last reading shows what it pays with: ${andList(releasing.map((r) => `${r.symbol} ${PAYS_WITH[r.paysFrom].verb}`))}`
+    : "";
+  const onAllowance = releasing.filter((r) => r.fundedUntil !== null);
+  const first = extremeBy(onAllowance, (r) => Math.floor(r.fundedUntil / DAY), "min", 0);
+  const lead = " A published rate is not a promise to keep paying it:";
+  const runway = first.kind === "none" ? ""
+    : first.kind === "unique" && onAllowance.length === 1
+      ? `${lead} ${first.item.symbol}’s allowance, drawn at its rate since the read, lasts to ${fmtTs(first.item.fundedUntil)}, ${daysLeft(first.item.fundedLeft)} from now.`
+    : first.kind === "unique"
+      ? `${lead} of the ${inWords(onAllowance.length)} drawing on an allowance, ${first.item.symbol}’s runs out first, lasting to ${fmtTs(first.item.fundedUntil)}, ${daysLeft(first.item.fundedLeft)} from now, if drawn at its rate since the read.`
+    : first.items.length === onAllowance.length
+      ? `${lead} ${andList(first.items.map((r) => `${r.symbol}’s`))} allowances, drawn at their rates since the read, ${first.items.length === 2 ? "both" : `all ${inWords(first.items.length)}`} last to ${fmtTs(first.items[0].fundedUntil)}.`
+    : `${lead} of the ${inWords(onAllowance.length)} drawing on an allowance, ${andList(first.items.map((r) => r.symbol))} run out first, ${first.items.length === 2 ? "both" : `all ${inWords(first.items.length)}`} lasting to ${fmtTs(first.items[0].fundedUntil)}, if drawn at their rates since the read.`;
+  const stakes = overhangShare && `, and it is the difference between nothing and ${overhangShare}`;
+  return { paysWith, runway, stakes };
+})();
+
+/* WHAT A DRIP CONTRACT OWED ON PAPER, from its own fields at the stated block rather than typed
+   into its note (see `fill` above): rate × blocks since dripStart, less dripped(). */
+const paperDebt = (e: any) => {
+  if (e.startBlock == null || e.ratePerBlock == null || e.drippedToDate == null) return null;
+  const owed = (reg.verifiedBlock - e.startBlock) * e.ratePerBlock;
+  return { owed, dripped: e.drippedToDate, gap: owed - e.drippedToDate };
+};
 
 const contractCount = schedules.length + reg.emissions.length;
 const overhangTotal = overhang.reduce((a, r) => a + (absorb(r.symbol, r.heldNow)?.usd ?? 0), 0);
@@ -93,8 +272,8 @@ const top = overhang[0];
 /* SHARE OF SUPPLY, RANKED, because that is the number this register exists to publish and the
    table makes a reader compute it row by row. A lock holding forty-five percent of a token is a
    different object from one holding two, and the difference is invisible in a column of raw
-   amounts — the supplies differ by orders of magnitude, so the biggest AMOUNT is routinely not
-   the biggest OVERHANG.
+   amounts — the supplies behind them differ many times over, so an AMOUNT says nothing about
+   how large an OVERHANG is against its own token.
 
    Only the overhang state is drawn: schedules that have finished with the tokens still sitting
    there, withdrawable on no notice. A calendar cannot show these at all, which is the whole
@@ -102,11 +281,47 @@ const top = overhang[0];
 const supplyBars = overhang
   .filter((r) => Number.isFinite(r.heldNow) && Number.isFinite(r.supply) && r.supply > 0)
   .slice(0, 8)
-  .map((r) => ({ symbol: r.symbol, share: r.heldNow / r.supply, usd: r.absorb?.usd ?? null, end: r.end }));
+  .map((r) => ({ symbol: r.symbol, share: r.heldNow / r.supply, usd: r.absorb?.usd ?? null, end: r.end, held: r.heldNow, supply: r.supply }));
 const supplyMax = Math.max(...supplyBars.map((r) => r.share), 1e-9);
+
+/* THE FIGURE'S NOTE ASSERTED A PATTERN ITS OWN TWO BARS DID NOT SHOW. It read "The raw amounts
+   are in the table below, where the largest of them is routinely not the largest share." The
+   table is ABOVE the figure, and on 16 September 2026 the set had two members: ENS 45,593,657
+   at 45.59% and CRV 10,302,751 at 0.43% — the largest amount WAS the largest share. What is
+   true, and is the reason for drawing shares at all, is that the amounts do not compare across
+   tokens: here ENS holds 4.4 times CRV's amount and 107 times its share, because CRV's supply
+   is 24 times larger. That comparison is now computed from the first two bars, and dropped
+   when their supplies are the same, which is the one case where it would say nothing. */
+const rawVsShare = (() => {
+  const [a, b] = supplyBars;
+  if (!a || !b || !(a.held > 0) || !(b.held > 0) || Math.abs(b.supply / a.supply - 1) < 0.01) return "";
+  const amount = a.held / b.held;
+  const [big, small] = b.supply > a.supply ? [b, a] : [a, b];
+  return `They do not compare across tokens: ${a.symbol} holds ${amount >= 1 ? `${oneDp(amount)} times ${b.symbol}’s amount` : `less than ${b.symbol} as a raw amount`} and ${oneDp(a.share / b.share)} times its share of supply, because ${big.symbol}’s total supply is ${oneDp(big.supply / small.supply)} times ${small.symbol}’s.`;
+})();
+
+/* "THE ONLY ROUTE THAT FINDS A CONTRACT WHOSE SCHEDULE ENDED YEARS AGO AND WHOSE BALANCE NEVER
+   MOVED" described a row the register does not have. Audited 16 September 2026: ENS ended 316
+   days earlier, under a year; CRV ended 1,860 days earlier but has paid out 141,212,401 of the
+   151,515,152 it was funded with. The sentence had spliced one row's date onto the other's
+   balance. What the page does support — the verdict above the table says it — is that reading
+   balances is what found the finished contracts still holding tokens; the example is now the
+   oldest of those rows, with its own end date and its own balance. */
+const oldestOverhang = [...overhang].sort((a, b) => d(a.end) - d(b.end))[0];
+const curationYield = oldestOverhang
+  ? `A short list, strongest where it matters. Reading balances as well as schedules is how it found ${
+      overhang.length === 1 ? "the finished contract above that still holds tokens"
+      : `${overhang.length === 2 ? "both" : `all ${overhang.length}`} finished contracts above that still hold tokens`
+    } — ${overhang.length === 1 ? "it" : "the oldest"} ended on ${fmt(oldestOverhang.end)} and still holds ${num(oldestOverhang.heldNow)} ${oldestOverhang.symbol}.`
+  : "A short list, strongest where it matters.";
+/* THE SAME SPLICE, IN THE HEAD. The description, and so og:description and twitter:description,
+   ended "which finished years ago with the tokens never withdrawn" — the sentence fixed in
+   `curationYield` above, surviving here (verifier, 16 September 2026). No row is both: ENS
+   finished 316 days earlier and never moved; CRV finished 1,860 days earlier and has paid out
+   141,212,401 of 151,515,152. The head now claims only what every overhang row shares. */
 const description = top
-  ? `One ${top.symbol} lock holds ${pct(top.heldNow / top.supply)} of supply and finished vesting on ${fmt(top.end)} — nobody has moved it. A register of token vesting, lock and emission contracts read directly from Ethereum: what each holds now, what it is still releasing, and which finished years ago with the tokens never withdrawn.`
-  : "A register of token vesting, lock and emission contracts read directly from Ethereum: what each holds right now, what it is still releasing, and which finished years ago with the tokens never withdrawn.";
+  ? `One ${top.symbol} lock holds ${pct(top.heldNow / top.supply)} of supply and finished vesting on ${fmt(top.end)} — nobody has moved it. A register of token vesting, lock and emission contracts read directly from Ethereum: what each holds now, what it is still releasing, and which finished schedules still hold tokens.`
+  : "A register of token vesting, lock and emission contracts read directly from Ethereum: what each holds now, what it is still releasing, and whether each finished schedule still holds tokens.";
 
 /* THE QUOTABLE SENTENCE EXISTED AND WAS NOT ON THE PAGE. `description` above already leads
    with the largest lock, derived live — but a <meta> description is not visible text, and the
@@ -128,11 +343,25 @@ const lede = top
 <Base title={title} description={description} fetchedAt={snap.fetchedAt} modified={new Date((reg as { verifiedAt: string }).verifiedAt).toISOString()}>
   <div class="page-head">
     <h1>Vesting contracts, and what they still hold</h1>
-    <p>
-      {lede && <><strong>{lede}</strong>{" "}</>}A register of token vesting, lock and emission contracts, read directly from Ethereum.
-      Every figure below is an <code>eth_call</code> at one stated block — not a date copied from
-      an announcement, and not a projection. The unit here is a <strong>contract and the state it
-      is in</strong>, which is a different thing from a calendar of events.
+    {/* THE LEDE WAS ALREADY THE BEST ON THE SITE and is the one this page kept: read cold, its
+        first sentence is a real finding rather than a topic. What it did not survive was what
+        came second — a glossary of the four states, before a single contract. The definition is
+        still here; it is now after the register it defines. */}
+    <Overview>{lede && <><b>{lede}</b>{" "}</>}A register of token vesting, lock and emission
+      contracts, read directly from Ethereum &mdash; the unit is a <b>contract and the state it is
+      in</b>, not a calendar of events.</Overview>
+    {/* "EVERY FIGURE BELOW IS AN eth_call ... AND NOT A PROJECTION" was false of the page it
+        opened. Audited 16 September 2026: the same page printed 7- to 365-day emission totals
+        (rate × days, 54,750 AAVE and 97,161,876 CRV at a year) and days of volume divided by
+        exchange volume. The readings are eth_calls; the forward totals are projections from
+        them. The sentence now says which is which, with the horizon span taken from HORIZONS. */}
+    <p class="section-note">
+      Every on-chain reading below &mdash; balances, rates, allowances, schedule dates &mdash; is
+      an <code>eth_call</code> at one stated block, not a date copied from an announcement. The
+      forward figures are the only projections: totals over the next {HORIZONS[0]} to {HORIZONS[HORIZONS.length - 1]} days
+      and the date an allowance would be spent, each a published rate run forward in time. Where
+      those same readings set a limit the total stops there; where they date a step-down but not its
+      size, the total is marked as an upper bound instead.
     </p>
     {/* TWO CLOCKS, AND ONLY ONE OF THEM WAS VISIBLE. This page passed the FUNDING snapshot's
         timestamp to the layout, so the freshness pill read "Updated 4 min ago" over on-chain
@@ -158,75 +387,21 @@ const lede = top
     </p>
   </div>
 
-  <div class="verdict verdict--warn">
-    <div>
-      <b>Why that difference matters, in one row.</b> An ENS lock holds
-      {" "}<b>{num(overhang[0]?.heldNow ?? 0)} ENS</b> — {pct((overhang[0]?.heldNow ?? 0) / (overhang[0]?.supply ?? 1))} of
-      total supply. Its four-year unlock <b>finished on {fmt(overhang[0]?.end ?? "2025-11-04")}</b>, so every
-      one of those tokens has been withdrawable for {overhang[0]?.sinceEnd ?? 0} days, on no notice
-      and with nothing to announce. Because there is no future date attached to it, an unlock
-      calendar has nothing to show — and showing nothing is the opposite of the truth. That row is
-      why this page is a register of contracts rather than a list of dates.
-    </div>
-  </div>
-
-  <h2 class="section">The four states a contract can be in</h2>
-  <p class="prose">
-    Only the first of these is something a calendar can represent. The other three are what you
-    find when you read the balance as well as the schedule, and two of them were discovered by
-    doing exactly that — the register did not have them until it stopped trusting dates.
-  </p>
-  <div class="panel">
-    <table class="tbl">
-      <thead><tr><th>State</th><th>What it means</th><th class="num">Contracts</th></tr></thead>
-      <tbody>
-        {reg.states.map((s: any) => {
-          const n = s.key === "releasing" ? releasing.length
-                  : s.key === "overhang" ? overhang.length
-                  : s.key === "unfunded" ? unfunded.length
-                  : emptied.length;
-          return (
-            <tr>
-              <td><span class:list={["st", `st--${s.key}`]}>{s.label}</span></td>
-              <td class="reason">{s.meaning}</td>
-              <td class="num">{n}</td>
-            </tr>
-          );
-        })}
-      </tbody>
-    </table>
-  </div>
-
-  {supplyBars.length > 1 && (
-    <Figure
-      title={`Finished locks still holding tokens, by share of supply`}
-      lead={pct(supplyBars[0].share)}
-      leadNote={`${supplyBars[0].symbol} \u2014 the largest, withdrawable since ${fmt(supplyBars[0].end)}`}
-      fetchedAt={new Date((reg as { verifiedAt: string }).verifiedAt).getTime()}>
-      <div class="bars">
-        {supplyBars.map((r) => (
-          <>
-            <span class="bars__label">{r.symbol}</span>
-            <span class="bars__track"><span class="bars__fill" style={`width:${Math.max(2, (r.share / supplyMax) * 100)}%`}></span></span>
-            <span class="bars__value">{pct(r.share)}{r.usd !== null && <>{" "}<span class="faint">{usd(r.usd)}</span></>}</span>
-          </>
-        ))}
-      </div>
-      <p slot="note">
-        Each bar is what one contract still holds as a share of its token&rsquo;s total supply,
-        read from the chain at a stated block rather than from an announcement. These schedules
-        have all finished: nothing here is waiting for a date, and every one of these amounts can
-        move today. The raw amounts are in the table below, where the largest of them is routinely
-        not the largest share.
-      </p>
-    </Figure>
-  )}
-
   <h2 class="section" id="overhang">{state("overhang").label}</h2>
+  {/* "THE WHOLE AMOUNT CAN MOVE IN A SINGLE TRANSACTION WHENEVER ITS RECIPIENT CHOOSES" described
+      one recipient per contract. The CRV row's own note says "claimable by their recipients", and
+      on 16 September 2026 that escrow had already paid out 141,212,401 of 151,515,152 across
+      years of separate claims. What holds for every row is the timing, not the count of
+      recipients, so that is what the sentence now asserts. */}
   <p class="prose">
-    Schedules that have finished with the tokens still in the contract. Nothing is scheduled,
-    nothing will be announced, and the whole amount can move in a single transaction whenever
-    its recipient chooses. This is the section that does not exist anywhere else.
+    Schedules that have finished with the tokens still in the contract. Nothing is scheduled and
+    nothing will be announced: every token still in these contracts can be claimed today, at a
+    moment chosen by whoever it is owed to.
+    {/* "THIS IS THE SECTION THAT DOES NOT EXIST ANYWHERE ELSE" stood here, and the verdict box
+        further down this page says whether anyone else publishes these "is not something this
+        site has measured, so it is not claimed". The page broke its own rule one section before
+        stating it. Removed rather than softened: an unmeasured claim about other sites is not a
+        figure this register can source. (Verifier, 16 September 2026.) */}
   </p>
   <div class="panel">
     <table class="tbl">
@@ -251,13 +426,97 @@ const lede = top
             ) : (
               <td class="num dim" title="No perpetual here for this token, so there is no clean volume series to divide by">—</td>
             )}
-            <td><span class="prov prov--contract">Contract-verified</span></td>
+            <td><span class="prov prov--contract">Contract-verified</span>{r.addressNote && <><br /><span class="sub">address found on-chain, not in a document</span></>}</td>
           </tr>
         ))}
       </tbody>
     </table>
   </div>
-  {overhang.map((r) => (<p class="section-note">{r.note}</p>))}
+  {overhang.map((r) => (<p class="section-note">{fill(r.note, scheduleFacts(r))}{r.addressNote && <>{" "}{r.addressNote}</>}</p>))}
+
+  {/* THE SAME FACT, SAID A THIRD TIME BEFORE ANY DATA. The lede states the ENS lock, the
+      overview repeats it, and this box then spent eight lines on it again — three statements of
+      one finding before a reader had seen a single contract. It is the right explanation of WHY
+      a balance beats a schedule, so it keeps its words; it now sits under the table whose first
+      row it is about, where it reads as the annotation it always was. */}
+  {/* The symbol and the span were typed ("An ENS lock", "four-year") beside a derived amount and
+      date; they come from the same first row now, and the box needs a first row to exist. */}
+  {top && (
+  <div class="verdict verdict--warn">
+    <div>
+      <b>Why that difference matters, in one row.</b> The {top.symbol} lock in the first row holds
+      {" "}<b>{`${num(top.heldNow)} ${top.symbol}`}</b> — {pct(top.heldNow / top.supply)} of
+      total supply. Its {scheduleFacts(top).span} unlock <b>finished on {fmt(top.end)}</b>, so every
+      one of those tokens has been withdrawable for {num(top.sinceEnd)} days, on no notice
+      and with nothing to announce. Because there is no future date attached to it, an unlock
+      calendar has nothing to show — and showing nothing is the opposite of the truth. That row is
+      why this page is a register of contracts rather than a list of dates.
+    </div>
+  </div>
+  )}
+
+  {supplyBars.length > 1 && (
+    <Figure
+      title={`Finished locks still holding tokens, by share of supply`}
+      lead={pct(supplyBars[0].share)}
+      leadNote={`${supplyBars[0].symbol} \u2014 the largest, withdrawable since ${fmt(supplyBars[0].end)}`}
+      fetchedAt={new Date((reg as { verifiedAt: string }).verifiedAt).getTime()}>
+      <div class="bars">
+        {supplyBars.map((r) => (
+          <>
+            <span class="bars__label">{r.symbol}</span>
+            <span class="bars__track"><span class="bars__fill" style={`width:${Math.max(2, (r.share / supplyMax) * 100)}%`}></span></span>
+            <span class="bars__value">{pct(r.share)}{r.usd !== null && <>{" "}<span class="faint">{usd(r.usd)}</span></>}</span>
+          </>
+        ))}
+      </div>
+      <p slot="note">
+        Each bar is what one contract still holds as a share of its token&rsquo;s total supply,
+        read from the chain at a stated block rather than from an announcement. These schedules
+        have all finished: nothing here is waiting for a date, and every one of these amounts can
+        move today. The raw amounts are in the table above.{rawVsShare && <>{" "}{rawVsShare}</>}
+      </p>
+    </Figure>
+  )}
+
+
+  {/* THE DEFINITIONS, AFTER THE THING THEY DEFINE. This table stood between the lede and every
+      contract on the page: a reader who arrived asking what is about to hit the market met a
+      four-row glossary first. The states are worth naming and the badges in the tables above use
+      them, so it stays — one section later, where a reader has already seen the rows it explains
+      and the definition answers a question they now have. */}
+  <h2 class="section">The four states a contract can be in</h2>
+  <p class="prose">
+    Only the first of these is something a calendar can represent. The other three are what you
+    find when you read the balance as well as the schedule, and two of them were discovered by
+    doing exactly that — the register did not have them until it stopped trusting dates.
+  </p>
+  <div class="panel">
+    <table class="tbl">
+      <thead><tr><th>State</th><th>What it means</th><th class="num">Contracts</th></tr></thead>
+      <tbody>
+        {reg.states.map((s: any) => {
+          const n = s.key === "releasing" ? releasing.length
+                  : s.key === "overhang" ? overhang.length
+                  : s.key === "unfunded" ? unfunded.length
+                  : emptied.length;
+          return (
+            <tr>
+              <td><span class:list={["st", `st--${s.key}`]}>{s.label}</span></td>
+              <td class="reason">{fill(s.meaning, stateSlots)}</td>
+              <td class="num">{n}</td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  </div>
+  {lapsed.length > 0 && (
+    <p class="section-note">
+      These counts cover {contractCount - lapsed.length} of the {contractCount} contracts.
+      {" "}{`${lapsed.map((e) => e.name).join(" and ")} ${lapsed.length === 1 ? "is" : "are"}`} past what the last reading covers, and {lapsed.length === 1 ? "is" : "are"} explained under {state("releasing").label}.
+    </p>
+  )}
 
   {unfunded.length > 0 && (
     <>
@@ -267,7 +526,9 @@ const lede = top
         These publish a rate and hold nothing, so anything that reads the rate and multiplies by
         time is forecasting supply that cannot arrive.
       </p>
-      {unfunded.map((e: any) => (
+      {unfunded.map((e: any) => {
+        const p = paperDebt(e);
+        return (
         <>
           <div class="panel" style="max-width:900px">
             <table class="tbl">
@@ -277,16 +538,26 @@ const lede = top
                   <td class="sym">{e.symbol}</td>
                   <td>{e.event}<br /><code class="addr">{e.contract}</code></td>
                   <td class="num">{e.ratePerBlock} / block<br /><span class="sub">≈ {num(e.perDay)} a day</span></td>
-                  <td class="num">{num(e.notionalOwed)}<br /><span class="sub">{pct(e.notionalOwed / e.totalSupply)} of supply</span></td>
+                  {p ? (
+                    <td class="num">{num(p.gap)}<br /><span class="sub">{pct(p.gap / e.totalSupply)} of supply</span></td>
+                  ) : (
+                    <td class="num dim">—</td>
+                  )}
                   <td class="num"><b>{num(e.heldNow)}</b></td>
                 </tr>
               </tbody>
             </table>
           </div>
-          <p class="section-note">{e.note}</p>
-          <p class="section-note"><strong>What this does not say:</strong> {e.caveat} {e.detail}</p>
+          <p class="section-note">{fill(e.note ?? "", { supply: num(e.totalSupply), endYear: e.distributionEnd ? String(new Date(`${e.distributionEnd}T00:00:00Z`).getUTCFullYear()) : "" })}{p && (
+            <>{" "}<code>dripRate()</code>{" "}returns {`${e.ratePerBlock} ${e.symbol}`} per block, about {num(e.perDay)} a day, and has done since block {e.startBlock.toLocaleString("en-US")}.
+            By the stated block, {reg.verifiedBlock.toLocaleString("en-US")}, the contract&rsquo;s own arithmetic says {`${num(p.owed)} ${e.symbol}`} should
+            have been dripped, and <code>dripped()</code>{" "}says {num(p.dripped)} actually was. The difference, {`${num(p.gap)} ${e.symbol}`} or {pct(p.gap / e.totalSupply)} of
+            total supply, is what the contract owed on paper at that block, and every block since adds {`${e.ratePerBlock} ${e.symbol}`} more.{e.heldNow === 0 && " Its balance at that block was zero, so none of it could move."}</>
+          )}</p>
+          <p class="section-note"><strong>What this does not say:</strong>{" "}{e.caveat}{" "}{e.detail}</p>
         </>
-      ))}
+        );
+      })}
     </>
   )}
 
@@ -315,14 +586,14 @@ const lede = top
           <tr>
             <td class="sym">{r.symbol}</td>
             <td>
-              {r.event}<br /><span class="sub">{num(r.perDay)} {r.symbol}/day</span>
-              {r.runwayDays !== null && <><br /><span class="sub">approved to spend {Math.round(r.runwayDays)} more days at this rate</span></>}
+              {r.event}{r.miningEpoch ? `, epoch ${r.miningEpoch}` : ""}<br /><span class="sub">{`${num(r.perDay)} ${r.symbol}/day`}</span>
+              {r.fundedUntil !== null && <><br /><span class="sub">{`allowance read ${fmtTs(readAt)} lasts to ${fmtTs(r.fundedUntil)}, ${daysLeft(r.fundedLeft)} from now, if drawn at this rate since the read`}</span></>}
             </td>
-            <td class="num">{num(r.tokens)}</td>
-            <td class="num">{pct(r.shareOfSupply)}</td>
+            <td class="num">{r.bound ? "up to " : ""}{num(r.tokens)}{r.why && <><br /><span class="sub">{r.why}</span></>}</td>
+            <td class="num">{r.bound ? "up to " : ""}{pct(r.shareOfSupply)}</td>
             {r.absorb ? (
-              <td class="num" title={`${usd(r.absorb.usd)} against ${usd(r.absorb.vol)} of 24-hour volume`}>
-                {r.absorb.days < 0.1 ? "<0.1" : r.absorb.days.toFixed(r.absorb.days < 10 ? 1 : 0)}
+              <td class="num" title={`${r.bound ? "up to " : ""}${usd(r.absorb.usd)} against ${usd(r.absorb.vol)} of 24-hour volume`}>
+                {r.absorb.days < 0.1 ? "<0.1" : `${r.bound ? "up to " : ""}${r.absorb.days.toFixed(r.absorb.days < 10 ? 1 : 0)}`}
               </td>
             ) : (
               <td class="num dim" title="No perpetual here for this token, so there is no clean volume series to divide by">—</td>
@@ -333,13 +604,12 @@ const lede = top
       </tbody>
     </table>
   </div>
+  {lapsed.map((e) => (<p class="section-note"><strong>Not in this table: {e.name}.</strong>{" "}Its contract still publishes a rate, but {lapsedWhy(e)}</p>))}
 
   <h2 class="section" id="emptied">{state("emptied").label}</h2>
   <p class="prose">
     Finished, and the tokens have gone. These rows are here because the only way to tell them
-    apart from the overhang above is to read the balance — the dates look identical, and the
-    difference between them is nothing versus {pct((overhang[0]?.heldNow ?? 0) / (overhang[0]?.supply ?? 1))} of
-    a supply.
+    apart from the overhang above is to read the balance — the dates look identical{emptiedVsOverhang}.
   </p>
   <div class="panel">
     <table class="tbl">
@@ -358,7 +628,9 @@ const lede = top
       </tbody>
     </table>
   </div>
-  {(reg.tokens as any[]).filter((t) => t.note).map((t) => (<p class="section-note">{t.note}</p>))}
+  {(reg.tokens as any[]).filter((t) => t.note).map((t) => (
+    <p class="section-note">{fill(t.note, { count: inWords(t.schedules.length), amount: num(t.schedules.reduce((a: number, x: any) => a + (x.amount ?? 0), 0)) })}</p>
+  ))}
 
   <h2 class="section">Days of volume — the column that matters most</h2>
   <p class="prose">
@@ -392,48 +664,82 @@ const lede = top
     </table>
   </div>
   <p class="section-note">
-    Every row on this page carries the strongest provenance. That is not a boast — it is what
+    {/* "FOR ITS ON-CHAIN FIGURES", NOT "FOR ITS FIGURES". Each row also carries a USD value and
+        days of volume to absorb, which come from the exchange snapshot, not from an eth_call — the
+        wider wording covered numbers this provenance does not describe. */}
+    Every row on this page carries the strongest provenance for its on-chain figures. That is not a boast — it is what
     happens when the weaker sources are unavailable, and it is why the register is {contractCount} contracts
-    deep rather than several hundred wide. One exception is stated on its own row: the ENS
-    address was identified by reading the chain rather than from a document, which is a weaker
-    claim about the ADDRESS than the other rows make, and it is said out loud rather than hidden.
+    deep rather than several hundred wide.{addressInferred.length > 0 && <>{" "}{addressInferred.length === 1 ? "One row is weaker on a different question, and says so in its own Provenance cell" : `${addressInferred.length} rows are weaker on a different question, and say so in their own Provenance cells`}:
+    the {`${addressInferred.map((s) => s.symbol).join(" and ")} ${addressInferred.length === 1 ? "address was" : "addresses were"}`} identified by reading the chain rather than from a document, which is a weaker
+    claim about the ADDRESS than the other rows make, and it is said out loud rather than hidden.</>}
   </p>
 
   <h2 class="section">Contract-verified emission detail</h2>
-  {(reg.emissions as any[]).filter((e) => e.state === "releasing").map((e) => (
+  {emitting.map(({ e, f }) => {
+    /* The detail table uses the same `forward` as the Releasing now row, so a horizon cannot be
+       capped in one table and uncapped in the other. `byAllowance` and `byStep` are the horizons
+       each kind of limit reaches, and each sentence under the table names exactly its own rows.
+       A lapsed contract gets no table: every row would be zero, and the reason is the sentence.
+       The epoch length is the distance between two readings, start_epoch_time() and
+       future_epoch_time_write(), not the "365-day" the prose and a typed epochLengthDays both
+       carried (verifier, 16 September 2026: two sources for one fact, neither of them a getter). */
+    const rows = HORIZONS.map((h) => ({ h, ...f.over(h) }));
+    const byAllowance = rows.filter((r) => r.limit === "allowance").map((r) => r.h);
+    const byStep = rows.filter((r) => r.limit === "step").map((r) => r.h);
+    const singular = (hs: number[]) => hs.length === 1 || hs.length === HORIZONS.length;
+    const epochDays = e.epochStart && e.epochEnd ? Math.round((d(e.epochEnd) - d(e.epochStart)) / DAY) : null;
+    const epochPhrase = e.miningEpoch
+      ? ` (epoch ${e.miningEpoch}${epochDays ? `, ${epochDays} days from ${fmt(e.epochStart)} to ${fmt(e.epochEnd)}` : ""})`
+      : "";
+    const allowanceCut = !f.lapsed && byAllowance.length > 0
+      ? `, and ${rowsPhrase(byAllowance)} ${singular(byAllowance) ? "counts" : "count"} nothing past that date`
+      : "";
+    const allowanceSo = f.lapsed ? "the contract may still be paying, and no forward total is printed until the register is re-read"
+      : byAllowance.length > 0 ? `${rowsPhrase(byAllowance)} ${singular(byAllowance) ? "is" : "are"} what the last reading covers, not a ceiling`
+      : "only a re-read says how much of it is left";
+    return (
     <>
       <p class="prose">
         <strong>{e.name}</strong> runs on a schedule the contract itself publishes:
-        {" "}{e.ratePerSecond.toFixed(6)} {e.symbol} per second, which is
-        {" "}<strong>{num(e.perDay)} {e.symbol} a day</strong> — {e.mechanism}
-        {e.miningEpoch ? ` (epoch ${e.miningEpoch}, began ${fmt(e.epochStart)})` : ""}. {e.detail} {e.note}
+        {" "}{`${e.ratePerSecond.toFixed(6)} ${e.symbol}`} per second, which is
+        {" "}<strong>{`${num(e.perDay)} ${e.symbol} a day`}</strong> — {`${e.mechanism}${epochPhrase}`}. {e.detail}{" "}{fill(e.note ?? "", {
+          supply: num(e.totalSupply),
+          endYear: e.distributionEnd ? String(new Date(`${e.distributionEnd}T00:00:00Z`).getUTCFullYear()) : "",
+        })}
       </p>
+      {!f.lapsed && (
       <div class="panel" style="max-width:640px">
         <table class="tbl">
-          <thead><tr><th class="num">Horizon</th><th class="num">{e.symbol} emitted</th><th class="num">Share of total supply</th></tr></thead>
+          <thead><tr><th class="num">Next</th><th class="num">{f.fundedUntil !== null ? `${e.symbol} the read allowance covers` : `${e.symbol} emitted`}</th><th class="num">Share of total supply</th></tr></thead>
           <tbody>
-            {HORIZONS.map((h) => (
-              <tr class={h === horizon ? "is-active" : undefined}>
-                <td class="num">{h} days</td>
-                <td class="num">{num(e.perDay * h)}</td>
-                <td class="num">{pct((e.perDay * h) / e.totalSupply)}</td>
+            {rows.map((r) => (
+              <tr class={r.h === horizon ? "is-active" : undefined}>
+                <td class="num">{r.h} days</td>
+                <td class="num">{r.limit === "step" ? "up to " : ""}{num(r.tokens)}</td>
+                <td class="num">{r.limit === "step" ? "up to " : ""}{pct(r.tokens / e.totalSupply)}</td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+      )}
       <p class="section-note">
         Read from <code class="addr">{e.contract}</code> at block {reg.verifiedBlock.toLocaleString("en-US")} using
         {" "}{e.getters.map((g: string, i: number) => (<><code>{g}</code>{i < e.getters.length - 1 ? ", " : ""}</>))}.
         Available supply {num(e.availableSupply)}, total supply {num(e.totalSupply)}, both read on-chain.
-        {e.fundedTokens && (
-          <> The vault is approved to spend <b>{num(e.fundedTokens)} {e.symbol}</b> — about
-          {" "}{Math.round(e.fundedTokens / e.perDay)} days at this rate. <code>DISTRIBUTION_END</code>
-          {" "}reads {fmt(e.distributionEnd)}, which is a sentinel, not a plan.</>
+        {f.fundedUntil !== null && (
+          <>{" "}At that block the vault was approved to spend <b>{`${num(e.fundedTokens)} ${e.symbol}`}</b>, {Math.round(e.fundedTokens / e.perDay)} days
+          at this rate. Drawn at exactly that rate from the read, it {`${f.lapsed ? "would have been spent by" : "is spent on"} ${fmtTs(f.fundedUntil)}${allowanceCut}`}.
+          That date is an assumption, not a reading: claims can lag what has accrued and governance can raise the allowance, so {allowanceSo}.
+          {" "}<code>DISTRIBUTION_END</code>{" "}reads {fmt(e.distributionEnd)}, which is a sentinel, not a plan.</>
+        )}
+        {f.stepAt !== null && (
+          <>{" "}<code>rate()</code>{" "}steps down when epoch {e.miningEpoch} ends on {fmtTs(f.stepAt)}{byStep.length > 0 ? `; ${rowsPhrase(byStep)} ${singular(byStep) ? "runs" : "run"} past that date, so ${byStep.length === 1 ? "it is" : byStep.length === HORIZONS.length ? "each is" : "they are"} an upper bound \u2014 the rate after the step is lower, and this register has not read it` : ""}.</>
         )}
       </p>
     </>
-  ))}
+    );
+  })}
 
   <h2 class="section">Addresses that carry no readable schedule</h2>
   <p class="section-note">
@@ -485,7 +791,7 @@ const lede = top
         <tr class="is-active">
           <td><strong>Manual curation</strong></td>
           <td class="reason">Roughly 15–25 minutes per contract to find a primary source for the address, derive the getters and read it, at about a one-in-three hit rate.</td>
-          <td class="reason">A short list, strongest where it matters, and the only route that finds a contract whose schedule ended years ago and whose balance never moved.</td>
+          <td class="reason">{curationYield}</td>
           <td class="num">Contract-verified</td>
         </tr>
         <tr>

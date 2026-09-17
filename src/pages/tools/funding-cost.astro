@@ -1,7 +1,9 @@
 ---
+import ASSETS from "../../data/assets.json";
 import Base from "../../layouts/Base.astro";
 import { getSnapshot, coldStart, findPerp } from "../../lib/hyperliquid.ts";
-import { usd, pct, rawRate, settlementsPerYear, VENUE_LABEL, paysClass, type Venue, queryNum, paymentDirection, LEGEND_PAYS } from "../../lib/funding.ts";
+import { usd, pct, rawRate, toApr, VENUE_LABEL, paysClass, type Venue, type VenueFunding, paymentDirection, LEGEND_PAYS, priceDp } from "../../lib/funding.ts";
+import { extremeBy, type Extreme } from "../../lib/extreme.ts";
 
 import Advisory from "../../components/Advisory.astro";
 import Figure from "../../components/Figure.astro";
@@ -11,62 +13,466 @@ const snap = await getSnapshot((Astro.locals as any)?.runtime?.env?.SNAPSHOT, im
 if (!snap.available) return coldStart();
 
 const q = Astro.url.searchParams;
-const perp = findPerp(snap.perps, q.get("symbol")) ?? snap.perps[0];
-const venueParam = (q.get("venue") ?? "HlPerp") as Venue;
-const f = perp.venues.find((v) => v.venue === venueParam) ?? perp.venues[0];
-const side = q.get("side") === "short" ? "short" : "long";
-const notional = queryNum(q.get("notional"), 10_000, { min: 1 });
-const days = queryNum(q.get("days"), 30, { min: 0, max: 3650 });
-const leverage = queryNum(q.get("leverage"), 10, { min: 1, max: 1000 });
 
-// Correct: the quoted rate applies PER SETTLEMENT, and the number of settlements in the
-// window is set by the venue's interval. Sign convention: a positive rate means longs pay.
-const settlements = (days * 24) / f.intervalHours;
-const signed = side === "long" ? 1 : -1;
-const cost = notional * f.rate * settlements * signed;
-/* DIRECTION AND MAGNITUDE ARE COMPUTED SEPARATELY, and this line is the whole reason.
-   The label used to read `cost >= 0`, so any term in that product could flip the verdict —
-   a negative `days` did, printing "You receive $67.65" where the truth was "You pay $67.65".
-   Direction is a function of the rate's sign and the side, so it is derived from those and
-   the money is derived from the arithmetic, and the two can no longer contradict. */
-const dir = paymentDirection(f.rate, side);
+/* AN INPUT THE SERVER REPLACES IS SAID ON THE PAGE, AND THE FORM OFFERS ONLY WHAT THE SERVER TAKES.
+   Measured 16 September 2026 on production, three silent swaps:
+     /tools/funding-cost?symbol=ETH&venue=BinPerp&side=short&notional=0&days=30&leverage=10 —
+       the notional box declared min="0", the server's floor was 1, and the page answered
+       "Holding $10,000 of ETH short for 30 days" and "You pay $30.59" with no word about the 0.
+     ?symbol=BTC&venue=HlPerp&side=long&notional=10000&days=3651&leverage=10 — the days box had no
+       max, the server's was 3,650, and one day past it the page fell back to "30 days $90.00".
+     ?symbol=BTC&venue=HlPerp&side=long&notional=10000&days=30&leverage=1000 — the leverage box
+       said max="40" and the page printed "900.00% at 1000× · margin $10"; leverage=1001 reverted
+       to 10× in silence.
+   So each bound now lives in ONE constant that both the form attribute and the parser read, a
+   value past it is clamped to the bound it crossed rather than reset to an unrelated default,
+   and every replacement — symbol and venue included — becomes a sentence under the form. A
+   bound cannot drift from its control, because the control prints the same constant. */
+const notices: string[] = [];
+const clip = (s: string) => (s.length > 24 ? s.slice(0, 24) + "…" : s);
+const num = (x: number) => x.toLocaleString("en-US", { maximumFractionDigits: 6 });
 
-// The naive reading treats the quoted rate as a DAILY number. On an hourly venue that is
-// wrong by 24x; on an 8-hour venue by 3x. It is the single most common funding error.
-const naiveCost = notional * f.rate * days * signed;
+const askedSymbol = (q.get("symbol") ?? "").trim();
+const foundPerp = findPerp(snap.perps, askedSymbol);
+const perp = foundPerp ?? snap.perps[0];
+if (askedSymbol && !foundPerp) notices.push(`There is no “${clip(askedSymbol)}” perpetual in these figures, so the page shows ${perp.symbol}.`);
 
-/* THE SAME POSITION ON EVERY VENUE, which is the comparison this calculator exists to make and
-   the one it only ever made for the venue you had selected. Each venue settles on its own
-   interval — Hyperliquid hourly, Binance and Bybit every four or eight — so the cost of holding
-   the identical position differs by more than the quoted rates suggest, and that difference is
-   the fact worth carrying away.
+const askedVenue = (q.get("venue") ?? "").trim();
+const f = perp.venues.find((v) => v.venue === askedVenue) ?? perp.venues.find((v) => v.venue === "HlPerp") ?? perp.venues[0];
+if (askedVenue && f.venue !== askedVenue) {
+  notices.push(
+    Object.prototype.hasOwnProperty.call(VENUE_LABEL, askedVenue)
+      ? `${perp.symbol} has no ${VENUE_LABEL[askedVenue as Venue]} rate in these figures, so the page prices ${VENUE_LABEL[f.venue]}.`
+      : `“${clip(askedVenue)}” is not a venue this calculator prices, so the page prices ${VENUE_LABEL[f.venue]}.`,
+  );
+}
 
-   Computed the same way as the headline: rate x settlements x notional, with the settlement
-   count taken from each venue's OWN interval rather than assumed to match. Bars are the
-   ABSOLUTE cost so their lengths compare; the sign is in the colour and the number. */
-const venueCosts = perp.venues
-  .filter((v) => Number.isFinite(v.rate) && Number.isFinite(v.intervalHours) && v.intervalHours > 0)
-  .map((v) => ({
-    venue: v.venue,
-    label: VENUE_LABEL[v.venue],
-    hours: v.intervalHours,
-    cost: notional * v.rate * ((days * 24) / v.intervalHours) * signed,
-  }))
-  .sort((a, b) => a.cost - b.cost);
-const costMax = Math.max(...venueCosts.map((v) => Math.abs(v.cost)), 1e-9);
-const cheapest = venueCosts[0];
-const dearest = venueCosts[venueCosts.length - 1];
-/* THE CONTRAST IS BETWEEN THE EXTREME INTERVALS, and the first version compared the cheapest
-   venue's interval with a hard-coded "eight-hour" — which rendered, on a day when the cheapest
-   was Binance, as "an 8-hour contract settles 3 times a day and an eight-hour one settles
-   three". A sentence comparing a thing to itself, printed under a figure whose whole point is
-   that the intervals differ. */
-const fastest = venueCosts.reduce((a, b) => (a.hours <= b.hours ? a : b));
-const slowest = venueCosts.reduce((a, b) => (a.hours >= b.hours ? a : b));
+const askedSide = (q.get("side") ?? "").trim();
+const side = askedSide === "short" ? "short" : "long";
+if (askedSide && askedSide !== "long" && askedSide !== "short") notices.push(`“${clip(askedSide)}” is not a side, so the page prices a long.`);
 
+const NOTIONAL_MIN = 1;
+const NOTIONAL_MAX = 1e12;
+const DAYS_MAX = 3650;
+/* A VENUE'S LEVERAGE LIMIT BOUNDS ONLY THAT VENUE. Measured 16 September 2026 on localhost,
+   ?symbol=XMR&venue=BinPerp&side=long&notional=10000&days=30&leverage=10: "Leverage of 10 is above the
+   5× maximum Hyperliquid lists for XMR, so the figures use 5×", and the card priced a Binance position
+   at "5× · margin $2,000". perp.maxLeverage is Hyperliquid's meta field, so it caps the calculator only
+   when Hyperliquid is the venue priced; Binance and Bybit limits are not in these figures, so for them
+   the bound is the calculator's own and the notice says so rather than naming a venue. */
+const hlCap = f.venue === "HlPerp" && Number.isFinite(perp.maxLeverage) && perp.maxLeverage >= 1;
+const LEV_MAX = hlCap ? perp.maxLeverage : 1000;
+const levWhy = hlCap ? ` Hyperliquid lists for ${perp.symbol}` : " this calculator takes";
+const read = (key: string, label: string, fallback: number, min: number, max: number, show: (n: number) => string, maxWhy = "", bound = show) => {
+  const raw = q.get(key);
+  if (raw === null) return fallback;
+  const t = raw.trim();
+  const n = Number(t);
+  if (t === "" || !Number.isFinite(n)) {
+    notices.push(t === "" ? `${label} was empty, so the figures use ${show(fallback)}.` : `${label} “${clip(t)}” is not a number, so the figures use ${show(fallback)}.`);
+    return fallback;
+  }
+  if (n < min) { notices.push(`${label} of ${clip(t)} is below the ${bound(min)} minimum, so the figures use ${show(min)}.`); return min; }
+  if (n > max) { notices.push(`${label} of ${clip(t)} is above the ${bound(max)} maximum${maxWhy}, so the figures use ${show(max)}.`); return max; }
+  return n;
+};
+const wholeUsd = (x: number) => usd(x, Number.isInteger(x) ? 0 : 2);
+const notional = read("notional", "Position notional", 10_000, NOTIONAL_MIN, NOTIONAL_MAX, (n) => `$${n.toLocaleString("en-US", { maximumFractionDigits: 2 })}`);
+const days = read("days", "Days held", 30, 0, DAYS_MAX, (n) => `${num(n)} ${n === 1 ? "day" : "days"}`, "", (n) => `${num(n)}-day`);
+const leverage = read("leverage", "Leverage", Math.min(10, LEV_MAX), 1, LEV_MAX, (n) => `${num(n)}×`, levWhy);
+
+const notionalText = wholeUsd(notional);
+const daysText = num(days);
+const dayWord = days === 1 ? "day" : "days";
+const settlementsWord = (k: number) => `${k.toLocaleString("en-US")} settlement${k === 1 ? "" : "s"}`;
+
+/* FUNDING IS PAID ON WHOLE SETTLEMENTS, SO A COUNT AND ITS COST ARE THE SAME INTEGER.
+   Measured 16 September 2026, /tools/funding-cost?symbol=BTC&venue=BinPerp&side=long&notional=10000&days=0.1&leverage=10:
+   the card read "You pay $0.14 over 0.1 days · 0 settlements" at $0.45 a settlement, and the
+   table gave Hyperliquid "2 settlements $0.30" at $0.125 each. The cost was charged on the
+   FRACTIONAL count (0.3, 2.4) while the count shown was Math.round of it, so a hold that crosses
+   no settlement was billed for a third of one, and the prose's "understates by 3×" came from
+   0.3 ÷ 0.1 beside the "0 settlements" it contradicted.
+   A hold of k whole intervals plus a remainder r crosses k settlements, or k + 1 when the next
+   one is due within r of opening. So the count is floor(hold / interval) — the settlements the
+   hold is CERTAIN to cross — computed in whole seconds so 30 × 24 / 8 cannot land on 89.999…,
+   the cost is that count × rate × notional, and wherever a remainder exists the page says "or
+   k + 1". Nothing prints a cost that a count beside it cannot produce. */
+const holdSec = Math.round(days * 86_400);
+
+/* THE PRINTED FIGURE IS THE UNIT OF EQUALITY. A tie is decided on the text a reader sees, so two
+   venues printed "$90.00" are tied and "$1.23M" equals "$1.23M" however many cents separate them.
+   Amounts under half a cent print to two significant digits rather than as "$0.00", so a real
+   payment is never keyed as the same thing as no settlement at all.
+   moneyAt(a, 0) is exactly that figure — usd(a, 2), or two significant digits under half a cent —
+   and moneyAt(a, e) is the same figure e decimals finer, zeros past its own precision dropped, so
+   "$0.25" stays "$0.25" at any e and "$0.01" becomes "$0.0125" once a check needs it. */
+const moneyAt = (a: number, e = 0) => {
+  const m = Math.abs(a);
+  if (!Number.isFinite(a) || m >= 1e15) return "—";
+  const sub = a > 0 && a < 0.005;
+  const u = sub || m < 1e6 ? 1 : m < 1e9 ? 1e6 : 1e9;
+  const d0 = sub ? Math.min(12, 1 - Math.floor(Math.log10(a))) : 2;
+  const d = Math.min(20, d0 + e);
+  let s = sub || u > 1 ? (a / u).toFixed(d) : a.toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d });
+  while (s.endsWith("0") && s.length - s.indexOf(".") - 1 > d0) s = s.slice(0, -1);
+  return `$${s}${u === 1e9 ? "B" : u === 1e6 ? "M" : ""}`;
+};
+const money = (a: number) => moneyAt(a, 0);
+const printed = (s: string) => {
+  const m = /\$([\d,]*\.?\d+)([MB]?)/.exec(s);
+  return m ? Number(m[1].replace(/,/g, "")) * (m[2] === "B" ? 1e9 : m[2] === "M" ? 1e6 : 1) : NaN;
+};
+/* A figure agrees with a printed one when it lies within that text's rounding — the test a reader
+   multiplying or dividing the figures on screen can make, and the one float rounding cannot trip at a
+   half-cent boundary the way comparing two formatted strings did. */
+const near = (x: number, text: string, pctText = false) => {
+  const m = pctText ? /(-?\d*)(?:\.(\d+))?%/.exec(text) : /\$([\d,]*)(?:\.(\d+))?([MB]?)/.exec(text);
+  if (!m) return false;
+  const half = 0.5 * 10 ** -(m[2] ?? "").length * (m[3] === "B" ? 1e9 : m[3] === "M" ? 1e6 : 1);
+  return Math.abs(x - (pctText ? Number(text.slice(0, -1)) : printed(text))) <= half * (1 + 1e-9);
+};
+/* The fewest extra decimals at which a check on the printed figures holds; 12 if none does. */
+const fit = (ok: (e: number) => boolean) => {
+  for (let e = 0; e < 12; e++) if (ok(e)) return e;
+  return 12;
+};
+
+const price = (v: VenueFunding) => {
+  const stepSec = v.intervalHours * 3600;
+  const ok = Number.isFinite(v.rate) && Number.isFinite(stepSec) && stepSec > 0;
+  const k = ok ? Math.floor(holdSec / stepSec) : NaN;
+  const remSec = ok ? holdSec - k * stepSec : NaN;
+  /* Direction from the rate and the side, never from the product — see paymentDirection. With no
+     settlement inside the hold there is no direction to report. */
+  const dir = ok && k > 0 ? paymentDirection(v.rate, side) : null;
+  const amount = notional * Math.abs(v.rate) * k;
+  const text = money(amount);
+  const key = (dir === "pay" ? 1 : dir === "receive" ? -1 : 0) * printed(text);
+  return { v, venue: v.venue, label: VENUE_LABEL[v.venue], hours: v.intervalHours, rate: v.rate, k, remSec, more: remSec > 0, dir, amount, text, key };
+};
+type Priced = ReturnType<typeof price>;
+const flow = (r: Priced) => (r.key > 0 ? "pay" : r.key < 0 ? "receive" : "none");
+const signed = (r: Priced) => (r.dir === "receive" && r.amount > 0 ? "−" : "") + r.text;
+
+const table = perp.venues.map(price);
+const rows = table.filter((r) => Number.isFinite(r.key));
+const mine = price(f);
+const anyMore = rows.filter((r) => r.more);
+
+/* A MULTIPLE IS TRUE ABOUT THE HOLD, AND THE FIGURES BESIDE IT ARE PRINTED FINE ENOUGH TO SHOW IT.
+   Measured 16 September 2026 on localhost, two ways wrong in turn:
+     ?symbol=BTC&venue=HlPerp&side=long&notional=10000&days=0.1&leverage=10 — "You pay $0.25" beside
+       "Reading the rate as daily $0.01 · 20× too low": 20 was the hold (2 settlements ÷ 0.1 day), and
+       the reader, shown $0.01, gets 25. Dividing the printed strings instead gave "25× too low" and
+       "understates the cost of this hold 25×" — right about the text, wrong about the hold, whose
+       daily reading is $0.0125.
+     ?symbol=ETH&venue=BinPerp&side=short&notional=0 ($1) — "$0.00055 · 3.1× too low" and, in one
+       paragraph, "crosses 90 settlements, not 30 … understates … 3.1×": 0.001656 ÷ 0.000552 is 3.
+   So R comes from the unrounded amounts (it is k ÷ days), and the cost, the daily reading and the
+   margin on the cards are printed at the fewest extra decimals — fit() — at which dividing the
+   printed figures gives, within the rounding of what is printed (near()), the "R×" and the share of
+   margin the cards state. The check parses the strings a reader sees, so a coarse figure cannot sit
+   beside a multiple it does not support; the client repaints the cards with the same checks.
+   THE SAME FOR EVERY FACTOR. "$0.13 on $10,000 every 1h" sat beside "$90.00 · 720 settlements"
+   (720 × $0.13 = $93.60), and the rawRate strings, which only reconcile with the APR, did not
+   reproduce the costs: XLM 0.0000452 × 720 × $10,000 = $325.44 against "$325.50", BTC Binance
+   0.0000493 × 90 × $10,000 = $44.37 against "$44.34". The per-settlement figure is now printed until
+   it × the count gives the cost, and each rate from rawRate's own digits until it still gives the APR
+   and gives its row's cost (and, for your venue, the card's cost and per-settlement figure) at the
+   notional shown. */
+const naiveAmt = notional * Math.abs(f.rate) * days;
 const margin = notional / leverage;
-const costVsMargin = margin > 0 ? cost / margin : 0;
-const perSettlement = notional * f.rate * signed;
+const big = (p: number, q: number) => (p > q ? p / q : q / p);
+const mult = (x: number) => (x < 1.05 ? "slightly" : `${num(Math.round(x * 10) / 10)}×`);
+const R = mine.amount > 0 && naiveAmt > 0 && mine.amount !== naiveAmt ? big(mine.amount, naiveAmt) : NaN;
+const shareText = pct(mine.amount / margin);
+const marginAt = (e: number) => (Number.isInteger(margin) && margin < 1e6 ? `$${margin.toLocaleString("en-US")}` : moneyAt(margin, e));
+const eCard = fit((e) => {
+  const pa = printed(moneyAt(mine.amount, e)), pn = printed(moneyAt(naiveAmt, e));
+  const q = big(pa, pn);
+  const ratioOk = !Number.isFinite(R) || (pa !== pn && (pa > pn) === (mine.amount > naiveAmt) && (R < 1.05 ? q < 1.05 : Math.abs(q - Math.round(R * 10) / 10) <= 0.05 * (1 + 1e-9)));
+  return ratioOk && near((pa / printed(marginAt(e))) * 100, shareText, true);
+});
+const costCard = moneyAt(mine.amount, eCard);
+const naiveCard = moneyAt(naiveAmt, eCard);
+/* Per settlement is printed until it × the count gives the card's cost; a hold with no settlement
+   has no product to reproduce, so it keeps money()'s cents. */
+const perAmt = notional * Math.abs(f.rate);
+const ePer = fit((e) => !(mine.k > 0) || near(printed(moneyAt(perAmt, e)) * mine.k, costCard));
+const perCard = moneyAt(perAmt, ePer);
+const exactUsd = (x: number) => `$${x.toLocaleString("en-US", { minimumFractionDigits: Number.isInteger(x) ? 0 : 2, maximumFractionDigits: 6 })}`;
+const rateOf = (r: Priced, extra: (s: number) => boolean) => {
+  const base = rawRate(r.rate, r.v);
+  if (!Number.isFinite(r.rate)) return base;
+  const trim = (d: number) => r.rate.toFixed(d).replace(/0+$/, "").replace(/\.$/, "");
+  const aprOk = (s: number) => pct(toApr(s, r.hours)) === pct(r.v.apr);
+  const keepApr = aprOk(Number(base));
+  for (let d = (base.split(".")[1] ?? "").length; d <= 20; d++) {
+    const s = Number(trim(d));
+    if ((!keepApr || aprOk(s)) && (!Number.isFinite(r.k) || near(notional * Math.abs(s) * r.k, r.text)) && extra(s)) return trim(d);
+  }
+  return trim(20);
+};
+const rateText = new Map(
+  table.map((r) => [
+    r.venue,
+    rateOf(r, (s) =>
+      r.venue !== f.venue ||
+      ((!Number.isFinite(mine.k) || near(notional * Math.abs(s) * mine.k, costCard)) && near(notional * Math.abs(s), perCard))),
+  ]),
+);
+const rateShown = (r: Priced) => rateText.get(r.venue) ?? rawRate(r.rate, r.v);
+const cardRate = rateText.get(f.venue) ?? rawRate(f.rate, f);
+const rateDecimals = (cardRate.split(".")[1] ?? "").length;
+const cardKeepApr = Number.isFinite(f.rate) && pct(toApr(Number(rawRate(f.rate, f)), f.intervalHours)) === pct(f.apr);
+
+/* NO VENUE IS DEAREST IN A TIE, AND NO VENUE IS COMPARED WITH ITSELF.
+   Measured 16 September 2026 on production:
+     ?symbol=XMR&venue=BinPerp&side=long&notional=10000&days=30&leverage=10 — Binance 0.0001/8h,
+       Hyperliquid 0.0000125/1h and Bybit 0.0001/8h all cost exactly $90.00, and the figure read
+       "the dearest venue — Bybit; the cheapest is Binance at $90.00".
+     ?symbol=BTC&…&days=0 — three $0.00 costs, same sentence.
+     ?symbol=HYPE&venue=HlPerp&… — one venue, and the opening said the position "costs $90.00 on
+       Hyperliquid against $90.00 on Hyperliquid".
+   It was `sorted[0]` and `sorted[length - 1]`: an order taken as a ranking without asking whether
+   the ends were alone. Both ends now come from extremeBy over the printed key, which cannot hand
+   back a single winner from a tied set, and the one-venue and all-equal cases have their own
+   sentences instead of a comparison with no second party.
+   The tolerance is 0, not extremeBy's default 1e-9: the key is parsed back from the printed text,
+   so equal text gives the identical float, and at the sub-cent precision money() prints
+   ("$0.0000000011" against "$0.0000000012") a 1e-9 window would tie two figures that read differently. */
+const dear = extremeBy(rows, (r) => r.key, "max", 0);
+const cheap = extremeBy(rows, (r) => r.key, "min", 0);
+const groupOf = (e: Extreme<Priced>): readonly Priced[] => (e.kind === "unique" ? [e.item] : e.kind === "tied" ? e.items : []);
+const names = (g: readonly Priced[]) =>
+  g.length <= 1 ? (g[0]?.label ?? "") : `${g.slice(0, -1).map((r) => r.label).join(", ")} and ${g[g.length - 1].label}`;
+const onNames = (g: readonly Priced[]) => (g.length === 2 ? `on both ${names(g)}` : g.length > 2 ? `on each of ${names(g)}` : `on ${names(g)}`);
+const allTied = rows.length > 1 && dear.kind === "tied" && dear.items.length === rows.length;
+const COUNT_WORD = ["no", "one", "two", "three", "four", "five", "six"];
+/* "All three venues" counts the venues that were priced; when the table carries a venue whose rate is
+   unusable (its row prints "—"), the phrase says so rather than letting "all" include a dash. */
+const allVenues = (rows.length === 2 ? "both venues" : `all ${COUNT_WORD[rows.length] ?? rows.length} venues`) + (rows.length < table.length ? " with a usable rate" : "");
+const verbOf = (r: Priced) => (flow(r) === "pay" ? "costs " : flow(r) === "receive" ? "pays you " : "costs nothing");
+const amtOf = (r: Priced) => (flow(r) === "none" ? "" : r.text);
+
+const hold = `the same ${notionalText} position for ${daysText} ${dayWord}`;
+let introPre = "", introAmt = "", introPost = "";
+/* "Costs nothing" on a venue whose count is "0 or 1" is the certain figure, not the only one, so
+   the opening says which it gives whenever any venue's count carries a remainder. */
+const certain = table.some((r) => r.more) ? ", counting the settlements certain to fall inside the hold" : "";
+if (!rows.length) {
+  introPre = `${hold} cannot be priced: no venue has a usable ${perp.symbol} rate in these figures.`;
+} else if (rows.length === 1) {
+  introPre = `${hold} ${verbOf(rows[0])}`;
+  introAmt = amtOf(rows[0]);
+  introPost = ` on ${rows[0].label}, the only venue with a ${perp.symbol} rate in these figures${certain}.`;
+} else if (allTied) {
+  introPre = `${hold} ${verbOf(rows[0])}`;
+  introAmt = amtOf(rows[0]);
+  introPost = ` on ${allVenues}${certain}.`;
+} else {
+  const D = groupOf(dear), C = groupOf(cheap);
+  const join = flow(D[0]) === flow(C[0]) ? `against ${C[0].text}` : `but ${verbOf(C[0])}${amtOf(C[0])}`;
+  introPre = `${hold} ${verbOf(D[0])}`;
+  introAmt = amtOf(D[0]);
+  introPost = ` ${onNames(D)} ${join} ${onNames(C)}${certain}.`;
+}
+
+/* THE LEAD IS THE WORST OUTCOME FOR THE HOLDER, unless the worst is nothing, when it is the best.
+   ITS RANKING SAYS WHAT IT COUNTED. Measured 16 September 2026 on localhost,
+   ?symbol=BTC&venue=HlPerp&side=long&notional=10000&days=0.1&leverage=10: "$0.25 the dearest venue —
+   Hyperliquid; nothing either way on Binance and Bybit", beside a table giving Binance and Bybit
+   "0 or 1" settlements. With that one settlement Binance costs $0.51 and Bybit $0.70, both above
+   Hyperliquid's $0.375 at 3. The opening qualified its version and the lead did not. The ranking is
+   still on certain counts, the only amounts the page prints, and whenever any venue's count has a
+   remainder the note now opens with the same qualification the opening uses. */
+const showFigure = rows.length > 1 && rows.some((r) => flow(r) !== "none");
+let lead = "", leadNote = "";
+const certainLead = anyMore.length ? "counting only the settlements certain to fall inside the hold, " : "";
+if (showFigure) {
+  const each = (g: readonly Priced[]) => (g.length > 1 ? " each" : "");
+  const alike = (g: readonly Priced[]) => (g.length > 1 ? " alike" : "");
+  const venueWord = (g: readonly Priced[]) => (g.length > 1 ? "venues" : "venue");
+  const paysWord = (g: readonly Priced[]) => (g.length > 1 ? "pay" : "pays");
+  if (allTied) {
+    lead = rows[0].text;
+    leadNote = certainLead + (flow(rows[0]) === "pay" ? `the cost on ${allVenues} alike` : `paid to you on ${allVenues} alike`);
+  } else {
+    const D = groupOf(dear), C = groupOf(cheap);
+    if (flow(D[0]) === "pay") {
+      lead = D[0].text;
+      const tail =
+        flow(C[0]) === "pay"
+          ? `the cheapest ${C.length > 1 ? "are" : "is"} ${names(C)} at ${C[0].text}${each(C)}`
+          : flow(C[0]) === "receive"
+            ? `${names(C)} ${paysWord(C)} you ${C[0].text}${each(C)}`
+            : `nothing either way on ${names(C)}`;
+      leadNote = `${certainLead}the dearest ${venueWord(D)} — ${names(D)}${alike(D)}; ${tail}`;
+    } else if (flow(D[0]) === "receive") {
+      lead = D[0].text;
+      leadNote = `${certainLead}paid to you on the least generous ${venueWord(D)} — ${names(D)}${alike(D)}; ${names(C)} ${paysWord(C)} ${C[0].text}${each(C)}`;
+    } else {
+      lead = C[0].text;
+      leadNote = `${certainLead}paid to you on ${names(C)}${alike(C)}; nothing either way on ${names(D)}`;
+    }
+  }
+}
+const bars = [...rows].sort((a, b) => a.key - b.key);
+const costMax = Math.max(...rows.map((r) => r.amount), 1e-9);
+const anyNone = rows.some((r) => flow(r) === "none");
+
+/* THE CHART NOTE STATES A PAIR FROM THIS TABLE, OR NOTHING.
+   It was fixed wording — "A rate that looks smaller can still cost more: Hyperliquid settles
+   every 1h, 720 times over 30 days, while Binance settles every 8h, 90 times" — true only when
+   every rate is positive, the side is long and Hyperliquid's rate is the smallest. Measured 16
+   September 2026 on production it was false on:
+     ?symbol=TRX&venue=BybitPerp&side=long&… — Hyperliquid −0.00005372 against Binance −0.0000186:
+       the larger rate, and it PAID the long $386.81 against $16.76.
+     ?symbol=BTC&venue=HlPerp&side=short&… — every venue paid the short; Hyperliquid paid $90.00
+       against Bybit's $69.53, so it cost less, not more.
+     ?symbol=XMR&… — Hyperliquid's smaller rate cost the same $90.00.
+   The sentence now names a pair only when this data holds one: two venues paid in the same
+   direction, the one with the smaller quoted rate (by size) costing more or paying more. Failing
+   that, a smaller rate landing on the same printed amount. Failing both, it says nothing,
+   because on that data there is no such example to give.
+   "SMALLER" IS SAID IN THE SENSE THAT HOLDS FOR THE SIGN ON SCREEN. Measured 16 September 2026 on
+   localhost, ?symbol=BTC&venue=HlPerp&side=short&notional=10000&days=30&leverage=10: the table note read
+   "Here the order by cost is not the order by quoted rate" beside Hyperliquid 0.0000125 / −$90.00 and
+   Binance 0.0000494 / −$44.49 — read with signs, both columns put Hyperliquid first, so the orders
+   were the SAME; only the sizes run opposite. And on a short paying a negative rate, "a rate that
+   looks smaller" names −0.00005 against −0.0001, which reads as the larger number. So a positive pair
+   keeps "looks smaller", a negative pair says "smaller in size", and the table note names the pair
+   and the direction instead of an ordering the minus signs can reverse. A "same" pair must also
+   settle a different number of times, or the sentence would credit the interval for what is only
+   the printed rounding of two venues on one schedule.
+   A PAIR IS DRAWN FROM WHOLE COUNTS ONLY. On a venue whose count is "k or k + 1" the amount printed is
+   the certain one, and "costs more" or "lands on the same" between two such amounts can reverse with
+   the settlement that may or may not fall inside; so a venue with a remainder is not offered as
+   either side of the example. */
+const pair = (() => {
+  const same = (x: Priced, y: Priced) => !x.more && !y.more && flow(x) !== "none" && flow(x) === flow(y) && Math.abs(x.rate) < Math.abs(y.rate);
+  for (const x of rows) for (const y of rows) if (same(x, y) && (flow(x) === "pay" ? x.key > y.key : x.key < y.key)) return { kind: "more" as const, x, y };
+  for (const x of rows) for (const y of rows) if (same(x, y) && x.key === y.key && x.k !== y.k) return { kind: "same" as const, x, y };
+  return null;
+})();
+const times = (k: number) => `${k.toLocaleString("en-US")} time${k === 1 ? "" : "s"}`;
+let pairSentence = "", orderSentence = "";
+if (pair) {
+  const { x, y } = pair;
+  const pays = flow(x) === "pay";
+  const positive = x.rate > 0;
+  const quotes = `${x.label} quotes ${rateShown(x)} per settlement against ${y.label}’s ${rateShown(y)}`;
+  const settles = `every ${x.hours}h against ${y.hours}h — ${times(x.k)} over ${daysText} ${dayWord} against ${y.k.toLocaleString("en-US")}`;
+  if (pair.kind === "more") {
+    pairSentence = `A rate ${positive ? "that looks smaller" : "smaller in size"} can still ${pays ? "cost" : "pay you"} more: ${quotes}, but settles ${settles} — so it ${pays ? "costs" : "pays you"} ${x.text} against ${y.text}.`;
+    orderSentence = ` Here ${x.label} quotes the ${positive ? "smaller rate" : "rate smaller in size"} and still ${pays ? "costs" : "pays you"} more than ${y.label}.`;
+  } else {
+    pairSentence = `A ${positive ? "smaller quoted rate" : "quoted rate smaller in size"} is not a smaller ${pays ? "cost" : "payment"}: ${quotes} and, settling ${settles} — lands on the same ${x.text}.`;
+    orderSentence = ` Here ${x.label} and ${y.label} quote different rates and land on the same ${x.text}.`;
+  }
+}
+/* The figure prints amounts, not counts, so its note says what the amounts counted. */
+const certainNote = anyMore.length
+  ? ` Each amount counts only the settlements certain to fall inside the hold; on ${names(anyMore)} one more may fall inside it.`
+  : "";
+const remainderSentence = anyMore.length
+  ? ` On ${names(anyMore)}, ${daysText} ${dayWord} is not a whole number of settlement intervals: each count is the settlements certain to fall inside the hold, and one more falls inside if the next is due soon enough after opening.`
+  : "";
+
+/* THE NAIVE READING, COMPARED FROM THE TWO PRINTED FIGURES AND NOT FROM 24 ÷ INTERVAL.
+   Measured 16 September 2026, ?symbol=BTC&venue=HlPerp&side=long&notional=10000&days=0&leverage=10:
+   "Reading the rate as daily $0.00 off by 24×" beside an actual $0.00, and the prose "a 0-day hold
+   crosses 0 settlements, not 0. Treating the quoted figure as a daily rate understates the cost
+   by 24×". The factor was the constant 24 / intervalHours, which is the ratio only for a hold of
+   whole intervals and longer than zero. The relation is now read off the two amounts the cards
+   print, so equal figures say "the same", a hold with no certain settlement says the daily reading
+   is too high, and any other ratio is the one those two numbers give. The client repaints this card
+   with the same rule.
+   "THE TWO AMOUNTS THE CARDS PRINT" WAS THE PROMISE; THE CODE DIVIDED THE UNROUNDED ONES. Measured
+   16 September 2026 in a browser on localhost, ?symbol=BTC&venue=HlPerp&side=long&notional=10000&days=30&leverage=10
+   with days typed as 0.1: "You pay $0.25" beside "Reading the rate as daily $0.01 · 20× too low" —
+   20 is 0.25 ÷ 0.0125, but the reader is shown $0.01, and $0.25 ÷ $0.01 is 25. ratioOf now parses
+   both printed strings, the same `printed` that keys the ties, so the multiple is the quotient of
+   the two figures on screen at every size, including the sub-cent ones money() prints.
+   That was the wrong half to keep: see "A MULTIPLE IS TRUE ABOUT THE HOLD" above, where R and the
+   precision of both card figures are now settled together. */
+const relation =
+  !Number.isFinite(mine.amount) || !Number.isFinite(naiveAmt) ? "—"
+    : mine.amount === naiveAmt ? "the same figure here"
+      : mine.amount === 0 ? "too high: no settlement is certain"
+        : `${mult(R)} too ${mine.amount > naiveAmt ? "low" : "high"}`;
+const mineLabel =
+  f.rate === 0 ? "No funding either way"
+    : mine.k === 0 ? (mine.more ? "No settlement for certain" : "No settlement")
+      : mine.dir === "pay" ? "You pay" : mine.dir === "receive" ? "You receive" : "Funding";
+const mineMeta = `on ${exactUsd(notional)} over ${daysText} ${dayWord} · ${settlementsWord(mine.k)}${mine.more ? `, or ${(mine.k + 1).toLocaleString("en-US")}` : ""}`;
+const marginText = marginAt(eCard);
+
+/* THE PROSE SAYS "COST" ONLY FOR A COST, AND ITS RATIO COMES FROM THE SAME TWO AMOUNTS AS THE CARD.
+   Measured 16 September 2026, ?symbol=XLM&venue=HlPerp&side=long&notional=10000&days=30&leverage=10:
+   the lead card read "You receive $298.93" while this section said the daily reading "understates
+   the cost by 24×". The noun now follows paymentDirection, the same source as the card label. */
+const receiving = paymentDirection(f.rate, side) === "receive";
+const noun = receiving ? "payment" : "cost";
+const whatHold = receiving ? "what this hold pays you" : "the cost of this hold";
+const dur = (sec: number) => {
+  const s = Math.round(sec);
+  const parts: [number, string][] = [[Math.floor(s / 3600), "hour"], [Math.floor((s % 3600) / 60), "minute"], [s % 60, "second"]];
+  return parts.filter(([n]) => n > 0).map(([n, w]) => `${n} ${w}${n === 1 ? "" : "s"}`).join(" ");
+};
+let crossPre = "", crossNum = "", crossPost = "";
+if (holdSec === 0) {
+  crossPre = `so a ${daysText}-day hold crosses no settlement.`;
+} else {
+  crossPre = `so a ${daysText}-day hold crosses `;
+  crossNum = mine.k.toLocaleString("en-US");
+  crossPost = mine.more
+    ? ` settlement${mine.k === 1 ? "" : "s"} for certain, or ${(mine.k + 1).toLocaleString("en-US")} if the next is due within ${dur(mine.remSec)} of opening.`
+    : ` settlement${mine.k === 1 ? "" : "s"}${mine.k !== days ? `, not ${daysText}` : ""}.`;
+}
+let readPre = "", readNum = "", readPost = "";
+if (f.rate === 0) readPre = `${VENUE_LABEL[f.venue]}’s rate is zero, so neither reading charges anything.`;
+else if (holdSec > 0 && Number.isFinite(mine.amount)) {
+  const a = mine.amount, n = naiveAmt;
+  if (a === n) readPre = `Here, reading the quoted figure as daily happens to give the same ${costCard}.`;
+  else if (a === 0) readPre = `Treating the quoted figure as a daily rate would put a ${noun} of ${naiveCard} on a hold that no settlement is certain to fall inside.`;
+  else {
+    const verb = a > n ? "understates" : "overstates";
+    if (R < 1.05) readPre = `Treating the quoted figure as a daily rate ${verb} ${whatHold} slightly.`;
+    else { readPre = `Treating the quoted figure as a daily rate ${verb} ${whatHold} `; readNum = mult(R); readPost = "."; }
+  }
+}
+
+/* LEVERAGE MULTIPLIES A SHARE ONLY WHEN THERE IS LEVERAGE.
+   Measured 16 September 2026, ?symbol=BTC&venue=HlPerp&side=long&notional=10000&days=30&leverage=1:
+   "At 1× the same position costs 1× more relative to the capital you put up", beside "0.90% at 1× ·
+   margin $10,000" — margin equal to notional, nothing multiplied. At 1× the sentence now says the
+   shares are equal; above 1× it states the multiple as "as large", which is what the arithmetic
+   is, and a position being paid is not told it has a carry cost. */
+const leveraged = leverage > 1;
+const levText = num(leverage);
+/* A HOLD WITH NO FUNDING IS NOT TOLD ITS CARRY IS ENLARGED. Measured 16 September 2026 on localhost,
+   ?symbol=BTC&venue=HlPerp&side=long&notional=10000&days=0&leverage=10: beside "No settlement $0.00" and
+   "Share of your margin 0.00%", the verdict still ended "which is why a carry that looks negligible as
+   an APR can be the largest line in a leveraged position's P&L". mine.dir is null exactly when the
+   card prints no payment either way (no certain settlement, or a zero rate), so the tail keys off it. */
+const verdictTail =
+  mine.dir === "receive"
+    ? "here it enlarges a payment to you; held the other way, it would enlarge a cost just as much."
+    : mine.dir === "pay"
+      ? "which is why a carry that looks negligible as an APR can be the largest line in a leveraged position’s P&L."
+      : f.rate === 0
+        ? `here ${VENUE_LABEL[f.venue]}’s rate is zero, so there is nothing to enlarge.`
+        : "here no settlement is certain to fall inside the hold, so there is nothing yet to enlarge.";
+
+/* THE PRICE IS HYPERLIQUID'S, SO THE SENTENCE SAYS SO.
+   Measured 16 September 2026, ?symbol=XMR&venue=BinPerp&…: "Opens on XMR at $503.86 on Binance",
+   on a page whose source line lists only the Binance and Bybit FUNDING RATES Hyperliquid
+   republishes. markPx comes from Hyperliquid's context for every venue choice, so the venue in the
+   price clause is a constant and the chosen venue is named separately. Decimals follow priceDp, as
+   on every other price, so TRX is not "$0.33". */
+const markText = usd(perp.markPx, priceDp(perp.markPx));
 
 const title = `Funding cost calculator — what it costs to hold ${perp.symbol}`;
 const description = `What holding a ${perp.symbol} perpetual actually costs in funding, using each venue's real settlement interval rather than treating the quoted rate as a daily number.`;
@@ -78,9 +484,8 @@ const description = `What holding a ${perp.symbol} perpetual actually costs in f
     <h1>Funding cost calculator</h1>
     <p>
       What it costs to hold a position, using the venue&rsquo;s real settlement interval &mdash;
-      the same {usd(notional)} position for {days} days costs <strong>{usd(Math.abs(dearest.cost), 2)}</strong>
-      on {dearest.label} against {usd(Math.abs(cheapest.cost), 2)} on {cheapest.label}.
-      Opens on {perp.symbol} at {usd(perp.markPx, 2)} on {VENUE_LABEL[f.venue]}, which settles
+      {introPre}{introAmt && <strong>{introAmt}</strong>}{introPost}
+      Opens on {perp.symbol} ({markText} mark on Hyperliquid) with {VENUE_LABEL[f.venue]} as your venue, which settles
       every {f.intervalHours} hour{f.intervalHours === 1 ? "" : "s"}.
     </p>
     <Advisory />
@@ -100,106 +505,113 @@ const description = `What holding a ${perp.symbol} perpetual actually costs in f
       </select>
     </label>
     <label>Position notional (USD)
-      <input type="number" name="notional" value={notional} step="any" min="0" />
+      <input type="number" name="notional" value={notional} step="any" min={NOTIONAL_MIN} max={NOTIONAL_MAX} />
     </label>
     <label>Days held
-      <input type="number" name="days" value={days} step="any" min="0" />
+      <input type="number" name="days" value={days} step="any" min="0" max={DAYS_MAX} />
     </label>
     <label>Leverage
-      <input type="number" name="leverage" value={leverage} step="1" min="1" max={perp.maxLeverage} />
+      <input type="number" name="leverage" value={leverage} step="any" min="1" max={LEV_MAX} />
     </label>
     <button class="btn btn--primary" type="submit">Calculate</button>
   </form>
+  {notices.length > 0 && <p class="section-note" role="status" style="margin-top:10px">{notices.join(" ")}</p>}
 
-  {venueCosts.length > 1 && (
+  {showFigure && (
     <Figure
-      title={`Holding ${usd(notional)} of ${perp.symbol} ${side} for ${days} days`}
-      lead={usd(Math.abs(dearest.cost), 2)}
-      leadNote={`the dearest venue \u2014 ${dearest.label}; the cheapest is ${cheapest.label} at ${usd(Math.abs(cheapest.cost), 2)}`}
+      title={`Holding ${notionalText} of ${perp.symbol} ${side} for ${daysText} ${dayWord}`}
+      lead={lead}
+      leadNote={leadNote}
       fetchedAt={snap.fetchedAt}>
       <div class="bars">
-        {venueCosts.map((v) => (
+        {bars.map((r) => (
           <>
-            <span class="bars__label">{v.label}</span>
+            <span class="bars__label">{r.label}</span>
             <span class="bars__track">
               <span
-                class:list={["bars__fill", v.cost > 0 ? "bars__fill--l" : "bars__fill--s"]}
-                style={`width:${Math.max(2, (Math.abs(v.cost) / costMax) * 100)}%`}></span>
+                class:list={["bars__fill", { "bars__fill--l": flow(r) === "pay", "bars__fill--s": flow(r) === "receive" }]}
+                style={`width:${Math.max(2, (r.amount / costMax) * 100)}%`}></span>
             </span>
-            <span class="bars__value">{usd(v.cost, 2)} <span class="faint">{v.hours}h</span></span>
+            <span class="bars__value">{signed(r)} <span class="faint">{r.hours}h</span></span>
           </>
         ))}
       </div>
       <p slot="note">
         The identical position, priced on each venue&rsquo;s own settlement interval rather than on
-        the assumption that they match. Amber is a cost to you, cyan is a payment received. A
-        rate that looks smaller can still cost more: {fastest.label} settles every
-        {" "}{fastest.hours}h, {Math.round((days * 24) / fastest.hours)} times over {days} days, while
-        {" "}{slowest.label} settles every {slowest.hours}h, {Math.round((days * 24) / slowest.hours)} times.
+        the assumption that they match. Amber is a cost to you, cyan is a payment received{anyNone ? ", grey is nothing either way" : ""}.
+        {pairSentence}{certainNote}
       </p>
     </Figure>
   )}
 
+  {/* THE CARDS REPAINT AS YOU TYPE; EVERYTHING ELSE NAMES THE INPUTS IT WAS DRAWN AT.
+      Measured 16 September 2026 in a browser on /tools/funding-cost?symbol=BTC&venue=HlPerp&side=long&notional=10000&days=30&leverage=10:
+      typing days 60 and leverage 20 made the cards read "You pay $180.00 over 30 days · 1,440
+      settlements" and "Share of your margin 36.00% at 10× · margin $1,000" — recalc() rewrote the
+      numbers and left the "30 days" and "10× · margin $1,000" beside them, while the headline,
+      bars, prose and table kept 30 days, $90.00 and 10×.
+      So every card text that depends on notional, days or leverage — label, value and meta — now
+      has an id and is repainted, and each card meta names the inputs it shows. The figure title,
+      the table note, the prose and the verdict each name their own, and while the cards differ from
+      them a line under the form says which inputs the rest of the page is still drawn at. A figure
+      either moves or states what it was drawn at; there is no third kind left.
+      Symbol, side and venue still round-trip: the sign and the rate are the server's to render. */}
   <div class="cards" style="margin-top:12px">
     <div class="card card--lead">
-      <div class="card__label">{dir === null ? "No funding either way" : dir === "pay" ? "You pay" : "You receive"}</div>
-      <div class="card__value" id="out-cost">{usd(Math.abs(cost), 2)}</div>
-      <div class="card__meta">over {days} days · <span id="out-settle">{Math.round(settlements).toLocaleString("en-US")}</span> settlements</div>
+      <div class="card__label" id="out-label">{mineLabel}</div>
+      <div class="card__value" id="out-cost">{costCard}</div>
+      <div class="card__meta" id="out-meta">{mineMeta}</div>
     </div>
     <div class="card">
       <div class="card__label">Reading the rate as daily</div>
-      <div class="card__value dim" id="out-naive">{usd(Math.abs(naiveCost), 2)}</div>
-      <div class="card__meta">off by <span id="out-factor">{(24 / f.intervalHours).toFixed(0)}</span>×</div>
+      <div class="card__value dim" id="out-naive">{naiveCard}</div>
+      <div class="card__meta" id="out-rel">{relation}</div>
     </div>
     <div class="card">
       <div class="card__label">Share of your margin</div>
-      <div class="card__value" id="out-margin">{pct(Math.abs(costVsMargin))}</div>
-      <div class="card__meta">at {leverage}× · margin {usd(margin, 0)}</div>
+      <div class="card__value" id="out-margin">{shareText}</div>
+      <div class="card__meta" id="out-lev">{`at ${levText}× · margin ${marginText}`}</div>
     </div>
     <div class="card">
       <div class="card__label">Per settlement</div>
-      <div class="card__value" style="font-size:20px" id="out-per">{usd(Math.abs(perSettlement), 2)}</div>
-      <div class="card__meta">every {f.intervalHours}h at {rawRate(f.rate, f)}</div>
+      <div class="card__value" style="font-size:20px" id="out-per">{perCard}</div>
+      <div class="card__meta">on <span id="out-per-n">{exactUsd(notional)}</span> every {f.intervalHours}h at <span id="out-rate">{cardRate}</span></div>
     </div>
   </div>
 
-  <div class="verdict verdict--warn">
+  <div class:list={["verdict", mine.dir === "receive" ? "verdict--ok" : "verdict--warn"]}>
     <div>
-      Funding is charged on <b>notional</b>, not on your margin. At {leverage}× the same position
-      costs <b>{leverage}×</b> more relative to the capital you put up — which is why a carry that
-      looks negligible as an APR can be the largest line in a leveraged position's P&amp;L.
+      {leveraged ? (
+        <>Funding is charged on <b>notional</b>, not on your margin. At {levText}× the position is {levText} times your margin, so {mine.dir ? "the same" : "any"} funding is <b>{levText} times as large</b> a share of the capital you put up as of the position &mdash; {verdictTail}</>
+      ) : (
+        <>Funding is charged on <b>notional</b>, not on your margin. At 1× your margin is the whole position, so funding is the same share of both; leverage is what makes it a larger share of the capital you put up.</>
+      )}
     </div>
   </div>
 
   <h2 class="section">Where the daily reading goes wrong</h2>
   <p class="prose">
     Venues quote funding <strong>per settlement</strong>, not per day. {VENUE_LABEL[f.venue]} settles
-    every {f.intervalHours} hour{f.intervalHours === 1 ? "" : "s"}, so a {days}-day hold crosses
-    <strong>{Math.round(settlements).toLocaleString("en-US")}</strong> settlements, not {days}.
-    Treating the quoted figure as a daily rate understates the cost by
-    <strong>{(24 / f.intervalHours).toFixed(0)}×</strong> on this venue.
+    every {f.intervalHours} hour{f.intervalHours === 1 ? "" : "s"}, {crossPre}{crossNum && <strong>{crossNum}</strong>}{crossPost}
+    {readPre}{readNum && <strong>{readNum}</strong>}{readPost}
   </p>
 
   <h2 class="section">Same position, every venue</h2>
-  <p class="section-note">Identical notional and holding period. The ordering by cost is frequently not the ordering by quoted rate. {LEGEND_PAYS}.</p>
+  <p class="section-note">The same {notionalText} {side} over {daysText} {dayWord} on {table.length > 1 ? "each venue" : VENUE_LABEL[f.venue]}. Cost is the funding you pay; a minus means funding paid to you.{orderSentence}{remainderSentence} {LEGEND_PAYS}.</p>
   <div class="panel">
     <table class="tbl">
-      <thead><tr><th>Venue</th><th class="num">Quoted rate, per settlement</th><th class="num">Interval</th><th class="num">Settlements over {days}d</th><th class="num">APR</th><th class="num">Cost over {days}d</th></tr></thead>
+      <thead><tr><th>Venue</th><th class="num">Quoted rate, per settlement</th><th class="num">Interval</th><th class="num">Settlements over {daysText}d</th><th class="num">APR</th><th class="num">Cost over {daysText}d</th></tr></thead>
       <tbody>
-        {perp.venues.map((v) => {
-          const s = (days * 24) / v.intervalHours;
-          const c = notional * v.rate * s * signed;
-          return (
-            <tr class={v.venue === f.venue ? "is-active" : undefined}>
-              <td>{VENUE_LABEL[v.venue]}{v.venue === f.venue ? " · yours" : ""}</td>
-              <td class="num">{rawRate(v.rate, v)}</td>
-              <td class="num">{v.intervalHours}h</td>
-              <td class="num">{Math.round(s).toLocaleString("en-US")}</td>
-              <td class:list={["num", paysClass(v.apr)]}>{pct(v.apr)}</td>
-              <td class="num" style="font-weight:600">{(() => { const d = paymentDirection(v.rate, side); return d === null ? "" : d === "pay" ? "−" : "+"; })()}{usd(Math.abs(c), 2)}</td>
-            </tr>
-          );
-        })}
+        {table.map((r) => (
+          <tr class={r.venue === f.venue ? "is-active" : undefined}>
+            <td>{r.label}{r.venue === f.venue ? " · yours" : ""}</td>
+            <td class="num">{rateShown(r)}</td>
+            <td class="num">{r.hours}h</td>
+            <td class="num">{Number.isFinite(r.k) ? `${r.k.toLocaleString("en-US")}${r.more ? ` or ${(r.k + 1).toLocaleString("en-US")}` : ""}` : "—"}</td>
+            <td class:list={["num", paysClass(r.v.apr)]}>{pct(r.v.apr)}</td>
+            <td class="num" style="font-weight:600">{signed(r)}</td>
+          </tr>
+        ))}
       </tbody>
     </table>
   </div>
@@ -213,49 +625,87 @@ const description = `What holding a ${perp.symbol} perpetual actually costs in f
     · <a class="link" href="/tools/funding-arbitrage">Capture the spread between venues →</a>
   </p>
 
-  <script is:inline define:vars={{ venues: perp.venues }}>
-    // Mirrors the server formula exactly; only mutates values already in the HTML.
+  {/* The script mirrors price(), moneyAt(), fit(), the card precision checks, rateOf() for your venue
+      and the card texts above. Symbol, side and venue submit the form, because the sign and the rate
+      are rendered by the server; the three numeric inputs repaint the cards only, within the same
+      bounds the form declares, and the note it inserts names what the rest of the page is still drawn
+      at. It runs again on pageshow because a browser restoring form values on Back would otherwise
+      leave the cards describing inputs no longer in the boxes.
+      A BOX THE CARDS CANNOT FOLLOW IS SAID, NOT SKIPPED. Measured 16 September 2026 in a browser on
+      localhost /tools/funding-cost?symbol=BTC&venue=HlPerp&side=long&notional=10000&days=30&leverage=10:
+      after typing days 60 and leverage 20, typing days 6000 (past the 3,650 max) or clearing the box
+      returned early and left "You pay $180.00 on $10,000 over 60 days" under a box reading 6000 or
+      nothing, with the note still saying only what the cards showed. Every out-of-bounds, empty or
+      unparseable box now puts its reason in the note, in the server notice's own words, together with
+      the inputs the cards still show; `shown` is set only after a repaint, so the note cannot name
+      inputs the cards were not drawn at.
+      The card rate is repainted too: a longer hold or a larger notional can need more of its digits for
+      rate × notional × count to give the card's cost. The search starts at the digits the server chose
+      (rateD), which already pass every check at the drawn inputs, so a pageshow repaint at those inputs
+      reproduces the server's text exactly.
+      pct is imported from /shared.js, the server's own formatter, not retyped here: the repaint's share
+      and its APR comparison must round the way the first byte did. */}
+  <script is:inline type="module" define:vars={{ sharedV: ASSETS["/shared.js"], rate: f.rate, hours: f.intervalHours, isLong: side === "long", perYear: toApr(1, f.intervalHours), aprWant: pct(f.apr), keepApr: cardKeepApr, rateD: rateDecimals, drawn: { N: notional, D: days, L: leverage }, bounds: { nMin: NOTIONAL_MIN, nMax: NOTIONAL_MAX, dMax: DAYS_MAX, lMax: LEV_MAX, lWhy: levWhy } }}>
     const form = document.querySelector(".calc");
     if (form) {
-      const money = (x) => "$" + Math.abs(x).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-      const pc = (x, d = 2) => (Math.abs(x) * 100).toFixed(d) + "%";
-      const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
-      const recalc = () => {
-        const v = venues.find((x) => x.venue === form.venue.value) || venues[0];
-        const N = Number(form.notional.value), D = Number(form.days.value), L = Number(form.leverage.value);
-        const sign = form.side.value === "long" ? 1 : -1;
-        if (!(N >= 0) || !(D >= 0) || !(L > 0)) return;
-        const settle = (D * 24) / v.intervalHours;
-        const cost = N * v.rate * settle * sign;
-        set("out-cost", money(cost));
-        set("out-settle", Math.round(settle).toLocaleString("en-US"));
-        set("out-naive", money(N * v.rate * D * sign));
-        set("out-factor", (24 / v.intervalHours).toFixed(0));
-        set("out-margin", pc(cost / (N / L)));
-        set("out-per", money(N * v.rate * sign));
+      const { pct } = await import("/shared.js" + (sharedV ? `?v=${sharedV}` : ""));
+      const at = (a, e) => { const m = Math.abs(a); if (!Number.isFinite(a) || m >= 1e15) return "—"; const sub = a > 0 && a < 0.005, u = sub || m < 1e6 ? 1 : m < 1e9 ? 1e6 : 1e9, d0 = sub ? Math.min(12, 1 - Math.floor(Math.log10(a))) : 2, d = Math.min(20, d0 + e); let s = sub || u > 1 ? (a / u).toFixed(d) : a.toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d }); while (s.endsWith("0") && s.length - s.indexOf(".") - 1 > d0) s = s.slice(0, -1); return "$" + s + (u === 1e9 ? "B" : u === 1e6 ? "M" : ""); };
+      const pr = (s) => { const m = /\$([\d,]*\.?\d+)([MB]?)/.exec(s); return m ? Number(m[1].replace(/,/g, "")) * (m[2] === "B" ? 1e9 : m[2] === "M" ? 1e6 : 1) : NaN; };
+      const fit = (ok) => { for (let e = 0; e < 12; e++) if (ok(e)) return e; return 12; };
+      const near = (x, t, p) => { const m = p ? /(-?\d*)(?:\.(\d+))?%/.exec(t) : /\$([\d,]*)(?:\.(\d+))?([MB]?)/.exec(t); return !!m && Math.abs(x - (p ? Number(t.slice(0, -1)) : pr(t))) <= 0.5 * 10 ** -(m[2] ?? "").length * (m[3] === "B" ? 1e9 : m[3] === "M" ? 1e6 : 1) * (1 + 1e-9); };
+      const num = (x) => x.toLocaleString("en-US", { maximumFractionDigits: 6 });
+      const big = (p, q) => p > q ? p / q : q / p;
+      const mult = (x) => x < 1.05 ? "slightly" : num(Math.round(x * 10) / 10) + "×";
+      const usdX = (x) => "$" + x.toLocaleString("en-US", { minimumFractionDigits: Number.isInteger(x) ? 0 : 2, maximumFractionDigits: 6 });
+      const trim = (d) => rate.toFixed(d).replace(/0+$/, "").replace(/\.$/, "");
+      const set = (id, t) => { const el = document.getElementById(id); if (el) el.textContent = t; };
+      const hold = (s) => `${usdX(s.N)} over ${num(s.D)} ${s.D === 1 ? "day" : "days"} at ${num(s.L)}×`;
+      const fields = [["notional", "Position notional", bounds.nMin, bounds.nMax, (x) => "$" + num(x), ""], ["days", "Days held", 0, bounds.dMax, (x) => num(x) + "-day", ""], ["leverage", "Leverage", 1, bounds.lMax, (x) => num(x) + "×", bounds.lWhy]];
+      const same = (s) => s.N === drawn.N && s.D === drawn.D && s.L === drawn.L;
+      const rest = (s) => same(s) ? "" : ` The rest of the page is still drawn for ${hold(drawn)} until you press Calculate.`;
+      let note = null, shown = drawn;
+      const say = (t) => {
+        if (!t) { if (note) { note.remove(); note = null; } return; }
+        if (!note) { note = document.createElement("p"); note.className = "section-note"; note.style.marginTop = "10px"; note.setAttribute("role", "status"); form.after(note); }
+        note.textContent = t;
       };
-      form.addEventListener("input", recalc);
-      /* SIDE ROUND-TRIPS TO THE SERVER, like symbol, because the client cannot express it.
-         Every figure recalc() writes goes through money()/pc(), which are Math.abs() — the
-         magnitude is identical for a long and a short. The SIGN lives entirely in the "You
-         pay" / "You receive" label and in the ± of the venue table, and neither has an id, so
-         switching to Short left the page reading "You pay $12.72" for a position that PAYS
-         YOU $12.72. A full sign inversion of the page's only output, on the one input whose
-         only job is the sign.
-
-         Submitting is the honest fix rather than teaching the client to rewrite labels: the
-         server already renders both cases correctly, so the round-trip makes it the single
-         source of the sign instead of a second, partial renderer racing it. */
-      form.addEventListener("change", (e) => {
-        /* WHICH INPUTS CAN CHANGE THE SIGN. cost = notional x rate x settlements x sign, so
-           only `side` (the sign term) and `venue` (which selects the rate, and a rate can be
-           negative) can flip it. notional, days and leverage scale the magnitude and nothing
-           else, so recalc() can express them honestly. venue is included even though all
-           three rates happen to be positive today — that is a fact about this afternoon, not
-           a property of the page. */
-        if (["symbol", "side", "venue"].includes(e.target.name)) form.submit();
-        else recalc();
-      });
+      const recalc = () => {
+        const v = [], bad = [];
+        for (const [name, label, lo, hi, fmt, why] of fields) {
+          const el = form[name], t = el.value.trim(), x = Number(t);
+          const b = el.validity.badInput || (t !== "" && !Number.isFinite(x)) ? `${label} is not a number.` : t === "" ? `${label} is empty.` : x < lo ? `${label} of ${t} is below the ${fmt(lo)} minimum.` : x > hi ? `${label} of ${t} is above the ${fmt(hi)} maximum${why}.` : "";
+          if (b) bad.push(b);
+          v.push(x);
+        }
+        if (bad.length) return say(`${bad.join(" ")} The four cards still show ${hold(shown)}.${rest(shown)}`);
+        const [N, D, L] = v;
+        const step = hours * 3600, sec = Math.round(D * 86400);
+        const k = Math.floor(sec / step), more = sec - k * step > 0;
+        const per = N * Math.abs(rate), a = per * k, n = N * Math.abs(rate) * D, m = N / L;
+        const R = a > 0 && n > 0 && a !== n ? big(a, n) : NaN, share = pct(a / m);
+        const mt = (e) => Number.isInteger(m) && m < 1e6 ? "$" + m.toLocaleString("en-US") : at(m, e);
+        const eC = fit((e) => { const pa = pr(at(a, e)), pn = pr(at(n, e)), q = big(pa, pn); return (!Number.isFinite(R) || (pa !== pn && (pa > pn) === (a > n) && (R < 1.05 ? q < 1.05 : Math.abs(q - Math.round(R * 10) / 10) <= 0.05 * (1 + 1e-9)))) && near(pa / pr(mt(e)) * 100, share, true); });
+        const cost = at(a, eC);
+        const perT = at(per, fit((e) => !(k > 0) || near(pr(at(per, e)) * k, cost)));
+        const rOk = (s) => (!keepApr || pct(s * perYear) === aprWant) && near(N * Math.abs(s) * k, cost) && near(N * Math.abs(s), perT);
+        let d = rateD;
+        while (d < 20 && !rOk(Number(trim(d)))) d++;
+        set("out-label", rate === 0 ? "No funding either way" : k === 0 ? (more ? "No settlement for certain" : "No settlement") : (rate > 0) === isLong ? "You pay" : "You receive");
+        set("out-cost", cost);
+        set("out-meta", `on ${usdX(N)} over ${num(D)} ${D === 1 ? "day" : "days"} · ${k.toLocaleString("en-US")} settlement${k === 1 ? "" : "s"}${more ? ", or " + (k + 1).toLocaleString("en-US") : ""}`);
+        set("out-naive", at(n, eC));
+        set("out-rel", a === n ? "the same figure here" : a === 0 ? "too high: no settlement is certain" : `${mult(R)} too ${a > n ? "low" : "high"}`);
+        set("out-margin", share);
+        set("out-lev", `at ${num(L)}× · margin ${mt(eC)}`);
+        set("out-per", perT);
+        set("out-per-n", usdX(N));
+        set("out-rate", trim(d));
+        shown = { N, D, L };
+        say(same(shown) ? "" : `The four cards show ${hold(shown)}.${rest(shown)}`);
+      };
+      form.addEventListener("input", (e) => { if (["notional", "days", "leverage"].includes(e.target.name)) recalc(); });
+      form.addEventListener("change", (e) => { if (["symbol", "side", "venue"].includes(e.target.name)) form.submit(); else recalc(); });
+      addEventListener("pageshow", recalc);
     }
   </script>
   <Interests />

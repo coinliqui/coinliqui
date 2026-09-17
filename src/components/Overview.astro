@@ -1,0 +1,74 @@
+---
+/* =========================================================================================
+   THE STATED SITUATION, BEFORE ANY CHART AND BEFORE ANY TABLE.
+
+   WHAT WALKING THE SITE AS A READER FOUND. Every data page opened with method: how the venues
+   settle, what the tint means, what is and is not collected, why the number is trustworthy. All
+   of it true, none of it an answer. On a 375px screen /funding spent its entire first screen on
+   a ten-line paragraph about interval ratios, three totals nobody arrives asking for, and a
+   six-line key to two colours that were not yet on screen — and a reader who came to find out
+   what funding is doing right now reached the bottom of that screen without seeing a single
+   funding rate. /liquidations was worse: twenty lines of prose and two dropdowns, with the map
+   the page exists for entirely below the fold.
+
+   A CHART IS NOT AN ANSWER EITHER. It shows a shape over time and reading it costs
+   interpretation and some chart literacy. What a person needs in the first two seconds is a
+   sentence: what is true right now, and whether it is unusual. The picture underneath is
+   evidence for that sentence rather than a substitute for it.
+
+   SO THIS IS PROSE, NOT A METRIC ROW. The metric row is what it replaces — "Contracts 50 /
+   Open interest $9.48B / 24h volume $9.66B" took the most valuable band on four pages and
+   answered nothing anyone came for. A number that is not part of the conclusion does not belong
+   above the conclusion.
+
+   TWO RULES FOR WHAT GOES IN IT, both learned from the same walk:
+
+   DIRECTION IN WORDS, NOT ONLY IN COLOUR. "Longs are paying" is instant and needs no key.
+   A positive number is a convention a reader has to have been taught, and the page that teaches
+   it does so in a legend they have not reached yet.
+
+   A MAGNITUDE NEEDS SOMETHING TO BE JUDGED AGAINST. A rate alone cannot be read as high or low.
+   Where it sits against its own recent range is what makes it meaningful, and this site holds
+   200 daily readings per contract — the funding column of the candle series every symbol page
+   already renders — so the comparison is arithmetic on data we have, not a stub.
+   ========================================================================================= */
+interface Props {
+  /** Set on pages whose situation is derived from a model rather than observed. */
+  modelled?: boolean;
+  class?: string;
+}
+const { modelled = false, class: cls } = Astro.props;
+---
+
+<p class:list={["overview", modelled && "overview--modelled", cls]}><slot /></p>
+
+<style is:global>
+  /* LARGER THAN THE BODY AND IN THE TEXT COLOUR, because it is the thing to read first and the
+     explanation below it is not. The page's own <h1> stays the heading; this is the sentence
+     under it, which is the shape a broadsheet standfirst has always had.
+
+     NOT `.lede`, WHICH IS TAKEN. The homepage already uses .lede for its 21px h1 treatment, and
+     this file's own history contains a class name that meant two things on two pages — see the
+     .callout note in Base.astro. One name, one treatment. */
+  .overview {
+    margin: 0 0 var(--gap-region);
+    font-size: 17px; line-height: 1.5; color: var(--text);
+    max-width: 62ch;
+  }
+  /* The numbers inside a stated situation are the situation. Dimming the prose around them is
+     what makes it read as a sentence rather than as a wall of bold — the same treatment the
+     homepage lede uses, applied the other way round because here the prose is the majority. */
+  .overview b, .overview strong { font-weight: 600; color: var(--text); }
+  .overview a { color: var(--accent); text-decoration: none; }
+  .overview a:hover { text-decoration: underline; text-underline-offset: 2px; }
+  /* A MODELLED SITUATION SAYS SO IN THE MARGIN, not only in a disclaimer further down. The
+     liquidation pages state a conclusion drawn from assumptions, and a reader who takes the
+     first sentence away with them should take that with it. */
+  .overview--modelled { border-left: 2px solid var(--border); padding-left: var(--gap-block); }
+
+  @media (max-width: 560px) {
+    /* 16px is the floor at which iOS does not zoom on focus and at which a standfirst still
+       reads as one. Below that this becomes body text with extra weight, which is not the job. */
+    .overview { font-size: 16px; }
+  }
+</style>

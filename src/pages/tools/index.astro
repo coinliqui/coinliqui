@@ -1,15 +1,73 @@
 ---
 import Base from "../../layouts/Base.astro";
-import { getSnapshot, coldStart, pickPerp } from "../../lib/hyperliquid.ts";
-import { pct, usd } from "../../lib/funding.ts";
-import { liquidationPrice, type MarginTable } from "../../lib/margin.ts";
+import { getSnapshot, coldStart, requestedPerp } from "../../lib/hyperliquid.ts";
+import { pct, usd, VENUE_LABEL } from "../../lib/funding.ts";
+import { liquidationPrice, maintenanceMarginFraction, type MarginTable } from "../../lib/margin.ts";
 import tables from "../../data/margin-tables.json";
 const snap = await getSnapshot((Astro.locals as any)?.runtime?.env?.SNAPSHOT, import.meta.env.DEV);
 // Cold store: 503 + Retry-After rather than a page rendered from nothing.
 if (!snap.available) return coldStart();
-const btc = snap.perps.find((p) => p.symbol === "BTC") ?? snap.perps[0];
-const widest = [...snap.perps].filter((p) => p.aprSpread != null).sort((a, b) => (b.aprSpread ?? 0) - (a.aprSpread ?? 0))[0];
-const hl = btc.venues.find((v) => v.venue === "HlPerp") ?? btc.venues[0];
+
+/* "EVERY CALCULATOR HERE OPENS ON BTC" WAS TRUE OF THREE IN FOUR. The lede was filled from one
+   contract, `btc`, while the four pages it described choose their contract four ways — and
+   funding arbitrage opens on the widest live spread by design. Measured on production
+   16 September 2026, 10:13 UTC, in one response: the lede said "Every calculator here opens on
+   BTC at $75,922, funding 10.95% a year on Hyperliquid" and the fourth card beneath it said
+   "ADA spread 55.60%"; locally the same day it was TRX at 57.20%.
+
+   So each card now carries the contract its own calculator opens on, by that calculator's rule,
+   and the lede is assembled from the four of them: it can say "every" only when all four agree.
+   Position size and leverage call requestedPerp() with no symbol, as their pages do. Funding cost
+   and funding arbitrage choose inline in their own pages, so those two rules are mirrored here
+   line for line — funding-cost.astro takes perps[0] on Hyperliquid, funding-arbitrage.astro the
+   widest spread among contracts quoted on two venues or more. */
+const venueOf = (p: (typeof snap.perps)[number]) => p.venues.find((v) => v.venue === "HlPerp") ?? p.venues[0];
+const pinned = requestedPerp(snap.perps, null, tables as Record<string, MarginTable>);
+const pinnedPerp = pinned && pinned !== "unknown" ? pinned.perp : null;
+const costPerp = snap.perps[0];
+const costVenue = venueOf(costPerp);
+const tradable = snap.perps.filter((p) => p.venues.length >= 2);
+const arbPerp = [...tradable].sort((a, b) => (b.aprSpread ?? 0) - (a.aprSpread ?? 0))[0] ?? snap.perps[0];
+
+// Only shipped tools are listed. There are no "coming soon" entries.
+// Each blurb names the specific thing the common formula gets wrong, because that is the
+// only reason to use this calculator over the twenty that already rank.
+// `opens` is the contract the calculator opens on; `alone` is how the lede names it when it
+// differs from the others.
+const tools = [
+  {
+    href: "/tools/position-size",
+    name: "Position size",
+    blurb: "Risk-based sizing that checks the stop against the tier-correct liquidation price. A stop beyond liquidation is not a stop.",
+    opens: pinnedPerp,
+    live: pinnedPerp ? `${pinnedPerp.symbol} · tier-checked` : "—",
+    alone: pinnedPerp ? `${pinnedPerp.symbol} at ${usd(pinnedPerp.markPx)}` : "",
+  },
+  {
+    href: "/tools/leverage",
+    name: "Leverage",
+    blurb: "The advertised maximum applies to the smallest tier only. Shows what your notional actually allows, and where the next step falls.",
+    opens: pinnedPerp,
+    live: pinnedPerp ? `${pinnedPerp.symbol} advertised ${pinnedPerp.maxLeverage}×` : "—",
+    alone: pinnedPerp ? `${pinnedPerp.symbol} at ${usd(pinnedPerp.markPx)}` : "",
+  },
+  {
+    href: "/tools/funding-cost",
+    name: "Funding cost",
+    blurb: "What a position costs to hold, counting real settlements rather than reading the quoted rate as a daily number.",
+    opens: costPerp,
+    live: `${costPerp.symbol} ${pct(costVenue.apr)} APR`,
+    alone: `${costPerp.symbol} at ${usd(costPerp.markPx)}, funding ${pct(costVenue.apr)} a year on ${VENUE_LABEL[costVenue.venue]}`,
+  },
+  {
+    href: "/tools/funding-arbitrage",
+    name: "Funding arbitrage",
+    blurb: "The cross-venue spread with both legs annualised on their own interval, not differenced as if the intervals matched.",
+    opens: arbPerp,
+    live: arbPerp.aprSpread != null ? `${arbPerp.symbol} spread ${pct(arbPerp.aprSpread)}` : arbPerp.symbol,
+    alone: arbPerp.aprSpread != null ? `${arbPerp.symbol}, the widest live spread at ${pct(arbPerp.aprSpread)} a year` : arbPerp.symbol,
+  },
+];
 
 /* THE PAGE MADE A CLAIM ABOUT FIGURES AND SHOWED NONE. The opening sentence was "Every
    calculator opens with a real contract at its current price, computed on the server" —
@@ -17,40 +75,28 @@ const hl = btc.venues.find((v) => v.venue === "HlPerp") ?? btc.venues[0];
    quotes. /tools takes 36 Applebot fetches a day, the second-largest share on the site
    after /funding/{symbol}, and what they carried away was the promise.
 
-   THE FIGURES WERE ALREADY IN THIS FRONTMATTER. `btc` and `hl` are read four lines above
-   to fill the cards; the lede simply never used them. Assembled here rather than in the
-   markup because adjacent JSX expressions on separate lines emit whitespace text nodes. */
-const opensOn = `${btc.symbol} at ${usd(btc.markPx)}, funding ${pct(hl.apr)} a year on Hyperliquid`;
-
-// Only shipped tools are listed. There are no "coming soon" entries.
-// Each blurb names the specific thing the common formula gets wrong, because that is the
-// only reason to use this calculator over the twenty that already rank.
-const tools = [
-  {
-    href: "/tools/position-size",
-    name: "Position size",
-    blurb: "Risk-based sizing that checks the stop against the tier-correct liquidation price. A stop beyond liquidation is not a stop.",
-    live: `${btc.symbol} · tier-checked`,
-  },
-  {
-    href: "/tools/leverage",
-    name: "Leverage",
-    blurb: "The advertised maximum applies to the smallest tier only. Shows what your notional actually allows, and where the next step falls.",
-    live: `${btc.symbol} advertised ${btc.maxLeverage}×`,
-  },
-  {
-    href: "/tools/funding-cost",
-    name: "Funding cost",
-    blurb: "What a position costs to hold, counting real settlements rather than reading the quoted rate as a daily number.",
-    live: `${btc.symbol} ${pct(hl.apr)} APR`,
-  },
-  {
-    href: "/tools/funding-arbitrage",
-    name: "Funding arbitrage",
-    blurb: "The cross-venue spread with both legs annualised on their own interval, not differenced as if the intervals matched.",
-    live: widest ? `${widest.symbol} spread ${pct(widest.aprSpread ?? 0)}` : "—",
-  },
-];
+   THE FIGURES WERE ALREADY IN THIS FRONTMATTER, read above to fill the cards. Assembled here
+   rather than in the markup because adjacent JSX expressions on separate lines emit whitespace
+   text nodes. The lead is the contract most calculators open on (the first in card order on a
+   tie); every calculator that opens on something else is named with its own contract. */
+const bySymbol = new Map<string, typeof tools>();
+for (const t of tools) if (t.opens) bySymbol.set(t.opens.symbol, [...(bySymbol.get(t.opens.symbol) ?? []), t]);
+const leadGroup = [...bySymbol.values()].sort((a, b) => b.length - a.length)[0] ?? [];
+const leadPerp = leadGroup[0]?.opens ?? snap.perps[0];
+const leadVenue = venueOf(leadPerp);
+const others = tools.filter((t) => t.opens && t.opens.symbol !== leadPerp.symbol);
+// Sentence case: the list opens the sentence, so only its first name keeps its capital.
+const names = (ts: typeof tools) => {
+  const n = ts.map((t, i) => (i === 0 ? t.name : t.name.toLowerCase()));
+  return n.length < 2 ? (n[0] ?? "") : `${n.slice(0, -1).join(", ")} and ${n[n.length - 1]}`;
+};
+const leadOpens = `${leadPerp.symbol} at ${usd(leadPerp.markPx)}, funding ${pct(leadVenue.apr)} a year on ${VENUE_LABEL[leadVenue.venue]}`;
+const lede = others.length === 0 && leadGroup.length === tools.length
+  ? `Every calculator here opens on ${leadOpens}`
+  : [
+      `${names(leadGroup)} ${leadGroup.length > 1 ? "open" : "opens"} on ${leadOpens}`,
+      ...others.map((t) => `${t.name.toLowerCase()} opens on ${t.alone}`),
+    ].join("; ");
 
 /* THE PAGE SAID A FORMULA IN CIRCULATION IS WRONG AND NEVER SAID BY HOW MUCH.
    /tools carries 191 words of extractable text, the thinnest page on this site, and it is a
@@ -66,7 +112,8 @@ const tools = [
    The cross-venue row states its mechanism and carries no number on purpose — computing a
    naive spread here would be funding-arbitrage's logic implemented twice, which is the
    drift this codebase keeps paying for. */
-const picked = pickPerp(snap.perps, "BTC", tables as Record<string, MarginTable>);
+const picked = pinned && pinned !== "unknown" ? pinned : null;
+const hl = picked ? venueOf(picked.perp) : null;
 const SIZE_USD = 10_000;
 const LEV = 10;
 const HOLD_DAYS = 30;
@@ -84,6 +131,34 @@ const liq = picked && picked.perp.markPx > 0
 const dailyFactor = hl && hl.intervalHours > 0 ? 24 / hl.intervalHours : null;
 const realHold = hl ? SIZE_USD * hl.rate * (24 / hl.intervalHours) * HOLD_DAYS : null;
 const naiveHold = hl ? SIZE_USD * hl.rate * HOLD_DAYS : null;
+
+/* "FINE INSIDE THE FIRST MARGIN TIER" WAS CONTRADICTED BY THE ROW ABOVE IT. The closing note said
+   the simplified forms "are fine where the interval is one day and the position is inside the
+   first margin tier". That holds for the funding shortcut and never for the liquidation one:
+   entry × (1 − 1/leverage) leaves out maintenance margin, and maintenanceMarginFraction() is
+   1/(2 × the tier's max leverage), above zero in every tier. Measured on production 16 September
+   2026, 10:13 UTC: the $10,000 BTC row is a first-tier position (40× tier, $150M boundary) and
+   printed $68,329.80 against $69,194.73 — a 1.25% maintenance charge taking room from entry from
+   10.00% to 8.86% — directly above the sentence saying it was fine.
+
+   So the note now states the two conditions separately and takes the liquidation figures from
+   `liq`, the result the row prints, and the largest-tier charge from the same table. It can only
+   name the tier the position is actually in, and says nothing about room from entry when the
+   leverage was clamped, because then the gap is not maintenance margin alone. */
+const fundingNote = `Reading a quoted funding rate as a daily number is exact only on a venue that settles once a day${hl ? `, and ${VENUE_LABEL[hl.venue]} settles every ${hl.intervalHours}h` : ""}.`;
+const topTier = picked ? [...picked.table.marginTiers].sort((a, b) => b.lowerBound - a.lowerBound)[0] : undefined;
+const topMmf = topTier && liq && maintenanceMarginFraction(topTier.maxLeverage) > liq.maintenanceMarginFraction
+  ? maintenanceMarginFraction(topTier.maxLeverage)
+  : null;
+const liqWhy = liq && !liq.leverageClamped
+  ? `the whole reason its room from entry is ${pct(liq.distancePct)} rather than ${pct(liq.naiveDistancePct)}`
+  : null;
+const liqNote = liq && picked
+  ? `${liq.tierIndex === 0 ? "The first margin tier" : `Margin tier ${liq.tierIndex + 1}`}, where the ${usd(SIZE_USD)} ${picked.perp.symbol} position above sits, charges ${pct(liq.maintenanceMarginFraction)}` +
+    (topMmf != null
+      ? `${liqWhy ? ` — ${liqWhy} —` : ","} and the tier for this contract's largest positions charges ${pct(topMmf)}.`
+      : `${liqWhy ? ` — ${liqWhy}` : ""}.`)
+  : "";
 ---
 <Base
   title="Funding, leverage and position size calculators"
@@ -93,8 +168,8 @@ const naiveHold = hl ? SIZE_USD * hl.rate * HOLD_DAYS : null;
   <div class="page-head">
     <h1>Perpetual futures calculators</h1>
     <p>
-      <strong>Every calculator here opens on {opensOn}</strong>, computed on the server before the
-      page is sent — not a blank form waiting for numbers you have to find somewhere else first.
+      <strong>{lede}</strong>. Each is computed on the server before the page is sent — not a
+      blank form waiting for numbers you have to find somewhere else first.
       Where a formula in common circulation is wrong, the correct result is shown next to it.
       None of them require an account.
     </p>
@@ -131,7 +206,10 @@ const naiveHold = hl ? SIZE_USD * hl.rate * HOLD_DAYS : null;
               <div class="reason" style="margin-top:2px">entry × (1 − 1/leverage), which ignores maintenance margin</div></td>
             <td class="num">{usd(liq.naivePrice, 2)}</td>
             <td class="num">{usd(liq.liquidationPrice, 2)}</td>
-            <td class="num">{pct(liq.differencePct)}</td>
+            {/* ROOM FROM ENTRY, not a share of one of the two prices with the base left unstated —
+                see differenceOfCorrectPct in src/lib/margin.ts. */}
+            <td class="num">{pct(liq.naiveDistancePct)} → {pct(liq.distancePct)}
+              <div class="reason">room from entry</div></td>
           </tr>
         ) : null}
         {hl && dailyFactor && realHold != null && naiveHold != null ? (
@@ -157,9 +235,9 @@ const naiveHold = hl ? SIZE_USD * hl.rate * HOLD_DAYS : null;
     </table>
   </div>
   <p class="section-note">
-    None of this is a claim that other calculators are careless. The simplified forms are fine
-    where the interval is one day and the position is inside the first margin tier; they stop
-    being fine exactly where a real position sits.
+    None of this is a claim that other calculators are careless. {fundingNote} The liquidation
+    shortcut is not exact in any tier: it leaves out maintenance margin, which every tier
+    charges. {liqNote}
   </p>
 
   <p class="section-note" style="margin-top:20px">

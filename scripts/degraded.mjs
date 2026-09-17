@@ -61,7 +61,9 @@ const CASES = [
     survives: [/Maintenance margin|margin tiers|Open interest/], why: "the contract page keeps the funding table and the tier ladder" },
   { path: "/liquidations?symbol=BTC", says: /Hourly candles not collected yet/,
     survives: [/liquidation/i], why: "the density map needs hourly bars and nothing else on the page does" },
-  { path: "/liquidations/survival?symbol=BTC", says: /Candle history not collected yet|not collected/,
+  /* "not collected yet" was the old title, and it was false whenever the series existed but could
+     not be read (16 September 2026) — the page now names what is missing without naming a cause. */
+  { path: "/liquidations/survival?symbol=BTC", says: /No BTC daily candles to test/,
     survives: [/leverage/i], why: "the backtest needs daily bars" },
   { path: "/", says: /No flips in the last 24 hours|Collecting funding history|Flip feed unavailable/,
     survives: [/Funding/], why: "the home page states which feed is missing rather than dropping the section" },

@@ -130,6 +130,13 @@ export function buildPriceChart(
   funding: FundingPoint[] | null,
   tf: Timeframe,
   mode: ChartMode = "candle",
+  /* THE BAND IS OPTIONAL NOW, AND ONLY ONE TEMPLATE TURNS IT OFF. /funding/{symbol} draws the
+     funding series as a figure of its own — see buildFundingChart at the foot of this file — and
+     two pictures of one series at two sizes on one page invites a reader to reconcile them.
+     (An earlier version of this note said the coin pages keep the strip. They do not: /coins/{coin}
+     passes no funding series at all, so its chart has never drawn one — a comment asserting what
+     the code does not do, caught by a verifier on 16 September.) */
+  opts: { band?: boolean } = {},
 ): PriceChart | null {
   const gid = `f${tf.key}`;
   if (candles.length < 3) return null;
@@ -166,7 +173,7 @@ export function buildPriceChart(
    * candle's timestamp rather than by arithmetic. */
   if (funding && funding.length > 4) fundingByBar(candles, funding, barMs, aprAt);
   const coverage = aprAt.size / candles.length;
-  const fundOn = coverage >= 0.06;
+  const fundOn = (opts.band ?? true) && coverage >= 0.06;
   const fundH = fundOn ? LY.fundH : 0;
 
   const priceH = LY.h - CH.padT - CH.padB - LY.volH - fundH - CH.gap * (fundOn ? 2 : 1);
@@ -316,7 +323,13 @@ export function buildPriceChart(
 
   const first = candles[0][C];
   return {
-    svg: `<svg viewBox="0 0 ${CH.w} ${LY.h}" width="100%" role="img" aria-label="Price, volume and funding history">${s.join("")}</svg>`,
+    /* THE LABEL NAMES WHAT WAS ACTUALLY DRAWN. It read "Price, volume and funding history" on
+       every rendering, including the ones where the band is off — /funding/{symbol} passes
+       band:false because it draws funding as a figure of its own — so a screen reader was told
+       about a panel that is not in the picture. A name asserting what its expression does not
+       compute is the defect this codebase keeps finding in itself; it is the same fault whether
+       the reader is a person or an extractor. */
+    svg: `<svg viewBox="0 0 ${CH.w} ${LY.h}" width="100%" role="img" aria-label="${fundOn ? "Price, volume and funding history" : "Price and volume history"}">${s.join("")}</svg>`,
     points: candles.map((c, i) => [
       +xOf(i).toFixed(2), c[T], c[O], c[H], c[L], c[C], c[V],
       aprAt.has(c[T]) ? +aprAt.get(c[T])!.toFixed(6) : NaN, +yOf(c[C]).toFixed(2),
@@ -337,3 +350,107 @@ export function buildPriceChart(
 const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 export const shortDate = (t: number) => { const d = new Date(t); return `${d.getUTCDate()} ${MON[d.getUTCMonth()]} ${d.getUTCFullYear()}`; };
 export const CHART_H = LY.h;
+
+/* =========================================================================================
+   THE FUNDING BAND ON ITS OWN, AT THE SIZE OF ITS OWN SUBJECT.
+
+   WHAT THE READER WALK FOUND. /funding/{symbol} is the most-fetched template on this site and
+   the page an assistant lands on for "BTC funding rate". Measured on the rendered page: the
+   funding band occupied y 500–580 of a 596-unit viewBox — thirteen per cent of the chart's
+   height, at the bottom, under the volume bars — while the price candles took seventy-five per
+   cent and a $75,892.00 hero sat above the lot. The page's own title is funding and funding was
+   the smallest thing on it.
+
+   SO IT IS A FIGURE, NOT A STRIP. Same grammar as the band it replaces, because that grammar was
+   already right: two mirrored areas about a drawn zero rule, amber where longs pay and cyan where
+   shorts do, clipped at the 96th percentile so one spike cannot flatten a year, and absence drawn
+   as absence rather than as a flat line at zero. What changes is the height it gets and the
+   question it is answering — here it is the claim, there it was a footnote to the price.
+
+   THE PRICE CHART STOPS DRAWING IT. Two pictures of one series at two sizes on one page invites
+   the reader to reconcile them, and the smaller one would always lose; buildPriceChart takes
+   `band: false` from this template for that reason. (The coin pages draw no band either: they pass
+   no funding series to the price chart.)
+   ========================================================================================= */
+export interface FundingChart {
+  svg: string;
+  /** Fraction of drawn bars that carry a funding reading. */
+  coverage: number;
+  /** First bar with a reading, or null when none has one. */
+  from: number | null;
+  /** Half-height of the drawn range: the axis runs −max..+max, annualised. */
+  max: number;
+  /** Readings beyond that range, pinned to the edge and disclosed rather than hidden. */
+  clipped: number;
+  /** Highest and lowest annualised readings actually present, whatever the axis shows. */
+  hi: number; lo: number;
+  bars: number;
+}
+
+/** Height of the standalone figure. A third of the price chart: enough to read a shape, not so
+ *  much that a page about a rate becomes a page about a picture. */
+const FUND_H = 200;
+
+export function buildFundingChart(candles: Candle[], funding: FundingPoint[] | null, tf: Timeframe): FundingChart | null {
+  if (candles.length < MIN_CHART_BARS || !funding || funding.length < 5) return null;
+  const barMs = tf.hours * 3_600_000;
+  const aprAt = fundingByBar(candles, funding, barMs);
+  const cov: number[] = [];
+  for (let i = 0; i < candles.length; i++) if (aprAt.has(candles[i][T])) cov.push(i);
+  /* The same floor the strip used: a band covering under 6% of the window is a sliver at the
+     right edge that reads as a rendering fault rather than as data. */
+  if (cov.length / candles.length < 0.06) return null;
+
+  const plotX = CH.padL, plotW = CH.w - CH.padL - CH.padR;
+  const axisX = plotX + plotW;
+  const top = CH.padT, h = FUND_H - CH.padT - CH.padB;
+  const zeroY = top + h / 2;
+  const n = candles.length;
+  const xOf = (i: number) => plotX + (plotW / n) * (i + 0.5);
+
+  const mags = [...aprAt.values()].map(Math.abs).sort((a, b) => a - b);
+  const max = Math.max(0.01, mags.length ? mags[Math.floor(mags.length * 0.96)] : 0.01);
+  const clipped = mags.filter((m) => m > max).length;
+  const vals = [...aprAt.values()];
+  const yOf = (a: number) => zeroY - (Math.max(-max, Math.min(max, a)) / max) * (h / 2);
+
+  const s: string[] = [];
+  const gid = `fc${tf.key}`;
+  const x0 = xOf(cov[0]);
+  /* ABSENCE DRAWN AS ABSENCE. A stored series that starts partway through the window leaves a
+     region with no reading, and filling it with the zero line would say funding was flat there. */
+  if (cov[0] > 2) {
+    s.push(rect(plotX, top, x0 - plotX, h, "#1b2026"));
+    s.push(line(x0, top, x0, top + h, "#39414a"));
+    s.push(text(x0 - 10, zeroY + 3.8, "no funding history before " + shortDate(candles[cov[0]][T]), INK.faint, FS_MICRO, "end", 400, SANS));
+  }
+  s.push(
+    `<defs><linearGradient id="${gid}l" x1="0" y1="0" x2="0" y2="1">` +
+    `<stop offset="0" stop-color="${INK.paysLFill}" stop-opacity=".92"/><stop offset="1" stop-color="${INK.paysLFill}" stop-opacity=".16"/></linearGradient>` +
+    `<linearGradient id="${gid}s" x1="0" y1="0" x2="0" y2="1">` +
+    `<stop offset="0" stop-color="${INK.paysSFill}" stop-opacity=".16"/><stop offset="1" stop-color="${INK.paysSFill}" stop-opacity=".92"/></linearGradient></defs>`,
+  );
+  for (const side of [1, -1]) {
+    const pts = cov.map((i) => {
+      const a = aprAt.get(candles[i][T])!;
+      return `${n2(xOf(i))},${n2((a >= 0) === (side > 0) ? yOf(a) : zeroY)}`;
+    }).join(" ");
+    s.push(`<polygon points="${n2(x0)},${n2(zeroY)} ${pts} ${n2(xOf(cov[cov.length - 1]))},${n2(zeroY)}" fill="url(#${gid}${side > 0 ? "l" : "s"})"/>`);
+    s.push(`<polyline points="${pts}" fill="none" stroke="${side > 0 ? INK.paysL : INK.paysS}" stroke-width="1.4" stroke-linejoin="round" opacity=".95"/>`);
+  }
+  s.push(line(plotX, zeroY, axisX, zeroY, INK.zero));
+  s.push(text(axisX + PILL_GAP, top + 11, `+${(max * 100).toFixed(0)}% APR`, INK.faint, FS_MICRO));
+  s.push(text(axisX + PILL_GAP, zeroY + 4, "0%", INK.dim, FS_MICRO));
+  s.push(text(axisX + PILL_GAP, top + h - 2, `−${(max * 100).toFixed(0)}%`, INK.faint, FS_MICRO));
+  s.push(`<g data-ax="x">${timeTicks(candles.map((c) => c[T]), 8)
+    .map(({ i, label }) => text(xOf(i), FUND_H - 9, label, INK.faint, FS_AXIS, "middle")).join("")}</g>`);
+
+  return {
+    svg: `<svg viewBox="0 0 ${CH.w} ${FUND_H}" width="100%" role="img" aria-label="Funding rate history, annualised, with the side paying shown by colour">${s.join("")}</svg>`,
+    coverage: cov.length / candles.length,
+    from: candles[cov[0]][T],
+    max, clipped,
+    hi: Math.max(...vals), lo: Math.min(...vals),
+    bars: cov.length,
+  };
+}

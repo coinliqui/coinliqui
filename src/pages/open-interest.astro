@@ -3,7 +3,8 @@ import Base from "../layouts/Base.astro";
 import { getSnapshot, coldStart } from "../lib/hyperliquid.ts";
 import { pct, usd } from "../lib/funding.ts";
 import Figure from "../components/Figure.astro";
-import StatStrip from "../components/StatStrip.astro";
+import Overview from "../components/Overview.astro";
+import { extremeBy } from "../lib/extreme.ts";
 import { readOiHistory, oiChange } from "../lib/oi-history.ts";
 const snap = await getSnapshot((Astro.locals as any)?.runtime?.env?.SNAPSHOT, import.meta.env.DEV);
 // Cold store: 503 + Retry-After rather than a page rendered from nothing.
@@ -24,23 +25,83 @@ const total = rows.reduce((s, p) => s + p.oiNotional, 0);
    migrations/0003_oi_snapshot.sql. The state matters as much as the number: for the first day
    after that table exists there is no comparison to make, and the page says so rather than
    printing a change of zero it cannot support. */
-const oiHist = await readOiHistory((Astro.locals as any)?.runtime?.env?.DB, Date.now());
+/* THE WINDOW IS PRINTED FROM THE ROWS THAT WERE READ, NOT FROM THE NUMBER THAT WAS ASKED FOR.
+   Found on 16 September 2026 at https://coinliqui.com/open-interest: the opening said "Over the
+   last 24 hours that book shrank 4.21%" and the column was headed "24h", and the dash legend added
+   the same day said "no stored reading from 24 hours ago" — all printing `hours`, the 24 passed in.
+   The reader never takes a reading from 24 hours ago. It takes each contract's newest reading
+   from a band 24 to 27 hours before `now` (oi-history.ts, "TAKEN FROM A BAND"), and that file
+   says the caller prints `since`. A move over 26 hours labelled 24 is the label-versus-expression
+   defect oi-history.ts was written to prevent, reintroduced one call site later.
+
+   So the hours, the band and the instant are constants HERE, passed to the reader rather than
+   left to its defaults, and every window below is arithmetic on those three and on `since`, the
+   reading actually used. Nothing on this page prints a duration it did not subtract. */
+const OI_HOURS = 24;
+const OI_BAND_HOURS = 3;
+const HOUR_MS = 3_600_000;
+const oiNow = Date.now();
+const oiDb = (Astro.locals as any)?.runtime?.env?.DB;
+const oiHist = await readOiHistory(oiDb, oiNow, OI_HOURS, OI_BAND_HOURS);
 /* NARROWED ONCE, HERE, RATHER THAN IN THE TEMPLATE. The warming block below narrows `oiHist` for
    everything after it as far as TypeScript is concerned, so the table's own `status === "ready"`
    test became a comparison between two types with no overlap and the column stopped typechecking.
    One const holds the ready shape or null, and the template asks a plain question. */
 const oiReady = oiHist.status === "ready" ? oiHist : null;
+/* ONE READING TIME OR SEVERAL, AND THE SENTENCE HAS TO KNOW WHICH. The worker writes every covered
+   contract in one batch per hourly tick (worker/ingest.ts), so normally every baseline is the same
+   row time and "since 12:00 UTC" is exact. It is not guaranteed: a contract missing from the newest
+   tick inside the band — below the coverage floor for that hour — takes an older one. The ready
+   result carries only the newest time, so the same reader is asked once more for a band of zero
+   width ending at `since`. `since + hours - hours` is integer milliseconds, so the cutoff lands on
+   `since` exactly, and a contract found there was read at `since`. Every measured contract found
+   there: one time is printed. Any missing: the span they were all drawn from is printed instead,
+   which is true whichever contracts took the older rows. */
+const oiAtSince = oiReady ? await readOiHistory(oiDb, oiReady.since + OI_HOURS * HOUR_MS, OI_HOURS, 0) : null;
+const bandTo = oiNow - OI_HOURS * HOUR_MS;
+const bandFrom = bandTo - OI_BAND_HOURS * HOUR_MS;
+
+/* MINUTE PRECISION, ROUNDED THE WAY EACH CLAIM NEEDS. "No reading between A and B" is only true if
+   the printed span lies inside the band searched, so it rounds inward; "readings taken between A
+   and B" is only true if the printed span covers them, so it rounds outward. */
+const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+const two = (n: number) => String(n).padStart(2, "0");
+const hm = (d: Date) => `${two(d.getUTCHours())}:${two(d.getUTCMinutes())}`;
+const dayOf = (d: Date) => `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`;
+const minute = (t: number, up: boolean) => new Date((up ? Math.ceil : Math.floor)(t / 60_000) * 60_000);
+const utcSpan = (from: number, to: number, outward: boolean) => {
+  const a = minute(from, !outward);
+  const b = minute(to, outward);
+  return dayOf(a) === dayOf(b)
+    ? `between ${hm(a)} and ${hm(b)} UTC on ${dayOf(b)}`
+    : `between ${hm(a)} UTC on ${dayOf(a)} and ${hm(b)} UTC on ${dayOf(b)}`;
+};
+/* The band the reader searched, as a span no reading was found in. */
+const oiBandSpan = utcSpan(bandFrom, bandTo, false);
+
+/* THE WARMING STATE HAS TWO CAUSES AND THEY ARE OPPOSITE FACTS. readOiHistory returns "warming"
+   both when the record is younger than a day and when it is older but holds no usable row inside
+   the band — a worker outage over those hours of yesterday. Simulated on 16 September 2026 against
+   http://localhost:4322/open-interest with a stand-in database whose oldest reading was 200 hours
+   old and none sat in the band: the opening said the series "does not reach back far enough" and
+   the paragraph below it said the site "has 200 hours of it so far, so there is nothing to
+   subtract from" — both false, and each contradicting the other. The two are told apart by the
+   reader's own arithmetic, not by a second guess: it returns the short-record state only while the
+   oldest row is newer than the cutoff, so `covered < hours` is that state and nothing else. */
+const oiGap = oiHist.status === "warming" && oiHist.covered >= oiHist.hours;
 /* THREE STATES, NOT TWO, AND PRODUCTION FOUND THE THIRD WITHIN THE HOUR. The table is created
    empty, so between the migration and the worker's first hourly write there are ZERO readings —
    and this line said the site "has less than an hour of it", which implies some. None and
    nearly-none are different facts, which is the distinction this whole page is about. */
+const oiHeldHours = oiHist.status === "warming" ? Math.floor(oiHist.covered) : 0;
+const oiHeldSpan = `${oiHeldHours} hour${oiHeldHours === 1 ? "" : "s"}`;
 const oiHeld = oiHist.status !== "warming"
   ? ""
   : oiHist.covered <= 0
-    ? "none yet"
+    ? "no readings"
     : oiHist.covered < 1
-      ? "less than an hour"
-      : `${Math.floor(oiHist.covered)} hours`;
+      ? "less than an hour of it"
+      : `${oiHeldSpan} of it`;
 
 const stripVol = rows.reduce((t, p) => t + (Number.isFinite(p.dayNtlVlm) ? p.dayNtlVlm : 0), 0);
 const stripTurn = total > 0 ? stripVol / total : NaN;
@@ -48,6 +109,137 @@ const stripTurn = total > 0 ? stripVol / total : NaN;
 const topOi = rows.slice(0, 10);
 const topShare = total > 0 ? topOi.reduce((s, p) => s + p.oiNotional, 0) / total : 0;
 const maxOi = topOi.length ? topOi[0].oiNotional : 1;
+
+/* ========================================================================================
+   IS THE BOOK GROWING — the half of this page's question that was only ever in a column.
+
+   Read cold, the top of this page said what open interest IS and never whether it was building
+   or unwinding, which is the thing a reader came for: a level with no direction cannot be acted
+   on. The per-contract change has been in the table since the worker started storing hourly
+   readings; this lifts it to the book.
+
+   THE DENOMINATOR IS THE COMPARABLE SET, NOT THE WHOLE BOOK, and saying so is the point. A
+   contract listed since the stored reading has no earlier value, so including its current open
+   interest in the numerator while it cannot appear in the baseline would print growth that is
+   really coverage — the exact numerator/denominator mismatch the flip-scale note on the home
+   page records this codebase shipping once already. Both sums run over the same contracts and
+   the count of them is printed beside the change. */
+/* THE LEFT-OUT CONTRACTS ARE NAMED, AND THE DASH THAT MARKS THEM IS EXPLAINED. Measured on
+   16 September 2026 at https://coinliqui.com/open-interest (data 13:12 UTC): the opening said the
+   book "shrank 4.21%, measured across the 49 contracts that have a reading that old", the table
+   had 50 rows, and the one without a reading — USELESS, $7.67M, the last row — carried a bare
+   "—" in the Change column with nothing anywhere on the page saying what a dash meant. The count
+   was right; the reader had to find the fiftieth contract by subtraction and guess that the dash
+   was it.
+
+   ONE PREDICATE NOW DECIDES ALL THREE. The count used to come from a filter written here and the
+   dash from a separate oiChange() call in the table — the same test spelled twice, which agrees
+   only until one spelling is edited. `changeOf` is the only place a contract is judged
+   measurable: the number in the sentence, the names after it, the dashes in the column and the
+   legend above the table are all read off its result, so none of them can describe a different
+   set from the others. Up to five are named; beyond that the sentence counts them, because a
+   worker outage that leaves thirty contracts without a reading would otherwise turn the opening
+   into a roll-call. */
+const changeOf = (p: (typeof rows)[number]) => (oiReady ? oiChange(oiReady, p.symbol, p.oiNotional) : null);
+const moved = rows.map((p) => ({ p, d: changeOf(p) }))
+  .filter((x): x is { p: typeof x.p; d: number } => x.d != null);
+const unmeasured = oiReady ? rows.filter((p) => changeOf(p) == null) : [];
+const nowSum = moved.reduce((t, x) => t + x.p.oiNotional, 0);
+const thenSum = moved.reduce((t, x) => t + (oiReady?.change.get(x.p.symbol) ?? 0), 0);
+const bookChange = moved.length > 0 && thenSum > 0 ? nowSum / thenSum - 1 : null;
+/* THE RACE IS JUDGED AT THE PRECISION IT IS PRINTED AT. extremeBy's default tolerance is 1e-9 and
+   the column prints two decimals of a percent, so two contracts a millionth apart were a unique
+   winner to the sentence and a tie to the reader. Simulated on 16 September 2026 against
+   http://localhost:4322/open-interest with ETH set to ARB − 1e-6: the opening said "It built
+   fastest on ARB, up 63.34%" beside an ETH row that also read +63.34%. The measure is now the
+   printed figure itself — the sign the column prints and the digits pct() prints — so two rows
+   that read the same are the same to extremeBy, whatever pct() is later changed to print. */
+const shownChange = (d: number) => (d < 0 ? -1 : 1) * parseFloat(pct(Math.abs(d)));
+const builder = extremeBy(moved, (x) => shownChange(x.d), "max");
+const unwinder = extremeBy(moved, (x) => shownChange(x.d), "min");
+/* A SUPERLATIVE NEEDS A FIELD. "Built fastest" over a set of one names a winner of no race. */
+/* EACH SIDE STANDS ON ITS OWN. The unwind clause used to be gated on the build clause, so a day on
+   which every measured contract shrank — simulated on 16 September 2026 against
+   http://localhost:4322/open-interest with a stand-in record in which all 50 fell and ZEC fell
+   furthest, 50.00%, the book "shrank 7.85%" — named nothing at all, although one contract had
+   plainly unwound fastest. Now each is judged on its own field and its own sign, and the template
+   joins whichever exist. */
+const fastestBuild = builder.kind === "unique" && builder.of > 1 && builder.value > 0 ? builder : null;
+const fastestUnwind = unwinder.kind === "unique" && unwinder.of > 1 && unwinder.value < 0 ? unwinder : null;
+/* THE VERB IS JUDGED AT THE PRECISION THE FIGURE IS PRINTED AT, like the race above. Simulated on
+   16 September 2026 against http://localhost:4322/open-interest with a stand-in record in which
+   BTC alone moved +0.001% and the other 49 not at all: the opening said "that book grew 0.00%" — a
+   direction the printed figure does not show. The printed figure decides: zero at print precision
+   is said as flat, at that same figure, and only a figure that reads non-zero gets a direction. */
+const bookShown = bookChange != null ? pct(Math.abs(bookChange)) : "";
+const bookVerb = bookChange == null ? "" : parseFloat(bookShown) === 0 ? "was flat at" : bookChange > 0 ? "grew" : "shrank";
+
+const oneTick = oiReady != null && moved.length > 0 && oiAtSince?.status === "ready"
+  && moved.every((x) => oiAtSince.change.has(x.p.symbol));
+const sinceAt = oiReady ? minute(oiReady.since, false) : null;
+/* A snapshot older than its own baseline has no duration to print (the smoke fixture's KV is one),
+   so the time stands alone rather than a negative number of hours. */
+const oiSpanHours = oneTick && oiReady && snap.fetchedAt > oiReady.since ? (snap.fetchedAt - oiReady.since) / HOUR_MS : null;
+const oiWindowLead = !oiReady || !sinceAt
+  ? ""
+  : oneTick
+    ? `${oiSpanHours != null ? `Over the ${oiSpanHours.toFixed(1)} hours since` : "Since"} the stored reading at ${hm(sinceAt)} UTC on ${dayOf(sinceAt)},`
+    : `Against stored readings taken ${utcSpan(bandFrom, oiReady.since, true)},`;
+/* The column's scope in the same shapes, short: one reading time; the span the measured contracts
+   were drawn from; or, when no contract on the page was measured, the band searched — "since" a
+   reading that no row used would be a label over a column of dashes. */
+const MON3 = (d: Date) => MONTHS[d.getUTCMonth()].slice(0, 3);
+const shortSpan = (a: Date, b: Date) =>
+  `${a.getUTCDate()} ${MON3(a)} ${hm(a)}–${dayOf(a) === dayOf(b) ? "" : `${b.getUTCDate()} ${MON3(b)} `}${hm(b)} UTC`;
+const oiColScope = !oiReady || !sinceAt
+  ? ""
+  : oneTick
+    ? `since ${sinceAt.getUTCDate()} ${MON3(sinceAt)} ${hm(sinceAt)} UTC`
+    : moved.length > 0
+      ? `since ${shortSpan(minute(bandFrom, false), minute(oiReady.since, true))}`
+      : `vs ${shortSpan(minute(bandFrom, true), minute(bandTo, false))}`;
+
+const NAMED_AT_MOST = 5;
+const andList = (xs: string[]) => new Intl.ListFormat("en", { style: "long", type: "conjunction" }).format(xs);
+const contractCount = (n: number) => `${n} contract${n === 1 ? "" : "s"}`;
+const unmeasuredNames = unmeasured.length > 0 && unmeasured.length <= NAMED_AT_MOST
+  ? andList(unmeasured.map((p) => p.symbol))
+  : null;
+/* ONE MEASURED CONTRACT IS NAMED, NOT COUNTED. Simulated on 16 September 2026 against
+   http://localhost:4322/open-interest with a stand-in record holding a reading for BTC only: the opening said
+   "measured across the 1 contract that has one", and a page of fifty rows would have said "all 1
+   contract" had it held one. A book change drawn from a single contract is that contract's change,
+   and the sentence says whose. */
+const unmeasuredTail = unmeasured.length === 0
+  ? ""
+  : unmeasuredNames
+    ? `${unmeasuredNames} ${unmeasured.length === 1 ? "has" : "have"} none.`
+    : `the other ${unmeasured.length} have none.`;
+const measuredAcross = moved.length === 1
+  ? unmeasured.length === 0
+    ? `measured on ${moved[0].p.symbol}, the only contract here.`
+    : `measured on ${moved[0].p.symbol} alone, the only contract that has one; ${unmeasuredTail}`
+  : unmeasured.length === 0
+    ? `measured across all ${contractCount(moved.length)}.`
+    : `measured across the ${contractCount(moved.length)} that have one; ${unmeasuredTail}`;
+/* "50 OF THE 50" IS A COUNT READ ALOUD, NOT A SENTENCE. Simulated on 16 September 2026 with readings
+   in the band for no contract on the page, the legend ended "— 50 of the 50 here". All of them is
+   said as all of them. */
+const dashWho = unmeasuredNames ?? (unmeasured.length === rows.length ? `all ${rows.length}` : `${unmeasured.length} of the ${rows.length}`);
+
+/* THE FOUR WAYS THERE IS NO CHANGE TO STATE, EACH WITH ITS OWN REASON. The sentence used to give
+   the warming reason ("does not reach back far enough") in every state without a figure — and on
+   16 September 2026 http://localhost:4322/open-interest, which has no database binding and so
+   reads as no-store, printed it over a record that had not been read at all. Not read, too short,
+   long but empty where it matters, and read but matching no contract here are different facts;
+   the state readOiHistory returned, and `oiGap` above, decide which one is printed. */
+const noChangeReason = oiHist.status === "no-store"
+  ? "How much of it is new is not answerable on this render: the hourly record it would be compared against could not be read."
+  : oiHist.status === "warming"
+    ? oiGap
+      ? `How much of it is new is not answerable on this render: the hourly record reaches back ${oiHeldSpan} but holds no usable reading ${oiBandSpan} to compare against.`
+      : "How much of it is new is not yet answerable: the hourly series does not reach back far enough to compare."
+    : `How much of it is new is not answerable on this render: ${rows.length === 1 ? `${rows[0].symbol} has no` : `none of the ${rows.length} contracts has a`} usable stored reading ${oiBandSpan} to compare against.`;
 ---
 <Base title="Hyperliquid perpetual open interest" description="Hyperliquid open interest and 24-hour volume for BTC, ETH, SOL and every other perpetual covered here, with turnover — volume as a multiple of open interest — which says how fast positioning is churning." fetchedAt={snap.fetchedAt}>
   <div class="page-head">
@@ -59,14 +251,21 @@ const maxOi = topOi.length ? topOi[0].oiNotional : 1;
         20% of what a reader cross-checking against an aggregator would expect, which reads as
         a broken number rather than a narrower one. Naming the venue costs a word and turns a
         wrong-looking figure into a precise one. */}
+    <Overview>
+      Hyperliquid holds <b>{usd(total)} across {rows.length} coins</b>, {pct(topShare)} of it in the
+      ten largest contracts.
+      {bookChange != null && <>{" "}{oiWindowLead} that book <b>{bookVerb} {bookShown}</b>, {measuredAcross}</>}
+      {fastestBuild && <>{" "}It built fastest on <b>{fastestBuild.item.p.symbol}</b>, up {pct(fastestBuild.item.d)}</>}
+      {fastestUnwind && <>{fastestBuild ? ", and" : " It"} unwound fastest on <b>{fastestUnwind.item.p.symbol}</b>, down {pct(Math.abs(fastestUnwind.item.d))}</>}
+      {(fastestBuild || fastestUnwind) && "."}
+      {bookChange == null && <>{" "}{noChangeReason}</>}
+    </Overview>
     <p>
       {/* THE CONCENTRATION GOES FIRST, and the gate is why. Placed a paragraph lower it fell
           outside the 700 characters leadReachesTheOpening measures, because the scope caveat
           above it is long — correctly long, it is the page's most important sentence. Two
           important sentences compete for one window, so the one an extractor would QUOTE goes
           first and the one it must not omit follows immediately. */}
-      <strong>{usd(total)} across {rows.length} coins, {pct(topShare)} of it in the ten largest
-      contracts.</strong>{" "}
       Every figure here is <strong>Hyperliquid's book alone</strong>, not the market's. It is
       the venue this site collects from directly, and it is a minority of total perpetual open
       interest — on 18 August 2026, Hyperliquid held $2.68B of BTC against $6.83B on Binance
@@ -76,23 +275,16 @@ const maxOi = topOi.length ? topOi[0].oiNotional : 1;
       cannot. <a class="link" href="/data-sources">What is collected, and what is not →</a>
     </p>
   </div>
-  <p style="margin:0 0 20px;max-width:74ch">The turnover column is 24h volume divided by open interest: a high number means the position base is churning rather than accumulating. <a class="link" href="/learn/open-interest">What open interest does and does not tell you →</a></p>
+  <p class="section-note" style="margin:0 0 20px;max-width:74ch">Across the book, 24-hour volume of {usd(stripVol)} is {Number.isFinite(stripTurn) ? `${stripTurn.toFixed(2)}\u00d7` : "\u2014"} the open interest. The turnover column is that ratio per contract: a high number means the position base is churning rather than accumulating. <a class="link" href="/learn/open-interest">What open interest does and does not tell you →</a></p>
   {oiHist.status === "warming" && (
     <p class="clock" style="margin:0 0 12px">
-      The {oiHist.hours}-hour change column appears once there is a reading that old to compare
-      against. This site keeps open interest hourly and has
-      {" "}<b>{oiHeld}</b> of it so far, so there is nothing to subtract from &mdash; which is a
-      different statement from a change of zero, and the reason the column is absent rather than
-      empty.
+      {oiGap
+        ? <>The change column is absent because no usable stored reading falls {oiBandSpan}, the window a change is taken from. This site keeps open interest hourly and its record reaches back <b>{oiHeldSpan}</b>, but has nothing in that window to subtract from</>
+        : <>The change column appears once there is a stored reading {oiHist.hours} hours old to compare against. This site keeps open interest hourly and has <b>{oiHeld}</b> so far, so there is nothing to subtract from</>}
+      {" "}&mdash; which is a different statement from a change of zero, and the reason the column is
+      absent rather than empty.
     </p>
   )}
-
-  <StatStrip items={[
-    { label: "Coins", value: String(rows.length), href: "/coins" },
-    { label: "Open interest", value: usd(total) },
-    { label: "24h volume", value: usd(stripVol), href: "/funding" },
-    ...(Number.isFinite(stripTurn) ? [{ label: "Turnover", value: `${stripTurn.toFixed(2)}\u00d7`, href: "/learn/open-interest" }] : []),
-  ]} />
 
   {topOi.length > 1 && (
     <Figure
@@ -117,19 +309,25 @@ const maxOi = topOi.length ? topOi[0].oiNotional : 1;
     </Figure>
   )}
 
+  {oiReady && unmeasured.length > 0 && (
+    <p class="section-note" style="margin:0 0 12px">
+      A dash in the Change column is a contract with no usable stored reading {oiBandSpan}, the window each change is taken from &mdash; {dashWho} here. That is an absence, not a change of zero{bookChange != null ? `, so ${unmeasured.length === 1 ? "it is" : "they are"} left out of the book's change above` : ""}.
+    </p>
+  )}
   <div class="panel"><table class="tbl" data-sortable>
-    <thead><tr><th>Coin</th><th class="num">Open interest <span class="thscope">Hyperliquid</span></th>{oiReady && <th class="num">Change <span class="thscope">{oiReady.hours}h</span></th>}<th class="num">24h volume <span class="thscope">Hyperliquid</span></th><th class="num">Turnover (24h volume ÷ OI)</th><th class="num">Max leverage</th></tr></thead>
+    <thead><tr><th>Coin</th><th class="num">Open interest <span class="thscope">Hyperliquid</span></th>{oiReady && <th class="num">Change <span class="thscope">{oiColScope}</span></th>}<th class="num">24h volume <span class="thscope">Hyperliquid</span></th><th class="num">Turnover (24h volume ÷ OI)</th><th class="num">Max leverage</th></tr></thead>
     <tbody>
       {rows.map((p) => (
         <tr>
           <td><a href={`/funding/${p.symbol.toLowerCase()}`}>{p.symbol}</a></td>
           <td class="num">{usd(p.oiNotional)}</td>
           {oiReady && (() => {
-            const d = oiChange(oiReady, p.symbol, p.oiNotional);
+            const d = changeOf(p);
             /* AN ABSENCE, NOT A ZERO. A contract listed since the stored reading has no history,
-               and printing 0.00% for it would claim it had not moved. */
+               and printing 0.00% for it would claim it had not moved. The legend above the table
+               says so in words; the title repeats it where a sorted table has put the dash. */
             return d === null
-              ? <td class="num"><span class="faint">—</span></td>
+              ? <td class="num"><span class="faint" title={`No usable stored reading ${oiBandSpan}`}>—</span></td>
               /* NEUTRAL, AND THE GATE WAS RIGHT TO REFUSE THE FIRST VERSION. It used the funding
                  pair, and colourLegend pointed out that this page never says what amber and cyan
                  encode — because they encode who PAYS whom, and a book growing is not a payment.

@@ -3,6 +3,7 @@ import Base from "../layouts/Base.astro";
 import { getSnapshot, findPerp, OI_NOTIONAL_FLOOR, SYMBOL_CAP } from "../lib/hyperliquid.ts";
 import { usd } from "../lib/funding.ts";
 
+import { coverageRule, coverageToday } from "../lib/coverage.ts";
 /**
  * Astro ships a stock 404 — a purple-grey page with the framework's name on it, no navigation,
  * and no way back into the site. It was serving on every mistyped URL and, more importantly,
@@ -48,10 +49,8 @@ const nearest = snap.perps.slice(0, 12);
     <h1>{wanted && !covered ? `${wanted} is not published` : "That page does not exist"}</h1>
     {wanted && !covered ? (
       <p>
-        A coin gets a page once its perpetual holds {usd(OI_NOTIONAL_FLOOR)} of open interest — a thin page is
-        worse than no page, so nothing is generated below it. {snap.eligibleCount} of
-        {" "}{snap.universeCount} coins clear that floor today and {snap.perps.length} are
-        published. If {wanted} crosses it and ranks inside the largest {SYMBOL_CAP} by open interest, the page appears on its own.
+        {coverageRule()} A thin page is worse than no page, so nothing is generated below the floor.
+        {" "}{coverageToday(snap)} If {wanted} clears it and ranks inside the largest {SYMBOL_CAP} by open interest, the page appears on its own.
       </p>
     ) : (
       <p>The link may be old, or mistyped. Everything the site publishes is one click away below.</p>

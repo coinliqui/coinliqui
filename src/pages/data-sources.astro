@@ -3,6 +3,7 @@ import Base from "../layouts/Base.astro";
 import Related from "../components/Related.astro";
 import { getSnapshot, coldStart, OI_NOTIONAL_FLOOR } from "../lib/hyperliquid.ts";
 import { usd } from "../lib/funding.ts";
+import { coverageRule, coverageToday } from "../lib/coverage.ts";
 const snap = await getSnapshot((Astro.locals as any)?.runtime?.env?.SNAPSHOT, import.meta.env.DEV);
 // Cold store: 503 + Retry-After rather than a page rendered from nothing.
 if (!snap.available) return coldStart();
@@ -31,8 +32,15 @@ if (!snap.available) return coldStart();
    anywhere. A reader who wants to confirm that `predictedFundings` returns what this page says
    it returns had to go and find the documentation themselves. */
 const UPSTREAM_DOCS: Record<string, string> = {"Hyperliquid": "https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api", "Ethereum JSON-RPC": "https://ethereum.org/en/developers/docs/apis/json-rpc/", "Cloudflare": "https://developers.cloudflare.com/"};
-const sources = [
-  { what: "Funding rate, per venue", ep: "POST /info {\"type\":\"predictedFundings\"}", who: "Hyperliquid", freq: "1 min" },
+/* A MINUTE CADENCE IS A NUMBER HERE, NOT A STRING, because prose further down reads it.
+   The IndexNow paragraph said "every page here changes every five minutes … twelve times an
+   hour" while this table, in the same response, gave funding and mark at 1 min (measured on
+   production 16 September 2026) — up to sixty changes an hour, not twelve. The sentence was a
+   literal left over from before the split below. Rows now carry `everyMin`, the Refresh cell is
+   rendered from it, and the sentence takes the smallest one, so the two cannot disagree again. */
+type Source = { what: string; ep: string; who: string; everyMin?: number; note?: string; freq?: string };
+const sources: Source[] = [
+  { what: "Funding rate, per venue", ep: "POST /info {\"type\":\"predictedFundings\"}", who: "Hyperliquid", everyMin: 1 },
   /* SPLIT, because one row was claiming one cadence for five figures fetched on two.
      fetchLive — the minute tick — returns ONLY mark and funding. Open interest, volume, the
      oracle price and the premium come from the five-minute snapshot, and that snapshot has
@@ -40,27 +48,31 @@ const sources = [
      gap 20 min), so calling them one-minute figures was wrong twice over. The contract pages
      already say this correctly — "Open interest, volume and the period figures come from the
      snapshot taken N min ago" — which made this table the drifted copy of the two. */
-  { what: "Perpetual mark price", ep: "POST /info {\"type\":\"metaAndAssetCtxs\"}", who: "Hyperliquid", freq: "1 min" },
+  { what: "Perpetual mark price", ep: "POST /info {\"type\":\"metaAndAssetCtxs\"}", who: "Hyperliquid", everyMin: 1 },
   /* THE QUALIFIER STAYS UNTIL A DAY OF DATA REMOVES IT. Measured after moving the cron off
      the round minutes: 21 of 21 runs succeeded, against 308 failures in 854 on the old
      schedule. Under the old 36% rate, twenty-one consecutive successes has probability about
      0.0001, so the fix is real — but 21 runs is under two hours, and dropping the qualifier on
      that evidence would repeat the "0% from a sample of three" mistake this file's history is
      full of. `npm run cadence` is the trigger: a full day at or above 95% and this reads a
-     plain "5 min". */
-  { what: "Open interest, 24h volume, oracle price, premium", ep: "POST /info {\"type\":\"metaAndAssetCtxs\"}", who: "Hyperliquid", freq: "5 min, when the tick succeeds" },
+     plain "5 min" — delete the `note`. */
+  { what: "Open interest, 24h volume, oracle price, premium", ep: "POST /info {\"type\":\"metaAndAssetCtxs\"}", who: "Hyperliquid", everyMin: 5, note: "when the tick succeeds" },
   { what: "Price candles behind every chart, hourly and daily", ep: "POST /info {\"type\":\"candleSnapshot\"}", who: "Hyperliquid", freq: "2 h / 12 h" },
   { what: "Realised funding history, behind the funding series", ep: "POST /info {\"type\":\"fundingHistory\"}", who: "Hyperliquid", freq: "6 h" },
   { what: "Maintenance-margin tiers", ep: "POST /info {\"type\":\"marginTable\",\"id\":N}", who: "Hyperliquid", freq: "build time" },
   { what: "Vesting and lock contract state behind the register", ep: "eth_call, eth_blockNumber", who: "Ethereum JSON-RPC", freq: "on demand" },
 ];
+const refresh = (s: Source) => s.freq ?? `${s.everyMin} min${s.note ? `, ${s.note}` : ""}`;
+const fastestMin = Math.min(...sources.flatMap((s) => (s.everyMin ? [s.everyMin] : [])));
+const fastestEvery = fastestMin === 1 ? "every minute" : `every ${fastestMin} minutes`;
+const perHour = Math.floor(60 / fastestMin);
 ---
 <Base title="Data sources" description="Every endpoint behind every number on this site, its refresh cadence, and an explicit list of what is deliberately absent.">
   <div class="page-head"><h1>Data sources</h1></div>
   <p class="prose">Every displayed figure comes from the table below and is rendered on the server before the page is sent, so it is present for readers, search crawlers and answer engines alike.</p>
   <div class="panel"><table class="tbl">
     <thead><tr><th>Figure</th><th>Endpoint</th><th>Source</th><th>Refresh</th></tr></thead>
-    <tbody>{sources.map((s) => (<tr><td>{s.what}</td><td><code>{s.ep}</code></td><td>{UPSTREAM_DOCS[s.who] ? <a href={UPSTREAM_DOCS[s.who]} rel="noopener" target="_blank">{s.who}</a> : s.who}</td><td>{s.freq}</td></tr>))}</tbody>
+    <tbody>{sources.map((s) => (<tr><td>{s.what}</td><td><code>{s.ep}</code></td><td>{UPSTREAM_DOCS[s.who] ? <a href={UPSTREAM_DOCS[s.who]} rel="noopener" target="_blank">{s.who}</a> : s.who}</td><td>{refresh(s)}</td></tr>))}</tbody>
   </table></div>
   <h2>The source that was withdrawn</h2>
   <p class="prose">
@@ -116,7 +128,7 @@ const sources = [
   </p>
 
   <h2>Coverage</h2>
-  <p class="prose">A coin is published once its perpetual holds {usd(OI_NOTIONAL_FLOOR)} of open interest, and keeps its page until that falls below $3.5M. {snap.eligibleCount} of {snap.universeCount} perpetuals clear that floor today; {snap.perps.length} are published.</p>
+  <p class="prose">{coverageRule()} {coverageToday(snap)}</p>
   {/* NAMED HERE BECAUSE THE PROMISE IS "EVERY HOST WE TALK TO", NOT "EVERY HOST BEHIND A
       NUMBER". The gate refused the push that added it until it appeared on this page, which is
       the check doing its job — but putting it in the table above would have been the wrong fix,
@@ -137,9 +149,10 @@ const sources = [
     particular index received anything. These are server-to-server calls: nothing about you is
     sent, because nothing about you is known — see
     {" "}<a class="link" href="/privacy">Privacy</a>.
-    <strong>They fire on new URLs only</strong>, never on the prices moving. Every page here
-    changes every five minutes; announcing that would be announcing nothing, twelve times an
-    hour, which is the behaviour the protocol exists to be distinguished from.
+    <strong>They fire on new URLs only</strong>, never on the prices moving. The fastest figures
+    in the table above refresh {fastestEvery}; announcing each refresh would be announcing
+    nothing, up to {perHour} times an hour, which is the behaviour the protocol exists to be
+    distinguished from.
   </p>
 
   <h2>What is deliberately absent</h2>

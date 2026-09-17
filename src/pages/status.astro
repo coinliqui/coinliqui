@@ -153,10 +153,77 @@ try {
   workerBuild = v?.build ?? null;
 } catch { /* leave null */ }
 const workerDrift = workerBuild !== null && workerBuild !== EXPECTED_WORKER_BUILD;
+
+/* THE WORDS THIS PAGE PRINTS WHEN THE STORE IS MISSING, NAMED ONCE. The D1 row below tells a
+   reader what a missing binding looks like, and it can only stay true if it quotes the same
+   strings the cards and the run-log panel actually render.
+
+   AN UNREADABLE LOG WAS PRINTED AS AN EMPTY ONE. Measured 16 September 2026 on
+   http://localhost:4322/status, where D1 answers "no such table: upstream_check": Recent runs
+   said "Run log unreadable", and three screens up the Last ingest card said "no runs recorded",
+   Failures in last 24 runs said "0 runs recorded", and Per-venue coverage printed 0 for all three
+   venues under "A count at zero here is that failure" — a store that could not be read, shown as
+   a worker that wrote nothing. Every figure drawn from the run log now reads storeError before it
+   reads a count, and says UNREADABLE when there is no count to give. The card labels live here
+   too, so the D1 row names the cards it describes by the words they are headed with. */
+const UNREADABLE = "unreadable";
+const RUN_LOG_UNREADABLE = "Run log unreadable";
+const CARD = { last: "Last ingest", minute: "Minute tick, last hour", fails: "Failures in last 24 runs" };
+const VENUE_HEAD = "Per-venue coverage, last run";
+const RUNS_HEAD = "Recent runs";
+const NO_COUNT = "—";
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+/* THE INTRO AND ROW 1 CONTRADICTED EACH OTHER, AND ROW 2 POINTED AT THE WRONG TABLE.
+   Measured 16 September 2026 on https://coinliqui.com/status: the intro said these were "the
+   three things that can be wrong while every page still renders correctly … fails quietly
+   rather than loudly", and the SNAPSHOT row directly under it said pages "would serve 503"
+   — deliberately loud. The DB row said "no funding history accrues and this table stays
+   empty": this table has fixed rows and cannot empty, and funding_snapshot is written by the
+   ingest worker through its OWN binding (worker/ingest.ts), so a missing binding on the site
+   stops nothing accruing. What it does do is make the run log and the minute-tick count
+   unreadable here, and /open-interest unable to compare against its hourly record
+   (readOiHistory → "no-store").
+   So each row carries whether it fails loudly, and the intro counts from the rows instead of
+   asserting one property of all of them. A row added or re-described cannot leave the intro
+   behind. */
 const bindings = [
-  { name: "SNAPSHOT", kind: "KV", present: Boolean(env?.SNAPSHOT) },
-  { name: "DB", kind: "D1", present: Boolean(env?.DB) },
+  {
+    name: "SNAPSHOT", kind: "KV", present: Boolean(env?.SNAPSHOT), loud: true,
+    means: "Pages would serve 503 rather than fall back to the upstream API — deliberately, so a missing binding cannot hide behind a working-looking site.",
+  },
+  {
+    name: "DB", kind: "D1", present: Boolean(env?.DB), loud: false,
+    means: `Pages still render, and the ingest worker still writes through its own binding, but nothing on the site can read what it wrote: the “${CARD.last}”, “${CARD.minute}” and “${CARD.fails}” cards above say “${UNREADABLE}”, “${VENUE_HEAD}” prints “${NO_COUNT}” for every venue, “${RUNS_HEAD}” below says “${RUN_LOG_UNREADABLE}”, and /open-interest cannot say how much of its open interest is new.`,
+  },
 ];
+/* The worker-version row is rendered separately below, hence the +1, and it is a quiet one:
+   a bundle behind the repository leaves every page rendering whatever it last wrote. */
+const checkRows = bindings.length + 1;
+const loudChecks = bindings.filter((b) => b.loud);
+const quietChecks = checkRows - loudChecks.length;
+const WORDS = ["no", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"];
+const word = (n: number) => WORDS[n] ?? String(n);
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+/* "SO THEY ARE CHECKED HERE" READ AS IF ONLY THE QUIET ONES WERE. The first version of this
+   intro (16 September 2026) said the other two fail quietly "so they are checked here", directly
+   above a table that checks all three, SNAPSHOT included. Every row is checked; the sentence now
+   says so first, and the loud/quiet split is a description of the rows, not the reason for them. */
+const allChecked = checkRows === 1 ? "checked here" : checkRows === 2 ? "both checked here" : "all checked here";
+const bindingsIntro = [
+  `${cap(word(checkRows))} deploy step${checkRows === 1 ? "" : "s"} the build cannot see, ${allChecked}.`,
+  loudChecks.length > 0
+    ? `A missing ${loudChecks.map((b) => `${b.kind} binding ${b.name}`).join(" or ")} fails loudly, on purpose: pages answer 503.`
+    : "",
+  quietChecks > 0
+    ? `${loudChecks.length > 0 ? `The other ${word(quietChecks)}` : cap(word(quietChecks))} ${quietChecks === 1 ? "fails" : "fail"} quietly: every page still renders.`
+    : "",
+].filter(Boolean).join(" ");
+
+/* Per-venue counts exist only for a run that was read. */
+const venueNote = latest ? ""
+  : storeError ? "The run log could not be read, so there is no last run to count."
+  : "No run is recorded yet, so there is nothing to count.";
 
 /* SERIES COVERAGE — the layer this page used to say nothing about.
  *
@@ -229,19 +296,19 @@ const utc = (ms: number) => new Date(ms).toISOString().slice(0, 16).replace("T",
       <div class="card__meta">{snap.perps.length} contracts cached</div>
     </div>
     <div class="card">
-      <div class="card__label">Last ingest</div>
+      <div class="card__label">{CARD.last}</div>
       {/* A REFUSAL IS NOT "no response". The ingest now declines to overwrite a healthy
           snapshot with a degenerate one — an upstream that answers 200 with an empty universe,
           or with forty-nine of fifty contracts missing. That run is recorded as failed with
           status 200, because the upstream DID answer; saying "no response" would describe the
           wrong problem to whoever is reading this page at the time. */}
-      <div class:list={["card__value", latest && !latest.ok && "is-bad"]} style="font-size:20px">{latest ? (latest.ok ? "ok" : latestRefused ? "refused" : `failed (${latest.status || "no response"})`) : "—"}</div>
-      <div class="card__meta">{latest ? (latestRefused ? latestNote : `${latest.ms} ms · ${utc(latest.at)}`) : "no runs recorded"}</div>
+      <div class:list={["card__value", ((latest && !latest.ok) || storeError) && "is-bad"]} style="font-size:20px">{latest ? (latest.ok ? "ok" : latestRefused ? "refused" : `failed (${latest.status || "no response"})`) : storeError ? UNREADABLE : "—"}</div>
+      <div class="card__meta">{latest ? (latestRefused ? latestNote : `${latest.ms} ms · ${utc(latest.at)}`) : storeError ? "the run log could not be read" : "no runs recorded"}</div>
     </div>
     <div class="card">
-      <div class="card__label">Minute tick, last hour</div>
+      <div class="card__label">{CARD.minute}</div>
       <div class:list={["card__value", minuteBad && "is-bad"]}>{
-        minuteRuns === null ? "no store"
+        minuteRuns === null ? UNREADABLE
         : minuteRuns === 0 ? "no ticks recorded"
         : minuteFails > 0 ? `${minuteFails} failed of ${minuteRuns}`
         : minuteMissing ? `only ${minuteRuns} of ${MINUTE_EXPECTED} ran`
@@ -250,16 +317,15 @@ const utc = (ms: number) => new Date(ms).toISOString().slice(0, 16).replace("T",
       <div class="card__meta">Hyperliquid mark and funding · every tick records, so one that never ran shows here{minuteWhere}</div>
     </div>
     <div class="card">
-      <div class="card__label">Failures in last 24 runs</div>
-      <div class:list={["card__value", fails > 0 && "is-bad"]}>{checks.length ? fails : "—"}</div>
-      <div class="card__meta">{checks.length} runs recorded</div>
+      <div class="card__label">{CARD.fails}</div>
+      <div class:list={["card__value", (fails > 0 || storeError) && "is-bad"]}>{checks.length ? fails : storeError ? UNREADABLE : "—"}</div>
+      <div class="card__meta">{storeError ? "the run log could not be read" : `${plural(checks.length, "run", "runs")} recorded`}</div>
     </div>
   </div>
 
   <h2 class="section">Bindings and worker version</h2>
   <p class="section-note">
-    The three things that can be wrong while every page still renders correctly. Each is a
-    deploy step that fails quietly rather than loudly, so it is checked here instead.
+    {bindingsIntro}
   </p>
   <div class="panel" style="max-width:760px">
     <table class="tbl">
@@ -269,11 +335,7 @@ const utc = (ms: number) => new Date(ms).toISOString().slice(0, 16).replace("T",
           <tr class={b.present ? undefined : "is-active"}>
             <td>{b.kind} binding <code>{b.name}</code></td>
             <td class:list={[b.present ? "is-ok" : "is-bad"]} style="font-weight:600">{b.present ? "attached" : "MISSING"}</td>
-            <td class="reason">
-              {b.name === "SNAPSHOT"
-                ? "Pages would serve 503 rather than fall back to the upstream API — deliberately, so a missing binding cannot hide behind a working-looking site."
-                : "Pages still render, but no funding history accrues and this table stays empty. Nothing else shows it."}
-            </td>
+            <td class="reason">{b.means}</td>
           </tr>
         ))}
         <tr class={workerDrift ? "is-active" : undefined}>
@@ -375,30 +437,36 @@ const utc = (ms: number) => new Date(ms).toISOString().slice(0, 16).replace("T",
     </div>
   )}
 
-  <h2 class="section">Per-venue coverage, last run</h2>
+  <h2 class="section">{VENUE_HEAD}</h2>
   <p class="section-note">
     A venue silently dropping out of the upstream response looks like success: the run still writes
-    rows, just fewer. A count at zero here is that failure.
+    rows, just fewer. A count at zero here is that failure.{venueNote ? ` ${venueNote}` : ""}
   </p>
   <div class="panel" style="max-width:520px">
     <table class="tbl">
       <thead><tr><th>Venue</th><th class="num">Rows last run</th></tr></thead>
       <tbody>
+        {/* THE SPACE WAS IN THE SOURCE AND NOT IN THE PAGE. `{VENUE_LABEL[v]} <code>` renders as
+            `Hyperliquid<code>HlPerp</code>`: Astro drops whitespace-only text between an expression
+            and an element. Measured 16 September 2026 on https://coinliqui.com/status — all three
+            cells read "HyperliquidHlPerp", "BinanceBinPerp", "BybitBybitPerp" as text, with 0px
+            between name and pill. The space now lives inside the expression's own string, where
+            no whitespace rule can reach it. The refusal warning below had the same gap. */}
         {(["HlPerp", "BinPerp", "BybitPerp"] as Venue[]).map((v) => (
           <tr>
-            <td>{VENUE_LABEL[v]} <code>{v}</code></td>
-            <td class:list={["num", !latestVenues[v] && "is-bad"]}>{latestVenues[v] ?? 0}</td>
+            <td>{`${VENUE_LABEL[v]} `}<code>{v}</code></td>
+            <td class:list={["num", latest ? !latestVenues[v] && "is-bad" : "dim"]}>{latest ? latestVenues[v] ?? 0 : NO_COUNT}</td>
           </tr>
         ))}
       </tbody>
     </table>
   </div>
 
-  <h2 class="section">Recent runs</h2>
+  <h2 class="section">{RUNS_HEAD}</h2>
   {storeError ? (
     <div class="empty">
       <div class="empty__body">
-        <p class="empty__title">Run log unreadable</p>
+        <p class="empty__title">{RUN_LOG_UNREADABLE}</p>
         <p class="empty__text">{storeError}</p>
       </div>
     </div>
@@ -475,7 +543,7 @@ const utc = (ms: number) => new Date(ms).toISOString().slice(0, 16).replace("T",
         </table>
       </div>
       <p class="datanote-status">
-        {announce.known} URL(s) recorded as published.
+        {announce.known === 1 ? "1 URL" : `${announce.known} URLs`} recorded as published.
         {" "}{announce.sentAt
           ? <>Last accepted by any endpoint <b>{utc(announce.sentAt)}</b>.</>
           : <><b>Nothing has ever been accepted by any endpoint</b> — the recorded set is a baseline, not a receipt.</>}
@@ -483,7 +551,7 @@ const utc = (ms: number) => new Date(ms).toISOString().slice(0, 16).replace("T",
       {announceBad.length > 0 && (
         <div class="verdict verdict--warn">
           <div>
-            <b>{announceBad.length} endpoint(s) are refusing.</b> {announceBad.map((r) => `${r.name} (${r.fails}x, ${r.owed} owed)`).join(", ")}.
+            <b>{announceBad.length === 1 ? "1 endpoint is" : `${announceBad.length} endpoints are`} refusing.</b>{" "}{announceBad.map((r) => `${r.name} (${r.fails}x, ${r.owed} owed)`).join(", ")}.
             The retry rate decays from five minutes to a twelve-hour cap, so a URL owed here is
             not lost — it is waiting. What it is not is announced.
           </div>

@@ -36,7 +36,8 @@ import Base from "../../layouts/Base.astro";
 import LiqMap from "../../components/LiqMap.astro";
 import { getSnapshot, coldStart, findPerp, requestedPerp } from "../../lib/hyperliquid.ts";
 import { type MarginTable } from "../../lib/margin.ts";
-import { mapTitle, mapDescription } from "../../lib/liqmap.ts";
+import { getHourly } from "../../lib/candles.ts";
+import { mapTitle, mapDescription, mapState, resolveWindow } from "../../lib/liqmap.ts";
 import tables from "../../data/margin-tables.json";
 
 const env = (Astro.locals as any)?.runtime?.env;
@@ -52,13 +53,23 @@ if (!snap.available) return coldStart();
 const TABLES = tables as Record<string, MarginTable>;
 const p = findPerp(snap.perps, wanted);
 
+/* THE VIEW SURVIVES THE REDIRECT. Both 301s below dropped the query: measured 16 September 2026,
+   https://coinliqui.com/liquidations/btc?profile=aggressive&win=7 answered 301 to a bare
+   /liquidations, which draws 30-day Balanced — so a link that asked for a 7-day Aggressive map
+   landed on a different one without a word. The address changes; the reader's choice does not.
+   `symbol` alone is stripped, because on this route the contract is the path and a stray ?symbol=
+   carried to /liquidations would be read there as a request for another contract. */
+const carried = new URLSearchParams(Astro.url.searchParams);
+carried.delete("symbol");
+const carriedQs = carried.toString() ? `?${carried.toString()}` : "";
+
 /* ONE URL PER CONTRACT, whatever case it is asked for — the kBONK rule, applied here for the
    same reason: a canonical tag built from the requested path cannot deduplicate two paths
    that each declare themselves canonical. */
 if (p && wanted !== p.symbol.toLowerCase()) {
   return new Response(null, {
     status: 301,
-    headers: { location: `/liquidations/${p.symbol.toLowerCase()}`, "cache-control": "public, max-age=86400" },
+    headers: { location: `/liquidations/${p.symbol.toLowerCase()}${carriedQs}`, "cache-control": "public, max-age=86400" },
   });
 }
 
@@ -86,7 +97,7 @@ if (def === null || def === "unknown") return coldStart();
 if (def.perp.symbol === p.symbol) {
   return new Response(null, {
     status: 301,
-    headers: { location: "/liquidations", "cache-control": "public, max-age=3600" },
+    headers: { location: `/liquidations${carriedQs}`, "cache-control": "public, max-age=3600" },
   });
 }
 
@@ -95,8 +106,15 @@ if (def.perp.symbol === p.symbol) {
 const table = TABLES[String(p.marginTableId)];
 if (!table) return Astro.rewrite(`/404?symbol=${encodeURIComponent(wanted)}`);
 
-const title = mapTitle(p.symbol);
-const description = mapDescription(p.symbol);
+/* THE HOURLY SERIES IS READ HERE, NOT IN THE COMPONENT, because the description below has to know
+   whether this address draws a map, and the <title> too — see mapState in src/lib/liqmap.ts. Read after every
+   redirect and 404 above, so none of those pays for it. */
+const hourly = await getHourly(env?.SNAPSHOT, p.symbol, import.meta.env.DEV);
+const win = resolveWindow(Astro.url.searchParams);
+const cap = [...table.marginTiers].sort((a, b) => a.lowerBound - b.lowerBound)[0].maxLeverage;
+const state = mapState(hourly?.d, win);
+const title = mapTitle(p.symbol, state);
+const description = mapDescription(p.symbol, { state, maxLeverage: cap, days: win.days });
 ---
 
 <Base
@@ -105,7 +123,7 @@ const description = mapDescription(p.symbol);
   fetchedAt={snap.fetchedAt}
   crumb={{ href: "/liquidations", label: "Liquidation maps", current: p.symbol }}
 >
-  <LiqMap perp={p} table={table} snap={snap} params={Astro.url.searchParams} crumb={{ href: "/liquidations", label: "Liquidation maps", current: p.symbol }} />
+  <LiqMap perp={p} table={table} snap={snap} hourly={hourly} params={Astro.url.searchParams} crumb={{ href: "/liquidations", label: "Liquidation maps", current: p.symbol }} />
 
   <p style="margin-top:24px">
     <a class="link" href="/liquidations">Every covered contract's map →</a>

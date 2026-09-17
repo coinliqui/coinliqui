@@ -165,7 +165,11 @@ export interface LevelResult {
   cells: Cell[];
   tested: number;
   liquidated: number;
-  medianDays: number | null;
+  /* NO MEDIAN HERE. There was one, `days[Math.floor(days.length / 2)]`, which for an even count is
+     the upper of the two middle values; /liquidations/survival printed it and was off by half the
+     middle gap on every such row (measured 16 September 2026, SUI long 90d 3×: 41 printed, 36 true).
+     The page now takes the median from the same cells its heatmap draws, and this field is gone so
+     nothing else can print the wrong one. */
 }
 
 export interface Grid {
@@ -217,14 +221,12 @@ export function survivalGrid(opts: {
       }
       cells.push({ i: e, liqDay });
     }
-    days.sort((a, b) => a - b);
     return {
       L,
       threshold0: entries.length ? (side === "long" ? (entries[entries.length - 1][C] * (1 - 1 / L)) / (1 - mmf) : (entries[entries.length - 1][C] * (1 + 1 / L)) / (1 + mmf)) : 0,
       cells,
       tested: entries.length,
       liquidated: days.length,
-      medianDays: days.length ? days[Math.floor(days.length / 2)] : null,
     };
   });
 

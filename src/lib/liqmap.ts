@@ -1,4 +1,5 @@
 import type { Candle } from "./candles.ts";
+import { aggregate } from "./series.ts";
 
 /* =========================================================================================
    MODELLED LIQUIDATION DENSITY — price on Y, time on X.
@@ -73,7 +74,18 @@ const LIFE = TRANCHES.reduce((a, [frac, w]) => a + frac * w, 0);
 /** Softens each tier across three price rows so a band is a band, not a hairline. */
 const KERNEL: [number, number][] = [[-1, 0.16], [0, 0.68], [1, 0.16]];
 
-export interface Cluster { price: number; notional: number; side: "long" | "short"; distance: number }
+/* `fromClose`, NOT `distance`, AND THE RENAME IS THE FIX.
+   The field was `distance` and it was measured from the last DRAWN CANDLE's close — the only price
+   this function is given. Every caller put it under the words "from the mark": the column header
+   "Distance from mark", and the page's opening sentence, which names the live mark and then says
+   the cluster "sits 8.90% below it". Measured on production 16 September: the cluster at $69,160
+   against a $75,732 mark is 8.68% away, not 8.90% — the gap between an hourly close up to two hours
+   old and the minute-old mark, printed as though it were the mark. Worse, the same clause decided
+   "below" against the mark and the percentage against the candle, so the two halves of one sentence
+   used two prices.
+   A name that says which price it is measured from cannot be put under a "from mark" heading by
+   accident, and removing the old name made the compiler list every site that had been doing so. */
+export interface Cluster { price: number; notional: number; side: "long" | "short"; fromClose: number }
 
 export interface LiqMap {
   /** grid[row][col] in USD; row 0 is the highest price */
@@ -127,6 +139,70 @@ export function mixUsed(profile: LevProfile, maxLeverage: number): { L: number; 
   const wsum = kept.reduce((a, [, w]) => a + w, 0) || 1;
   return kept.map(([L, w]) => ({ L, share: w / wsum }));
 }
+
+/**
+ * WHETHER THE PROFILE SWITCH CAN CHANGE ANYTHING ON A CONTRACT WITH THIS CAP.
+ *
+ * Renormalising over ONE rung gives 100% on that rung whatever the weights were, so on a 3x
+ * contract (only 2x survives) Aggressive, Balanced and Conservative are the same vector and draw
+ * the same map. The page said otherwise. Measured 16 September 2026 on
+ * https://coinliqui.com/liquidations/useless?profile=conservative&win=7 and the Aggressive
+ * render of the same URL: both printed "2x | 100.00% | $7.66M", the same $0.26055 / $81K top
+ * cluster, the same $135K cleared and the same 54.69% outside the range — under "Change the
+ * leverage mix in the form above and the bands move" and "Aggressive — Most size at high
+ * leverage". /liquidations/pons and /liquidations/vvv, also 3x, did the same.
+ *
+ * COMPUTED FROM mixUsed, NOT FROM "cap < 5". A threshold typed here is the lowest rung of today's
+ * profiles and would go stale the day a profile gains a 3x rung; comparing the vectors the model
+ * actually uses cannot disagree with the model.
+ */
+export function profilesCoincide(maxLeverage: number, eps = 1e-9): boolean {
+  const [first, ...rest] = PROFILES.map((p) => mixUsed(p, maxLeverage));
+  return rest.every((m) =>
+    m.length === first.length && m.every((r, i) => r.L === first[i].L && Math.abs(r.share - first[i].share) <= eps));
+}
+
+/* =========================================================================================
+   THE WINDOWS, AND THE ONE TEST FOR "THIS WINDOW CAN BE DRAWN", SHARED BY THE PAGE AND ITS <head>.
+
+   Each window picks a bar size that gives ~180 columns, which is the density at which a candle is
+   still a candle rather than a hairline — the price path has to have presence.
+
+   They lived in src/components/LiqMap.astro, which the <head> cannot see: the route builds the meta
+   description before the component renders. So the description promised "a modelled heatmap with
+   every assumption printed on the page and adjustable" on every contract — measured 16 September
+   2026 on https://coinliqui.com/liquidations/pons?profile=balanced&win=30, which printed no heatmap
+   and no assumptions table because PONS had too little hourly history for 30 days. One test, read
+   by both, means the snippet and the body cannot disagree about whether there is a map.
+   ========================================================================================= */
+export interface MapWindow { days: number; label: string; factor: number; cols: number }
+export const MAP_WINDOWS: MapWindow[] = [
+  { days: 7, label: "7 days", factor: 1, cols: 168 },
+  { days: 14, label: "14 days", factor: 2, cols: 168 },
+  { days: 30, label: "30 days", factor: 4, cols: 180 },
+];
+export const DEFAULT_WINDOW = MAP_WINDOWS[2];
+/** The window a query asks for; anything unknown falls back to the default rather than erroring. */
+export const resolveWindow = (q: URLSearchParams): MapWindow =>
+  MAP_WINDOWS.find((w) => String(w.days) === q.get("win")) ?? DEFAULT_WINDOW;
+/** Enough bars for the window plus a little warm-up, on the series already aggregated to its step. */
+export const canDrawMap = (series: Candle[], w: MapWindow) => series.length - w.cols > 4 && series.length > 40;
+/** The same test from raw hourly candles, for callers that have not aggregated them. */
+export const mapDrawable = (hourly: Candle[] | null | undefined, w: MapWindow) =>
+  !!hourly && canDrawMap(aggregate(hourly, w.factor), w);
+
+/* THREE STATES, NOT TWO, BECAUSE "NO MAP" HAS TWO CAUSES AND ONLY ONE OF THEM IS "TOO LITTLE HISTORY".
+   getHourly() in src/lib/candles.ts returns null for a key never written, a series written empty, a
+   KV read that threw and a failed upstream fetch alike. The first version of this test was a
+   boolean, and the <head> and the page both turned `false` into "too little hourly price history".
+   Measured 16 September 2026 on http://localhost:4322/liquidations/paxg?profile=balanced&win=7:
+   two loads out of three read no series and printed "PAXG has too little hourly price history for
+   it" and "PAXG has no map in any window yet"; the third drew a full 7-day map of 168 bars. So
+   `short` is said only when a series WAS read and is too short, and `unread` claims nothing about
+   the history beyond that none could be read — which is true of all four causes. */
+export type MapState = "drawn" | "short" | "unread";
+export const mapState = (hourly: Candle[] | null | undefined, w: MapWindow): MapState =>
+  !hourly ? "unread" : mapDrawable(hourly, w) ? "drawn" : "short";
 
 export function buildLiqMap(opts: {
   /** full series INCLUDING the warm-up that precedes the drawn window */
@@ -243,7 +319,7 @@ export function buildLiqMap(opts: {
               const key = `${r}:${isLong ? "l" : "s"}`;
               const prev = clusterAcc.get(key);
               if (prev) prev.notional += share;
-              else clusterAcc.set(key, { price: hiPrice - (r + 0.5) * band, notional: share, side: isLong ? "long" : "short", distance: 0 });
+              else clusterAcc.set(key, { price: hiPrice - (r + 0.5) * band, notional: share, side: isLong ? "long" : "short", fromClose: 0 });
             }
           }
         }
@@ -283,7 +359,7 @@ export function buildLiqMap(opts: {
   }
 
   const clusters = [...clusterAcc.values()]
-    .map((c) => ({ ...c, distance: (c.price - last) / last }))
+    .map((c) => ({ ...c, fromClose: (c.price - last) / last }))
     .sort((a, b) => b.notional - a.notional)
     .slice(0, 10);
 
@@ -310,6 +386,24 @@ export function buildLiqMap(opts: {
  * means the search result for BTC and the search result for ETH cannot describe two
  * differently-worded products.
  */
-export const mapTitle = (symbol: string) => `${symbol} liquidation heatmap (modelled)`;
-export const mapDescription = (symbol: string) =>
-  `Where ${symbol} liquidation levels sit on Hyperliquid and which ones price has already cleared — a modelled heatmap with every assumption printed on the page and adjustable, beside the liquidation prices derived from the published margin tiers.`;
+/* THE TITLE NAMES WHAT THE PAGE DRAWS, LIKE THE DESCRIPTION BENEATH IT. It was "PONS liquidation
+   heatmap (modelled)" in every state, so once the description learned to say the heatmap was not
+   drawn, the <head> contradicted itself — measured 16 September 2026 on
+   http://localhost:4322/liquidations/pons (30-day window, no map): that title over "The modelled
+   30-day heatmap is not drawn yet". Without a map the page carries the corridor table — long and
+   short liquidation prices per leverage, labelled "derived, not modelled" — so that is its name.
+   Both tags read the same MapState, so they cannot disagree about whether there is a heatmap. */
+export const mapTitle = (symbol: string, state: MapState) =>
+  state === "drawn" ? `${symbol} liquidation heatmap (modelled)` : `${symbol} liquidation prices by leverage (derived)`;
+/* THE DESCRIPTION IS OF THE PAGE AT THAT ADDRESS, IN THE STATE IT RENDERS. It read "a modelled
+   heatmap with every assumption printed on the page and adjustable" everywhere. Two of the eight
+   assumptions are adjustable (the leverage mix and the window), not all of them; on a 3× cap the
+   mix changes nothing (see profilesCoincide); and a contract without enough hourly history prints
+   no heatmap and no assumptions at all — see the note on MAP_WINDOWS for the URL. `state` comes
+   from mapState() and the cap from the same tier-1 row the page charts, so each clause is stated
+   only in the state where it holds — and "too little history" only when a series was read and
+   found short (see MapState for the PAXG render that said it about a failed read). */
+export const mapDescription = (symbol: string, at: { state: MapState; maxLeverage: number; days: number }) =>
+  at.state === "drawn"
+    ? `Where ${symbol} liquidation levels sit on Hyperliquid and which ones price has already cleared — a modelled heatmap with every assumption printed on the page${profilesCoincide(at.maxLeverage) ? "" : " and the leverage mix switchable"}, beside the liquidation prices derived from the published margin tiers.`
+    : `Liquidation prices for ${symbol} on Hyperliquid, derived from the published margin tiers and the live mark. The modelled ${at.days}-day heatmap is not drawn ${at.state === "short" ? `yet: ${symbol} has too little hourly price history for it` : `on this page: no hourly price history for ${symbol} could be read`}.`;

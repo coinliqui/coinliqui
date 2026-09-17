@@ -1,12 +1,16 @@
 ---
 import Base from "../../layouts/Base.astro";
 import { getSnapshot, coldStart, getLive } from "../../lib/hyperliquid.ts";
-import { VENUE_LABEL, pct, usd, rawRate, paysClass, paysArrow, LEGEND_FUNDING, type Venue } from "../../lib/funding.ts";
+import { VENUE_LABEL, pct, usd, rawRate, paysClass, paysLabel, LEGEND_FUNDING, type Venue } from "../../lib/funding.ts";
 
 import { freshness, ageWords, minutesSince } from "../../lib/freshness.ts";
 import Figure from "../../components/Figure.astro";
-import { heatScale, heatStep as heatStepOf, type HeatScale } from "../../lib/viz.ts";
-import StatStrip from "../../components/StatStrip.astro";
+import Overview from "../../components/Overview.astro";
+import { heatScale, heatStep as heatStepOf, signedBar, type HeatScale } from "../../lib/viz.ts";
+import { extremeBy } from "../../lib/extreme.ts";
+import Spark from "../../components/Spark.astro";
+import { readSparks, sparkScale, SPARK_POINTS, SPARK_STEP_MS } from "../../lib/sparks.ts";
+import { coverageRule, coverageToday } from "../../lib/coverage.ts";
 const env = (Astro.locals as any)?.runtime?.env;
 const snap = await getSnapshot(env?.SNAPSHOT, import.meta.env.DEV);
 const live = await getLive(env?.SNAPSHOT);
@@ -20,7 +24,6 @@ const ORDER: Venue[] = ["HlPerp", "BinPerp", "BybitPerp"];
 const rows = snap.perps
   .map((p) => ({ p, by: new Map(p.venues.map((v) => [v.venue, v])), spread: p.aprSpread }))
   .sort((a, b) => (b.spread ?? -Infinity) - (a.spread ?? -Infinity));
-const widest = rows[0];
 
 const maxOi = Math.max(...snap.perps.map((p) => p.oiNotional).filter((v) => Number.isFinite(v)), 1);
 const hlAprs = snap.perps.map((p) => p.hlApr).filter((v) => Number.isFinite(v));
@@ -52,11 +55,110 @@ const modalIsBase = Number.isFinite(modalApr) && Math.abs(modalApr - HL_BASE_APR
 const offBase = snap.perps
   .filter((p) => Number.isFinite(p.hlApr) && p.hlApr.toFixed(6) !== modalApr.toFixed(6))
   .sort((a, b) => Math.abs(b.hlApr - modalApr) - Math.abs(a.hlApr - modalApr));
-const offMax = Math.max(...offBase.map((p) => Math.abs(p.hlApr - modalApr)), 1e-9);
 
-/* The band's figures, derived from the snapshot this page has already read. No I/O. */
-const stripOi = snap.perps.reduce((t, p) => t + (Number.isFinite(p.oiNotional) ? p.oiNotional : 0), 0);
-const stripVol = snap.perps.reduce((t, p) => t + (Number.isFinite(p.dayNtlVlm) ? p.dayNtlVlm : 0), 0);
+/* ========================================================================================
+   THE AXIS THE BARS ARE DRAWN ON, and why it now contains zero.
+
+   These ten bars used to be left-anchored with length = |apr − base| and the funding hues
+   applied to `apr > base`. Looked at on screen rather than in the markup, that is a chart that
+   reads backwards: the longest bar was the most NEGATIVE contract, and the page's own legend
+   two paragraphs above said cyan meant "shorts pay longs" while the chart was using cyan for
+   "below the base rate". SOL at +6.71% — longs paying, amber in the table below — was drawn
+   cyan. One hue pair, two propositions, one page.
+
+   So the axis is the SIGNED rate, and it is built to contain both references a reader needs:
+   zero, because that is where the payment direction turns over and it is what the hues mean;
+   and the base rate, because "priced away from" is measured against it. Neither is assumed to
+   be inside the data's own range — on a book where every off-base contract is negative, zero
+   sits at the right-hand edge and the base rate beyond it, and the axis has to make room for
+   both or the marks it draws will be off the end of the track.
+   ======================================================================================== */
+const shown = offBase.slice(0, 10);
+const axLo = Math.min(0, modalApr, ...shown.map((p) => p.hlApr));
+const axHi = Math.max(0, modalApr, ...shown.map((p) => p.hlApr));
+const axSpan = axHi - axLo || 1;
+const axAt = (v: number) => ((v - axLo) / axSpan) * 100;
+const zeroAt = axAt(0);
+const baseAt = axAt(modalApr);
+/* THE TICKS, PLACED BY PRIORITY AND THEN BY WHETHER THEY ACTUALLY FIT.
+
+   THREE VERSIONS OF THIS RULE, AND EACH FAILURE TAUGHT THE NEXT ONE. The base rate IS the maximum
+   on a book where nothing is priced above the floor, so `base` and the right-hand edge label both
+   wanted 100% and printed "10.95%base" over each other. A fixed minimum GAP fixed the desktop and
+   the phone then printed "base 1095%" anyway, because the gap was a PERCENTAGE OF THE TRACK while
+   a label's width is in PIXELS. Sizing everything for the narrow case fixed the phone and dropped
+   the base label on the desktop, where there was room for it — a rule that is right about the
+   unit and wrong that one answer fits both widths.
+
+   SO THE SERVER PLACES FOR THE WIDE TRACK AND MARKS WHAT WILL NOT FIT ON THE NARROW ONE. Whether
+   a label fits is a fact about the viewport, which is a question CSS can answer and this file
+   cannot: the optional ticks are rendered and hidden below the breakpoint the layout already uses
+   for this figure. Nothing is invented about the reader's screen on the server.
+
+   MEASURED, NOT GUESSED, and the first pass guessed 210px and happened to be right, which is the
+   kind of correct answer that stops being correct the next time the layout moves. Read off the
+   rendered page: the track is 152px at a 375px viewport, 545px at 768 and 555px at 1440; the axis
+   font resolves to 11.5px ui-monospace, and "-62.51%" spans 49px across seven characters.
+
+   PRIORITY IS 0% FIRST, and that is a judgement rather than an accident. The hues on this figure
+   mean who-pays-whom and they turn over at zero, so the zero label is what makes the picture
+   readable at all; the base rate is a reference the note beneath states in words either way. */
+const TRACK_WIDE_PX = 545;
+const TRACK_NARROW_PX = 152;
+const TICK_CHAR_PX = 7.0;
+const TICK_PAD_PX = 4;
+interface Tick { at: number; text: string; anchor: "start" | "mid" | "end"; optional: boolean }
+const ticks: Tick[] = [];
+const extent = (t: { at: number; text: string; anchor: string }, trackPx: number) => {
+  const w = ((t.text.length * TICK_CHAR_PX) / trackPx) * 100;
+  const lo = t.anchor === "start" ? t.at : t.anchor === "end" ? t.at - w : t.at - w / 2;
+  return [lo, lo + w] as const;
+};
+const placeTick = (at: number, text: string) => {
+  if (!Number.isFinite(at)) return;
+  const cand = { at, text, anchor: (at <= 2 ? "start" : at >= 98 ? "end" : "mid") as Tick["anchor"] };
+  const clashes = (trackPx: number, against: Tick[]) => {
+    const [lo, hi] = extent(cand, trackPx);
+    const pad = (TICK_PAD_PX / trackPx) * 100;
+    return against.some((t) => { const [tlo, thi] = extent(t, trackPx); return lo < thi + pad && tlo < hi + pad; });
+  };
+  if (clashes(TRACK_WIDE_PX, ticks)) return;
+  /* Compared only against the ticks that survive on a narrow screen, so an optional tick cannot
+     suppress another optional tick it will never be shown beside. */
+  const onNarrow = ticks.filter((t) => !t.optional);
+  ticks.push({ ...cand, optional: clashes(TRACK_NARROW_PX, onNarrow) });
+};
+placeTick(zeroAt, "0%");
+placeTick(baseAt, `${modalIsBase ? "base" : "typical"} ${pct(modalApr)}`);
+placeTick(0, pct(axLo));
+placeTick(100, pct(axHi));
+
+/* ========================================================================================
+   THE STATED SITUATION, which is what this page opens with now and did not before.
+
+   Walked cold at 375px, the old opening was: a ten-line paragraph about interval ratios, then
+   three totals (contracts, open interest, 24-hour volume), then a six-line key explaining amber
+   and cyan — and the first screen ended there, having shown a reader who came to find out what
+   funding is doing exactly no funding rates and no direction. The totals are gone; a number that
+   is not part of the conclusion does not belong above the conclusion. What replaces them is the
+   count that IS the conclusion: who is paying, on how many contracts, how steeply, and how much
+   of the book has no view priced into it at all.
+
+   DIRECTION IN WORDS. "Longs are paying on 41 of 50" needs no legend; "+10.95%" needs one, and
+   the legend used to arrive before anything it described. Both extremes go through extremeBy so
+   neither can name a coin out of a tie — see src/lib/extreme.ts. */
+const paying = snap.perps.filter((p) => Number.isFinite(p.hlApr));
+const longsPay = paying.filter((p) => p.hlApr > 0).length;
+const shortsPay = paying.filter((p) => p.hlApr < 0).length;
+const flat = paying.length - longsPay - shortsPay;
+const steepestShort = extremeBy(paying, (p) => p.hlApr, "min");
+const steepestLong = extremeBy(paying.filter((p) => p.hlApr > 0), (p) => p.hlApr, "max");
+const widestX = extremeBy(snap.perps, (p) => p.aprSpread ?? NaN, "max");
+/* The steeper of the two sides is the one worth naming first — a book where shorts are paying
+   45% and longs 1% is a book about shorts, whichever side has more contracts on it. */
+const loudest = steepestShort.kind !== "none" && steepestLong.kind !== "none"
+  ? (Math.abs(steepestShort.value) >= Math.abs(steepestLong.value) ? steepestShort : steepestLong)
+  : steepestShort.kind !== "none" ? steepestShort : steepestLong;
 
 /* THE TINT IS UNUSUALNESS, NOT MAGNITUDE, AND THE FIRST VERSION GOT THAT WRONG IN PUBLIC.
    Scaling by |apr| against the 90th percentile put 109 of 140 cells on the top step: the mass of
@@ -83,6 +185,43 @@ for (const v of ORDER) {
 }
 const heatStep = (v: Venue, apr: number) => heatStepOf(heatBy.get(v) ?? null, apr);
 
+/* ========================================================================================
+   THE SHAPE COLUMN, AND THE ONE AXIS UNDER ALL FIFTY ROWS.
+
+   One KV get for the whole table — the worker appends a four-hour bucket at a time, because the
+   grouped scan this would otherwise need reads 813,101 rows of D1 per render. See
+   src/lib/sparks.ts for that measurement and worker/ingest.ts for the append.
+
+   THE SCALE IS COMPUTED ONCE, OVER EVERY SERIES DRAWN, and handed to every row. Few's rule, and
+   the reason the column is worth having at all: under per-row axes a 5% move and a 50% move draw
+   the same picture and the reader compares shapes that are not comparable. Computed from the
+   series actually shown rather than from the whole map, so the axis describes this table. */
+const sparks = await readSparks(env?.SNAPSHOT);
+const sparkOf = (sym: string) => (sparks.status === "ready" ? sparks.map.series[sym] : undefined);
+const sparkScaleAll = sparks.status === "ready"
+  ? sparkScale(rows.map(({ p }) => sparkOf(p.symbol)).filter((v): v is number[] => Array.isArray(v) && v.length > 1))
+  : null;
+const sparkDays = sparks.status === "ready"
+  ? Math.max(1, Math.round((Math.min(sparks.covered, SPARK_POINTS) * SPARK_STEP_MS) / 86_400_000))
+  : 0;
+/* THE EXTREME THE CLIP EXISTS FOR, NAMED FROM THE DATA. The note under the table said "one
+   contract at −60% would otherwise flatten the other forty-nine" — a number and a count typed in on
+   the day the column was built. The audit on 16 September found 49 contracts drawn and no −60%
+   reading in the column. It is computed from the series drawn, or the sentence is not printed. */
+const sparkExtreme = (() => {
+  if (sparks.status !== "ready") return null;
+  let best: { symbol: string; value: number } | null = null;
+  for (const { p } of rows) {
+    for (const v of sparkOf(p.symbol) ?? []) {
+      if (Number.isFinite(v) && (!best || Math.abs(v) > Math.abs(best.value))) best = { symbol: p.symbol, value: v };
+    }
+  }
+  return best;
+})();
+const sparkRows = sparks.status === "ready"
+  ? rows.filter(({ p }) => (sparkOf(p.symbol)?.length ?? 0) > 1).length
+  : 0;
+
 
 const title = "Crypto funding rates, normalised to APR";
 const description =
@@ -95,71 +234,98 @@ const description =
 <Base title={title} description={description} fetchedAt={snap.fetchedAt}>
   <div class="page-head">
     <h1>Funding rates</h1>
-    <p>
-      {snap.perps.length} perpetual contracts across three venues, annualised. Hyperliquid settles
-      hourly; Binance and Bybit settle every 4 or 8 hours — so comparing the quoted numbers directly
-      makes the shorter interval look cheaper by exactly the interval ratio.
-      {/* THE CLAIM THAT ONLY THIS SITE MAKES, MOVED TO WHERE IT IS READ. It lived in the figure
-          card two screens down, and measured on production the first 700 characters of visible
-          text — the window an extractor truncates at, and the one this site already gates with
-          openingFigure — did not contain it. Assistants fetch this domain 43 times as often as
-          Googlebot does; a fact none of them reach is a fact the site does not really publish. */}
-      {" "}<strong>Only {offBase.length} of {hlAprs.length} contracts are priced away from
-      Hyperliquid&rsquo;s {pct(modalApr)} base rate</strong> — the rest sit exactly on it, which
-      is a venue constant rather than a view about any of them.
-      {widest?.spread != null && <> The widest spread right now is <strong>{widest.p.symbol}</strong> at {pct(widest.spread)} APR.</>}
-      <a class="link" href="/learn/funding-rate"> What a funding rate is →</a>
-      <a class="link" href="/methodology"> How it is computed →</a>
-    </p>
+    {/* THE ANSWER, BEFORE THE METHOD. Everything that used to open this page — the settlement
+        intervals, the interval-ratio explanation, three totals nobody arrives asking for, and a
+        six-line key to two colours that were not yet on screen — is true and is now below the
+        evidence it describes. See src/components/Overview.astro for what walking this page cold
+        at 375px found, and src/lib/extreme.ts for why no coin here can be named out of a tie. */}
+    <Overview>
+      {longsPay > 0
+        ? <><b>Longs are paying on {longsPay} of the {paying.length} contracts</b>{shortsPay > 0 && <>, and shorts on <b>{shortsPay}</b></>}</>
+        : shortsPay > 0
+          ? <><b>Shorts are paying on {shortsPay} of the {paying.length} contracts</b></>
+          : <>No contract is paying either way</>}
+      {flat > 0 && <> ({flat} {flat === 1 ? "is" : "are"} flat)</>}.
+      {loudest.kind === "unique" && <>{" "}The steepest is <b>{loudest.item.symbol}</b>, where {paysLabel(loudest.value)}{" "}<b>{pct(Math.abs(loudest.value))}</b> a year.</>}
+      {loudest.kind === "tied" && <>{" "}The steepest reading, {pct(Math.abs(loudest.value))} a year with {paysLabel(loudest.value)}, is shared by <b>{loudest.items.length}</b> contracts.</>}
+      {" "}<b>{modalCount} of {hlAprs.length}</b> sit exactly on Hyperliquid&rsquo;s <b>{pct(modalApr)}</b>{modalIsBase ? " base rate" : " most common rate"}, a venue constant rather than a view about any of them &mdash; so the market has priced only <b>{offBase.length}</b> of them at all.
+      {widestX.kind === "unique" && <>{" "}The widest gap between venues is <b>{widestX.item.symbol}</b> at {pct(widestX.value)} APR.</>}
+      {widestX.kind === "tied" && <>{" "}The widest gap between venues, {pct(widestX.value)} APR, is shared by <b>{widestX.items.length}</b> contracts.</>}
+    </Overview>
   </div>
 
-  <StatStrip items={[
-    { label: "Contracts", value: String(snap.perps.length), href: "/coins" },
-    { label: "Open interest", value: usd(stripOi), href: "/open-interest" },
-    { label: "24h volume", value: usd(stripVol) },
-    /* NOT THE MEDIAN, WHICH IS THE BASE RATE AND SAYS NOTHING. 43 of 50 contracts sit on
-       Hyperliquid's 0.0000125-an-hour floor, so a median is a venue constant dressed as a market
-       reading. The widest spread is the number that actually moves and the one the page's own
-       opening sentence already quotes. */
-    ...(widest?.spread != null
-      ? [{ label: `Widest spread \u2014 ${widest.p.symbol}`, value: pct(widest.spread), href: "/tools/funding-arbitrage" }]
-      : []),
-  ]} />
-
-  <p class="legend">
-    {LEGEND_FUNDING}. A cell is tinted by how far its rate sits from what is normal for that
-    venue, so a contract resting on the venue&rsquo;s usual rate stays plain and the ones the
-    market has actually priced stand out. Every other figure is neutral.
-  </p>
-
   <Figure
-    title={`Hyperliquid funding across ${hlAprs.length} contracts, annualised`}
+    title={shown.length < offBase.length
+      ? `The ${shown.length} Hyperliquid contracts furthest from the base rate, annualised`
+      : `Every Hyperliquid contract priced away from the base rate, annualised`}
     lead={`${offBase.length} of ${hlAprs.length}`}
     leadNote={modalIsBase
       ? `contracts priced away from Hyperliquid\u2019s ${pct(modalApr)} base rate`
       : `contracts away from the most common rate, ${pct(modalApr)}`}
     fetchedAt={snap.fetchedAt}>
-    <div class="bars">
-      {offBase.slice(0, 10).map((p) => (
-        <>
-          <span class="bars__label"><a href={`/funding/${p.symbol.toLowerCase()}`}>{p.symbol}</a></span>
-          <span class="bars__track">
-            <span
-              class:list={["bars__fill", p.hlApr > modalApr ? "bars__fill--l" : "bars__fill--s"]}
-              style={`width:${Math.max(2, (Math.abs(p.hlApr - modalApr) / offMax) * 100)}%`}></span>
-          </span>
-          <span class="bars__value">{pct(p.hlApr)}</span>
-        </>
-      ))}
+    <div class="bars bars--signed">
+      {shown.map((p) => {
+        /* SIDE AND HUE FROM ONE CALL, so a later edit cannot move the bar without moving the
+           colour with it — see signedBar() in src/lib/viz.ts for the collision that caused. */
+        const bar = signedBar(p.hlApr, axAt(p.hlApr), zeroAt);
+        return (
+          <>
+            <span class="bars__label"><a href={`/funding/${p.symbol.toLowerCase()}`}>{p.symbol}</a></span>
+            <span class="bars__track">
+              <span class="bars__ref" style={`left:${baseAt}%`}></span>
+              <span class="bars__zero" style={`left:${zeroAt}%`}></span>
+              {/* HUE BY SIGN, POSITION BY VALUE, both out of the same return value. */}
+              <span class:list={["bars__fill", bar.cls]} style={`left:${bar.left}%;width:${bar.width}%`}></span>
+            </span>
+            <span class:list={["bars__value", paysClass(p.hlApr)]}>{pct(p.hlApr)}</span>
+          </>
+        );
+      })}
+      <div class="bars__axis">
+        {ticks.map((t) => (
+          <span
+            class:list={["bars__tick", t.anchor === "start" && "bars__tick--edge", t.anchor === "end" && "bars__tick--edge-r", t.optional && "bars__tick--optional"]}
+            style={`left:${t.at}%`}>{t.text}</span>
+        ))}
+      </div>
     </div>
     <p slot="note">
-      The other <b>{modalCount}</b> contracts all hold exactly {pct(modalApr)}
-      {modalIsBase && <> — which is 0.0000125 an hour annualised, the venue&rsquo;s base rate, not a view about any
-      of them</>}. A contract only leaves it when the premium between mark and oracle is wide
-      enough to move it, so this is the whole list of coins the market is actually pricing.
-      Amber is above the base, cyan below; bars are scaled to the largest distance, {pct(offMax)}.
+      {LEGEND_FUNDING}. Each bar runs from zero to its own rate, so which side of the line it
+      falls on is the side that is paying; the dotted rule is Hyperliquid&rsquo;s
+      {modalIsBase ? " base rate" : " most common rate"} at {pct(modalApr)}, which is what
+      &ldquo;priced away from&rdquo; is measured against.
+      {/* THE PARTS MUST ADD UP TO THE WHOLE, AND THEY DID NOT. This note said "the other N contracts
+          all hold exactly 10.95% … so this is the whole list of coins the market is actually
+          pricing" while the figure drew offBase.slice(0, 10). It was true when it was written —
+          seven contracts were off the base — and false the first day more than ten were: on
+          16 September twenty were priced, ten were drawn, and "the other 30" left ten contracts
+          in neither group. Drawn, not drawn, and resting on the base now add up to the book. */}
+      {shown.length < offBase.length
+        ? <> These are the <b>{shown.length}</b> furthest from it of the <b>{offBase.length}</b> the
+          market has priced; the other <b>{offBase.length - shown.length}</b> sit closer and every one
+          of them is in the table below.</>
+        : <> These are all <b>{offBase.length}</b> contracts the market has priced away from it.</>}
+      {" "}The remaining <b>{modalCount}</b> all hold exactly {pct(modalApr)}
+      {modalIsBase && <> — 0.0000125 an hour annualised, a venue constant rather than a view about
+      any of them</>}. A contract only leaves it when the premium between mark and oracle is wide
+      enough to move it.
     </p>
   </Figure>
+
+  {/* THE METHOD, DEMOTED RATHER THAN DELETED. This used to be the first thing on the page; it is
+      the reason the numbers above are comparable and it still has to be here, in the body copy
+      colour, after the evidence rather than in front of it. The two learn links travel with it —
+      a reader who wants the definition wants it at this point, not before the answer. */}
+  <p class="section-note" style="margin:0 0 12px">
+    {snap.perps.length} perpetual contracts across three venues, annualised. Hyperliquid settles
+    hourly; Binance and Bybit settle every 4 or 8 hours &mdash; so comparing the quoted numbers
+    directly makes the shorter interval look cheaper by exactly the interval ratio. A cell in the
+    table is tinted by how far its rate sits from what is normal for that venue, so a contract
+    resting on the venue&rsquo;s usual rate stays plain and the ones the market has actually
+    priced stand out. Every other figure is neutral.
+    <a class="link" href="/learn/funding-rate"> What a funding rate is &rarr;</a>
+    <a class="link" href="/methodology"> How it is computed &rarr;</a>
+  </p>
 
   <p class="clock" style="margin:0 0 12px">
     {fresh.note} Open interest and 24-hour volume come from the snapshot taken
@@ -171,6 +337,7 @@ const description =
         <tr>
           <th>Coin</th>
           {ORDER.map((v) => <th class="num">{VENUE_LABEL[v]} APR</th>)}
+          {sparkScaleAll && <th class="spark-col">{sparkDays}d shape</th>}
           <th class="num">Venue spread (APR)</th>
           <th class="num">Open interest</th>
           <th class="num">24h volume</th>
@@ -198,6 +365,11 @@ const description =
                 </td>
               );
             })}
+            {sparkScaleAll && (
+              <td class="spark-col">
+                <Spark values={sparkOf(p.symbol)} scale={sparkScaleAll} symbol={p.symbol} days={sparkDays} />
+              </td>
+            )}
             <td class="num" data-repaint={spread != null ? "spread" : undefined} data-sym={p.symbol}>{spread != null ? pct(spread) : <span class="faint">—</span>}</td>
             <td class="num">
               <span class="magnitude">
@@ -212,9 +384,28 @@ const description =
     </table>
   </div>
 
+  {sparkScaleAll && (
+    <p class="section-note" style="margin-top:12px">
+      {/* THE AXIS, STATED. A column of sparklines whose scale is not written down is a column a
+          reader has to take on trust, and the whole argument of this site is that they should not
+          have to. The clip is stated for the same reason the funding band states its own. */}
+      The <b>{sparkDays}-day shape</b> column is Hyperliquid funding in four-hour means, drawn for
+      {" "}<b>{sparkRows} of {rows.length}</b> contracts on <b>one axis shared by every row</b>, so
+      a tall shape really is a bigger move than a short one. The axis runs
+      {" "}&plusmn;{pct(sparkScaleAll.max)} a year{sparkExtreme && Math.abs(sparkExtreme.value) > sparkScaleAll.max * 1.0001
+        ? <> — the 96th percentile of the column rather than its extreme, because {sparkExtreme.symbol}
+          at {pct(sparkExtreme.value)} would otherwise flatten the other {sparkRows - 1}.</>
+        : <>, which reaches every reading in the column.</>}
+      {sparkScaleAll.clipped > 0 && <> <b>{sparkScaleAll.clipped}</b> of {sparkScaleAll.of} readings sit outside it, each marked with a tick at the edge it left by.</>}
+      {" "}Amber above the line is longs paying, cyan below is shorts paying. A contract with no
+      stored history yet shows a dash rather than a flat line.
+    </p>
+  )}
+
   <p class="section-note" style="margin-top:12px">
-    Showing the largest {snap.perps.length} coins by open interest; {snap.eligibleCount} clear the $5M floor
-    ({snap.universeCount} exist in total). A coin below the floor is left out rather than published with sparse data; one already published keeps its page until open interest falls below $3.5M, so a URL does not appear and vanish on ordinary noise.
+    {/* COUNTS FROM coverageToday(), NOT RETYPED — six pages restated these numbers by hand and
+        "N of 234" counted 56 delisted markets as listed (audit, 16 September 2026). */}
+    {coverageToday(snap)} {coverageRule()} A coin below the floor is left out rather than published with sparse data, and the retained band means a published URL does not appear and vanish on ordinary noise.
   </p>
 
   <style>

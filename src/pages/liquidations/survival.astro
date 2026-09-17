@@ -1,7 +1,7 @@
 ---
 import Base from "../../layouts/Base.astro";
 import { getSnapshot, coldStart, requestedPerp } from "../../lib/hyperliquid.ts";
-import { usd, pct } from "../../lib/funding.ts";
+import { usd, pct, nf, axisDp } from "../../lib/funding.ts";
 import { maintenanceMarginFraction, type MarginTable } from "../../lib/margin.ts";
 import { getCandles, survivalGrid, gridLevels } from "../../lib/candles.ts";
 import { CH, INK, RAMP, text, rect, timeTicks, niceTicks, fint, SANS, FS_AXIS, FS_MICRO } from "../../lib/chart.ts";
@@ -44,8 +44,10 @@ const candleSet = await getCandles(env?.SNAPSHOT, perp.symbol, import.meta.env.D
    filter belongs here, at the one call that reasons about outcomes. */
 const dayMs = 86_400_000;
 const closedDays = (candleSet?.d ?? []).filter((c) => c[0] + dayMs <= Date.now());
+/* One rule for "enough history", read by the grid and by the empty state's counts alike. */
+const needDays = (h: number) => h + 13;
 const grid =
-  closedDays.length > hold + 12
+  closedDays.length >= needDays(hold)
     ? survivalGrid({ candles: closedDays, mmf, levels: gridLevels(tier1.maxLeverage, 12), holdDays: hold, side: mapSide, maxEntries: 90 })
     : null;
 
@@ -54,6 +56,44 @@ const grid =
    in anything that lifted the sentence, and every other date formatter in this repository passes
    year. */
 const dayLabel = (ms: number) => new Date(ms).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+
+/* THE MEDIAN COLUMN PRINTED THE UPPER MIDDLE. LevelResult.medianDays in src/lib/candles.ts was
+   `days[Math.floor(days.length / 2)]` (the field is now removed), the median only for an odd count; for an even
+   count it is the larger of the two middle values. Measured 16 September 2026 on
+   /liquidations/survival?symbol=SUI&side=long&hold=90: the 3× row said 41 while its own 48
+   "closed on day N" cells have middle values 31 and 41 — a median of 36. BTC short 90 3× printed
+   80 for [76, 77, 80, 81]. Every row with an even number of closures was off by half its middle gap.
+   COMPUTED HERE FROM THE SAME CELLS THE HEATMAP DRAWS, so the column cannot disagree with the
+   tooltips above it; a median between two whole days prints as .5 rather than being rounded to either. */
+const medianClosure = (lv: { cells: { liqDay: number | null }[] }): number | null => {
+  const days = lv.cells.flatMap((c) => (c.liqDay === null ? [] : [c.liqDay])).sort((a, b) => a - b);
+  if (!days.length) return null;
+  const m = days.length >> 1;
+  return days.length % 2 ? days[m] : (days[m - 1] + days[m]) / 2;
+};
+
+/* THE EMPTY STATE PROMISED A SHORTER HOLD THAT DID NOT EXIST. It said "a shorter hold window needs
+   less history" on every empty render. Measured 16 September 2026 on
+   /liquidations/survival?symbol=PONS&side=long&hold=7: 7 days is the shortest hold the form offers,
+   and PONS was empty at 30 and 90 as well — as was USELESS — so the advice named a control the
+   reader did not have. It also could not say how much history there WAS, only how much was needed.
+   NOW IT COUNTS. `stored` separates "nothing collected" from "collected, not enough"; `fits` is
+   every hold this form offers that the stored series can draw, by the same needDays() rule
+   that decides `grid` above, so a hold is suggested only if clicking it renders a grid. When none fits it
+   says so, with how many more completed days the shortest hold needs. */
+const stored = candleSet?.d?.length ?? 0;
+const haveDays = closedDays.length;
+const fits = HOLDS.filter((h) => haveDays >= needDays(h));
+const shortest = Math.min(...HOLDS);
+const dayCount = (n: number) => `${n} ${n === 1 ? "day" : "days"}`;
+const holdHref = (h: number) => `/liquidations/survival?symbol=${encodeURIComponent(perp.symbol)}&side=${mapSide}&hold=${h}`;
+const storedSentence =
+  (haveDays === 0
+    ? `No completed daily candle of ${perp.symbol} is stored yet — the day in progress counts once it closes`
+    : `${haveDays} completed daily ${haveDays === 1 ? "candle" : "candles"} of ${perp.symbol} ${haveDays === 1 ? "is" : "are"} stored, the first on ${dayLabel(closedDays[0][0])}`) +
+  `, and a ${hold}-day hold needs ${needDays(hold)}.`;
+const shortfall = needDays(shortest) - haveDays;
+const noFitSentence = `No hold this page offers fits yet: the shortest, ${shortest} days, needs ${needDays(shortest)} and is ${dayCount(shortfall)} short.`;
 
 /* THE PAGE THAT IS ENTIRELY A RESULT OPENED WITHOUT ONE. Fetched as GPTBot, the first 700
    characters of /liquidations/survival were the honesty statement and the method — "The prices
@@ -162,8 +202,22 @@ if (grid && grid.entries.length > 4) {
   out.push(`<polyline points="${pts.join(" ")}" fill="none" stroke="${INK.neutral}" stroke-width="1.5" stroke-linejoin="round"/>`);
   /* Round ticks, like every other price axis here — the raw extremes of a window are not
      numbers anyone holds in their head. */
-  for (const v of niceTicks(pmin, pmax, 2)) {
-    out.push(text(HW - hpR + 10, Math.max(stripT + 4, Math.min(stripT + stripH + 4, sy(v) + 4)), fint(v), INK.dim, FS_AXIS));
+  /* THE TICKS WERE ROUND AND THEIR LABELS WERE ROUNDER. Each label went through fint(), integer
+     dollars, so any strip whose ticks were not whole dollars printed one integer for two prices.
+     Measured 16 September 2026: /liquidations/survival?symbol=CHIP&side=long&hold=90 labelled the
+     ticks at $0.05 and $0.10 "0" and "0"; ?symbol=XRP&side=long&hold=90 labelled $1.20 and $1.40
+     "1" and "1". The same day's audit found it on 34 of 64 production grids (TRX, GRAM, LIT, CRV,
+     LDO among them).
+     /liquidations fixed the same fint() on its own axis and this strip kept it.
+     THE DECIMALS NOW COME FROM THE TICKS. The floor is axisDp(), the site's one ladder for axis
+     precision, and it rises until every label rounds back to the tick it marks — so a label can
+     no longer state a different price than its position, and two ticks can no longer share a
+     label, whatever range or price level the strip is drawn at. */
+  const ticks = niceTicks(pmin, pmax, 2);
+  let tickDp = axisDp(pmax);
+  while (tickDp < 10 && ticks.some((v) => Math.abs(+v.toFixed(tickDp) - v) > Math.abs(v) * 1e-9)) tickDp++;
+  for (const v of ticks) {
+    out.push(text(HW - hpR + 10, Math.max(stripT + 4, Math.min(stripT + stripH + 4, sy(v) + 4)), tickDp === 0 ? fint(v) : nf(v, tickDp), INK.dim, FS_AXIS));
   }
   out.push(text(hpL, stripT - 9, `${perp.symbol} close on the entry day`, INK.faint, FS_AXIS, "start", 400, SANS));
 
@@ -199,7 +253,48 @@ const title = `${perp.symbol} leverage backtest: liquidated or survived`;
    description — the one string quoted without the page beside it to correct it — in the tooltip
    under every one of ~1,000 cells, and in the anchor text pointing here from the flagship and
    from the sweep. An overclaim on the single axis this site sells. */
-const description = `Which leveraged ${perp.symbol} positions were liquidated and which survived — every entry day, every leverage, held ${hold} days. The prices are real traded candles and the published margin tiers; the closing rule is a model, with its six assumptions listed on the page.`;
+/* NO GRID, NO RESULT TO DESCRIBE. On an empty render this string still said which positions
+   "were liquidated and which survived — every entry day, every leverage", about a page with no
+   entry days on it (measured 16 September 2026, ?symbol=PONS&side=long&hold=7). The assumptions
+   clause stays true in both states because the assumptions table now renders in both. */
+const description = grid
+  ? `Which leveraged ${perp.symbol} positions were liquidated and which survived — every entry day, every leverage, held ${hold} days. The prices are real traded candles and the published margin tiers; the closing rule is a model, with its six assumptions listed on the page.`
+  : `A leverage backtest for ${perp.symbol} ${mapSide}s held ${hold} days, waiting on enough traded daily candles to run. The prices will be real traded candles and the published margin tiers; the closing rule is a model, with its six assumptions listed on the page.`;
+
+/* THE FUNDING DIRECTION WAS WRITTEN FOR LONGS AND PRINTED FOR BOTH SIDES. The assumptions table
+   said "Usually too kind: a long paying funding runs out of margin sooner than this grid says"
+   under a grid of shorts. Measured 16 September 2026 on
+   /liquidations/survival?symbol=BTC&side=short&hold=90, whose grid is "short positions held 90
+   days": the only reason given was about a long. The usual case is a direction of payment, and a
+   payment has two ends — Hyperliquid's base rate is positive, so at rest longs pay and shorts
+   receive, and a short grid that ignores funding is usually too HARSH, not too kind. The fees
+   row's "the same sign" was inherited from the same long-only reading: fees cost both sides, so
+   for a short they have the opposite sign to the funding it usually receives.
+   Both sentences are chosen by `mapSide`, the value the grid itself is computed at. */
+/* THE ASSUMPTIONS TABLE RENDERS WITHOUT A GRID, SO ITS SENTENCES CANNOT POINT AT ONE AS IF IT WERE
+   THERE. Moving the table out of the grid branch left its section note and the funding row speaking
+   in the present tense about a grid: measured 16 September 2026 on
+   /liquidations/survival?symbol=PONS&side=long&hold=7, PONS short 7 and GRAM long 90 (no heat grid,
+   no tables but this one), the note said "the grid is not simply optimistic or simply pessimistic —
+   it is a rule applied consistently" and the funding row "sooner than the grid says". Every reference
+   to the grid in this block now goes through `grid`, the same value that decides whether the heat
+   grid renders, so the tense cannot outlive the grid it describes. */
+const gridSays = grid ? "the grid says" : "the grid will say";
+const gridIs = grid ? "the grid is" : "the grid will be";
+const assumptionsNote = grid
+  ? "Every one of these would move some cells. They are not all in the same direction, so the grid is not simply optimistic or simply pessimistic — it is a rule applied consistently, with these six things left out."
+  : "Once there is enough history to draw the grid, every one of these will move some of its cells. They are not all in the same direction, so the grid will be neither simply optimistic nor simply pessimistic — it will be a rule applied consistently, with these six things left out.";
+const fundingBends =
+  mapSide === "long"
+    ? { verdict: "too kind", why: `Hyperliquid's base rate has longs paying shorts, and a long paying funding runs out of margin sooner than ${gridSays}.` }
+    : { verdict: "too harsh", why: `Hyperliquid's base rate has longs paying shorts, and a short receiving funding keeps margin longer than ${gridSays}. When funding turns negative the short pays instead, and ${gridIs} too kind.` };
+/* "Every cell asks" ABOUT A PAGE WITH NO CELLS. The intro read the same on every render, and on an
+   empty one (measured 16 September 2026, ?symbol=PONS&side=long&hold=7: 0 tables, no heat grid)
+   it described cells that were not there and an assumptions list that was not rendered. The tense
+   follows `grid`, and the assumptions table no longer sits inside the grid branch — it depends only
+   on the hold, the side and the margin tier, all of which exist in both states. */
+const cellsAsk = grid ? "Every cell asks" : "Once there is enough history, every cell of the grid will ask";
+const feesVsFunding = mapSide === "long" ? "the same sign as the funding a long usually pays" : "the opposite sign to the funding a short usually receives";
 ---
 
 <Base title={title} description={description} fetchedAt={snap.fetchedAt} crumb={{ href: "/liquidations", label: "Liquidations", current: "Survival" }}>
@@ -209,7 +304,7 @@ const description = `Which leveraged ${perp.symbol} positions were liquidated an
     <p>
       {survivalLede && <><strong>{survivalLede}</strong>{" "}</>}
       <strong>The prices are real; the closing rule is a model.</strong> Both come from
-      <strong>Hyperliquid</strong> — its candles, and its margin table. Every cell asks one
+      <strong>Hyperliquid</strong> — its candles, and its margin table. {cellsAsk} one
       checkable question about an observed price path — a <strong>{mapSide}</strong> opened at
       that day's close, at that leverage, held {hold} days: did the maintenance-margin threshold
       get crossed, and on which day? No price here is simulated. But deciding that a position
@@ -236,8 +331,9 @@ const description = `Which leveraged ${perp.symbol} positions were liquidated an
     </label>
     {/* NOT "Redraw the map". This page draws a grid of one-day-per-leverage outcomes over real
         candles; the map is the modelled density surface on /liquidations, and borrowing its
-        label here names the wrong artefact on the page the reader is looking at. */}
-    <button class="btn btn--primary" type="submit">Redraw the grid</button>
+        label here names the wrong artefact on the page the reader is looking at. "Re" only when a
+        grid is on the page: an empty render (PONS long 7, 16 September 2026) has none to redraw. */}
+    <button class="btn btn--primary" type="submit">{grid ? "Redraw the grid" : "Draw the grid"}</button>
   </form>
 
   {grid ? (
@@ -267,12 +363,43 @@ const description = `Which leveraged ${perp.symbol} positions were liquidated an
                 <td class="num">{lv.liquidated}</td>
                 <td class="num">{lv.tested - lv.liquidated}</td>
                 <td class="num">{((1 - lv.liquidated / Math.max(1, lv.tested)) * 100).toFixed(1)}%</td>
-                <td class="num">{lv.medianDays ?? "—"}</td>
+                <td class="num">{medianClosure(lv) ?? "—"}</td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+    </>
+  ) : (
+    <div class="empty">
+      <div class="empty__body">
+        {stored === 0 ? (
+          <>
+            {/* NOT "not collected yet". getCandles() returns null for a key never written, a series
+                written empty, a KV read that threw and a missing binding alike, so a title naming one
+                of those causes is false for the other three. Measured 16 September 2026 on the local
+                build: ?symbol=BTC&side=long&hold=90 rendered "Candle history not collected yet" for
+                BTC when the upstream read failed, beside a BTC short 90 grid of 90 entry days. The
+                sentence now states only what the page knows: nothing could be read. The refresh
+                claim is the worker's (worker/ingest.ts: CANDLE_REFRESH_HOURS = 12, absent symbols
+                filled first) and names no tick, because one sweep of CHUNK symbols runs per tick. */}
+            <p class="empty__title">No {perp.symbol} daily candles to test</p>
+            <p class="empty__text">This needs {needDays(hold)} days of traded daily candles for {perp.symbol}, and none could be read. A missing series is fetched ahead of the routine refresh, which runs every twelve hours.</p>
+          </>
+        ) : (
+          <>
+            <p class="empty__title">Not enough {perp.symbol} history for a {hold}-day hold</p>
+            <p class="empty__text">
+              {storedSentence}
+              {fits.length ? (
+                <>Pick a shorter hold that fits: {fits.map((h, i) => <>{i === 0 ? "" : i === fits.length - 1 ? " or " : ", "}<a class="link" href={holdHref(h)}>{h} days</a></>)}.</>
+              ) : noFitSentence}
+            </p>
+          </>
+        )}
+      </div>
+    </div>
+  )}
 
       {/* WHAT THIS PAGE USED TO SAY WAS "Nothing here is modelled", on a page whose entire
           argument is that it is more honest than the density map beside it. The prices are
@@ -281,12 +408,11 @@ const description = `Which leveraged ${perp.symbol} positions were liquidated an
           than the same assumption on a page that admits it.
 
           The direction of each bias is given because that is the part a reader can actually
-          use: several push the same way, and two push back. */}
+          use. The count each way depends on the side: for longs three rows read too kind and
+          two too harsh; for shorts funding changes sides, so it is two and three. */}
       <h2 class="section">What the closing rule assumes</h2>
       <p class="section-note">
-        Every one of these would move some cells. They are not all in the same direction, so the
-        grid is not simply optimistic or simply pessimistic — it is a rule applied consistently,
-        with these six things left out.
+        {assumptionsNote}
         {/* THE SIBLING TEST, WHICH THIS PAGE NEVER POINTED AT. Both pages ask whether the model
             survives contact with a real market and neither linked the other: /liquidations/sweep
             had two inbound editorial links in the whole site and is one of the URLs Search
@@ -301,11 +427,11 @@ const description = `Which leveraged ${perp.symbol} positions were liquidated an
             <tr>
               <td><strong>No funding</strong></td>
               <td class="reason">A leveraged position pays or receives funding every settlement. Over a {hold}-day hold that is {hold * 24} payments on this venue, and it moves margin, not price.</td>
-              <td class="reason">Usually <strong>too kind</strong>: a long paying funding runs out of margin sooner than this grid says.</td>
+              <td class="reason">Usually <strong>{fundingBends.verdict}</strong>: {fundingBends.why}</td>
             </tr>
             <tr>
               <td><strong>No fees</strong></td>
-              <td class="reason">Opening and closing both cost. Small beside funding over {hold} days, but the same sign.</td>
+              <td class="reason">Opening and closing both cost. Small beside funding over {hold} days, and {feesVsFunding}.</td>
               <td class="reason">Too kind, slightly.</td>
             </tr>
             <tr>
@@ -332,6 +458,7 @@ const description = `Which leveraged ${perp.symbol} positions were liquidated an
         </table>
       </div>
 
+  {grid && (
       <details class="src">
         {/* THE ENTRY DAYS, NOT EVERY CANDLE CONSULTED. Each cell walks forward up to {hold}
             further days looking for the crossing, so the outcome of the last entry depends on
@@ -355,14 +482,6 @@ const description = `Which leveraged ${perp.symbol} positions were liquidated an
           </table>
         </div>
       </details>
-    </>
-  ) : (
-    <div class="empty">
-      <div class="empty__body">
-        <p class="empty__title">Candle history not collected yet</p>
-        <p class="empty__text">This needs {hold + 13} days of traded daily candles for {perp.symbol}. Either the series is still being collected — refreshed every twelve hours, and filled on the next five-minute tick when a series is missing entirely — or {perp.symbol} has not traded here that long, in which case a shorter hold window needs less history.</p>
-      </div>
-    </div>
   )}
 
   <p style="margin-top:24px">

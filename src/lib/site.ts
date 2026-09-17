@@ -256,6 +256,56 @@ export const GA_CONFIG = {
 export const STORE_NS = "coinliqui";
 export const PINNED_KEY = `${STORE_NS}.pinned`;
 
+/* =========================================================================================
+   WHAT THIS SITE PUTS ON A READER'S DEVICE — ONE LIST, TWO PAGES THAT STATE IT.
+
+   /privacy described "cookieless page-view analytics … one preference cookie" above a table of
+   three cookies; that was fixed by deriving its summary from its own rows. The same audit then
+   found /about saying "the one thing stored on your device is a cookie named rail … plus a
+   coinliqui.pinned list", which omits both Google Analytics cookies the site has set since GA4
+   came back on 27 August. Two pages, two hand-written accounts of one fact, both understating it.
+
+   So the fact lives here, next to the constants it is built from, and both pages render it. A new
+   cookie is one entry in this array and both statements change on the next build. `purpose` is
+   HTML because the privacy table links the watchlist; `short` is what a one-line summary names.
+   ========================================================================================= */
+export interface StoredItem {
+  name: string;
+  kind: "cookie" | "local-storage";
+  /** Who writes it, for readers deciding what to block. */
+  by: "this site" | "Google Analytics";
+  purpose: string;
+  expires: string;
+}
+export const STORED_ON_DEVICE: readonly StoredItem[] = [
+  { name: "rail", kind: "cookie", by: "this site",
+    purpose: "Whether you collapsed the sidebar. Two possible values; not an identifier",
+    expires: "1 year" },
+  { name: PINNED_KEY, kind: "local-storage", by: "this site",
+    purpose: 'The coins you pinned on <a href="/watchlist">your watchlist</a>. Never sent anywhere',
+    expires: "Until you clear it" },
+  /* THE TWO GOOGLE COOKIES ARE LISTED BECAUSE THEY EXIST. Both are first-party — written by
+     gtag.js on this domain, not by Google's — which changes who can read them and does not change
+     that they identify a returning browser. The second is named after the measurement ID, so it
+     is derived from it and cannot go stale if that changes. */
+  { name: "_ga", kind: "cookie", by: "Google Analytics",
+    purpose: "A random identifier for your browser, so a second visit is counted as the same browser rather than a new one. Set by <code>gtag.js</code> on this domain",
+    expires: "2 years" },
+  { name: `_ga_${GA_MEASUREMENT_ID.slice(2)}`, kind: "cookie", by: "Google Analytics",
+    purpose: "Session state for this specific property — when the current visit started and how many there have been. Named after the measurement ID, so it changes if that does",
+    expires: "2 years" },
+];
+
+const NUM_WORDS = ["no", "one", "two", "three", "four", "five", "six", "seven", "eight"];
+/** "three cookies", "one local-storage key" — counted from the list, never typed. */
+export const countWords = (n: number, one: string, many: string) =>
+  `${NUM_WORDS[n] ?? String(n)} ${n === 1 ? one : many}`;
+export const storedCounts = () => {
+  const cookies = STORED_ON_DEVICE.filter((s) => s.kind === "cookie").length;
+  const storage = STORED_ON_DEVICE.length - cookies;
+  return { cookies, storage };
+};
+
 /**
  * The canonical origin, from Astro's configured `site` (set by SITE_URL at build time).
  * There is deliberately no hardcoded fallback URL here: every caller has a context, and

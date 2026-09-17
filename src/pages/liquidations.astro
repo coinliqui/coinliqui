@@ -23,7 +23,8 @@ import LiqMap from "../components/LiqMap.astro";
 import { getSnapshot, coldStart, requestedPerp } from "../lib/hyperliquid.ts";
 import { usd, pct, priceDp } from "../lib/funding.ts";
 import { maintenanceMarginFraction, corridorAt, type MarginTable } from "../lib/margin.ts";
-import { mapTitle, mapDescription } from "../lib/liqmap.ts";
+import { mapTitle, mapDescription, mapState, resolveWindow } from "../lib/liqmap.ts";
+import { getHourly } from "../lib/candles.ts";
 import { liqMapHref } from "../lib/routes.ts";
 import tables from "../data/margin-tables.json";
 
@@ -84,14 +85,20 @@ const rows = snap.perps
     return { p, L, corridor, href: liqMapHref(p.symbol), here: p.symbol === perp.symbol };
   });
 
-const title = mapTitle(perp.symbol);
-const description = mapDescription(perp.symbol);
+/* Read once, here, so the title and description can say whether this address draws a map — see
+   mapState in src/lib/liqmap.ts — and handed to the component rather than read again. */
+const hourly = await getHourly(env?.SNAPSHOT, perp.symbol, import.meta.env.DEV);
+const win = resolveWindow(q);
+const cap = [...table.marginTiers].sort((a, b) => a.lowerBound - b.lowerBound)[0].maxLeverage;
+const state = mapState(hourly?.d, win);
+const title = mapTitle(perp.symbol, state);
+const description = mapDescription(perp.symbol, { state, maxLeverage: cap, days: win.days });
 ---
 
 <Base title={title} description={description} fetchedAt={snap.fetchedAt}>
-  <LiqMap perp={perp} table={table} snap={snap} params={q} siblings={false} />
+  <LiqMap perp={perp} table={table} snap={snap} hourly={hourly} params={q} siblings={false} />
 
-  <h2 class="section">A map for every covered contract</h2>
+  <h2 class="section">A page for every covered contract</h2>
   {/* THE COUNT AND THE TABLE ARE ONE ARRAY, and for one morning they were two. This note said
       "50 contracts" above a table of 49, because the sentence counted every contract with a
       tier table and the rows deliberately excluded the default — whose map is this page. A
@@ -102,9 +109,14 @@ const description = mapDescription(perp.symbol);
       quieter wrongness, and adding it removes both: there is now one array, `rows`, and the
       count is its length by construction. Its row is marked and carries no link — a table
       whose every row links somewhere, one of them to the page you are on, is worse than a
-      row that says so. */}
+      row that says so.
+      "ITS OWN PAGE", NOT "ITS OWN MAP", AND THE HEADING WITH IT. Every row has an address; not every
+      address draws a map. Measured 16 September 2026 on http://localhost:4322/liquidations/pons at
+      the default 30-day window: no heatmap, while this note said "each one has its own map at its own
+      address" and the note under the table already carried the condition. The condition is stated
+      once, there, because this page does not read fifty candle series to count the exceptions. */}
   <p class="section-note" style="max-width:88ch">
-    {rows.length} contracts have a published margin table, and each one has its own map at its own
+    {rows.length} contracts have a published margin table, and each one has its own page at its own
     address. The corridor column is not modelled: it is the distance price has to travel before a
     position at that contract's maximum leverage is closed by the maintenance margin in the
     published table — the widest of them is the safest place to be wrong, and the narrowest is
@@ -142,8 +154,14 @@ const description = mapDescription(perp.symbol);
       </tbody>
     </table>
   </div>
+  {/* "TOGETHER WITH THE MAP" WAS NOT TRUE OF EVERY ROW. A contract without enough hourly history
+      renders no map and no assumptions table — measured 16 September 2026 on
+      https://coinliqui.com/liquidations/pons?profile=balanced&win=30 — and this page does not load
+      fifty candle series to find out which (see THE INDEX above), so the sentence states the
+      condition instead of a count. */}
   <p class="section-note">
     Maintenance margin at tier 1 sets every corridor above; the tiers themselves are on each
-    contract's own page, together with the map and the assumptions behind it.
+    contract's own page, together with its map and the assumptions behind it wherever its hourly
+    history can be read and is long enough to draw one.
   </p>
 </Base>

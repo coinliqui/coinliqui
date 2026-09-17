@@ -18,18 +18,47 @@ const description =
   </p>
 
   <h2>The mechanism</h2>
+  {/* THE QUOTE AND ITS PARAPHRASE DISAGREED, AND BINANCE HAS SAID BOTH. This quoted "only the latest one
+      liquidation order within 1000ms will be pushed" and two sentences later paraphrased it as
+      "everything except the largest one in each second is discarded" — time and size, two rules with
+      opposite biases (audit, 16 September 2026, https://coinliqui.com/methodology/liquidations).
+      Checked the same day: developers.binance.com answers scripted requests with an HTTP 202 challenge,
+      so the wording was traced through the description Binance ships in its own generated client,
+      binance/binance-connector-python, file clients/derivatives_trading_usds_futures/src/
+      binance_sdk_derivatives_trading_usds_futures/websocket_streams/streams/market_api.py:
+      "latest" at 8b4e2c0834 (2026-03-16); "largest" at f37bdb7bb7 (2026-04-20), 30bb512ff7 (2026-06-09)
+      and 9f368a902b (2026-06-26); "latest" again at 0362ef1909 (2026-07-14) through 7a5500f573
+      (2026-08-18, master on 16 September). binance-connector-js master also reads "latest". The USDⓈ-M
+      change log, as captured on 6 August 2026 in a public copy, has one entry, 10 April 2026: changed
+      "latest" to "largest"; it records no change back. So the page no longer names a survivor rule as
+      settled: it quotes both wordings with dates and draws only the conclusion that holds under either
+      — one order per symbol per second survives, so a sum is a lower bound.
+      RE-CHECKED 16 SEPTEMBER 2026, AND LINKED. The audit also found the quote undated and the body
+      linking nowhere a reader could check it. gh api over binance-connector-python confirmed every
+      commit above (latest / largest ×3 / latest ×4, master latest) and binance-connector-js master
+      (clients/derivatives-trading-usds-futures/src/websocket-streams/modules/market-api.ts: "latest",
+      six times). The change log at the URL linked below, read through a browser-grade fetch the same
+      day (newest heading 2026-09-15), carries the 2026-04-10 entry and none reversing it. The two links
+      are the stream description Binance's own client cites and that change log; the sentence asserts
+      only what a script could re-read, which is why it names the client libraries, not the web page. */}
   <p class="prose">
     Binance's liquidation stream <code>!forceOrder@arr</code> does not emit every liquidation. Its
-    documentation states that the stream pushes a <strong>snapshot</strong>, and that
-    <em>"only the latest one liquidation order within 1000ms will be pushed"</em>, and that
-    <em>"if no liquidation happens in the interval of 1000ms, no stream will be pushed"</em>.
+    {" "}<a href="https://developers.binance.com/en/docs/catalog/core-trading-derivatives-trading-usd-s-m-futures/api/ws-streams/market#all-market-liquidation-order-streams" rel="noopener" target="_blank">description</a>
+    {" "}says the stream pushes a <strong>snapshot</strong>: for each symbol, one liquidation
+    order within 1000ms, and <em>"if no liquidation happens in the interval of 1000ms, no stream will
+    be pushed"</em>. Which order survives has not been stated consistently. The description read
+    <em>"only the latest one liquidation order within 1000ms will be pushed"</em> until 10 April 2026,
+    when Binance's <a href="https://developers.binance.com/en/docs/products/derivatives-trading-usds-futures/change-log" rel="noopener" target="_blank">change log</a> records "latest" being changed to "largest";
+    the description Binance ships in its own client libraries was back to "latest" by July 2026 and
+    still read that way when checked on 16 September 2026.
   </p>
   <p class="prose">
     One message per symbol per second is ample when the market is quiet and one liquidation
     arrives every few minutes. During a cascade, when dozens or hundreds of positions are closed
-    per second on a single symbol, everything except the largest one in each second is discarded.
-    A sum over that stream is therefore not a total. It is a sample, and the sampling rate falls
-    as the event gets larger.
+    per second on a single symbol, all but one of them in each second are discarded — the most
+    recent or the largest, depending on which wording holds. Neither rule rescues the sum: keeping
+    the largest shrinks the shortfall, it does not remove it. A sum over that stream is therefore
+    not a total. It is a sample, and the sampling rate falls as the event gets larger.
   </p>
 
   <h2>The measured scale</h2>
@@ -62,13 +91,34 @@ const description =
   </p>
 
   <h2>What we do publish</h2>
+  {/* THE GAP RUNS BOTH WAYS, SO THE SENTENCE NO LONGER PICKS ONE. This said the common formula "ignores
+      maintenance margin entirely and is wrong by the maintenance fraction, which grows as position size
+      crosses tier boundaries", then linked "Every contract page prints both results and the gap between
+      them". Audit of 16 September 2026: on 21 of 50 contract pages the printed gap ran the other way —
+      https://coinliqui.com/funding/aero, 3× cap, 16.667% maintenance: 20.00% below entry against 10.00%
+      for the formula, "more room than the formula shows, because the tier caps the leverage at 3×";
+      thirteen 5× contracts 11.11% against 10.00% — and all 21 have a single tier, so nothing crosses a
+      boundary. Those pages price a 10× long; margin.ts clamps 10× to the tier cap and roomVerdict() says
+      which way the gap runs. Under a cap Le below the requested L the room is 1/(2Le−1) against the
+      formula's 1/L, so a cap below (L+1)/2 gives more room and a cap above it less: the direction depends
+      on the contract, the leverage and the size, and this paragraph now says only that. "Steps up at each
+      boundary" was checked against src/data/margin-tables.json the same day: max leverage falls at every
+      boundary in all ten tables (six have more than one tier). The link says "which of the two leaves
+      more room", not "which way it runs": roomVerdict() has a fourth answer, "same", and the contract
+      page then prints "the same room the formula shows" — a gap with no direction, but still an answer. */}
   <p class="prose">
     Liquidation <strong>price</strong> — where a given position would be closed — is fully
     computable, because the maintenance-margin tiers are published. That is a different quantity
-    from liquidation <strong>events</strong>, and it is genuinely useful: the formula in
-    circulation on most calculators ignores maintenance margin entirely and is wrong by the
-    maintenance fraction, which grows as position size crosses tier boundaries.
-    <a href="/funding/btc">Every contract page prints both results and the gap between them →</a>
+    from liquidation <strong>events</strong>, and it is genuinely useful: the
+    {" "}<code>entry × (1 − 1/leverage)</code> formula in circulation on most calculators ignores
+    the tiers entirely, and it can miss in either direction. It ignores maintenance margin, which
+    closes a position while some of its margin is still left, and that alone brings liquidation
+    nearer to entry than the formula says. It ignores the tier's leverage cap, and a position capped
+    below the leverage asked for carries more margin, which moves liquidation further away. Which of
+    the two wins depends on the contract, the leverage and the position size; on a contract with more
+    than one tier, the cap steps down and the maintenance requirement steps up each time the size
+    crosses a boundary.
+    {" "}<a href="/funding/btc">Every contract page prints both results, the gap between them and which of the two leaves more room →</a>
   </p>
 
   <h2>What would change this</h2>

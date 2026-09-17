@@ -4,6 +4,7 @@ import { orderSweeps } from "../src/lib/sweep-order.ts";
 import { stepIndexNow, publishedUrls } from "./indexnow.ts";
 import { collapsedCoverage, publishedSet, orphans } from "./coverage.ts";
 import { readFlips, readFlipEvents, writeCachedFlips, type D1Like } from "../src/lib/flips.ts";
+import { SPARK_KEY, SPARK_POINTS, SPARK_STEP_MS, bucketOf, type SparkMap } from "../src/lib/sparks.ts";
 import { detectFlips, mergeEvents, feedFromEvents, carryForward, LAST_KEY, EVENTS_KEY, type AprSample } from "../src/lib/flip-events.ts";
 import type { Flip } from "../src/lib/flips.ts";
 import { stepReport, stepProbe } from "./report.ts";
@@ -264,6 +265,12 @@ interface RunResult {
    *  which is why the field is optional rather than reported as zero — a step that did not run
    *  and a step that ran and found nothing are different facts. */
   oi?: string;
+  /** What the funding-sparkline append did, absent on the ticks that are inside an open bucket.
+   *  A step that did not run and a step that ran and found nothing are different facts. */
+  sparks?: string;
+  /** Why it did not, when it tried and failed. A sparkline must never fail the tick that writes
+   *  the snapshot every page depends on, so the failure is reported rather than thrown. */
+  sparksError?: string;
   funding?: number;
   candleError?: string;
   /** Minutes since each bulk sweep last completed a full cycle — the only way a 2h/6h/12h
@@ -549,6 +556,95 @@ async function run(env: Env): Promise<RunResult> {
       await env.DB.prepare("DELETE FROM oi_snapshot WHERE at < ?1")
         .bind(at - RETAIN_HOURS * 3_600_000)
         .run();
+    }
+
+    /* THE FUNDING SHAPE PER CONTRACT, APPENDED ONE BUCKET AT A TIME.
+
+       WHY THE WORKER AND NOT THE PAGE. Measured against production D1: a grouped aggregate with
+       `WHERE venue='HlPerp' AND at >= ?` reads 813,101 rows whatever window it asks for, because
+       no index covers a venue filter and the planner takes the whole table. Naming the symbols
+       lets idx_fs_sym (symbol, venue, at) do its job — the same aggregate over an explicit IN
+       list reads 4,900 rows for one four-hour bucket and 201,599 for a seven-day backfill. So
+       this appends a bucket per boundary and the pages do one KV get. See src/lib/sparks.ts.
+
+       ONLY COMPLETE BUCKETS. The bucket the clock is currently inside is still filling; writing
+       its partial mean would put a point on the chart that changes under the reader and settles
+       somewhere else. The newest point is always the last bucket that has closed.
+
+       THE BACKFILL IS BOUNDED AND HAPPENS ONCE. With no stored map this reaches back the full
+       SPARK_POINTS — a single 201,599-row read against a daily budget of five million, and only
+       ever on the first run after this ships or after the key is deleted. Afterwards the gap is
+       one bucket, or a few if the worker missed some, and it is capped either way so a long
+       outage cannot produce an unbounded query. */
+    if (!collapsed && env.DB) {
+      try {
+        const nowBucket = bucketOf(at);
+        const prev = ((await env.SNAPSHOT.get(SPARK_KEY, "json")) as SparkMap | null);
+        const usable = prev && prev.v === 1 && prev.series ? prev : null;
+        const lastDone = nowBucket - 1;
+        const have = usable ? usable.bucket : -Infinity;
+        if (lastDone > have) {
+          const need = Math.min(SPARK_POINTS, Number.isFinite(have) ? lastDone - have : SPARK_POINTS);
+          const from = (lastDone - need + 1) * SPARK_STEP_MS;
+          const syms = snap.perps.map((p) => p.symbol).filter(Boolean);
+          if (syms.length) {
+            const marks = syms.map(() => "?").join(",");
+            const rows = await (env.DB as unknown as D1Like).prepare(
+              `SELECT symbol, CAST(at / ${SPARK_STEP_MS} AS INTEGER) AS b, AVG(apr) AS apr
+                 FROM funding_snapshot
+                WHERE symbol IN (${marks}) AND venue = 'HlPerp' AND at >= ?${syms.length + 1} AND at < ?${syms.length + 2}
+                GROUP BY symbol, b`,
+            /* .all<T>() through the repo's own D1Like, the same shape flips.ts declares. The
+               ambient D1PreparedStatement in this workers-types version does not carry `all`
+               on the value returned by bind(), and the site's readers have needed their own
+               structural type for that reason since the flip feed was written. */
+            ).bind(...syms, from, (lastDone + 1) * SPARK_STEP_MS)
+              .all<{ symbol: string; b: number; apr: number }>();
+
+            const fresh = new Map<string, Map<number, number>>();
+            for (const r of rows.results ?? []) {
+              if (!Number.isFinite(r.apr)) continue;
+              if (!fresh.has(r.symbol)) fresh.set(r.symbol, new Map());
+              fresh.get(r.symbol)!.set(r.b, r.apr);
+            }
+
+            /* REBUILT AS A DENSE WINDOW ENDING AT lastDone, so every row in the column shares an
+               x axis. Appending only what the query returned would leave one contract's newest
+               point three buckets older than its neighbour's while both drew to the same right
+               edge — a column of sparklines that are not on the same clock is the shared-scale
+               fault in the other dimension. A bucket with no reading carries the previous value
+               forward; a contract with no reading at all is simply absent from the map, which
+               the page renders as no mark rather than as a flat line. */
+            const series: Record<string, number[]> = {};
+            for (const sym of syms) {
+              const old = usable?.series?.[sym];
+              const oldBase = usable ? usable.bucket - (old?.length ?? 0) + 1 : 0;
+              const got = fresh.get(sym);
+              if (!got && !(old && old.length)) continue;
+              const out: number[] = [];
+              let carry = NaN;
+              for (let b = lastDone - SPARK_POINTS + 1; b <= lastDone; b++) {
+                const v = got?.get(b)
+                  ?? (old && b >= oldBase && b <= (usable?.bucket ?? -1) ? old[b - oldBase] : undefined);
+                if (Number.isFinite(v)) carry = v as number;
+                if (Number.isFinite(carry)) out.push(Number(carry.toFixed(5)));
+              }
+              if (out.length) series[sym] = out.slice(-SPARK_POINTS);
+            }
+
+            const n = Object.keys(series).length;
+            if (n) {
+              const map: SparkMap = { v: 1, bucket: lastDone, at, series };
+              await env.SNAPSHOT.put(SPARK_KEY, JSON.stringify(map));
+              result.sparks = `${n} symbols, ${need} bucket(s) added`;
+            }
+          }
+        }
+      } catch (e) {
+        /* A sparkline is an ornament on a number that is already correct without it. It must not
+           be able to fail the tick that writes the snapshot every page depends on. */
+        result.sparksError = String((e as Error)?.message ?? e).slice(0, 120);
+      }
     }
 
     /* SWEEP FRESHNESS, carried on the run row so a 2h/6h/12h cadence is observable at all.

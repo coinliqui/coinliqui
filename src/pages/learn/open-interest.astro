@@ -4,21 +4,24 @@ import Related from "../../components/Related.astro";
 import Figure from "../../components/Figure.astro";
 import { getSnapshot, coldStart, OI_NOTIONAL_FLOOR } from "../../lib/hyperliquid.ts";
 import { pct, usd } from "../../lib/funding.ts";
+import { extremeBy } from "../../lib/extreme.ts";
 
 /**
  * THE OPEN-INTEREST EXPLAINER.
  *
  * WHY IT IS SEPARATE FROM /open-interest. That page is a table: it shows the book and assumes
  * the reader knows what the column means. The two questions people actually ask of the number
- * — "is rising open interest bullish" and "why is your figure a fifth of the one I saw
+ * — "is rising open interest bullish" and "why is your figure smaller than the one I saw
  * elsewhere" — are answered nowhere on this site, and the second one is the difference between
  * a reader trusting a page and closing it.
  *
  * THE FRAGMENTATION PARAGRAPH IS THE POINT OF THE PAGE. A visitor who compares our BTC open
- * interest against an aggregator's sees a number roughly a fifth the size and concludes the
- * site is broken. It is not broken; it is one venue's book, stated as such. That explanation
- * exists on /open-interest and on /about as a clause; here it gets the space to actually
- * land, because it is the single most likely reason a reader distrusts this site's numbers.
+ * interest against an aggregator's sees a larger number and concludes the site is broken. It
+ * is not broken; it is one venue's book, stated as such. That explanation exists on
+ * /open-interest and on /about as a clause; here it gets the space to actually land, because
+ * it is the single most likely reason a reader distrusts this site's numbers. It is made
+ * WITHOUT a cross-venue share: this site collects no other venue's open interest, so it has no
+ * source for one (see the note at that paragraph).
  */
 const snap = await getSnapshot((Astro.locals as any)?.runtime?.env?.SNAPSHOT, import.meta.env.DEV);
 if (!snap.available) return coldStart();
@@ -26,17 +29,70 @@ if (!snap.available) return coldStart();
 const perps = [...snap.perps];
 const totalOi = perps.reduce((s, p) => s + p.oiNotional, 0);
 const totalVol = perps.reduce((s, p) => s + p.dayNtlVlm, 0);
-const btc = perps.find((p) => p.symbol === "BTC") ?? perps[0];
-/* THE SENTENCE SAID "LARGEST" AND THE EXPRESSION SAID "BTC". The paragraph below prints "The
-   largest book covered today is {btc.symbol}, at {usd(btc.oiNotional)}" from the lookup above,
-   which finds BTC by NAME and falls back to perps[0] only when BTC is absent. It has been
-   accidentally true for as long as BTC has held the largest book, and would go quietly false
-   the first day it does not — the failure mode this codebase keeps finding, where a superlative
-   is asserted by a label and never computed. `perps` is a plain copy of snap.perps here, not a
-   sorted one, so the maximum is taken explicitly rather than assumed from position. */
-const biggest = perps.length
-  ? perps.reduce((a, b) => (b.oiNotional > a.oiNotional ? b : a))
-  : null;
+const contractsWord = perps.length === 1 ? "contract" : "contracts";
+
+/* THE ONE LIVE FIGURE THE FRAGMENTATION PARAGRAPH NEEDS, found by name and printed only when it
+   is there. No fallback to another row: "for BTC, more than $X" with X taken from some other
+   coin would be the same label-says-one-thing, expression-says-another defect noted below. */
+const btcBook = perps.find((p) => p.symbol === "BTC" && Number.isFinite(p.oiNotional) && p.oiNotional > 0) ?? null;
+const aggregatorClause = btcBook ? ` — for BTC, more than the ${usd(btcBook.oiNotional)} here —` : ",";
+
+/* "THE FUNDING PAGES COMPARE ALL THREE" WAS A LITERAL OVER A FEED THAT DOES NOT ALWAYS CARRY
+   THREE. Measured 16 September 2026 at 15:17Z against Hyperliquid's predictedFundings (the only
+   source of the Binance and Bybit rates, see src/lib/hyperliquid.ts): 183 of 234 coins carried
+   all three venues, HYPE carried Hyperliquid alone and PUMP had no Bybit entry — and
+   /funding/[symbol] already notes that HYPE and PURR render one venue and PUMP and CASHCAT two.
+   So on http://localhost:4322/learn/open-interest the sentence promised a three-way comparison
+   the HYPE page cannot show. The counts are now taken from the same `venues` arrays those pages
+   render, so the sentence names how many contracts have both other venues, how many have one,
+   and turns into "no exception" on a snapshot where none has either.
+
+   "BESIDE ITS OWN" WAS COUNTED WITHOUT ITS OWN. Re-audited 16 September 2026 at 15:23Z: both
+   counts tested Binance and Bybit only, so a contract whose feed row carried Binance's rate and
+   no HlPerp entry would have been counted into "carries Binance's rate beside its own". All 50
+   covered contracts carried HlPerp at that instant, so the sentence held by accident of the
+   snapshot. Both counts now require Hyperliquid's own rate, which is what the words say; and the
+   "no exception" branch, reachable when no contract pairs Hyperliquid's rate with another,
+   no longer says the feed carries NO Binance or Bybit rate (a contract with Binance and no
+   HlPerp would falsify it) — it says only that no page can set Hyperliquid's rate against
+   another venue's, which is exactly withEither === 0. */
+const hasRate = (p: (typeof perps)[number], venue: string) =>
+  p.venues.some((v) => v.venue === venue && Number.isFinite(v.apr));
+const withBoth = perps.filter((p) => hasRate(p, "HlPerp") && hasRate(p, "BinPerp") && hasRate(p, "BybitPerp")).length;
+const withEither = perps.filter((p) => hasRate(p, "HlPerp") && (hasRate(p, "BinPerp") || hasRate(p, "BybitPerp"))).length;
+const ofCovered = (k: number) =>
+  k === perps.length
+    ? perps.length === 1 ? "for the one contract covered here" : `for all ${perps.length} contracts covered here`
+    : `for ${k} of the ${perps.length} ${contractsWord} covered here`;
+const fundingLead =
+  withEither === 0
+    ? "Funding is no exception right now: Hyperliquid's predicted-funding feed carries no Binance or Bybit rate beside its own for any contract covered here, so"
+    : withBoth === 0
+      ? `Funding is the exception: Hyperliquid's predicted-funding feed carries Binance's or Bybit's rate beside its own ${ofCovered(withEither)}, so`
+      : `Funding is the exception: Hyperliquid's predicted-funding feed carries Binance's and Bybit's rates beside its own ${ofCovered(withBoth)}${withEither > withBoth ? ` and one of the two for ${withEither - withBoth} more` : ""}, so`;
+const fundingTail =
+  withEither === 0
+    ? "cannot set Hyperliquid's rate against another venue's."
+    : withBoth === perps.length
+      ? "compare all three."
+      : "compare venues wherever it does.";
+
+/* THE SENTENCE SAID "LARGEST" AND THE EXPRESSION SAID "BTC". The paragraph below printed "The
+   largest book covered today is {btc.symbol}, at {usd(btc.oiNotional)}" from a lookup that
+   found BTC by NAME and fell back to perps[0] only when BTC was absent — accidentally true for
+   as long as BTC held the largest book. A reduce() replaced it, and a reduce() still names
+   whichever row comes first when two books are equal. extremeBy carries the tie in its type,
+   so a tied maximum is printed as a tie and cannot name a winner. The sentence is decided here,
+   not in markup, so the tied and unique forms cannot drift apart. */
+const biggest = extremeBy(perps, (p) => p.oiNotional, "max");
+const listWords = (xs: string[]) =>
+  xs.length <= 1 ? xs.join("") : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`;
+const biggestSentence =
+  biggest.kind === "unique"
+    ? `The largest book covered today is ${biggest.item.symbol}, at ${usd(biggest.value)}.`
+    : biggest.kind === "tied"
+      ? `The largest books covered today are ${listWords(biggest.items.map((p) => p.symbol))}, tied at ${usd(biggest.value)} each.`
+      : null;
 
 /* Fastest-churning books: volume as a multiple of the position base. A different sort from
    /open-interest, which leads with size — this page is about what the ratio means. */
@@ -44,6 +100,12 @@ const churn = perps
   .filter((p) => p.oiNotional > 0 && Number.isFinite(p.dayNtlVlm))
   .sort((a, b) => b.dayNtlVlm / b.oiNotional - a.dayNtlVlm / a.oiNotional)
   .slice(0, 12);
+/* The note under the table said "The twelve fastest-churning" as a literal over a slice that
+   holds at most twelve; the count now comes from the slice itself. */
+const churnNote =
+  churn.length === 1
+    ? "The fastest-churning covered book right now."
+    : `The ${churn.length} fastest-churning covered books right now.`;
 
 /* THE LESSON IS "OPEN INTEREST IS NOT VOLUME", AND A RATIO SAYS IT IN ONE PICTURE. The page
    argues it in prose and the numbers are on the page, but a reader still has to divide one
@@ -112,7 +174,7 @@ const description =
     position is <em>created</em> or <em>closed</em>.
   </p>
   <p class="prose">
-    Across the {perps.length} contracts covered here, that is {usd(totalOi)} of open interest
+    Across the {perps.length} {contractsWord} covered here, that is {usd(totalOi)} of open interest
     against {usd(totalVol)} of volume in the last twenty-four hours — a turnover of
     {" "}{totalOi > 0 ? (totalVol / totalOi).toFixed(2) : "—"}×. A turnover above one means the
     book traded more than its own size in a day.
@@ -140,19 +202,63 @@ const description =
   </p>
 
   <h2 class="section">Why our figure is smaller than the one you saw elsewhere</h2>
+  {/* TWO VENUE FIGURES WITH NO SOURCE THE PAGE COULD NAME. Audited 16 September 2026 on
+      https://coinliqui.com/learn/open-interest, this paragraph read "Measured on 18 August 2026,
+      Hyperliquid held $2.68B of BTC open interest against $6.83B on Binance and $3.91B on Bybit —
+      roughly a fifth of those three together", then linked "What is collected, and what is not"
+      to /data-sources. That page says every displayed figure comes from its table, the table's
+      only open-interest row is Hyperliquid's metaAndAssetCtxs, and no request is ever made to
+      Binance or Bybit; the footer says Hyperliquid republishes those venues' FUNDING rates, not
+      their open interest. So the $6.83B and $3.91B came either from a request the site says it
+      never makes or from a source it never names — and the commit that introduced them (2f65971)
+      records the readings, not where they were read. The ratio was also a month stale: the local
+      snapshot the same day put Hyperliquid's BTC book at $2.75B against the dated $2.68B.
+
+      WHY THIS FORM CANNOT GO STALE OR UNSOURCED THE SAME WAY. The only number left is
+      Hyperliquid's live BTC book, from the snapshot every other figure on the page uses, printed
+      only when BTC is in it. "More" needs no measurement: any total that adds another venue's
+      book to Hyperliquid's exceeds Hyperliquid's alone. And the funding exception now says WHY
+      three venues can be compared there — the rates arrive in Hyperliquid's own feed — which is
+      the same reason open interest cannot be.
+
+      NO PROMISE ABOUT OTHER PAGES. The first rewrite ended "and does not print a share it has no
+      source for". Re-audited 16 September 2026 on http://localhost:4322: this paragraph links
+      /open-interest, which still printed "on 18 August 2026, Hyperliquid held $2.68B of BTC against
+      $6.83B on Binance and $3.91B on Bybit, so roughly a fifth of those three", and /about printed
+      "about a fifth of the combined BTC open interest" — so the clause was false one click away.
+      Those two sentences are the defect and their fix belongs to their own files; this paragraph
+      now states only what collection allows, which stays true whatever another page prints.
+
+      THE SAME KIND OF PROMISE HAD SURVIVED IN THE NEXT PARAGRAPH: "The difference is scope, and it
+      is stated on every page that carries one." Rendered 16 September 2026 at 15:19 UTC on
+      http://localhost:4322/funding, the table's headers read "Hyperliquid APR | Binance APR |
+      Bybit APR | Venue spread (APR) | Open interest | 24h volume", with no venue on the one column
+      that is Hyperliquid's alone, and nothing above the footer's "Data via Hyperliquid" named its
+      venue. The sentence now
+      says what the scope difference is (one venue against a sum), which needs no other page to be
+      true. The funding sentence after it is built from the snapshot; see fundingLead above.
+
+      "HERE" COULD BE READ AS THE SITE, AND THE SITE IS NOT CLEAN YET. The bold sentence said
+      "every open-interest figure here is Hyperliquid's book alone". Re-audited 16 September 2026
+      at 15:25 UTC: http://localhost:4322/open-interest, linked twice from this page ("All N,
+      sorted by size" and the Related card), still printed "$2.68B of BTC against $6.83B on
+      Binance and $3.91B on Bybit", and at 15:27 UTC http://localhost:4322/about still printed
+      "Binance's $6.83B and Bybit's $3.91B" — open-interest figures that are not Hyperliquid's,
+      typed rather than collected. So with "here" meaning the site, the bold claim was false one
+      click away. It is now scoped to this page, which prints only snapshot books, and the site-
+      wide statement is made about what is COLLECTED, the one thing a typed sentence elsewhere
+      cannot change. */}
   <p class="prose">
     This is the most common reason to distrust a number on this site, so it is worth stating
-    plainly: <strong>every open-interest figure here is Hyperliquid's book alone.</strong> It is
-    the venue this project collects from directly, and it is a minority of perpetual open
-    interest across the market. Measured on 18 August 2026, Hyperliquid held $2.68B of BTC open
-    interest against $6.83B on Binance and $3.91B on Bybit — roughly a fifth of those three
-    together, and those three are not the whole market either.
+    plainly: <strong>every open-interest figure on this page is Hyperliquid's book alone.</strong>
+    Hyperliquid is the only venue whose open interest this site collects, so this page cannot
+    measure how that book compares with the rest of the market.
   </p>
   <p class="prose">
-    An aggregator adding a dozen venues will therefore report several times our figure for the
-    same coin, and both numbers can be right. The difference is scope, and it is stated on
-    every page that carries one. Funding is the exception: three venues publish comparable
-    funding rates, so <a class="link" href="/funding">the funding pages</a> compare all three.
+    An aggregator that adds other venues' books to Hyperliquid's will report more for the same coin{aggregatorClause} and both numbers can be right. The difference is scope: one venue's book
+    here, a sum of venues' books there. {fundingLead}
+    {" "}<a class="link" href="/funding">the funding pages</a> {fundingTail} That feed carries no
+    venue's open interest.
     {" "}<a class="link" href="/data-sources">What is collected, and what is not →</a>
   </p>
 
@@ -190,7 +296,17 @@ const description =
   </p>
   <div class="panel">
     <table class="tbl">
-      <thead><tr><th>Coin</th><th class="num">Turnover (24h volume ÷ OI)</th><th class="num">Open interest <span class="thscope">Hyperliquid</span></th><th class="num">Funding, annualised</th></tr></thead>
+      {/* THE FUNDING COLUMN NAMED NO VENUE, beside an open-interest column that did, under prose
+          telling the reader that funding is the figure three venues publish differently. Audited
+          16 September 2026 on https://coinliqui.com/learn/open-interest: ARB 10.95%, XLM -34.36%
+          and kPEPE -1.51% here matched the Hyperliquid row of /funding/arb, /funding/xlm and
+          /funding/kpepe at the same 12:47 UTC snapshot, while Binance read -14.91% (ARB) and
+          -22.30% (XLM) and Bybit -15.76% (kPEPE). Nothing on this page said which of the three
+          the column was. The cell is p.hlApr, which src/lib/hyperliquid.ts takes from the HlPerp
+          entry of predictedFundings — Hyperliquid's by construction — so the scope is stated in
+          the header with the same .thscope the open-interest column uses, where it travels with
+          the column rather than depending on a reader connecting prose to a table. */}
+      <thead><tr><th>Coin</th><th class="num">Turnover (24h volume ÷ OI)</th><th class="num">Open interest <span class="thscope">Hyperliquid</span></th><th class="num">Funding, annualised <span class="thscope">Hyperliquid</span></th></tr></thead>
       <tbody>
         {churn.map((p) => (
           <tr>
@@ -204,7 +320,7 @@ const description =
     </table>
   </div>
   <p class="section-note" style="margin-top:10px">
-    The twelve fastest-churning covered books right now.
+    {churnNote}
     {" "}<a class="link" href="/open-interest">All {perps.length}, sorted by size →</a>
   </p>
 
@@ -216,9 +332,7 @@ const description =
     there are none. A contract that leaves coverage answers
     {" "}<a class="link" href="/retired">410 Gone</a> rather than quietly redirecting, so a
     crawler is told the page is over rather than left guessing.
-    {biggest && (
-      <span>{" "}The largest book covered today is {biggest.symbol}, at {usd(biggest.oiNotional)}.</span>
-    )}
+    {biggestSentence && <span>{" "}{biggestSentence}</span>}
   </p>
 
   <Related

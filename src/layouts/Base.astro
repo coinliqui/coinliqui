@@ -400,6 +400,15 @@ const schema = {
          reading. The site already scopes funding this way ("Most expensive funding ·
          Hyperliquid"); open interest simply never got the same treatment. */
       .thscope, .scope { font-weight: 400; color: var(--text-faint); font-size: 11px; letter-spacing: .01em; }
+      /* ON A PHONE THE SCOPE STACKS UNDER ITS LABEL. Table headers do not wrap, so an inline
+         "Hyperliquid" made every scoped column as wide as label and scope together: measured
+         16 September 2026 at 375px, "Annualised Hyperliquid" took 178px against 96 for the label
+         alone, and pushed the next column toward the panel's edge on four tables that share the
+         convention. Stacked, the column is only as wide as its longer line. Nothing is hidden —
+         this changes where the word sits, not whether a reader receives it. */
+      @media (max-width: 560px) {
+        .tbl th .thscope { display: block; }
+      }
       .scope { margin-left: 4px; }
       .pays-l { color: var(--pays-l); }
       .pays-s { color: var(--pays-s); }
@@ -928,6 +937,61 @@ const schema = {
       /* A SIGNED BAR TAKES THE FUNDING PAIR, never green and red: those are the candles'. */
       .bars__fill--l { background: var(--pays-l); }
       .bars__fill--s { background: var(--pays-s); }
+
+      /* ================================================================================
+         A DIVERGING TRACK, AND THE DEFECT IT REPLACES.
+
+         /funding drew its ten off-base contracts as ordinary left-anchored bars whose LENGTH
+         was |rate − base rate| and whose COLOUR was the funding pair applied to `rate > base`.
+         Two things were wrong and both were only visible on screen.
+
+         THE HUES MEANT TWO THINGS ON ONE PAGE. The legend above the chart promised "cyan =
+         shorts pay longs", and the table below honoured it. The chart used the same pair for
+         "below the base rate" — so SOL at +6.71%, a contract where longs ARE paying and which
+         the table tinted amber, was drawn cyan eight inches higher. The hues now mean
+         who-pays-whom everywhere, full stop; distance from a reference is a POSITION on this
+         track and never a colour.
+
+         AND THE GEOMETRY READ BACKWARDS. Every bar grew rightward from a left edge, so the
+         longest bar was the most NEGATIVE rate with nothing in the shape saying so. A reader
+         scanning the picture got a ranking of "biggest" that was a ranking of "furthest below
+         the floor". Here the bar starts at zero and grows the way its sign points, which is the
+         convention every deviation chart has used since the FT wrote it down: right and up are
+         positive, and the zero line is drawn rather than implied.
+         ================================================================================ */
+      .bars--signed .bars__track { position: relative; overflow: visible; }
+      .bars--signed .bars__fill { position: absolute; top: 0; bottom: 0; height: auto; }
+      /* The zero rule runs taller than the track so it reads as an axis crossing the rows rather
+         than as a mark inside one. It is ink, not hue: nothing about direction is encoded here. */
+      .bars__zero, .bars__ref { position: absolute; top: -4px; bottom: -4px; width: 1px; pointer-events: none; }
+      .bars__zero { background: var(--text-dim); }
+      /* THE REFERENCE IS A SECOND CHANNEL, DELIBERATELY DIFFERENT IN KIND. The venue's base rate
+         matters on this figure — it is what "priced away from" is measured against — and giving
+         it a colour would put a third meaning on a two-colour system. A dotted rule is a mark a
+         reader reads as "a reference", and it cannot be confused with a payment direction. */
+      .bars__ref { background: repeating-linear-gradient(var(--text-faint) 0 2px, transparent 2px 5px); }
+      .bars__axis {
+        position: relative; grid-column: 2 / 3; height: 1.1em; margin-top: 2px;
+        font: 500 var(--fs-xs)/1 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--text-faint);
+      }
+      .bars__tick { position: absolute; transform: translateX(-50%); white-space: nowrap; }
+      .bars__tick--edge { transform: none; }
+      .bars__tick--edge-r { transform: translateX(-100%); }
+      /* A LABEL THE NARROW TRACK HAS NO ROOM FOR. Whether it fits is a fact about the viewport,
+         which the server cannot know and this rule can — see the tick-placement note in
+         src/pages/funding/index.astro. The mark it labels is still drawn; only its words go.
+
+         VERIFY THIS RULE AGAINST A FRESH DOCUMENT, NOT A RE-NAVIGATION. While it was being
+         added, the served HTML carried it (curl found it) and document.styleSheets did not —
+         the element computed to display:block and the label overlapped on a phone. That looked
+         like the pipeline dropping the rule, and the first version of this comment said so. It
+         was the dev server’s HMR holding a stylesheet from before the edit: the same one-line
+         rule, loaded fresh, parses and computes to none. The sibling one-line @media blocks at
+         :774 and :1050 were in the CSSOM the whole time, which is what disproved it.
+         The lesson is about the instrument: an edit to a <style> in this file can be invisible
+         to an already-open page, so a CSS change is checked on a document that was loaded after
+         it, or it is not checked at all. */
+      @media (max-width: 560px) { .bars__tick--optional { display: none; } }
       .bars__group { grid-column: 1 / -1; font-size: var(--fs-xs); color: var(--text-faint); margin-top: var(--gap-pair); }
       .bars__group:first-child { margin-top: 0; }
 
@@ -1359,17 +1423,23 @@ const schema = {
         THIS EXPLANATION LIVES OUT HERE, and that is the second lesson. Written inside the
         script it SHIPS: is:inline means the body is served verbatim to every reader, and the
         first draft of this comment put /open-interest 73 bytes over its wire budget. The gate
-        caught it. Astro comments are compiled away; script comments are payload. */}
+        caught it. Astro comments are compiled away; script comments are payload.
+
+        TWO MORE HAD STAYED INSIDE, and are out here now (16 September 2026, when /unlocks and
+        /tools/leverage went over their budgets). The queue is safe to fill before gtag.js exists
+        — that is what dataLayer is for — so deferring the LOADER changes when the hit is sent, not
+        whether it is. And the load waits for the page's own load event, not parse: the point is to
+        be behind everything the page needs to become useful — requestIdleCallback where it exists,
+        a timeout where it does not (Safari), and a 3s backstop so a perfectly still reader is
+        still counted. */}
     {GA_ENABLED && (
       <script is:inline define:vars={{ GA_ID: GA_MEASUREMENT_ID, DEFER: GA_DEFER, CFG: GA_CONFIG }}>
         window.dataLayer = window.dataLayer || [];
         function gtag() { window.dataLayer.push(arguments); }
         gtag("js", new Date());
-        CFG.page_location = location.origin + location.pathname;   // origin + path only; see above
+        CFG.page_location = location.origin + location.pathname;
         gtag("config", GA_ID, CFG);
 
-        /* The queue above is safe to fill before gtag.js exists — that is what dataLayer is
-           for — so deferring the LOADER changes when the hit is sent, not whether it is. */
         if (DEFER) {
           var armed = false;
           var events = ["pointerdown", "keydown", "scroll", "touchstart"];
@@ -1387,9 +1457,6 @@ const schema = {
           for (var j = 0; j < events.length; j++) {
             window.addEventListener(events[j], load, { passive: true, once: true });
           }
-          /* After load, not after parse: the point is to be behind everything the page needs
-             to become useful. requestIdleCallback where it exists, a timeout where it does
-             not (Safari), and a 3s backstop so a perfectly still reader is still counted. */
           function schedule() {
             if (window.requestIdleCallback) window.requestIdleCallback(load, { timeout: 3000 });
             else setTimeout(load, 1200);
@@ -1505,9 +1572,17 @@ const schema = {
 
                   A footer is a CREDIT, not a provenance statement, so it names every source
                   the site draws on and hands the per-figure question to the page that answers
-                  it properly. Naming them all is true on every page; naming one was not. */}
-              Data via Hyperliquid, Binance and Bybit (derivatives) and Ethereum JSON-RPC
-              (on-chain). <a href="/data-sources">Which endpoint feeds which
+                  it properly. Naming them all is true on every page; naming one was not.
+
+                  AND IT MUST NOT IMPLY A REQUEST THE SITE NEVER MAKES. "Data via Hyperliquid,
+                  Binance and Bybit" read as three feeds. There is one: the Binance and Bybit
+                  rates reach this site only inside Hyperliquid's predictedFundings response
+                  (src/lib/hyperliquid.ts), and /data-sources states that no request is ever made
+                  to either venue. A verifier checking the coin pages on 16 September flagged the
+                  credit as contradicting that page. The venues are still credited — they are the
+                  source of those rates — with the route stated. */}
+              Data via Hyperliquid (derivatives, including the Binance and Bybit funding rates it
+              republishes) and Ethereum JSON-RPC (on-chain). <a href="/data-sources">Which endpoint feeds which
               figure →</a> <a href="/terms">Not investment advice →</a>
               {fetchedAt && <> Figures as of <time datetime={new Date(fetchedAt).toISOString()}>{new Date(fetchedAt).toISOString().replace("T", " ").slice(0, 16)} UTC</time>.</>}
             </p>

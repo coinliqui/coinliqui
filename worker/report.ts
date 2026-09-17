@@ -11,8 +11,10 @@
  * call per URL is unavoidable, that API has no batch form — and a Worker invocation allows
  * 50. So the run is sliced across consecutive ticks, carrying its accumulated lines in KV,
  * exactly the way the candle sweeps carry their cursor. It starts on the first tick after
- * 07:00 UTC on a Monday (Search Console lags ~2 days, so a Monday run covers the whole of
- * the previous week) and finishes about twenty minutes later.
+ * 07:00 UTC on a Monday and finishes about twenty minutes later. Search Console lags ~2 days,
+ * so the search tables cover the SEARCH_WINDOW_DAYS ending SEARCH_LAG_DAYS before the run —
+ * for a Monday run, Saturday to Saturday, NOT the ISO week the report is named for. See
+ * searchWindow() below for why this sentence no longer says "the whole of the previous week".
  *
  * Each section degrades to a stated reason rather than failing the run: the useful property
  * of a weekly instrument is that it always produces something readable on the day.
@@ -23,6 +25,42 @@
  */
 
 import TERMS from "../src/data/terms-baseline.json" with { type: "json" };
+import { extremeBy } from "../src/lib/extreme.ts";
+
+/* THE SHAPE OF THE STORED DOC, SO A PAGE CAN TELL WHICH WORDING IT IS READING.
+   The report is written once a week and read for the seven days after, so a correction to its
+   words reaches the page a week late and only after the worker is deployed. Docs without this
+   field were written before the 16 September 2026 corrections below, and /status/indexation
+   prints those corrections beside them instead of letting the old sentences stand alone. */
+export const REPORT_FORMAT = 2;
+
+/* =========================================================================================
+   THE SEARCH WINDOW, NAMED ONCE AND READ BY THE PAGE THAT DESCRIBES IT.
+
+   The page intro said "Search Console lags about two days, so a Monday run covers the whole of
+   the previous week", and the band table and One push away both said "this week". Measured 16
+   September 2026 on https://coinliqui.com/status/indexation, report 2026-W38 generated Monday
+   2026-09-14: the Search performance heading read "2026-09-05 to 2026-09-12" — eight days
+   inclusive, Saturday of W36 to Saturday of W37, with Sunday 13 left out. The lag the sentence
+   cited is precisely why Sunday cannot be in it.
+
+   The dates are unchanged: `now - 9 days` to `now - 2 days` is what this computed before, and
+   changing the span would make this week's impressions incomparable with every earlier week's.
+   The WORDS changed, and they come from these two numbers, so the page and the tables cannot
+   describe different windows again.
+   ========================================================================================= */
+export const SEARCH_LAG_DAYS: number = 2;
+export const SEARCH_WINDOW_DAYS: number = 8;
+export function searchWindow(at: number): { start: string; end: string } {
+  const day = 86_400_000;
+  const end = at - SEARCH_LAG_DAYS * day;
+  const iso = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+  return { start: iso(end - (SEARCH_WINDOW_DAYS - 1) * day), end: iso(end) };
+}
+/** Search Analytics rows per call. A response that fills it is a floor, not a count. */
+const QUERY_ROW_LIMIT = 500;
+/** Readings kept in index:history — twenty-six weekly runs is six months. */
+export const HISTORY_KEEP = 26;
 
 export interface ReportEnv {
   SNAPSHOT: {
@@ -38,11 +76,29 @@ export interface ReportEnv {
 
 /** One dated observation of how much of the site Google has indexed. Kept as a SERIES so
  *  "deferred" can be told from "rejected" — a single snapshot cannot separate them. */
-interface IndexPoint {
+export interface IndexPoint {
   at: number;
   total: number;
   indexed: number;
   byTemplate: [name: string, indexed: number, total: number][];
+}
+
+/* THE SERIES TABLE, WRITTEN IN ONE PLACE FOR TWO READERS. The worker prints it under the
+   not-indexed list, and /status/indexation prints the same rows under a report stored before the
+   worker printed them (2026-W38 and earlier said "watch the series below" over no series). One
+   function, so the table a reader is sent to looks the same whichever of the two drew it.
+   A change of zero reads "unchanged": "0 indexed" beside "4/6" reads as a count of zero. */
+export function indexHistoryRows(history: readonly IndexPoint[], earliest: string): string[] {
+  const out = ["| Reading | Indexed | Change since the reading before |", "|---|---:|---|"];
+  history.forEach((h, n) => {
+    const older = history[n + 1];
+    const d = older ? h.indexed - older.indexed : null;
+    const change = d === null || !older
+      ? earliest
+      : `${d === 0 ? "unchanged" : `${d > 0 ? "+" : "−"}${Math.abs(d)} indexed`}${older.total !== h.total ? `; covered set ${older.total} → ${h.total}` : ""}`;
+    out.push(`| ${new Date(h.at).toISOString().slice(0, 10)} | ${h.indexed}/${h.total} (${share(h.indexed, h.total)}) | ${change} |`);
+  });
+  return out;
 }
 
 interface Template {
@@ -276,7 +332,7 @@ export async function stepReport(env: ReportEnv, force = false): Promise<string 
     st.lines.push(`> above is what it completed before that.`);
     /* An abandoned run carries its list too. Otherwise one stalled week silently resets the
        comparison and the next reading reports "no previous list" as though the series began. */
-    const partial = { week: st.week, at: Date.now(), tookMs: Date.now() - st.startedAt, md: st.lines.join("\n") + "\n", urls: st.urls ?? [] };
+    const partial = { week: st.week, at: Date.now(), tookMs: Date.now() - st.startedAt, md: st.lines.join("\n") + "\n", urls: st.urls ?? [], format: REPORT_FORMAT };
     await env.SNAPSHOT.put(`report:${st.week}`, JSON.stringify(partial));
     await env.SNAPSHOT.put("report:latest", JSON.stringify(partial));
     await env.SNAPSHOT.delete("report:state");
@@ -492,17 +548,6 @@ export async function stepReport(env: ReportEnv, force = false): Promise<string 
           t.indexed = q.indexed;
           say(`| \`${t.name}\` | ${q.indexed}/${t.urls.length} (${share(q.indexed, t.urls.length)}) | ${q.crawled} | ${q.discovered} | ${q.unknown} | ${q.other} |`);
         }
-        const missing = st.templates.flatMap((t) => (t.notIndexed ?? []).map((n) => [t.name, ...n] as [string, string, string, string]));
-        if (missing.length) {
-          say(`\n**The ${missing.length} URLs Google has not indexed**, with its own reason for each. Read the`);
-          say("reason before acting: *Discovered — currently not indexed* is a queue, and the answer is");
-          say("usually to wait and watch the series below; *Crawled — currently not indexed* is a");
-          say("judgement about the page, and the answer is to change the page.\n");
-          say("| URL | Template | Verdict | Google's coverage state |");
-          say("|---|---|---|---|");
-          for (const [tpl, u, v, cov] of missing.slice(0, 40)) say(`| \`${u}\` | \`${tpl}\` | ${v} | ${cov} |`);
-          if (missing.length > 40) say(`\n…and ${missing.length - 40} more.`);
-        }
         /* A SNAPSHOT CANNOT ANSWER THE QUESTION THIS DATA GETS ASKED.
            Four URLs came back "Discovered - currently not indexed" and the obvious causes were
            all tested and all failed: the unindexed pages are not thinner than the indexed ones
@@ -514,16 +559,72 @@ export async function stepReport(env: ReportEnv, force = false): Promise<string 
            So each completed inspection appends a dated row here. Twenty-six of them is six
            months of weekly runs, which is enough to tell "deferred" from "rejected" — and small
            enough to stay one KV value. */
+        const point: IndexPoint = {
+          at: Date.now(),
+          total: flat.length,
+          indexed: st.templates.reduce((n, t) => n + (t.indexed ?? 0), 0),
+          byTemplate: st.templates.map((t) => [t.name, t.indexed ?? 0, t.urls.length] as [string, number, number]),
+        };
+        /* A STORE THAT COULD NOT BE READ IS NOT AN EMPTY STORE. The first version of the table
+           below shared one flag for "could not read" and "could not write", and a mocked
+           throwing get() (16 September 2026) printed "1 reading, of the last 26 the store
+           keeps" over a single row marked "— earliest kept", when older readings may well have
+           existed and simply were not reachable. So the read and the write are separate now:
+           `stored` is null only when the read failed, and a failed read is never followed by a
+           write — one point written over an unreadable value would erase six months. Every
+           sentence and the last row's label are chosen from those two facts. */
+        let stored: IndexPoint[] | null = null;
         try {
-          const prev = ((await env.SNAPSHOT.get("index:history", "json")) as IndexPoint[] | null) ?? [];
-          const point: IndexPoint = {
-            at: Date.now(),
-            total: flat.length,
-            indexed: st.templates.reduce((n, t) => n + (t.indexed ?? 0), 0),
-            byTemplate: st.templates.map((t) => [t.name, t.indexed ?? 0, t.urls.length] as [string, number, number]),
-          };
-          await env.SNAPSHOT.put("index:history", JSON.stringify([point, ...prev].slice(0, 26)));
-        } catch { /* the history is an observation, never a reason to fail the report */ }
+          const prev = await env.SNAPSHOT.get("index:history", "json");
+          stored = prev === null ? [] : Array.isArray(prev) ? (prev as IndexPoint[]) : null;
+        } catch { /* unreadable: stays null. The history is an observation, never a reason to fail the report */ }
+        let wrote = false;
+        if (stored) {
+          try {
+            await env.SNAPSHOT.put("index:history", JSON.stringify([point, ...stored].slice(0, HISTORY_KEEP)));
+            wrote = true;
+          } catch { /* reported below */ }
+        }
+        /* What the store holds after this run: the trimmed list when the write landed, the
+           untouched old list plus this reading when it did not, this reading alone when the old
+           list could not be read. */
+        const history: IndexPoint[] = !stored ? [point] : wrote ? [point, ...stored].slice(0, HISTORY_KEEP) : [point, ...stored];
+
+        /* "WATCH THE SERIES BELOW" POINTED AT NOTHING. Measured 16 September 2026 on
+           https://coinliqui.com/status/indexation (report 2026-W38): the sentence under the
+           11-URL list sent the reader to a series, and nothing below it was one — the history
+           above was written to KV every week and rendered by no route at all, so the one
+           instrument that can tell a queue from a rejection was invisible to the person told to
+           use it. The series is now printed directly under the sentence, from the same list
+           this run read and wrote, so the sentence and its referent are written in one place. */
+        const missing = st.templates.flatMap((t) => (t.notIndexed ?? []).map((n) => [t.name, ...n] as [string, string, string, string]));
+        if (missing.length) {
+          say(`\n**The ${missing.length} URL${missing.length === 1 ? "" : "s"} Google has not indexed**, with its own reason for each. ` +
+            "Read the reason before acting: *Discovered — currently not indexed* is a queue, and the answer is usually to wait " +
+            "and watch the indexed-share series below this table; *Crawled — currently not indexed* is a judgement about the page, " +
+            "and the answer is to change the page.\n");
+          say("| URL | Template | Verdict | Google's coverage state |");
+          say("|---|---|---|---|");
+          for (const [tpl, u, v, cov] of missing.slice(0, 40)) say(`| \`${u}\` | \`${tpl}\` | ${v} | ${cov} |`);
+          if (missing.length > 40) say(`\n…and ${missing.length - 40} more.`);
+        }
+        const readings = `${history.length} reading${history.length === 1 ? "" : "s"}`;
+        say("\n### Indexed share, reading by reading\n");
+        if (!stored) {
+          say("One row per completed inspection, newest first. The stored series could not be read on this run, so only this " +
+            "run's reading is listed and earlier readings may exist. Nothing was written back, so the stored series is unchanged.");
+        } else if (!wrote) {
+          say(`One row per completed inspection, newest first: ${readings}. This run's reading could not be stored, so it is ` +
+            "listed here but the next run will not compare against it.");
+        } else {
+          say(`One row per completed inspection, newest first: ${readings}. The store keeps the last ${HISTORY_KEEP}.` +
+            (history.length === 1 ? " This is the first reading in the series; movement shows from the next one." : ""));
+        }
+        say("");
+        for (const row of indexHistoryRows(history,
+          !stored ? "— earlier readings could not be read"
+          : history.length === 1 ? "— first reading"
+          : "— earliest kept")) say(row);
         st.phase = "search";
         st.i = 0;
       }
@@ -551,24 +652,39 @@ export async function stepReport(env: ReportEnv, force = false): Promise<string 
             headers: { authorization: `Bearer ${st!.token}`, "content-type": "application/json" },
             body: JSON.stringify(payload),
           })).json()) as any;
-        const end = new Date(Date.now() - 2 * 86400000).toISOString().slice(0, 10);
-        const start = new Date(Date.now() - 9 * 86400000).toISOString().slice(0, 10);
+        const { start, end } = searchWindow(Date.now());
+        const dates = `from ${start} to ${end}`;
         const base = `https://www.googleapis.com/webmasters/v3/sites/${encodeURIComponent(site)}/searchAnalytics/query`;
-        const sa = await api(base, { startDate: start, endDate: end, dimensions: ["page"], rowLimit: 500 });
+        const sa = await api(base, { startDate: start, endDate: end, dimensions: ["page"], rowLimit: QUERY_ROW_LIMIT });
         const rows: any[] = sa.rows || [];
+        const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
         say(`\n### Search performance, ${start} to ${end}\n`);
         if (!rows.length) {
           say("No impressions yet. Expected before roughly week 4 — a new domain has no history to weigh.");
         } else {
           say("| Template | Impressions | Clicks | Avg position | Pages with impressions |");
           say("|---|---:|---:|---:|---:|");
-          for (const t of st.templates) {
-            const set = new Set(t.urls.map((u) => origin + (u || "/")));
-            const r = rows.filter((x) => set.has(x.keys[0]));
+          const line = (label: string, r: any[], of: string) => {
             const imp = r.reduce((a, x) => a + x.impressions, 0);
             const pos = imp ? r.reduce((a, x) => a + x.position * x.impressions, 0) / imp : 0;
-            say(`| \`${t.name}\` | ${imp} | ${r.reduce((a, x) => a + x.clicks, 0)} | ${pos ? pos.toFixed(1) : "—"} | ${r.length}/${t.urls.length} |`);
+            say(`| ${label} | ${imp} | ${r.reduce((a, x) => a + x.clicks, 0)} | ${pos ? pos.toFixed(1) : "—"} | ${r.length}${of} |`);
+          };
+          const inTemplates = new Set<string>();
+          for (const t of st.templates) {
+            const set = new Set(t.urls.map((u) => origin + (u || "/")));
+            set.forEach((u) => inTemplates.add(u));
+            line(`\`${t.name}\``, rows.filter((x) => set.has(x.keys[0])), `/${t.urls.length}`);
           }
+          /* A TOTAL ROW, because the band table below now compares itself with this one and a
+             reader should not have to add ten numbers to check it. Pages outside every sitemap
+             get their own row so the total is everything Search Console returned by page. */
+          const outside = rows.filter((x) => !inTemplates.has(x.keys[0]));
+          if (outside.length) line("not in a sitemap", outside, "");
+          const pageImp = rows.reduce((a, x) => a + x.impressions, 0);
+          const pageClicks = rows.reduce((a, x) => a + x.clicks, 0);
+          line("**total**", rows, outside.length ? "" : `/${inTemplates.size}`);
+          const pageCut = rows.length >= QUERY_ROW_LIMIT;
+          if (pageCut) say(`\nSearch Console returned its ${QUERY_ROW_LIMIT}-row limit, so these totals are a floor.`);
           /* =====================================================================================
              AVERAGE POSITION IS NOT COMPARABLE TO LAST WEEK WHEN THE COVERED SET GREW, and this
              report spent a week telling its reader the opposite. Its own guide said "position
@@ -583,7 +699,7 @@ export async function stepReport(env: ReportEnv, force = false): Promise<string 
              read once; a line under the table is read by whoever is looking at the figure it is
              about. It prints only when the condition holds, so it does not become furniture. */
           if (st!.joined) {
-            say(`\n> **These averages are not comparable to the previous reading.** ${st!.joined} URL(s) joined the`);
+            say(`\n> **These averages are not comparable to the previous reading.** ${plural(st!.joined, "URL", "URLs")} joined the`);
             say(`> covered set since it, taking the total from ${st!.prevUrls ?? "?"} to ${st!.urls?.length ?? "?"}. A template that`);
             say(`> starts appearing for more queries appears for the deepest ones first, so an`);
             say(`> impression-weighted average falls even when no existing query lost a place.`);
@@ -591,15 +707,51 @@ export async function stepReport(env: ReportEnv, force = false): Promise<string 
             say(`> half of this section that survives a change in the covered set.`);
           }
 
-          const q = await api(base, { startDate: start, endDate: end, dimensions: ["query"], rowLimit: 500 });
+          const q = await api(base, { startDate: start, endDate: end, dimensions: ["query"], rowLimit: QUERY_ROW_LIMIT });
           if (q.rows?.length) {
-            say("\n### Top queries\n");
+            /* =================================================================================
+               "TOP QUERIES" WAS SEARCH CONSOLE'S ORDER, CUT AT FIFTEEN, UNDER A RANKING HEADING.
+               Measured 16 September 2026 on https://coinliqui.com/status/indexation (2026-W38):
+               the 15-row table held one query with a click and fourteen at zero clicks running
+               alphabetically, "1000flokiinr perpetual" to "btc liquidation heatmaps" — the API's
+               default order is by clicks, and a tie on zero is no order at all. The band table in
+               the same report counted 36 queries; the 20 hidden ones in the 51+ band held 30
+               impressions, so at least one hidden query had been seen more often than nine of the
+               rows shown, and the one query in 4–10 was not shown at all. The comment below said
+               the table was "sorted by impressions". It was not sorted by anything.
+               Now it is, by a rule the report prints, with the count shown against the count
+               named, and a cut that lands inside a tie says so rather than implying a winner. */
+            /* A FULL RESPONSE IS A FLOOR IN EVERY FIGURE DRAWN FROM IT, not only in the count.
+               The first pass put "at least" before the query count and printed the band
+               impressions, band clicks and the One push away count as exact from the same
+               capped responses (verifier, 16 September 2026; unreachable at this week's 36
+               queries, reachable the week the site has 500). Search Console fills a capped
+               response in its own order, by clicks, so a zero-click query with many impressions
+               is the first thing a cap drops — which "most impressions first" would otherwise
+               hide. `queryCut` and `pairCut` below are read by every sentence that counts. */
+            const named = q.rows as QueryRow[];
+            const queryCut = named.length >= QUERY_ROW_LIMIT;
+            const atLeast = (cut: boolean, n: number, one: string, many: string) => `${cut ? "at least " : ""}${plural(n, one, many)}`;
+            const top = queriesByImpressions(named, 15);
+            say("\n### Queries by impressions\n");
+            say([
+              queryCut
+                ? `${top.shown.length} of the first ${named.length} queries Search Console returned ${dates}, most impressions first. That is its row limit and it fills the limit in order of clicks, so more queries may exist, and one with more impressions and no clicks could be among them.`
+                : top.shown.length < named.length
+                  ? `${top.shown.length} of ${named.length} queries Search Console named ${dates}, most impressions first.`
+                  : named.length === 1
+                    ? `The one query Search Console named ${dates}.`
+                    : `All ${named.length} queries Search Console named ${dates}, most impressions first.`,
+              named.length > 1 ? "Equal impressions go to more clicks, then the better average position, then alphabetical order." : "",
+              top.tie ? `The cut falls inside a tie: ${plural(top.tie.count, "query", "queries")} had ${plural(top.tie.value, "impression", "impressions")}, and ${top.tie.shown} of them ${top.tie.shown === 1 ? "is" : "are"} listed.` : "",
+              top.shown.length < named.length ? `The band table below counts every one ${queryCut ? "returned" : "of them"}.` : "",
+            ].filter(Boolean).join(" ") + "\n");
             say("| Query | Impressions | Clicks | Position |");
             say("|---|---:|---:|---:|");
-            for (const r of q.rows.slice(0, 15)) say(`| ${r.keys[0]} | ${r.impressions} | ${r.clicks} | ${r.position.toFixed(1)} |`);
+            for (const r of top.shown) say(`| ${r.keys[0]} | ${r.impressions} | ${r.clicks} | ${r.position.toFixed(1)} |`);
 
             /* =================================================================================
-               WHERE THE SITE ACTUALLY STANDS, WHICH "TOP QUERIES" DOES NOT SAY.
+               WHERE THE SITE ACTUALLY STANDS, WHICH THE IMPRESSIONS TABLE DOES NOT SAY.
 
                That table is sorted by impressions, so it answers "what is this site SEEN for".
                Every row in it has sat between position 36 and 81 since the domain existed, and
@@ -620,13 +772,32 @@ export async function stepReport(env: ReportEnv, force = false): Promise<string 
                impressions is a page that is already relevant and is losing to something
                beatable, and for a domain with no external links that band is the only one
                worth spending a week on. The rest is waiting.
+
+               "EVERY QUERY SEARCH CONSOLE RECORDED THIS WEEK" WAS NEITHER. Measured 16 September
+               2026 on the same report: the bands summed to 36 queries, 54 impressions and 1
+               click, while the page table above them, same dates, summed to 542 impressions and
+               3 clicks. Search Console leaves anonymised queries out of any query breakdown, so
+               a reader took 33 of 36 queries at 51+ for the whole picture when about nine tenths
+               of the page-table impressions were outside it. The sentence now counts
+               what the table holds and sets it against the page totals computed above, in the
+               same run, from the same window.
                ================================================================================= */
+            const bands = positionBands(named);
+            const bandImp = bands.reduce((a, b) => a + b.impressions, 0);
+            const bandClicks = bands.reduce((a, b) => a + b.clicks, 0);
             say("\n### Where the queries sit\n");
-            say("Every query Search Console recorded this week, by the position it averaged.");
-            say("Impressions say how often Google showed the page; clicks say how often that mattered.\n");
+            say([
+              queryCut
+                ? `At least ${named.length} queries Search Console named ${dates} (the first ${named.length} it returned, its row limit), by the position each averaged: ${atLeast(true, bandImp, "impression", "impressions")}, ${atLeast(true, bandClicks, "click", "clicks")}. Every band below is a floor.`
+                : `${named.length === 1 ? "The one query" : `The ${named.length} queries`} Search Console named ${dates}, by the position ${named.length === 1 ? "it" : "each"} averaged: ${plural(bandImp, "impression", "impressions")}, ${plural(bandClicks, "click", "clicks")}.`,
+              pageImp > bandImp || pageClicks > bandClicks
+                ? `That is not every search. The page total above is ${atLeast(pageCut, pageImp, "impression", "impressions")} and ${atLeast(pageCut, pageClicks, "click", "clicks")}: Search Console leaves out queries too rare to name without identifying who searched${queryCut ? ", this list stops at its row limit," : ","} and the page table counts a search once for each page it showed.`
+                : "",
+              "Impressions say how often Google showed the page; clicks say how often that mattered.",
+            ].filter(Boolean).join(" ") + "\n");
             say("| Position | Queries | Impressions | Clicks | What that band means |");
             say("|---|---:|---:|---:|---|");
-            for (const b of positionBands(q.rows as QueryRow[])) {
+            for (const b of bands) {
               say(`| ${b.label} | ${b.queries} | ${b.impressions} | ${b.clicks} | ${b.note} |`);
             }
 
@@ -634,21 +805,30 @@ export async function stepReport(env: ReportEnv, force = false): Promise<string 
                instruction anybody can act on. A second dimension turns it into a page to edit.
                One extra call, inside the same authenticated session. */
             const qp = await api(base, {
-              startDate: start, endDate: end, dimensions: ["query", "page"], rowLimit: 500,
+              startDate: start, endDate: end, dimensions: ["query", "page"], rowLimit: QUERY_ROW_LIMIT,
             });
-            const near = nearMisses((qp.rows || []) as QueryRow[]);
+            /* COUNTED UNCAPPED, LISTED CAPPED. nearMisses() stops at twenty, and the sentence
+               counted what it returned, so a twenty-first pair would have been reported as
+               twenty. */
+            const pairs = (qp.rows || []) as QueryRow[];
+            const pairCut = pairs.length >= QUERY_ROW_LIMIT;
+            const nearAll = nearMisses(pairs, Infinity);
+            const near = nearAll.slice(0, 20);
             say("\n### One push away\n");
             if (!near.length) {
-              say("No query averaged a position between 11 and 25 this week. Nothing here is close enough");
-              say("that writing more of the same page would move it — see the band table above for where");
-              say("the queries actually are.");
+              say(pairCut
+                ? `None of the first ${pairs.length} query-page pairs Search Console returned ${dates} averaged a position between 11 and 25. ` +
+                  "That is its row limit, so pairs beyond it were not checked — see the band table above for where the named queries sit."
+                : `No query-page pair Search Console named ${dates} averaged a position between 11 and 25. Nothing here is close enough ` +
+                  "that writing more of the same page would move it — see the band table above for where the named queries actually are.");
             } else {
               /* PAIRS, NOT QUERIES. The call two lines up asks for dimensions ["query", "page"],
                  so Search Console returns one row per query-and-URL pair and one query ranking
                  on two URLs is two rows. The sentence counted rows and called them queries. The
                  table underneath has always had a Page column, so the words now match it. */
-              say(`${near.length} query-page pair${near.length === 1 ? " is" : "s are"} on page two or three. These are the pages where`);
-              say("the site is already relevant and is losing to something beatable.\n");
+              say(`${pairCut ? "At least " : ""}${nearAll.length} query-page pair${nearAll.length === 1 ? " is" : "s are"} on page two or three ${dates}${near.length < nearAll.length ? `; the ${near.length} most-seen are listed` : ""}.` +
+                (pairCut ? ` Search Console returned its ${QUERY_ROW_LIMIT}-row limit of pairs, so more may exist.` : "") +
+                ` ${nearAll.length === 1 ? "That is a page" : "These are the pages"} where the site is already relevant and is losing to something beatable.\n`);
               say("| Query | Page | Impressions | Clicks | Position |");
               say("|---|---|---:|---:|---:|");
               for (const r of near) {
@@ -789,10 +969,31 @@ export async function stepReport(env: ReportEnv, force = false): Promise<string 
       const days = Number.isFinite(read) ? Math.floor((Date.now() - read) / DAY) : null;
       return { id: d.id, days, every, due: days === null || days > every, dated: d.lastUpdatedOnDocument };
     });
-    const oldest = rows.reduce((a, b) => ((b.days ?? 1e9) > (a.days ?? 1e9) ? b : a), rows[0]);
+    /* A TIE NAMED ONE DOCUMENT. Measured 16 September 2026 on
+       https://coinliqui.com/status/indexation (2026-W38): "Oldest reading: 26 days
+       (hyperliquid-tou)" above a table in which all three documents read 26d — every readAt in
+       terms-baseline.json is 2026-08-19, a date with no time, so nothing separates them. The
+       reduce kept the first row on equality, and the sentence implied the other two had been
+       read more recently. extremeBy() has no single item to name when the set is tied, so this
+       cannot print a winner that is not one. A document never read outranks any age, and is
+       named as such rather than as a very large number of days. The tied sentence counts from
+       generation, not "ago": the doc is read for a week after it is written, and "ago" would be
+       a day short by Tuesday. */
+    const never = rows.filter((r) => r.days === null);
+    const aged = extremeBy(rows.filter((r) => r.days !== null), (r) => r.days as number, "max");
+    const daysOf = (n: number) => `${n} day${n === 1 ? "" : "s"}`;
+    const lead = never.length
+      ? `Never read: ${never.map((r) => r.id).join(", ")}.`
+      : aged.kind === "none"
+        ? "No documents on record."
+        : aged.kind === "unique"
+          ? `Oldest reading: ${daysOf(aged.value)} (${aged.item.id}).`
+          : aged.items.length === aged.of
+            ? `All ${aged.of} documents were last read on the same day, ${daysOf(aged.value)} before this report was generated.`
+            : `Oldest reading: ${daysOf(aged.value)}, shared by ${aged.items.map((r) => r.id).join(", ")}.`;
     const due = rows.filter((r) => r.due);
-    say(`**Oldest reading: ${oldest.days === null ? "never" : `${oldest.days} days`} (${oldest.id}).** ` +
-        `${due.length ? `${due.length} document(s) overdue.` : "Nothing overdue."}\n`);
+    say(`**${lead}** ` +
+        `${due.length ? `${due.length} document${due.length === 1 ? " is" : "s are"} overdue.` : "Nothing overdue."}\n`);
     say("| Document | Read | Window | Dated on the document |");
     say("|---|---:|---:|---|");
     for (const r of rows) {
@@ -827,7 +1028,7 @@ export async function stepReport(env: ReportEnv, force = false): Promise<string 
   say("   technical symptom. A change to the terms this site depends on has none — the pages keep");
   say("   rendering perfectly — so the only detector is somebody re-reading the document.");
 
-  const doc = { week: st.week, at: Date.now(), tookMs: Date.now() - st.startedAt, md: st.lines.join("\n") + "\n", urls: st.urls ?? [] };
+  const doc = { week: st.week, at: Date.now(), tookMs: Date.now() - st.startedAt, md: st.lines.join("\n") + "\n", urls: st.urls ?? [], format: REPORT_FORMAT };
   await env.SNAPSHOT.put(`report:${st.week}`, JSON.stringify(doc));
   await env.SNAPSHOT.put("report:latest", JSON.stringify(doc));
   await env.SNAPSHOT.delete("report:state");
@@ -932,6 +1133,35 @@ export function positionBands(rows: QueryRow[]): { label: string; note: string; 
       clicks: inBand.reduce((a, r) => a + r.clicks, 0),
     };
   });
+}
+
+/**
+ * The queries shown under "Queries by impressions": most impressions first, then more clicks,
+ * then the better average position, then alphabetical — the rule the report prints above the
+ * table. Pure and exported for the same reason as the two above.
+ *
+ * A CUT INSIDE A TIE IS RETURNED, NOT HIDDEN. When the first row left out has as many
+ * impressions as the last row kept, which of the tied rows made the list was decided by the
+ * tie-breaks, not by impressions, and the caller prints that.
+ */
+function queriesByImpressions(rows: QueryRow[], limit: number): {
+  shown: QueryRow[];
+  tie: { value: number; count: number; shown: number } | null;
+} {
+  const sorted = [...(rows ?? [])].sort((a, b) =>
+    b.impressions - a.impressions || b.clicks - a.clicks || a.position - b.position || String(a.keys[0]).localeCompare(String(b.keys[0])));
+  const shown = sorted.slice(0, limit);
+  const next = sorted[shown.length];
+  const edge = shown[shown.length - 1];
+  if (!next || !edge || next.impressions !== edge.impressions) return { shown, tie: null };
+  return {
+    shown,
+    tie: {
+      value: edge.impressions,
+      count: sorted.filter((r) => r.impressions === edge.impressions).length,
+      shown: shown.filter((r) => r.impressions === edge.impressions).length,
+    },
+  };
 }
 
 /**

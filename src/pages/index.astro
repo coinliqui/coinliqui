@@ -5,8 +5,10 @@ import { getSnapshot, coldStart } from "../lib/hyperliquid.ts";
 import { pct, usd, paysClass, paysArrow, paysLabel, LEGEND_FUNDING, VENUE_LABEL, type Venue } from "../lib/funding.ts";
 import { readCachedFlips, describeCoverage } from "../lib/flips.ts";
 import { distribution } from "../lib/viz.ts";
+import { extremeBy, pluralityOf } from "../lib/extreme.ts";
 import Figure from "../components/Figure.astro";
 
+import { coverageRule, coverageToday } from "../lib/coverage.ts";
 const env = (Astro.locals as any)?.runtime?.env;
 const snap = await getSnapshot(env?.SNAPSHOT, import.meta.env.DEV);
 // Cold store: 503 + Retry-After rather than a page rendered from nothing.
@@ -22,10 +24,24 @@ const utc = (ms: number) => new Date(ms).toISOString().slice(0, 16).replace("T",
 const coveredH = flips.status === "warming" ? Math.floor(flips.hours) : 24;
 const flipProgress = Math.min(100, Math.round((coveredH / 24) * 100));
 
-const byApr = [...snap.perps].filter((p) => Number.isFinite(p.hlApr)).sort((a, b) => b.hlApr - a.hlApr);
-const richest = byApr[0];
-const cheapest = byApr[byApr.length - 1];
-const widest = [...snap.perps].filter((p) => p.aprSpread != null).sort((a, b) => (b.aprSpread ?? 0) - (a.aprSpread ?? 0))[0];
+/* EXTREMES THAT CANNOT NAME A WINNER OUT OF A TIE — see src/lib/extreme.ts for what this page
+   published before it did. `const richest = byApr[0]` sat here, and on a book where 38 of 48
+   contracts hold Hyperliquid's base rate to the last decimal it named BTC as "most expensive"
+   because BTC was where the sort stopped. The union below has no `.item` to reach for unless the
+   extreme is genuinely alone, so the tied case has to be written out rather than papered over. */
+const dearest = extremeBy(snap.perps, (p) => p.hlApr, "max");
+const cheapest = extremeBy(snap.perps, (p) => p.hlApr, "min");
+const widestX = extremeBy(snap.perps, (p) => p.aprSpread ?? NaN, "max");
+/* THE MASS, WHICH IS THE ACTUAL STORY AND WAS ONLY ON /funding. Most of this book rests on one
+   number, and that number is a venue constant rather than a reading. Detected, not assumed: it is
+   only CALLED the base rate when it matches the documented value, so if Hyperliquid ever moves the
+   floor the sentence degrades to "the most common rate" instead of lying. */
+const HL_BASE_APR = 0.0000125 * 8760;
+const mass = pluralityOf(snap.perps.map((p) => p.hlApr));
+const massIsBase = mass != null && Math.abs(mass.value - HL_BASE_APR) < 1e-9;
+/* The dearest reading IS the mass — nothing is priced above the base rate. Worth its own name because
+   it is the condition under which "most expensive" is a sentence about nothing. */
+const pinnedAtTop = dearest.kind === "tied" && mass != null && Math.abs(dearest.value - mass.value) < 1e-9;
 /* THE DENOMINATOR MOVED TO THE WORKER, which measures it over the same 24 hours the numerator
    covers. It was computed here, from the CURRENT snapshot, and divided a 24-hour count by an
    instantaneous one: a pair that flipped and then fell out of the rank-50 cap counted in the
@@ -73,21 +89,51 @@ const breadth = distribution(changes, {
 // The dated sentence is the most citable element on the site. Numbers are set in the
 // text colour at medium weight; the prose around them is dim — so it reads as a sentence,
 // not as a wall of bold.
+/* THE FUNDING CLAUSE, WRITTEN ONCE PER STATE THE BOOK CAN ACTUALLY BE IN.
+   "MOST EXPENSIVE" NEEDS A VENUE, because it is computed over one. hlApr is Hyperliquid's rate;
+   unqualified, the sentence reads as a claim about funding everywhere, and /funding at the same
+   moment can show a larger number for the SAME coin on another venue — measured: the homepage
+   said FARTCOIN 66.70% while Bybit's rate for FARTCOIN was 80.35%.
+   AND IT NEEDS A UNIQUE COIN, which is the failure this branch exists for. When the dearest
+   reading is the rate most of the book rests on there is no dearest contract, and the honest
+   line is the count: "38 of 48 sit exactly on it" is both true and the one fact no other funding
+   page prints, where a maximum over a tied set is the one every funding page prints wrongly. */
+const fundingClause: [string, boolean][] =
+  pinnedAtTop && mass
+    ? [[" of 24-hour volume. ", false], [`${mass.count} of the ${mass.of}`, true],
+       [" contracts sit exactly on Hyperliquid’s ", false], [pct(mass.value), true],
+       [massIsBase
+         /* NOT "THE VENUE'S FLOOR". The rate is where a contract rests when the market has no
+            view, and priced contracts sit on both sides of it — on 16 September ADA was at
+            −62.86% on the same page. A floor is a lower bound, and the claim-vs-table audit
+            confirmed three votes to none that the page's own rows contradicted the word. What is
+            true here is only that nothing is priced ABOVE it, which is what pinnedAtTop tests. */
+         ? " base rate — the rate a contract rests on when the market has no view — and none is priced above it. "
+         : " most common rate, and none is priced above it. ", false]]
+    : dearest.kind === "unique"
+      ? [[" of 24-hour volume. Hyperliquid funding is most expensive on ", false], [dearest.item.symbol, true],
+         [" at ", false], [pct(dearest.value), true], [" a year. ", false]]
+      : dearest.kind === "tied"
+        ? [[" of 24-hour volume. ", false], [String(dearest.items.length), true],
+           [" contracts share the dearest Hyperliquid funding, ", false], [pct(dearest.value), true], [". ", false]]
+        : [[" of 24-hour volume. ", false]];
+/* The spread is an extreme over the same book and gets the same treatment. It has been unique on
+   every reading so far because a max-minus-min over three venues is a continuous quantity — but
+   "has been" is not "cannot be", and that is the distinction this whole module is about. */
+const spreadClause: [string, boolean][] =
+  widestX.kind === "unique"
+    ? [["The widest spread between venues is ", false], [widestX.item.symbol, true],
+       [", ", false], [pct(widestX.value), true], [".", false]]
+    : widestX.kind === "tied"
+      ? [[String(widestX.items.length), true], [" contracts share the widest venue spread, ", false],
+         [pct(widestX.value), true], [".", false]]
+      : [];
 const parts: [string, boolean][] = [
   ["Hyperliquid open interest across ", false], [String(snap.perps.length), true],
   [" coins is ", false], [usd(totalOi), true],
   [", on ", false], [usd(totalVol), true],
-  /* "MOST EXPENSIVE" NEEDS A VENUE, because it is computed over one. hlApr is Hyperliquid's
-     rate; unqualified, the sentence reads as a claim about funding everywhere, and /funding at
-     the same moment can show a larger number for the SAME coin on another venue — measured:
-     the homepage said FARTCOIN 66.70% while Bybit's rate for FARTCOIN was 80.35%. Two
-     superlatives for one word, on a site whose whole premise is that venues differ. Naming the
-     venue costs three words and makes the sentence true; the card beside it already covers the
-     cross-venue question. */
-  [" of 24-hour volume. Hyperliquid funding is most expensive on ", false], [richest?.symbol ?? "—", true],
-  [" at ", false], [richest ? pct(richest.hlApr) : "—", true],
-  [" a year. The widest spread between venues is ", false], [widest?.symbol ?? "—", true],
-  [", ", false], [widest?.aprSpread != null ? pct(widest.aprSpread) : "—", true], [".", false],
+  ...fundingClause,
+  ...spreadClause,
 ];
 
 const title = `${SITE.name} — crypto funding rates and open interest`;
@@ -111,32 +157,59 @@ const description =
     </div>
 
     <div class="cards">
-      <a class="card" href="/funding">
+      <a class="card" href={widestX.kind === "unique" ? `/funding/${widestX.item.symbol.toLowerCase()}` : "/funding"}>
         <div class="card__label">Widest venue spread</div>
-        <div class="card__value">{widest?.aprSpread != null ? pct(widest.aprSpread) : "—"}</div>
+        <div class="card__value">{widestX.kind === "none" ? "—" : pct(widestX.value)}</div>
         {/* "ACROSS THREE VENUES" WAS A CONSTANT DESCRIBING A VARIABLE. The spread is max-min
             over whatever venues publish a rate for that coin, and four of the forty-nine
             published contracts have fewer than three — HYPE and PURR trade on Hyperliquid
             alone. The sentence was true of the coin that happened to be widest today and
             would have been silently false the day a two-venue coin took the top. */}
-        <div class="card__meta">{widest?.symbol ?? "—"} · across {widest ? widest.venues.filter((v) => Number.isFinite(v.apr)).length : 0} venues</div>
+        <div class="card__meta">
+          {widestX.kind === "unique"
+            ? `${widestX.item.symbol} · across ${widestX.item.venues.filter((v) => Number.isFinite(v.apr)).length} venues`
+            : widestX.kind === "tied"
+              ? `${widestX.items.length} of ${widestX.of} contracts share it`
+              : "—"}
+        </div>
       </a>
-      <a class="card" href={richest ? `/funding/${richest.symbol.toLowerCase()}` : "/funding"}>
-        {/* THE LABEL ASSERTS A SIGN THE VALUE DOES NOT CARRY. `richest` is the MAXIMUM hlApr
-            and `cheapest` the MINIMUM, whatever either one's sign. Nothing conditions the
-            words on it. Funding is usually mixed across fifty contracts, so both labels have
-            been true every day so far — but on a day when every covered contract pays the same
-            way, "Most expensive" sits over a rate that pays the holder and "Most negative"
-            over a positive number. A branch waiting on a market condition rather than on a
-            bug, which is the class this project keeps finding late. */}
-        <div class="card__label">{richest && richest.hlApr > 0 ? "Most expensive funding" : "Highest funding"} <span class="card__scope">Hyperliquid</span></div>
-        <div class:list={["card__value", richest && paysClass(richest.hlApr)]}>{richest ? pct(richest.hlApr) : "—"}</div>
-        <div class="card__meta">{richest?.symbol ?? "—"} · {richest ? paysLabel(richest.hlApr) : ""}</div>
+      <a class="card" href={dearest.kind === "unique" ? `/funding/${dearest.item.symbol.toLowerCase()}` : "/funding"}>
+        {/* THE LABEL ASSERTS A SIGN THE VALUE DOES NOT CARRY, and then the value asserted a coin
+            the book does not single out. Both faults are conditioned here rather than assumed.
+            `dearest` is the MAXIMUM hlApr whatever its sign, so on a day when every covered
+            contract pays the same way "Most expensive" would sit over a rate that pays the
+            holder — a branch waiting on a market condition rather than on a bug. And when the
+            maximum IS the rate most of the book rests on there is no expensive contract at all,
+            which is the state this page shipped a wrong coin name for. */}
+        <div class="card__label">
+          {pinnedAtTop && massIsBase ? "Resting on the base rate"
+            : dearest.kind === "tied" ? "Dearest funding"
+            : dearest.kind === "unique" && dearest.value > 0 ? "Most expensive funding"
+            : "Highest funding"} <span class="card__scope">Hyperliquid</span>
+        </div>
+        <div class:list={["card__value", dearest.kind !== "none" && paysClass(dearest.value)]}>{dearest.kind === "none" ? "—" : pct(dearest.value)}</div>
+        <div class="card__meta">
+          {dearest.kind === "unique"
+            ? `${dearest.item.symbol} · ${paysLabel(dearest.value)}`
+            : dearest.kind === "tied"
+              ? `${dearest.items.length} of ${dearest.of} contracts${massIsBase && pinnedAtTop ? " · no view priced" : ` · ${paysLabel(dearest.value)}`}`
+              : ""}
+        </div>
       </a>
-      <a class="card" href={cheapest ? `/funding/${cheapest.symbol.toLowerCase()}` : "/funding"}>
-        <div class="card__label">{cheapest && cheapest.hlApr < 0 ? "Most negative funding" : "Lowest funding"} <span class="card__scope">Hyperliquid</span></div>
-        <div class:list={["card__value", cheapest && paysClass(cheapest.hlApr)]}>{cheapest ? pct(cheapest.hlApr) : "—"}</div>
-        <div class="card__meta">{cheapest?.symbol ?? "—"} · {cheapest ? paysLabel(cheapest.hlApr) : ""}</div>
+      <a class="card" href={cheapest.kind === "unique" ? `/funding/${cheapest.item.symbol.toLowerCase()}` : "/funding"}>
+        <div class="card__label">
+          {cheapest.kind === "unique" && cheapest.value < 0 ? "Most negative funding"
+            : cheapest.kind === "tied" ? "Lowest funding"
+            : "Lowest funding"} <span class="card__scope">Hyperliquid</span>
+        </div>
+        <div class:list={["card__value", cheapest.kind !== "none" && paysClass(cheapest.value)]}>{cheapest.kind === "none" ? "—" : pct(cheapest.value)}</div>
+        <div class="card__meta">
+          {cheapest.kind === "unique"
+            ? `${cheapest.item.symbol} · ${paysLabel(cheapest.value)}`
+            : cheapest.kind === "tied"
+              ? `${cheapest.items.length} of ${cheapest.of} contracts · ${paysLabel(cheapest.value)}`
+              : ""}
+        </div>
       </a>
       <a class="card" href="/open-interest">
         <div class="card__label">Open interest <span class="card__scope">Hyperliquid</span></div>
@@ -353,7 +426,8 @@ const description =
     </div>
     <p class="section-note" style="margin-top:12px">
       <a class="link" href="/funding">All {snap.perps.length} coins with per-venue detail →</a>
-      · {snap.eligibleCount} of {snap.universeCount} coins clear the $5M open-interest floor
+      · {/* COUNTS FROM coverageToday(), NOT RETYPED — six pages restated these numbers by hand and
+        "N of 234" counted 56 delisted markets as listed (audit, 16 September 2026). */}{coverageToday(snap)}
     </p>
 
     <style>

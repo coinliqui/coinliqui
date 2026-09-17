@@ -40,6 +40,7 @@ var INFO = "https://api.hyperliquid.xyz/info";
 var OI_NOTIONAL_FLOOR = 5e6;
 var OI_RETIRE_FLOOR = 35e5;
 var SYMBOL_CAP = 50;
+var SYMBOL_RETAIN_EXTRA = 5;
 async function info(body) {
   const send = () => fetch(INFO, {
     method: "POST",
@@ -131,14 +132,19 @@ async function fetchSnapshot(published = []) {
   const eligible = all.filter(
     (p) => Number.isFinite(p.oiNotional) && (p.oiNotional >= OI_NOTIONAL_FLOOR || live.has(p.symbol) && p.oiNotional >= OI_RETIRE_FLOOR)
   ).sort((a, b) => b.oiNotional - a.oiNotional);
+  const inCap = eligible.slice(0, SYMBOL_CAP);
+  const kept = eligible.slice(SYMBOL_CAP).filter((p) => live.has(p.symbol)).slice(0, SYMBOL_RETAIN_EXTRA);
+  const perps = [...inCap, ...kept].sort((a, b) => b.oiNotional - a.oiNotional);
+  const listed = universe.filter((u) => !u.isDelisted).length;
   return {
     available: true,
     fetchedAt: Date.now(),
-    perps: eligible.slice(0, SYMBOL_CAP),
+    perps,
     // Reported on the site as "N of M clear the floor", so it counts the ENTRY floor only —
     // a number inflated by contracts kept alive on hysteresis would not match its own label.
     eligibleCount: all.filter((p) => Number.isFinite(p.oiNotional) && p.oiNotional >= OI_NOTIONAL_FLOOR).length,
-    universeCount: all.length
+    universeCount: listed,
+    keptPastCap: kept.length
   };
 }
 async function fetchLive(symbols) {
@@ -460,6 +466,12 @@ async function writeCachedFlips(kv, result, now) {
   await kv.put(FLIPS_KEY, JSON.stringify({ computedAt: now, result }));
 }
 
+// src/lib/sparks.ts
+var SPARK_STEP_MS = 4 * 36e5;
+var SPARK_POINTS = 42;
+var SPARK_KEY = "spark:funding";
+var bucketOf = (ms) => Math.floor(ms / SPARK_STEP_MS);
+
 // src/lib/flip-events.ts
 var LAST_KEY = "flips:last";
 var EVENTS_KEY = "flips:events";
@@ -548,7 +560,43 @@ var terms_baseline_default = {
   reviewEveryDaysDefault: 90
 };
 
+// src/lib/extreme.ts
+function extremeBy(items, value, dir = "max", eps = 1e-9) {
+  let best = NaN;
+  const finite = [];
+  for (const item of items) {
+    const v = value(item);
+    if (!Number.isFinite(v)) continue;
+    finite.push({ item, v });
+    if (!Number.isFinite(best) || (dir === "max" ? v > best : v < best)) best = v;
+  }
+  if (!finite.length) return { kind: "none" };
+  const at = finite.filter((f) => Math.abs(f.v - best) <= eps);
+  return at.length === 1 ? { kind: "unique", item: at[0].item, value: best, of: finite.length } : { kind: "tied", items: at.map((f) => f.item), value: best, of: finite.length };
+}
+
 // worker/report.ts
+var REPORT_FORMAT = 2;
+var SEARCH_LAG_DAYS = 2;
+var SEARCH_WINDOW_DAYS = 8;
+function searchWindow(at) {
+  const day = 864e5;
+  const end = at - SEARCH_LAG_DAYS * day;
+  const iso = (ms) => new Date(ms).toISOString().slice(0, 10);
+  return { start: iso(end - (SEARCH_WINDOW_DAYS - 1) * day), end: iso(end) };
+}
+var QUERY_ROW_LIMIT = 500;
+var HISTORY_KEEP = 26;
+function indexHistoryRows(history, earliest) {
+  const out = ["| Reading | Indexed | Change since the reading before |", "|---|---:|---|"];
+  history.forEach((h, n2) => {
+    const older = history[n2 + 1];
+    const d = older ? h.indexed - older.indexed : null;
+    const change = d === null || !older ? earliest : `${d === 0 ? "unchanged" : `${d > 0 ? "+" : "\u2212"}${Math.abs(d)} indexed`}${older.total !== h.total ? `; covered set ${older.total} \u2192 ${h.total}` : ""}`;
+    out.push(`| ${new Date(h.at).toISOString().slice(0, 10)} | ${h.indexed}/${h.total} (${share(h.indexed, h.total)}) | ${change} |`);
+  });
+  return out;
+}
 var RUN_CEILING_MS = 2 * 36e5;
 var UA = "GPTBot/1.1 (+https://coinliqui.com/status/indexation; coinliqui-selfcheck)";
 var SLICE = 20;
@@ -661,7 +709,7 @@ ${origin} \xB7 started ${now.toISOString().slice(0, 16).replace("T", " ")} UTC
     st.lines.push(`> A run holds the ingest tick \u2014 flips, IndexNow and all four candle sweeps`);
     st.lines.push(`> stand aside while it walks. It is ended here so they resume. Everything`);
     st.lines.push(`> above is what it completed before that.`);
-    const partial = { week: st.week, at: Date.now(), tookMs: Date.now() - st.startedAt, md: st.lines.join("\n") + "\n", urls: st.urls ?? [] };
+    const partial = { week: st.week, at: Date.now(), tookMs: Date.now() - st.startedAt, md: st.lines.join("\n") + "\n", urls: st.urls ?? [], format: REPORT_FORMAT };
     await env.SNAPSHOT.put(`report:${st.week}`, JSON.stringify(partial));
     await env.SNAPSHOT.put("report:latest", JSON.stringify(partial));
     await env.SNAPSHOT.delete("report:state");
@@ -822,30 +870,52 @@ A URL that joined since the last reading has not had time to be indexed, and wil
           t.indexed = q.indexed;
           say(`| \`${t.name}\` | ${q.indexed}/${t.urls.length} (${share(q.indexed, t.urls.length)}) | ${q.crawled} | ${q.discovered} | ${q.unknown} | ${q.other} |`);
         }
+        const point = {
+          at: Date.now(),
+          total: flat.length,
+          indexed: st.templates.reduce((n2, t) => n2 + (t.indexed ?? 0), 0),
+          byTemplate: st.templates.map((t) => [t.name, t.indexed ?? 0, t.urls.length])
+        };
+        let stored = null;
+        try {
+          const prev = await env.SNAPSHOT.get("index:history", "json");
+          stored = prev === null ? [] : Array.isArray(prev) ? prev : null;
+        } catch {
+        }
+        let wrote = false;
+        if (stored) {
+          try {
+            await env.SNAPSHOT.put("index:history", JSON.stringify([point, ...stored].slice(0, HISTORY_KEEP)));
+            wrote = true;
+          } catch {
+          }
+        }
+        const history = !stored ? [point] : wrote ? [point, ...stored].slice(0, HISTORY_KEEP) : [point, ...stored];
         const missing = st.templates.flatMap((t) => (t.notIndexed ?? []).map((n2) => [t.name, ...n2]));
         if (missing.length) {
           say(`
-**The ${missing.length} URLs Google has not indexed**, with its own reason for each. Read the`);
-          say("reason before acting: *Discovered \u2014 currently not indexed* is a queue, and the answer is");
-          say("usually to wait and watch the series below; *Crawled \u2014 currently not indexed* is a");
-          say("judgement about the page, and the answer is to change the page.\n");
+**The ${missing.length} URL${missing.length === 1 ? "" : "s"} Google has not indexed**, with its own reason for each. Read the reason before acting: *Discovered \u2014 currently not indexed* is a queue, and the answer is usually to wait and watch the indexed-share series below this table; *Crawled \u2014 currently not indexed* is a judgement about the page, and the answer is to change the page.
+`);
           say("| URL | Template | Verdict | Google's coverage state |");
           say("|---|---|---|---|");
           for (const [tpl, u, v, cov] of missing.slice(0, 40)) say(`| \`${u}\` | \`${tpl}\` | ${v} | ${cov} |`);
           if (missing.length > 40) say(`
 \u2026and ${missing.length - 40} more.`);
         }
-        try {
-          const prev = await env.SNAPSHOT.get("index:history", "json") ?? [];
-          const point = {
-            at: Date.now(),
-            total: flat.length,
-            indexed: st.templates.reduce((n2, t) => n2 + (t.indexed ?? 0), 0),
-            byTemplate: st.templates.map((t) => [t.name, t.indexed ?? 0, t.urls.length])
-          };
-          await env.SNAPSHOT.put("index:history", JSON.stringify([point, ...prev].slice(0, 26)));
-        } catch {
+        const readings = `${history.length} reading${history.length === 1 ? "" : "s"}`;
+        say("\n### Indexed share, reading by reading\n");
+        if (!stored) {
+          say("One row per completed inspection, newest first. The stored series could not be read on this run, so only this run's reading is listed and earlier readings may exist. Nothing was written back, so the stored series is unchanged.");
+        } else if (!wrote) {
+          say(`One row per completed inspection, newest first: ${readings}. This run's reading could not be stored, so it is listed here but the next run will not compare against it.`);
+        } else {
+          say(`One row per completed inspection, newest first: ${readings}. The store keeps the last ${HISTORY_KEEP}.` + (history.length === 1 ? " This is the first reading in the series; movement shows from the next one." : ""));
         }
+        say("");
+        for (const row of indexHistoryRows(
+          history,
+          !stored ? "\u2014 earlier readings could not be read" : history.length === 1 ? "\u2014 first reading" : "\u2014 earliest kept"
+        )) say(row);
         st.phase = "search";
         st.i = 0;
       }
@@ -871,11 +941,12 @@ Inspection stopped: ${e instanceof Error ? e.message : String(e)}`);
           headers: { authorization: `Bearer ${st.token}`, "content-type": "application/json" },
           body: JSON.stringify(payload)
         })).json();
-        const end = new Date(Date.now() - 2 * 864e5).toISOString().slice(0, 10);
-        const start = new Date(Date.now() - 9 * 864e5).toISOString().slice(0, 10);
+        const { start, end } = searchWindow(Date.now());
+        const dates = `from ${start} to ${end}`;
         const base = `https://www.googleapis.com/webmasters/v3/sites/${encodeURIComponent(site)}/searchAnalytics/query`;
-        const sa = await api(base, { startDate: start, endDate: end, dimensions: ["page"], rowLimit: 500 });
+        const sa = await api(base, { startDate: start, endDate: end, dimensions: ["page"], rowLimit: QUERY_ROW_LIMIT });
         const rows = sa.rows || [];
+        const plural = (n2, one, many) => `${n2} ${n2 === 1 ? one : many}`;
         say(`
 ### Search performance, ${start} to ${end}
 `);
@@ -884,51 +955,80 @@ Inspection stopped: ${e instanceof Error ? e.message : String(e)}`);
         } else {
           say("| Template | Impressions | Clicks | Avg position | Pages with impressions |");
           say("|---|---:|---:|---:|---:|");
-          for (const t of st.templates) {
-            const set = new Set(t.urls.map((u) => origin + (u || "/")));
-            const r = rows.filter((x) => set.has(x.keys[0]));
+          const line = (label, r, of) => {
             const imp = r.reduce((a, x) => a + x.impressions, 0);
             const pos = imp ? r.reduce((a, x) => a + x.position * x.impressions, 0) / imp : 0;
-            say(`| \`${t.name}\` | ${imp} | ${r.reduce((a, x) => a + x.clicks, 0)} | ${pos ? pos.toFixed(1) : "\u2014"} | ${r.length}/${t.urls.length} |`);
+            say(`| ${label} | ${imp} | ${r.reduce((a, x) => a + x.clicks, 0)} | ${pos ? pos.toFixed(1) : "\u2014"} | ${r.length}${of} |`);
+          };
+          const inTemplates = /* @__PURE__ */ new Set();
+          for (const t of st.templates) {
+            const set = new Set(t.urls.map((u) => origin + (u || "/")));
+            set.forEach((u) => inTemplates.add(u));
+            line(`\`${t.name}\``, rows.filter((x) => set.has(x.keys[0])), `/${t.urls.length}`);
           }
+          const outside = rows.filter((x) => !inTemplates.has(x.keys[0]));
+          if (outside.length) line("not in a sitemap", outside, "");
+          const pageImp = rows.reduce((a, x) => a + x.impressions, 0);
+          const pageClicks = rows.reduce((a, x) => a + x.clicks, 0);
+          line("**total**", rows, outside.length ? "" : `/${inTemplates.size}`);
+          const pageCut = rows.length >= QUERY_ROW_LIMIT;
+          if (pageCut) say(`
+Search Console returned its ${QUERY_ROW_LIMIT}-row limit, so these totals are a floor.`);
           if (st.joined) {
             say(`
-> **These averages are not comparable to the previous reading.** ${st.joined} URL(s) joined the`);
+> **These averages are not comparable to the previous reading.** ${plural(st.joined, "URL", "URLs")} joined the`);
             say(`> covered set since it, taking the total from ${st.prevUrls ?? "?"} to ${st.urls?.length ?? "?"}. A template that`);
             say(`> starts appearing for more queries appears for the deepest ones first, so an`);
             say(`> impression-weighted average falls even when no existing query lost a place.`);
             say(`> The band table below counts queries rather than weighting them, and is the`);
             say(`> half of this section that survives a change in the covered set.`);
           }
-          const q = await api(base, { startDate: start, endDate: end, dimensions: ["query"], rowLimit: 500 });
+          const q = await api(base, { startDate: start, endDate: end, dimensions: ["query"], rowLimit: QUERY_ROW_LIMIT });
           if (q.rows?.length) {
-            say("\n### Top queries\n");
+            const named = q.rows;
+            const queryCut = named.length >= QUERY_ROW_LIMIT;
+            const atLeast = (cut, n2, one, many) => `${cut ? "at least " : ""}${plural(n2, one, many)}`;
+            const top = queriesByImpressions(named, 15);
+            say("\n### Queries by impressions\n");
+            say([
+              queryCut ? `${top.shown.length} of the first ${named.length} queries Search Console returned ${dates}, most impressions first. That is its row limit and it fills the limit in order of clicks, so more queries may exist, and one with more impressions and no clicks could be among them.` : top.shown.length < named.length ? `${top.shown.length} of ${named.length} queries Search Console named ${dates}, most impressions first.` : named.length === 1 ? `The one query Search Console named ${dates}.` : `All ${named.length} queries Search Console named ${dates}, most impressions first.`,
+              named.length > 1 ? "Equal impressions go to more clicks, then the better average position, then alphabetical order." : "",
+              top.tie ? `The cut falls inside a tie: ${plural(top.tie.count, "query", "queries")} had ${plural(top.tie.value, "impression", "impressions")}, and ${top.tie.shown} of them ${top.tie.shown === 1 ? "is" : "are"} listed.` : "",
+              top.shown.length < named.length ? `The band table below counts every one ${queryCut ? "returned" : "of them"}.` : ""
+            ].filter(Boolean).join(" ") + "\n");
             say("| Query | Impressions | Clicks | Position |");
             say("|---|---:|---:|---:|");
-            for (const r of q.rows.slice(0, 15)) say(`| ${r.keys[0]} | ${r.impressions} | ${r.clicks} | ${r.position.toFixed(1)} |`);
+            for (const r of top.shown) say(`| ${r.keys[0]} | ${r.impressions} | ${r.clicks} | ${r.position.toFixed(1)} |`);
+            const bands = positionBands(named);
+            const bandImp = bands.reduce((a, b) => a + b.impressions, 0);
+            const bandClicks = bands.reduce((a, b) => a + b.clicks, 0);
             say("\n### Where the queries sit\n");
-            say("Every query Search Console recorded this week, by the position it averaged.");
-            say("Impressions say how often Google showed the page; clicks say how often that mattered.\n");
+            say([
+              queryCut ? `At least ${named.length} queries Search Console named ${dates} (the first ${named.length} it returned, its row limit), by the position each averaged: ${atLeast(true, bandImp, "impression", "impressions")}, ${atLeast(true, bandClicks, "click", "clicks")}. Every band below is a floor.` : `${named.length === 1 ? "The one query" : `The ${named.length} queries`} Search Console named ${dates}, by the position ${named.length === 1 ? "it" : "each"} averaged: ${plural(bandImp, "impression", "impressions")}, ${plural(bandClicks, "click", "clicks")}.`,
+              pageImp > bandImp || pageClicks > bandClicks ? `That is not every search. The page total above is ${atLeast(pageCut, pageImp, "impression", "impressions")} and ${atLeast(pageCut, pageClicks, "click", "clicks")}: Search Console leaves out queries too rare to name without identifying who searched${queryCut ? ", this list stops at its row limit," : ","} and the page table counts a search once for each page it showed.` : "",
+              "Impressions say how often Google showed the page; clicks say how often that mattered."
+            ].filter(Boolean).join(" ") + "\n");
             say("| Position | Queries | Impressions | Clicks | What that band means |");
             say("|---|---:|---:|---:|---|");
-            for (const b of positionBands(q.rows)) {
+            for (const b of bands) {
               say(`| ${b.label} | ${b.queries} | ${b.impressions} | ${b.clicks} | ${b.note} |`);
             }
             const qp = await api(base, {
               startDate: start,
               endDate: end,
               dimensions: ["query", "page"],
-              rowLimit: 500
+              rowLimit: QUERY_ROW_LIMIT
             });
-            const near = nearMisses(qp.rows || []);
+            const pairs = qp.rows || [];
+            const pairCut = pairs.length >= QUERY_ROW_LIMIT;
+            const nearAll = nearMisses(pairs, Infinity);
+            const near = nearAll.slice(0, 20);
             say("\n### One push away\n");
             if (!near.length) {
-              say("No query averaged a position between 11 and 25 this week. Nothing here is close enough");
-              say("that writing more of the same page would move it \u2014 see the band table above for where");
-              say("the queries actually are.");
+              say(pairCut ? `None of the first ${pairs.length} query-page pairs Search Console returned ${dates} averaged a position between 11 and 25. That is its row limit, so pairs beyond it were not checked \u2014 see the band table above for where the named queries sit.` : `No query-page pair Search Console named ${dates} averaged a position between 11 and 25. Nothing here is close enough that writing more of the same page would move it \u2014 see the band table above for where the named queries actually are.`);
             } else {
-              say(`${near.length} query-page pair${near.length === 1 ? " is" : "s are"} on page two or three. These are the pages where`);
-              say("the site is already relevant and is losing to something beatable.\n");
+              say(`${pairCut ? "At least " : ""}${nearAll.length} query-page pair${nearAll.length === 1 ? " is" : "s are"} on page two or three ${dates}${near.length < nearAll.length ? `; the ${near.length} most-seen are listed` : ""}.` + (pairCut ? ` Search Console returned its ${QUERY_ROW_LIMIT}-row limit of pairs, so more may exist.` : "") + ` ${nearAll.length === 1 ? "That is a page" : "These are the pages"} where the site is already relevant and is losing to something beatable.
+`);
               say("| Query | Page | Impressions | Clicks | Position |");
               say("|---|---|---:|---:|---:|");
               for (const r of near) {
@@ -1031,9 +1131,12 @@ ${pct1}% of the requests carrying a crawler's name were verified as that crawler
       const days = Number.isFinite(read) ? Math.floor((Date.now() - read) / DAY) : null;
       return { id: d.id, days, every, due: days === null || days > every, dated: d.lastUpdatedOnDocument };
     });
-    const oldest = rows.reduce((a, b) => (b.days ?? 1e9) > (a.days ?? 1e9) ? b : a, rows[0]);
+    const never = rows.filter((r) => r.days === null);
+    const aged = extremeBy(rows.filter((r) => r.days !== null), (r) => r.days, "max");
+    const daysOf = (n2) => `${n2} day${n2 === 1 ? "" : "s"}`;
+    const lead = never.length ? `Never read: ${never.map((r) => r.id).join(", ")}.` : aged.kind === "none" ? "No documents on record." : aged.kind === "unique" ? `Oldest reading: ${daysOf(aged.value)} (${aged.item.id}).` : aged.items.length === aged.of ? `All ${aged.of} documents were last read on the same day, ${daysOf(aged.value)} before this report was generated.` : `Oldest reading: ${daysOf(aged.value)}, shared by ${aged.items.map((r) => r.id).join(", ")}.`;
     const due = rows.filter((r) => r.due);
-    say(`**Oldest reading: ${oldest.days === null ? "never" : `${oldest.days} days`} (${oldest.id}).** ${due.length ? `${due.length} document(s) overdue.` : "Nothing overdue."}
+    say(`**${lead}** ${due.length ? `${due.length} document${due.length === 1 ? " is" : "s are"} overdue.` : "Nothing overdue."}
 `);
     say("| Document | Read | Window | Dated on the document |");
     say("|---|---:|---:|---|");
@@ -1067,7 +1170,7 @@ ${pct1}% of the requests carrying a crawler's name were verified as that crawler
   say("6. **Section D is the one nothing else can catch.** Every other failure on this site has a");
   say("   technical symptom. A change to the terms this site depends on has none \u2014 the pages keep");
   say("   rendering perfectly \u2014 so the only detector is somebody re-reading the document.");
-  const doc = { week: st.week, at: Date.now(), tookMs: Date.now() - st.startedAt, md: st.lines.join("\n") + "\n", urls: st.urls ?? [] };
+  const doc = { week: st.week, at: Date.now(), tookMs: Date.now() - st.startedAt, md: st.lines.join("\n") + "\n", urls: st.urls ?? [], format: REPORT_FORMAT };
   await env.SNAPSHOT.put(`report:${st.week}`, JSON.stringify(doc));
   await env.SNAPSHOT.put("report:latest", JSON.stringify(doc));
   await env.SNAPSHOT.delete("report:state");
@@ -1139,6 +1242,21 @@ function positionBands(rows) {
     };
   });
 }
+function queriesByImpressions(rows, limit) {
+  const sorted = [...rows ?? []].sort((a, b) => b.impressions - a.impressions || b.clicks - a.clicks || a.position - b.position || String(a.keys[0]).localeCompare(String(b.keys[0])));
+  const shown = sorted.slice(0, limit);
+  const next = sorted[shown.length];
+  const edge = shown[shown.length - 1];
+  if (!next || !edge || next.impressions !== edge.impressions) return { shown, tie: null };
+  return {
+    shown,
+    tie: {
+      value: edge.impressions,
+      count: sorted.filter((r) => r.impressions === edge.impressions).length,
+      shown: shown.filter((r) => r.impressions === edge.impressions).length
+    }
+  };
+}
 function nearMisses(rows, limit = 20) {
   return (rows ?? []).filter((r) => r.position > 10.5 && r.position <= 25.5).sort((a, b) => b.impressions - a.impressions || a.position - b.position).slice(0, limit);
 }
@@ -1183,7 +1301,7 @@ async function stepCorroborate(env, now = Date.now()) {
 }
 
 // worker/build-stamp.ts
-var WORKER_BUILD = "a1e3d0bcb3ff";
+var WORKER_BUILD = "c93bfbd4484f";
 
 // worker/ingest.ts
 var RETAIN_HOURS = 720;
@@ -1356,6 +1474,62 @@ async function run(env) {
         result.oi = `${oiRows.length} symbols recorded`;
       }
       await env.DB.prepare("DELETE FROM oi_snapshot WHERE at < ?1").bind(at - RETAIN_HOURS * 36e5).run();
+    }
+    if (!collapsed && env.DB) {
+      try {
+        const nowBucket = bucketOf(at);
+        const prev = await env.SNAPSHOT.get(SPARK_KEY, "json");
+        const usable = prev && prev.v === 1 && prev.series ? prev : null;
+        const lastDone = nowBucket - 1;
+        const have = usable ? usable.bucket : -Infinity;
+        if (lastDone > have) {
+          const need = Math.min(SPARK_POINTS, Number.isFinite(have) ? lastDone - have : SPARK_POINTS);
+          const from = (lastDone - need + 1) * SPARK_STEP_MS;
+          const syms = snap.perps.map((p) => p.symbol).filter(Boolean);
+          if (syms.length) {
+            const marks = syms.map(() => "?").join(",");
+            const rows2 = await env.DB.prepare(
+              `SELECT symbol, CAST(at / ${SPARK_STEP_MS} AS INTEGER) AS b, AVG(apr) AS apr
+                 FROM funding_snapshot
+                WHERE symbol IN (${marks}) AND venue = 'HlPerp' AND at >= ?${syms.length + 1} AND at < ?${syms.length + 2}
+                GROUP BY symbol, b`
+              /* .all<T>() through the repo's own D1Like, the same shape flips.ts declares. The
+                 ambient D1PreparedStatement in this workers-types version does not carry `all`
+                 on the value returned by bind(), and the site's readers have needed their own
+                 structural type for that reason since the flip feed was written. */
+            ).bind(...syms, from, (lastDone + 1) * SPARK_STEP_MS).all();
+            const fresh = /* @__PURE__ */ new Map();
+            for (const r of rows2.results ?? []) {
+              if (!Number.isFinite(r.apr)) continue;
+              if (!fresh.has(r.symbol)) fresh.set(r.symbol, /* @__PURE__ */ new Map());
+              fresh.get(r.symbol).set(r.b, r.apr);
+            }
+            const series = {};
+            for (const sym of syms) {
+              const old = usable?.series?.[sym];
+              const oldBase = usable ? usable.bucket - (old?.length ?? 0) + 1 : 0;
+              const got = fresh.get(sym);
+              if (!got && !(old && old.length)) continue;
+              const out = [];
+              let carry = NaN;
+              for (let b = lastDone - SPARK_POINTS + 1; b <= lastDone; b++) {
+                const v = got?.get(b) ?? (old && b >= oldBase && b <= (usable?.bucket ?? -1) ? old[b - oldBase] : void 0);
+                if (Number.isFinite(v)) carry = v;
+                if (Number.isFinite(carry)) out.push(Number(carry.toFixed(5)));
+              }
+              if (out.length) series[sym] = out.slice(-SPARK_POINTS);
+            }
+            const n2 = Object.keys(series).length;
+            if (n2) {
+              const map = { v: 1, bucket: lastDone, at, series };
+              await env.SNAPSHOT.put(SPARK_KEY, JSON.stringify(map));
+              result.sparks = `${n2} symbols, ${need} bucket(s) added`;
+            }
+          }
+        }
+      } catch (e) {
+        result.sparksError = String(e?.message ?? e).slice(0, 120);
+      }
     }
     try {
       const ages = {};

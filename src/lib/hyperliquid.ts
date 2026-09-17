@@ -30,6 +30,25 @@ export const OI_RETIRE_FLOOR = 3_500_000;
  */
 export const SYMBOL_CAP = 50;
 
+/**
+ * THE CAP GETS THE SAME HYSTERESIS THE FLOOR HAS, AND IT NEEDED IT MORE.
+ *
+ * OI_RETIRE_FLOOR stops a published contract losing its URL to noise at the floor. Nothing stopped
+ * it losing its URL to noise at the CAP, and that turned out to be where every retirement came
+ * from. Measured 16 September 2026: `published:retired` held eight contracts — MORPHO, FET, SKR,
+ * JTO, SPX, kBONK, PENGU, VIRTUAL — and five of them sat ABOVE the $5M entry floor that day
+ * (VIRTUAL $7.60M, SPX $5.62M, FET $5.60M, MORPHO $5.49M, PENGU $5.39M). VIRTUAL was retired for
+ * ranking 51st, $190k behind the 50th; its indexed URL began answering 410 with a sentence saying
+ * it had "fell below the $5.00M floor". That is exactly the silent, expensive loss the floor's own
+ * note describes, arriving by the route nobody guarded.
+ *
+ * So a contract that already has a page keeps it while it stays above OI_RETIRE_FLOOR even when
+ * outranked — up to this many extra pages, so the cap's purpose (a burst of listings cannot
+ * multiply the page count) still holds with a stated bound. New contracts still enter only inside
+ * the largest SYMBOL_CAP.
+ */
+export const SYMBOL_RETAIN_EXTRA = 5;
+
 export interface Perp {
   symbol: string;
   markPx: number;
@@ -53,7 +72,10 @@ export interface Snapshot {
   perps: Perp[];
   /** Every symbol above the floor, before the phase-0 cap. */
   eligibleCount: number;
+  /** Contracts the venue lists — delisted markets excluded. */
   universeCount: number;
+  /** Published contracts kept although outranked past SYMBOL_CAP (see SYMBOL_RETAIN_EXTRA). */
+  keptPastCap?: number;
   /**
    * False only before the ingest worker has ever written to KV. Pages must check this
    * and return a 503 rather than render with an empty perps array — see coldStart().
@@ -96,7 +118,7 @@ async function info<T>(body: unknown): Promise<T> {
 }
 
 type MetaAndCtxs = [
-  { universe: { name: string; maxLeverage: number; szDecimals: number; marginTableId: number }[] },
+  { universe: { name: string; maxLeverage: number; szDecimals: number; marginTableId: number; isDelisted?: boolean }[] },
   {
     funding: string;
     openInterest: string;
@@ -215,15 +237,27 @@ export async function fetchSnapshot(published: string[] = []): Promise<Snapshot>
         (p.oiNotional >= OI_NOTIONAL_FLOOR || (live.has(p.symbol) && p.oiNotional >= OI_RETIRE_FLOOR)),
     )
     .sort((a, b) => b.oiNotional - a.oiNotional);
+  /* The largest SYMBOL_CAP, then incumbents the rank alone would have evicted — see
+     SYMBOL_RETAIN_EXTRA. Largest first within the retained band too, so the bound cuts the
+     smallest. Re-sorted so every consumer still reads the set largest first. */
+  const inCap = eligible.slice(0, SYMBOL_CAP);
+  const kept = eligible.slice(SYMBOL_CAP).filter((p) => live.has(p.symbol)).slice(0, SYMBOL_RETAIN_EXTRA);
+  const perps = [...inCap, ...kept].sort((a, b) => b.oiNotional - a.oiNotional);
+  /* DELISTED CONTRACTS ARE NOT LISTED. Hyperliquid's universe keeps delisted markets with zero open
+     interest: on 16 September 2026, 56 of 234 entries carried isDelisted, and six pages printed
+     "58 of 234" as though the venue listed 234. The audit found /methodology saying "Hyperliquid
+     lists 234 perpetual contracts" beside a listing of 178. */
+  const listed = universe.filter((u) => !u.isDelisted).length;
 
   return {
     available: true,
     fetchedAt: Date.now(),
-    perps: eligible.slice(0, SYMBOL_CAP),
+    perps,
     // Reported on the site as "N of M clear the floor", so it counts the ENTRY floor only —
     // a number inflated by contracts kept alive on hysteresis would not match its own label.
     eligibleCount: all.filter((p) => Number.isFinite(p.oiNotional) && p.oiNotional >= OI_NOTIONAL_FLOOR).length,
-    universeCount: all.length,
+    universeCount: listed,
+    keptPastCap: kept.length,
   };
 }
 

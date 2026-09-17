@@ -78,6 +78,45 @@ const dayOpen = event[0][1];
 const dayLow = Math.min(...event.map((c) => c[3]));
 const wick = hourAt("2026-02-06T00:00:00Z");
 const biggestHour = event.reduce((a, b) => (b[5] > a[5] ? b : a));
+/* THE FALL IS COUNTED IN WHOLE HOURLY BARS, READ OFF THE SAME TABLE THE PRICES COME FROM.
+   The page said "twenty-three hours". Its $73,139 is the OPEN of the 5 Feb 00:00 bar and its
+   $60,000 is the low inside the 6 Feb 00:00 bar, so the hourly table the reader can check puts
+   the fall at 24 hours or more and under 25 (measured 16 September 2026). Twenty-three counted
+   from 5 Feb 01:00, the last bar whose range still held $73,139, which is not the price the
+   sentence quotes — and the chart's two-hour bar stamped "5 Feb, 23:00 — low $60,000" made the
+   same wrong count look confirmed. The span is now the low's index in `event`, the table the
+   prices are read from, so the number and the prices cannot come from different bars again. */
+const lowAt = event.findIndex((c) => c[3] === dayLow);
+const fallUnderHours = lowAt + 1;
+const slideHours = event.indexOf(wick);
+/* "PEAK DRAWDOWN" IS MEASURED FROM THE RUNNING PEAK, NOT FROM THE WINDOW'S OPEN. The strip
+   printed (low / open - 1) = -18.0% under that label; the highest price before the low was
+   the $73,310 high at 5 Feb 01:00, which makes it -18.2% (measured 16 September 2026). Inside a
+   bar the order of high and low is unknown, so the peak a bar's low can fall from is that bar's
+   open or any EARLIER bar's high — never its own high, which may have printed after the low.
+   Because the peak can be an open, the strip names which one it is: it said "from the … high"
+   unconditionally, true for this data only because the peak happens to be a high. */
+let runHigh = -Infinity, drawdown = 0, drawdownFrom = dayOpen, drawdownFromKind = "open";
+for (const c of event) {
+  const fromOpen = c[1] > runHigh;
+  const peak = fromOpen ? c[1] : runHigh;
+  if (c[3] / peak - 1 < drawdown) { drawdown = c[3] / peak - 1; drawdownFrom = peak; drawdownFromKind = fromOpen ? "open" : "high"; }
+  runHigh = Math.max(runHigh, c[2]);
+}
+/* The strip's dates are read off the window, not typed: "5–6 Feb" was a literal beside numbers
+   computed from `event`, so moving EVENT_FROM/EVENT_TO would have moved the numbers and left the
+   dates behind. */
+const dayRange = (a: number, b: number) => {
+  const x = new Date(a), y = new Date(b);
+  const [dx, mx, dy, my] = [x.getUTCDate(), x.getUTCMonth(), y.getUTCDate(), y.getUTCMonth()];
+  if (mx !== my) return `${dx} ${MON[mx]} – ${dy} ${MON[my]}`;
+  return dx === dy ? `${dx} ${MON[mx]}` : `${dx}–${dy} ${MON[mx]}`;
+};
+const eventDays = dayRange(event[0][0], event[event.length - 1][0]);
+/* THE SAME DATES IN PROSE, READ OFF THE SAME WINDOW. The strip labels were derived from `event`
+   while the opening sentence and the meta description still typed "5–6 February 2026" beside them
+   (verifier, 16 September 2026) — correct today and unable to follow the window if it moved. */
+const eventDate = `${eventDays} ${new Date(event[event.length - 1][0]).getUTCFullYear()}`;
 /* The comparison is total-to-total, over the SAME span. Multiplying a one-hour median by
    thirty-one fixes the units and not the statistic: prior hourly volume is right-skewed
    (mean/median 1.87), so that denominator is too small and the ratio comes out ~1.8x too
@@ -94,6 +133,9 @@ const typicalOverSameSpan = rolling.length ? rolling[Math.floor(rolling.length /
 const px = (v: number) => usd(v, 0);
 const btc = (v: number) => Math.round(v).toLocaleString("en-US");
 const fetched = new Date(frozen.fetchedAt).toISOString().slice(0, 10);
+// One string, not "{price} {kind}" in the markup: Astro dropped the space between the two
+// expressions and shipped "$73,310high" (rendered 16 September 2026).
+const drawdownLabel = `peak drawdown, from the ${px(drawdownFrom)} ${drawdownFromKind}, ${eventDays}`;
 
 /* CUT MID-WORD, INSIDE THE PART THAT MATTERS. At 82 characters with the brand suffix this
    rendered as "...liquidation model vs real ca" in a result — the comparison being made is the
@@ -103,7 +145,7 @@ const fetched = new Date(frozen.fetchedAt).toISOString().slice(0, 10);
    The h1 is unchanged; this is the <title> only. */
 const title = "5 February 2026 BTC crash: model vs real candles";
 const description =
-  "BTC fell from $73,139 to a $60,000 wick in twenty-three hours on 5–6 February 2026. Here is the modelled liquidation field for that window, with the price path drawn over it, so you can watch price run into the bands and clear them.";
+  `BTC fell from ${px(dayOpen)} to a ${px(dayLow)} wick in under ${fallUnderHours} hours on ${eventDate}. Here is the modelled liquidation field for that window, with the price path drawn over it, so you can watch price run into the bands and clear them.`;
 ---
 
 {/* NO fetchedAt. It fed nothing but dateModified here — `frozen` already suppresses the pill —
@@ -116,20 +158,13 @@ const description =
     <h1>The 5 February 2026 BTC sweep: price ran into the bands and cleared them</h1>
     <p>
       A liquidation map is a model, and a model that is never tested is decoration. On
-      <strong>5–6 February 2026</strong> Bitcoin fell from {px(dayOpen)} to a {px(dayLow)} wick in
-      {/* TWENTY-THREE, not thirty. Measured from the frozen series: price was last at $73,139
-          at 5 Feb 01:00 UTC and the $60,000 low prints at 6 Feb 00:00 — 23 hours. "Thirty" is
-          the width of the WINDOW this page examines (5 Feb 00:00 to 6 Feb 06:00), which is a
-          different quantity that happened to sit in the same sentence. */}
-      {/* "A STRETCH THAT LONG" MEANT TWENTY-THREE HOURS AND THE RATIO IS COMPUTED OVER THE
-          WINDOW. The comment above corrected the FALL from thirty hours to twenty-three, and
-          the volume clause one line to the right kept comparing `event` — every bar of the
-          window this page examines — against the median total over the same number of bars.
-          Both halves are right on their own; the sentence attached the second to the span named
-          by the first. The same window-versus-fall confusion the note above is about, surviving
-          the fix that named it, because it moved rather than went away. The span is now read
-          from the series instead of being implied. */}
-      twenty-three hours, on {(eventVol / typicalOverSameSpan).toFixed(0)}× the volume this {event.length}-hour window normally carries. Below is the modelled field
+      <strong>{eventDate}</strong> Bitcoin fell from {px(dayOpen)} to a {px(dayLow)} wick in
+      {/* THE FALL AND THE WINDOW ARE TWO SPANS, AND THE SENTENCE NAMES BOTH. The fall runs from
+          the window's first open to the bar holding the low (see `fallUnderHours`); the volume
+          ratio compares every bar of the window with the median total over the same number of
+          bars, so it is attached to the window by name, not to the fall. Both numbers are read
+          from the series. */}
+      under {fallUnderHours} hours, on {(eventVol / typicalOverSameSpan).toFixed(0)}× the volume this {event.length}-hour window normally carries. Below is the modelled field
       for that window with the observed price drawn over it. Watch the bright bands under the price
       end where the candles reach them.
     </p>
@@ -137,8 +172,8 @@ const description =
   </div>
 
   <div class="reads">
-    <div><b>{px(dayOpen)} → {px(dayLow)}</b><span>observed, 5–6 Feb</span></div>
-    <div><b>{((dayLow / dayOpen - 1) * 100).toFixed(1)}%</b><span>peak drawdown in the window</span></div>
+    <div><b>{px(dayOpen)} → {px(dayLow)}</b><span>observed, {eventDays}</span></div>
+    <div><b>{(drawdown * 100).toFixed(1)}%</b><span>{drawdownLabel}</span></div>
     <div><b>{(biggestHour[5] / medVol).toFixed(0)}×</b><span>the busiest hour against the prior median</span></div>
     <div><b>{compact(sweptTotal)}</b><span>modelled notional price traded through</span></div>
   </div>
@@ -208,8 +243,12 @@ const description =
   </div>
 
   <h2 class="section">The hour itself</h2>
+  {/* THIRTY WAS THE GAP BETWEEN THE FIRST AND LAST STAMPS, NOT THE WINDOW. The intro calls the
+      same window 31 hours and the table below has 31 hourly rows (measured 16 September 2026).
+      Nor does the slide fill the window: 24 bars fall into the wick and six recover after it.
+      Both counts are now indices into `event`. */}
   <p class="prose">
-    The slide across this 30-hour window is the setup; the payoff is a single bar. At
+    The slide across the first {slideHours} hours of this {event.length}-hour window is the setup; the payoff is a single bar. At
     <strong>{fmtT(wick[0])} UTC</strong> BTC opened at {px(wick[1])}, printed a low of
     <strong>{px(wick[3])}</strong>, and closed back at {px(wick[4])} — a
     {(((wick[1] - wick[3]) / wick[1]) * 100).toFixed(1)}% excursion recovered inside sixty minutes,

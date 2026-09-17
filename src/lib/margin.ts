@@ -57,10 +57,23 @@ export interface LiquidationResult {
   naivePrice: number;
   /** naive - correct, in quote currency. Positive means the naive figure is further from entry. */
   differenceAbs: number;
-  /** Difference as a share of the correct price. */
-  differencePct: number;
+  /* THE BASE IS IN THE NAME NOW, AND THAT IS THE FIX.
+     This was `differencePct`, "difference as a share of the correct price", and three pages put it
+     in the sentence "liquidation is 1.25% ($864.93) away from what the common formula returns" —
+     which names the FORMULA's price as the reference while the percentage was taken on the
+     CORRECT one. On BTC at 10× that is 1.25% against 1.27%; the claim-vs-table audit on
+     16 September confirmed it on /funding/btc, /funding/trump and /tools/position-size. A share with
+     no stated base will be read against whichever price the sentence happens to name.
+     What a reader actually needs is the one comparison where both prices share a base: how far
+     each puts liquidation from ENTRY. That is `distancePct` against `naiveDistancePct` — 8.86% of
+     room, not the 10.00% the formula promises. */
+  /** naive − correct as a share of the CORRECT price. Say so wherever it is printed. */
+  differenceOfCorrectPct: number;
   /** Distance from entry to the correct liquidation, as a share of entry. */
   distancePct: number;
+  /** Distance from entry to where the naive formula puts liquidation, as a share of entry — the
+   *  same base as distancePct, so the two can be compared in one sentence. */
+  naiveDistancePct: number;
   notional: number;
   /** Tier that applies at this notional. */
   tier: MarginTier;
@@ -108,7 +121,15 @@ export function liquidationPrice(input: LiquidationInput): LiquidationResult {
       ? (entryPrice * (1 - 1 / leverage)) / (1 - mmf)
       : (entryPrice * (1 + 1 / leverage)) / (1 + mmf);
 
-  const naive = naiveLiquidationPrice(entryPrice, leverage, side);
+  /* THE FORMULA IN CIRCULATION IS FED THE LEVERAGE THE READER ASKED FOR, not the clamped one.
+     Its whole point is to show what someone gets from `entry × (1 − 1/leverage)` without knowing
+     the venue's tiers — and someone who does not know the tiers does not know about the clamp
+     either. It used the clamped leverage, so /learn/liquidation-price printed "Leverage requested:
+     10× … Common formula says: $80.00" for a $4.00M position: $80 is what the formula gives at 5×,
+     the tier's cap, which the same page says "neither is visible in the common formula". The gap
+     column then measured the correct price against a naive price that already knew the answer.
+     Confirmed by the claim-vs-table audit on 16 September. Unclamped contracts are unchanged. */
+  const naive = naiveLiquidationPrice(entryPrice, input.leverage, side);
 
   return {
     liquidationPrice: correct,
@@ -119,8 +140,9 @@ export function liquidationPrice(input: LiquidationInput): LiquidationResult {
        are 0 and this was 0/0 = NaN. Every input was validated; the value actually divided by was
        not. /tools/position-size accepts leverage=1 from its own dropdown, so the page whose job
        is to quantify the gap printed an em dash in the middle of the sentence saying so. */
-    differencePct: correct > 0 ? Math.abs(naive - correct) / correct : 0,
+    differenceOfCorrectPct: correct > 0 ? Math.abs(naive - correct) / correct : 0,
     distancePct: entryPrice > 0 ? Math.abs(correct - entryPrice) / entryPrice : 0,
+    naiveDistancePct: entryPrice > 0 ? Math.abs(naive - entryPrice) / entryPrice : 0,
     notional,
     tier,
     tierIndex: index,
@@ -172,4 +194,25 @@ export function corridorAt(mark: number, L: number, mmf: number) {
     corridor: (shortLiq - longLiq) / mark,
     margin: 1 / L,
   };
+}
+
+/* =========================================================================================
+   HOW THE VENUE'S ROOM COMPARES WITH THE FORMULA'S — ONE DECISION, THREE ANSWERS.
+
+   The sentence on /funding/{symbol} and /tools/position-size had two branches: less room ("of room
+   that is not there") or else "more room than the formula shows, because the tier caps the
+   leverage". The audit of 16 September 2026 rendered /tools/position-size at 1×: both rooms were
+   100.00%, the gap $0.00, nothing was capped, and the page printed "$0.00 more room than the formula
+   shows, because the tier caps the leverage at 1×". Equal is a state, and "because the tier caps"
+   is only true when it did.
+
+   EQUAL MEANS EQUAL AT THE PRECISION PRINTED. The two percentages sit side by side at two decimals;
+   a gap that rounds away there is not a gap a sentence may assert.
+   ========================================================================================= */
+export type RoomVerdict = "less" | "more-capped" | "more" | "same";
+export function roomVerdict(r: LiquidationResult, printedPctDecimals = 2): RoomVerdict {
+  const q = (x: number) => Math.round(x * 100 * 10 ** printedPctDecimals);
+  if (q(r.distancePct) === q(r.naiveDistancePct)) return "same";
+  if (r.distancePct < r.naiveDistancePct) return "less";
+  return r.leverageClamped ? "more-capped" : "more";
 }

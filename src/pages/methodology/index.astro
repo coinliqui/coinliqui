@@ -1,9 +1,11 @@
 ---
 import Base from "../../layouts/Base.astro";
 import Related from "../../components/Related.astro";
-import { getSnapshot, coldStart } from "../../lib/hyperliquid.ts";
+import { getSnapshot, coldStart, findPerp } from "../../lib/hyperliquid.ts";
 import { pct, rawRate, settlementsPerYear, VENUE_LABEL, type Venue } from "../../lib/funding.ts";
 
+import { coverageRule, coverageToday } from "../../lib/coverage.ts";
+import tables from "../../data/margin-tables.json";
 const snap = await getSnapshot((Astro.locals as any)?.runtime?.env?.SNAPSHOT, import.meta.env.DEV);
 // Cold store: 503 + Retry-After rather than a page rendered from nothing.
 if (!snap.available) return coldStart();
@@ -14,6 +16,29 @@ const ORDER: Venue[] = ["HlPerp", "BinPerp", "BybitPerp"];
 const rows = ORDER.map((v) => example?.venues.find((x) => x.venue === v)).filter(Boolean) as NonNullable<
   (typeof example)["venues"][number]
 >[];
+/* ONE CONDITION FOR THE TABLE AND FOR EVERY SENTENCE THAT POINTS AT IT. The normalisation paragraph
+   now names "the worked example below" as a place where the quoted rate sits beside the APR; the
+   table only renders when a contract quotes on two venues, so the words read the same flag. */
+const hasExample = Boolean(example && rows.length >= 2);
+/* THE BITCOIN CARD DESCRIBES WHAT /coins/bitcoin RENDERS, SO IT READS THE SAME LOOKUP. That page
+   calls findPerp(snap.perps, "BTC"), and its ladder also needs the contract's margin table. The
+   note promises the price, the per-venue cost and the ladder only when both lookups would find them.
+   WITHOUT A PERP, ONLY WHAT IS BLANK IN EVERY SUCH STATE. The no-perp note said the page "says so
+   rather than printing figures" (verifier, 16 September 2026, read from src/pages/coins/[coin].astro;
+   the state does not occur on http://localhost:4322/coins/bitcoin or any of the ten coin pages that
+   day). That page can still print figures without a perp: the hero price falls back through
+   live.mark before perp.markPx, the 24h high and low come from the hourly candle store, and the
+   chart from the candle series, none of which reads the snapshot. What cannot print is everything
+   keyed off `perp` or its venues — the Hyperliquid funding card, the $10,000 weekly cost, every row
+   of the per-venue table, open interest and the ladder — so the note names those and nothing that
+   depends on a second store. */
+const btcPerp = findPerp(snap.perps, "BTC");
+const btcHasLadder = Boolean(btcPerp && (tables as Record<string, unknown>)[String(btcPerp.marginTableId)]);
+const btcCardNote = !btcPerp
+  ? "Bitcoin's perpetual is not in the current snapshot. Its page says so, and prints dashes where the funding cost, the per-venue rates and the open interest go."
+  : btcHasLadder
+    ? "The perpetual's price, what holding it costs on each venue, and how far it can move before each leverage is closed."
+    : "The perpetual's price, and what holding it costs on each venue.";
 
 const title = "How crypto funding rates are annualised across venues";
 const description =
@@ -42,16 +67,41 @@ const description =
 
   <h2>The normalisation</h2>
   <p class="prose">
-    Every rate on this site is annualised before it is displayed:
+    Funding rates are annualised before this site compares them:
   </p>
   <p class="formula">APR = quoted rate × (8760 ÷ interval hours)</p>
   <p class="prose">
     Simple annualisation, no compounding — funding is paid out rather than reinvested, and
-    compounding it would assume a reinvestment policy the trader may not follow. The quoted rate
-    and the interval are always shown next to the APR so the conversion can be checked.
+    compounding it would assume a reinvestment policy the trader may not follow.
+    {/* WHERE THE CHECK IS POSSIBLE, NAMED, INSTEAD OF "ALWAYS". This said "The quoted rate and the
+        interval are always shown next to the APR so the conversion can be checked", and the first
+        sentence said every rate "is annualised before it is displayed" above a table of quoted rates.
+        Audit of 16 September 2026 on https://coinliqui.com/coins/bitcoin: the "What leverage costs,
+        per venue" table is Venue | Interval | Annualised | $10,000 long, per week | Direction, with no
+        quoted rate (Hyperliquid 1h 10.95%, Binance 8h 5.11%, Bybit 8h 8.77%); / and /watchlist print
+        "Hyperliquid funding APR" with neither. The list below is every table that renders rawRate()
+        beside the APR (grep rawRate( src/pages, same date) that renders for any contract; the guide
+        tables on /learn and /learn/funding-rate are left out because they are one worked contract
+        (BTC, or the first perp when BTC is missing), not a place a reader checks a figure they found. A page that adds or drops a quoted-rate column has to be added here or
+        removed: grep rawRate( is the census.
+        TWO OF THOSE FIVE PLACES REPAINT ONE HALF OF THE PAIR. /funding and /funding/{symbol} mark the
+        APR cell data-repaint="apr"; public/interact.js pulls /api/live.json on load and every 30s and
+        rewrites it from the one-minute cron, and the quoted-rate cell beside it has no hook and the
+        payload carries no rate. Measured 16 September 2026 on http://localhost:4322/funding against
+        /api/live.json fetched seconds apart: 14 of 144 cells would repaint to an APR the quoted rate
+        beside them does not give (XLM Hyperliquid served -38.67% at -0.00004414 / 1h, repainted
+        -38.74%). So "so the conversion can be checked there" is said only of the places that do not
+        repaint, and the two that do are named as such. IF interact.js STARTS REPAINTING THE QUOTED RATE
+        TOO, the "but not the quoted rates beside them" sentence becomes false and must go.
+        The list of APRs without a quoted rate says "among others": /learn prints BTC's annualised
+        rate alone too, and a closed list would be one more census to keep. */}
+    The quoted rate and its interval are printed beside the APR in {hasExample && <>the worked example below, </>}the <a href="/tools/funding-cost">funding-cost</a> and <a href="/tools/funding-arbitrage">funding-arbitrage</a> calculators, the <a href="/funding">funding table</a>, and the per-venue table on each contract's page (<a href="/funding/btc">BTC's, for one</a>).
+    In {hasExample ? "the worked example and the calculators" : "the calculators"} the pair stays as the page drew it, so the conversion can be checked there.
+    The funding table and the contract pages update their APRs from a one-minute feed as soon as they open, but not the quoted rates beside them, so there the pair can disagree once the rate has moved.
+    Many APRs carry no quoted rate at all: those on the home page, the watchlist and the coin pages, and in the headline and the price-bar table of each contract's page, among others.
   </p>
 
-  {example && rows.length >= 2 && (
+  {hasExample && example && (
     <>
       <h2>Worked example, live right now</h2>
       <p class="prose">Current {example.symbol} funding, as quoted and as annualised:</p>
@@ -78,9 +128,9 @@ const description =
 
   <h2>Coverage, and why it is capped</h2>
   <p class="prose">
-    Hyperliquid lists <strong>{snap.universeCount}</strong> perpetual contracts.
-    <strong> {snap.eligibleCount}</strong> of them carry more than $5,000,000 of open interest,
-    and this site publishes a page for the largest <strong>{snap.perps.length}</strong> of those.
+    {/* COUNTS FROM coverageToday(), NOT RETYPED — six pages restated these numbers by hand and
+        "N of 234" counted 56 delisted markets as listed (audit, 16 September 2026). */}
+    {coverageRule()} {coverageToday(snap)}
     A coin that has not cleared the floor is not published at all rather than published with sparse or
     misleading figures — a page that exists only to exist is worse than no page.
   </p>
@@ -97,10 +147,20 @@ const description =
     Everything displayed comes from <a href="/data-sources">the sources listed here</a>.
   </p>
 
+    {/* TWO NOTES THAT HAD OUTLIVED THEIR PAGES (audit, 16 September 2026, https://coinliqui.com/methodology).
+        "Spot beside the perpetual": /coins/bitcoin says its price "is a perpetual futures price, not a
+        spot price" and that spot and basis were removed on 19 August 2026. The note now names the three
+        things that page renders: the perpetual's price, the per-venue cost table and the leverage ladder.
+        "The one number this site refuses to publish": the "What is not here" section directly above
+        names two withheld kinds of number (liquidation totals; market capitalisations and supply), and
+        /data-sources lists five. The note now says what the linked page is about without counting.
+        "Of its own": the linked page itself quotes $19 billion market-wide and $10.31 billion on
+        Hyperliquid for 10 October 2025 — other people's totals, cited to make the argument — so "prints
+        no liquidation total" was not quite true of it. */}
     <Related items={[
     { href: "/funding/btc", label: "BTC funding", note: "The normalisation on this page, applied to a live contract across three venues." },
-    { href: "/coins/bitcoin", label: "Bitcoin price", note: "Spot beside the perpetual, and what the funding rate costs to hold." },
-    { href: "/methodology/liquidations", label: "Why no liquidation totals", note: "The one number this site refuses to publish, and the arithmetic behind refusing." },
+    { href: "/coins/bitcoin", label: "Bitcoin price", note: btcCardNote },
+    { href: "/methodology/liquidations", label: "Why no liquidation totals", note: "Why this site publishes no liquidation total of its own, and the arithmetic behind refusing to." },
     { href: "/data-sources", label: "Data sources", note: "Every endpoint, its cadence, and what is deliberately absent." },
   ]} />
 

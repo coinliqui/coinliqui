@@ -131,6 +131,7 @@ const MANUAL_BY_DESIGN = {
   "configure-zone.mjs": "one-time zone setup; re-running it changes account state, not code",
   "gen-og-png.mjs": "network plus a live credential, and og.png is committed as an artifact — a build that needs the network is a build that gets bypassed",
   "gsc-report.mjs": "reads Search Console with a key that lives only in a worker secret; the worker produces the standing report instead",
+  "seed-sparks.mjs": "a one-off backfill of spark:funding that reads 201,599 D1 rows; the worker maintains the key at 4,900 rows a bucket and can cold-start itself, so running this on every gate would spend the read budget to reproduce state that already exists",
 };
 const npmScripts = JSON.parse(readFileSync("package.json", "utf8")).scripts;
 const npmCmds = Object.values(npmScripts).join(" && ");

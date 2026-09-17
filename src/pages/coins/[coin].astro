@@ -6,10 +6,12 @@ import { maintenanceMarginFraction, corridorAt, type MarginTable } from "../../l
 import tables from "../../data/margin-tables.json";
 import { findCoin, isLive, liveCoins } from "../../lib/coins.ts";
 import { liqMapHref } from "../../lib/routes.ts";
-import { getCandles, getHourly, getM15 } from "../../lib/candles.ts";
+import { countWords } from "../../lib/site.ts";
+import { getCandles, getHourly, getM15, type Candle } from "../../lib/candles.ts";
 import { freshness, ageWords, minutesSince } from "../../lib/freshness.ts";
+import Overview from "../../components/Overview.astro";
 import { TIMEFRAMES, DEFAULT_TF, MIN_CHART_BARS, aggregate, buildPriceChart, CHART_H, type ChartMode } from "../../lib/series.ts";
-import { CH } from "../../lib/chart.ts";
+import { CH, n2, timeTicks } from "../../lib/chart.ts";
 
 import { priceDp } from "../../lib/funding.ts";
 /* =========================================================================================
@@ -114,6 +116,64 @@ const by = new Map((perp?.venues ?? []).map((v) => [v.venue, v]));
 const hl = by.get("HlPerp");
 /** What a $10,000 leveraged long pays (or receives) in a week, at the current rate. */
 const week = (apr: number) => carryCost(10_000, apr, 7);
+/* THE OPENING SENTENCE NAMES THE SIDE ITS DOLLARS BELONG TO. It said "Holding it is paid: shorts
+   pay longs at 13.77% a year, which is $26.41 a week on a $10,000 position, paid to you" —
+   checked on the local render of /coins/avalanche on 16 September 2026, with bitcoin reading
+   "Holding it is a cost … $21.00 a week on a $10,000 position". `week()` is a LONG's carry, and
+   the card below says so ("Cost to hold $10,000 long"); a short holding the same position is paid
+   exactly what the long is charged, so "holding it" and "you" were true for half the readers.
+   The sentence now says "long" in both places the figure is claimed. And a rate that rounds to
+   no money — funding at 0.00%, or close enough that the week is under a cent — was "a cost"
+   of "$0.00"; it is decided from the same formatted figure the sentence would print, so the
+   words cannot call a sum a cost that the digits show as nothing. */
+const carryWeek = hl && Number.isFinite(hl.apr) ? usd(Math.abs(week(hl.apr)), 2) : "—";
+const carryNil = carryWeek === usd(0, 2);
+/* ONE ROW PER VENUE IN ORDER, WITH WHAT IT CAN PRINT decided here, once, so the venue table and
+   the sentences about it read the same two flags instead of each re-deriving them. The table
+   renders every ORDER venue unconditionally; a venue with no usable interval and no usable rate
+   stays in it as a row of dashes. */
+const venueRows = ORDER.map((v) => {
+  const f = by.get(v);
+  const ok = !!f && Number.isFinite(f.apr);
+  const hasInterval = !!f && Number.isFinite(f.intervalHours);
+  return { v, f, ok, hasInterval };
+});
+/** "Binance", "Binance and Bybit", "Binance, Bybit and OKX". */
+const andList = (xs: string[]) =>
+  xs.length < 3 ? xs.join(" and ") : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`;
+/* THE FIGURES ON THIS PAGE THAT ARE NOT HYPERLIQUID'S, read off the rows the venue table
+   renders. "Where the numbers come from" said every figure on the page was Hyperliquid, "the
+   funding" named among them, below a table whose Binance and Bybit rows print those venues'
+   own rates. Measured on production on 16 September 2026: /coins/bitcoin showed Binance 2.31%
+   ($4.44 a week) and Bybit 5.46% ($10.47) under that sentence, /coins/chainlink -1.10% and
+   -3.52%. The rates do travel through Hyperliquid's predictedFundings feed, which is the only
+   sense in which the sentence held — a rate another venue sets is still that venue's figure.
+
+   The exception counts the rows that print a figure, not the rows that exist. A venue that
+   stops returning a rate keeps its row — as dashes, which carry no figure — and leaves the
+   sentence; the first version of this note said the row left too, and it does not. A venue
+   added to ORDER gets a row and, once it prints anything, a place in the sentence, and
+   `andList` keeps a third name from reading "Binance and Bybit and X". The follow-on sentence
+   says what those rows are worked from rather than calling a row a rate: a row is an
+   interval, a rate, a weekly cost and a direction, the last two computed here from the rate. */
+const secondHand = venueRows.filter((r) => r.v !== "HlPerp" && (r.ok || r.hasInterval)).map((r) => VENUE_LABEL[r.v]);
+const exceptRows = secondHand.length
+  ? ` except the ${andList(secondHand)} ${secondHand.length === 1 ? "row" : "rows"} of the per-venue table above`
+  : "";
+const exceptNote = secondHand.length
+  ? ` ${secondHand.length === 1 ? `That row is worked from ${secondHand[0]}'s` : "Those rows are worked from each venue's"} own funding rate and settlement interval, which reach this site only because Hyperliquid republishes them in that feed.`
+  : "";
+/* THE VENUE COUNT IS COUNTED, NOT TYPED. Three sentences said "three" — the note over the table
+   ("all three"), the link to the funding page ("across three venues") and the meta description —
+   next to a table built from ORDER and a sources sentence built from the snapshot. Flagged on 16
+   September 2026 beside the fix above: true today, with nothing tying it to either. The note
+   counts the table's rows, which is what "all" ranges over; the link and the description count
+   the venues that have a rate, which is what "funding across N venues" promises. */
+const rated = venueRows.filter((r) => r.ok);
+const allRows = venueRows.length === 2 ? "both venues" : `all ${countWords(venueRows.length, "venue", "venues")}`;
+const fundingReach = rated.length > 1
+  ? `across ${countWords(rated.length, "venue", "venues")}`
+  : rated.length === 1 ? `on ${VENUE_LABEL[rated[0].v]}` : "";
 
 /* =========================================================================================
    THE OTHER HALF OF "WHAT LEVERAGE COSTS", WHICH THIS PAGE PROMISED IN ITS TITLE AND DID NOT
@@ -139,10 +199,30 @@ const marginTable = perp ? (tables as Record<string, MarginTable>)[String(perp.m
 const tier1 = marginTable ? [...marginTable.marginTiers].sort((a, b) => a.lowerBound - b.lowerBound)[0] : undefined;
 /* The cap, then three rungs beneath it. A general-audience page does not need the seven the
    liquidation map draws; it needs the shape, and the shape is legible in four rows. */
-const rungs = tier1 && perp
+/* THE SAME MARK AS THE HEADLINE, AND THE MOMENT IT WAS TAKEN, NAMED. These rungs were worked
+   from `perp.markPx`, the five-minute snapshot, while the price at the top of the page is
+   `markNow`, the one-minute tick — two marks in one response and nothing saying so. Measured on
+   production on 16 September 2026, /coins/bnb?tf=1d: "BNB trades at $711.11" above "a mark of
+   $711.47", and the table rebuilt to the cent from $711.47, not from the price the reader was
+   shown. 47 of 93 renders that day carried a gap (cardano $0.19294 against $0.19282).
+   The rungs now use `markNow`. They still cannot follow the headline after load — the price at
+   the top is repainted every 30 seconds by public/interact.js, and these are server arithmetic —
+   so the sentence names the mark and its UTC time instead of calling it "a mark", and says that
+   the price above moves on without it. `markAt` is the clock `markNow` actually came from. */
+const markAt = live?.mark?.[coin.symbol] != null ? live!.at : snap.fetchedAt;
+const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const markClock = (() => {
+  if (!(Number.isFinite(markAt) && markAt > 0)) return null;
+  const iso = new Date(markAt).toISOString();
+  const d = new Date(markAt);
+  /* A time alone is only unambiguous on the day it names. */
+  const sameDay = iso.slice(0, 10) === new Date().toISOString().slice(0, 10);
+  return `${iso.slice(11, 16)} UTC${sameDay ? "" : ` on ${d.getUTCDate()} ${MON[d.getUTCMonth()]} ${d.getUTCFullYear()}`}`;
+})();
+const rungs = tier1 && perp && Number.isFinite(markNow) && markNow > 0
   ? [...new Set([1, 0.6, 0.4, 0.25].map((f) => Math.max(2, Math.round(tier1.maxLeverage * f))))]
       .filter((L) => L >= 2 && L <= tier1.maxLeverage)
-      .map((L) => corridorAt(perp.markPx, L, maintenanceMarginFraction(tier1.maxLeverage)))
+      .map((L) => corridorAt(markNow, L, maintenanceMarginFraction(tier1.maxLeverage)))
   : [];
 
 /* --- the chart: two modes, four timeframes, all server-rendered ------------------------
@@ -153,8 +233,20 @@ const rungs = tier1 && perp
    with JavaScript disabled, and cannot shift the layout. */
 const MODES: { key: ChartMode; label: string }[] = [{ key: "candle", label: "Candles" }, { key: "line", label: "Line" }];
 const qs = Astro.url.searchParams;
-const tfKey = TIMEFRAMES.some((t) => t.key === qs.get("tf")) ? qs.get("tf")! : DEFAULT_TF;
-const modeKey: ChartMode = qs.get("view") === "line" ? "line" : "candle";
+/* THE PRESSED BUTTON WINS, AND IT WINS BY NAME, NOT BY POSITION. The carry inputs that keep the
+   other axis on a no-JS submit were named `tf` and `view`, the same names as the buttons, and the
+   view carry sat in the timeframe group — ahead of the Candles and Line buttons in document
+   order. A form serialises in document order and this line took the FIRST `view`, so pressing
+   Line submitted view=candle&view=line and got candles back. Measured on production on 16
+   September 2026: /coins/cardano?view=candle&view=line&tf=1d rendered 1d.candle with Candles
+   pressed, and from a line page Candles did nothing the same way. The timeframe buttons only
+   worked because they happened to come before their carry.
+   The carries are now `keep_tf` and `keep_view` and are read only when the axis itself is
+   absent. Only a pressed button (or a shared URL) sends `tf` or `view`, so no arrangement of the
+   markup can put a carry ahead of the reader's choice. */
+const tfAsked = qs.get("tf") ?? qs.get("keep_tf");
+const tfKey = TIMEFRAMES.some((t) => t.key === tfAsked) ? tfAsked! : DEFAULT_TF;
+const modeKey: ChartMode = (qs.get("view") ?? qs.get("keep_view")) === "line" ? "line" : "candle";
 
 /* ONE PANEL, for the same reason as the contract page — and here it matters more, because this
    template multiplies: six timeframes times two chart styles is TWELVE renders of the same
@@ -168,20 +260,130 @@ const modeKey: ChartMode = qs.get("view") === "line" ? "line" : "candle";
    has not arrived must be absent rather than approximated. */
 const baseFor = (tf: (typeof TIMEFRAMES)[number]) =>
   (tf.base === "m15" ? m15set?.d : tf.base === "hour" ? hourset?.d : dayset?.d);
+/* WHOLE BARS ONLY. aggregate() chunks backwards from the newest base bar, so when the series
+   does not divide by the factor the OLDEST chunk is a stub — and slice(-tf.bars) only cuts it
+   off when the series is longer than the window. On 1W it is not: the daily store holds about
+   800 days, 1W asks for 130 bars and gets 115, and the first of them was three days wide.
+   Measured on production on 16 September 2026, /coins/cardano?tf=1w: bar 1 opened Mon
+   2024-07-08, bar 2 Thu 2024-07-11 (a 4,320-minute gap, every other gap 10,080), drawn in a slot
+   as wide as a full week under a legend counting "115 weekly bars". Every coin's 1W had it.
+   Dropping the remainder BEFORE aggregating means every drawn bar holds exactly `factor` base
+   bars, whatever the length of the store on the day; the newest bar is the one still open, as
+   on every timeframe. The availability test reads the same trimmed series, so a button cannot
+   be offered on bars that are then not drawn. */
+/* AND A BAR THAT FITS THE DAY OPENS ON THE CLOCK, NOT WHERE THE COUNT HAPPENS TO START. Counting
+   back from the newest base bar made every intraday bar's opening minute depend on the minute of
+   the render. Measured on the local render on 16 September 2026 at 15:40 UTC,
+   /coins/cardano?tf=30m&view=candle: the newest fifteen-minute bar opened at 15:30, so the pairs
+   were 15:15–15:30, 14:45–15:00 … and every 30-minute bar opened at :15 or :45. The axis tick
+   under each of them read "06:00" while the bar it sat on opened at 06:15, outside its own half
+   hour; a render of the same URL between 15:45 and 16:00 had its bars on :00 and :30. 4H and
+   12H drifted the same way, by the hour.
+   A bar length that divides a UTC day now has fixed slots — floor(open / length) — and each
+   drawn bar is the base bars inside one slot, stamped with the slot's own start (a slot missing
+   a base bar is drawn from the ones it has, in its own place). The oldest slot is dropped when
+   the store began inside it, so it is not a stub; the newest is the bar still open. A slot is
+   computed from the timestamp, so no render time and no store length can move it.
+   1W and 1M keep the whole-chunk count above. They are longer than a day, and floor(open /
+   length) would anchor them on the epoch — weeks starting on a Thursday, 30-day bars starting
+   nowhere a reader would recognise — while their legends say only "weekly" and "30-day", which
+   the count already makes true. The bar length is the same arithmetic span() uses for those
+   legends, not a second table. */
+const BASE_MIN = { m15: 15, hour: 60, day: 1440 } as const;
+const DAY_MS = 86_400_000;
+const drawnBars = (tf: (typeof TIMEFRAMES)[number]): Candle[] => {
+  const b = baseFor(tf);
+  if (!b?.length) return [];
+  const slotMs = BASE_MIN[tf.base] * tf.factor * 60_000;
+  if (tf.factor === 1 || DAY_MS % slotMs !== 0) {
+    return aggregate(b.slice(b.length % tf.factor), tf.factor).slice(-tf.bars);
+  }
+  const slots: Candle[][] = [];
+  for (const c of b) {
+    const open = slots[slots.length - 1];
+    if (open && Math.floor(open[0][0] / slotMs) === Math.floor(c[0] / slotMs)) open.push(c);
+    else slots.push([c]);
+  }
+  if (slots[0].length < tf.factor) slots.shift();
+  return slots.map((s): Candle => {
+    const [bar] = aggregate(s, s.length);
+    return [Math.floor(s[0][0] / slotMs) * slotMs, bar[1], bar[2], bar[3], bar[4], bar[5]];
+  }).slice(-tf.bars);
+};
 /* Same correction as the contract template: the test is on the aggregated bar count, because
    that is what gets drawn. See MIN_CHART_BARS in src/lib/series.ts. */
-const barsFor = (tf: (typeof TIMEFRAMES)[number]) => {
-  const b = baseFor(tf);
-  return b ? aggregate(b, tf.factor).slice(-tf.bars).length : 0;
-};
-const tfsAvailable = TIMEFRAMES.filter((tf) => barsFor(tf) >= MIN_CHART_BARS).map((tf) => tf.key);
-const missingTf = TIMEFRAMES.filter((tf) => !tfsAvailable.includes(tf.key)).map((tf) => tf.label);
+const tfsAvailable = TIMEFRAMES.filter((tf) => drawnBars(tf).length >= MIN_CHART_BARS).map((tf) => tf.key);
+/* TWO REASONS A TIMEFRAME IS MISSING, AND THE NOTE GAVE ONLY ONE. It said every absent button
+   had "not yet enough history — fewer than 6 bars at that size". That is true of a series too
+   short to aggregate, and false of a series that was not there at all: getCandles, getHourly and
+   getM15 return null when the store is missing or cannot be read. Measured on the local render on
+   16 September 2026, /coins/dogecoin?tf=12h drew the 15m panel under "1H and 4H and 12H and 1D and
+   1W and 1M are not offered: there is not yet enough history" — the hourly and daily series had
+   not been read at all (null, zero bars), and the page blamed the length of a history it never
+   saw. The reason is now decided from the base series itself, each list joined with andList
+   rather than "and … and", and its verb and pronoun follow its own count. */
+const missing = TIMEFRAMES.filter((tf) => !tfsAvailable.includes(tf.key));
+const absentTf = missing.filter((tf) => !(baseFor(tf)?.length)).map((tf) => tf.label);
+const shortTf = missing.filter((tf) => baseFor(tf)?.length).map((tf) => tf.label);
+const missingNote = (labels: string[], why: (one: boolean) => string) =>
+  labels.length ? ` ${andList(labels)} ${labels.length === 1 ? "is" : "are"} not offered: ${why(labels.length === 1)}` : "";
+const tfGapNote =
+  missingNote(absentTf, (one) => `the candle series ${one ? "it is" : "they are"} built from could not be read when this page was rendered, so ${one ? "it is" : "they are"} left out rather than drawn from another.`) +
+  missingNote(shortTf, (one) => `there is not yet enough history to draw ${one ? "it" : "them"} — fewer than ${MIN_CHART_BARS} bars at that size.`);
 const activeTf = TIMEFRAMES.find((tf) => tf.key === tfKey && tfsAvailable.includes(tf.key))
   ?? TIMEFRAMES.find((tf) => tfsAvailable.includes(tf.key));
 const activeMode = MODES.find((m) => m.key === modeKey) ?? MODES[0];
-const activeChart = activeTf
-  ? buildPriceChart(aggregate(baseFor(activeTf)!, activeTf.factor).slice(-activeTf.bars), null, activeTf, activeMode.key)
+const activeCandles = activeTf ? drawnBars(activeTf) : [];
+/* AN AXIS OF TIMES WITH NO DATE CANNOT TELL ITS TICKS APART. timeTicks() (src/lib/chart.ts)
+   picks the coarsest calendar unit that yields about eight ticks; a 30m window of 300 bars is six
+   days, fewer than eight, so it fell through to six-hour ticks and thinned 25 of them by taking
+   every fourth — one per day, at whatever hour the series started, labelled with the hour alone.
+   Measured on production on 16 September 2026, /coins/cardano?tf=30m&view=candle: six ticks, all
+   "06:00", on bars of 11, 12, 13, 14, 15 and 16 September; bnb and avalanche the same. The 15m
+   axis read 00:00, 12:00, 00:00, 12:00 … across three days (local render, same day), dated nowhere.
+   The labelling lives in shared code; until it carries a date, this page relabels its own axis
+   from the bars under the ticks — `points` is the array the chart was drawn from, so a label is
+   read off the bar it sits on and cannot name another. Only an axis whose labels are bare times
+   is touched; an axis timeTicks() already dated is left exactly as drawn. When those time ticks are a day
+   or more apart they are re-picked as day ticks — the same timeTicks() asked for one tick per
+   date, which lands them on each date's first bar — so they read as dates rather than as one
+   hour repeated. When they are closer, each tick keeps its own time and the first tick of each
+   date carries the date, which is also what the first tick on the axis gets. */
+const TIME_LABEL = /^\d\d:\d\d$/;
+const dayMonth = (t: number) => `${new Date(t).getUTCDate()} ${MON[new Date(t).getUTCMonth()]}`;
+const clock = (t: number) => new Date(t).toISOString().slice(11, 16);
+const datedAxis = (svg: string, points: number[][]) =>
+  svg.replace(/<g data-ax="x">([\s\S]*?)<\/g>/, (whole, inner: string) => {
+    const ticks = [...inner.matchAll(/<text x="([\d.]+)"([^>]*)>([^<]*)<\/text>/g)].map((m) => ({
+      x: +m[1], attrs: m[2], label: m[3], t: points.find((p) => Math.abs(p[0] - +m[1]) < 0.02)?.[1],
+    }));
+    if (!ticks.length || ticks.some((k) => k.t === undefined || !TIME_LABEL.test(k.label))) return whole;
+    /* A dated label is up to twelve characters and centred on its bar, so near either edge of the
+       viewBox it is slid inward by the overhang (monospace advance ≈ 0.6 em at the tick's own
+       font-size) rather than cut off; the bar stays inside the label's span. */
+    const em = +(ticks[0].attrs.match(/font-size="([\d.]+)"/)?.[1] ?? 11) * 0.6;
+    const tag = (x: number, label: string) => {
+      const half = (label.length * em) / 2;
+      return `<text x="${n2(Math.min(Math.max(x, half), CH.w - half))}"${ticks[0].attrs}>${label}</text>`;
+    };
+    const dates = new Set(points.map((p) => Math.floor(p[1] / DAY_MS))).size;
+    const apart = ticks.length > 1 && ticks.every((k, i) => i === 0 || k.t! - ticks[i - 1].t! >= DAY_MS);
+    if (apart && dates >= 3) {
+      return `<g data-ax="x">${timeTicks(points.map((p) => p[1]), dates)
+        .map(({ i }) => tag(points[i][0], dayMonth(points[i][1]))).join("")}</g>`;
+    }
+    let seen = NaN;
+    return `<g data-ax="x">${ticks.map((k) => {
+      const day = Math.floor(k.t! / DAY_MS);
+      const label = day === seen ? clock(k.t!) : k.t! % DAY_MS === 0 ? dayMonth(k.t!) : `${dayMonth(k.t!)} ${clock(k.t!)}`;
+      seen = day;
+      return tag(k.x, label);
+    }).join("")}</g>`;
+  });
+const builtChart = activeTf
+  ? buildPriceChart(activeCandles, null, activeTf, activeMode.key)
   : null;
+const activeChart = builtChart ? { ...builtChart, svg: datedAxis(builtChart.svg, builtChart.points) } : null;
 const active = activeTf && activeChart ? { tf: activeTf, mode: activeMode, chart: activeChart } : null;
 const panels = active ? [active] : [];
 const hasChart = Boolean(active);
@@ -189,14 +391,52 @@ const hasChart = Boolean(active);
    it say "over 90 weekly bars" on the 12-hour panel — rendered, on the live page, because a
    fall-through default answers confidently for any key it has never heard of. A lookup with an
    explicit fallback to the timeframe's own label cannot invent a unit it was not given. */
-const SPAN: Record<string, string> = {
-  "1h": "hourly bars", "4h": "4-hour bars", "12h": "12-hour bars",
-  "1d": "daily bars", "1w": "weekly bars", "1m": "monthly bars",
+/* AND A LOOKUP TYPED BY HAND STILL NAMED A UNIT THE DATA DOES NOT HAVE. "1m" was "monthly bars",
+   and the bars are not months: aggregate() takes thirty daily bars at a time, counted back from
+   the newest day. Measured on production on 16 September 2026, /coins/bnb?tf=1m: 26 bars opening
+   2024-07-29, 08-28, 09-27 … 2026-07-19, 08-18, every gap exactly 43,200 minutes, the opening day
+   sliding from the 29th to the 18th — under "over 26 monthly bars". Same on every coin.
+   The unit is now worked out from what aggregate() is given — the base series' bar length times
+   the factor — so a timeframe re-defined in src/lib/series.ts is described by its own numbers
+   and nobody has to remember this table. Only the three lengths English has a word for get the
+   word; everything else is said in minutes, hours or days. BASE_MIN is declared with drawnBars,
+   which needs it first. */
+const span = (tf: (typeof TIMEFRAMES)[number], n: number) => {
+  const min = BASE_MIN[tf.base] * tf.factor;
+  const unit = min === 60 ? "hourly" : min === 1440 ? "daily" : min === 10080 ? "weekly"
+    : min % 1440 === 0 ? `${min / 1440}-day` : min % 60 === 0 ? `${min / 60}-hour` : `${min}-minute`;
+  return `${n} ${unit} ${n === 1 ? "bar" : "bars"}`;
 };
-const span = (k: string) => SPAN[k] ?? `${(TIMEFRAMES.find((t) => t.key === k)?.label ?? k)} bars`;
 const arrow = (n: number) => (n >= 0 ? "▲" : "▼");
-/* Stats are lifted from the fetched document now, not precomputed per panel. */
-const stat = (_fn: (p: NonNullable<typeof active>) => string) => ({});
+/* THE CANDLE SENTENCE DESCRIBED CANDLES ON THE LINE VIEW. It was one server string for both chart
+   styles, and the client swap never touched it: /coins/bnb?tf=1m&view=line, on production on 16
+   September 2026, drew one neutral close line (stroke #e8ecf1) and no candle bodies at all under
+   "Candles are green for up and red for down, with the up candles hollow". All 26 line variants
+   fetched that day said it.
+   It was also not true of every candle on the Candles view. buildPriceChart outlines an up body
+   only when it is tall enough to outline, and draws the rest solid: counted on the local render
+   of /coins/bitcoin the same day, 30 of the 99 green candles on 4H and 33 of 154 on 30m were
+   solid — the ones whose direction can be read only from colour.
+   So the sentence is chosen by the style that was drawn, and the solid bodies are COUNTED FROM
+   THE DRAWN SVG: every hollow body is the only <rect fill="none"> the price chart emits, and
+   every green candle is a point whose close is at or above its open (the same `c >= o` that picks
+   the colour). No threshold is copied out of series.ts, so if that one moves this count follows
+   it. The sentence is a [data-tfstat] so the client swaps it with the panel — see the note on the
+   legend below. */
+const styleNote = (() => {
+  if (!activeChart) return "";
+  if (activeMode.key === "line") {
+    return "The line joins each bar's close instead of drawing candles, so a bar's high and low are not on it and the period high and low can sit beyond it; the volume bars beneath are green where a bar closed at or above its open and red where it closed below.";
+  }
+  const green = activeChart.points.filter((p) => p[5] >= p[2]).length;
+  const hollow = (activeChart.svg.match(/<rect\b[^>]*\bfill="none"/g) ?? []).length;
+  const solid = Math.max(0, green - hollow);
+  const lead = "Candles and the volume bars beneath them are green where a bar closed at or above its open and red where it closed below";
+  if (green === 0) return `${lead}.`;
+  if (solid === 0) return `${lead}, and every green body is hollow, so direction reads without relying on colour.`;
+  if (hollow === 0) return `${lead}. Every green body here is too short to outline and is drawn solid, so on this view direction is carried by colour alone.`;
+  return `${lead}, and green bodies are hollow so direction reads without relying on colour — except ${solid} of the ${green} green candles, whose ${solid === 1 ? "body is" : "bodies are"} too short to outline and drawn solid.`;
+})();
 
 /* THE SENTENCE IS CONDITIONAL NOW — see src/lib/freshness.ts. It used to assert "update every
    minute" whatever the clocks said, which is a promise a single-sourced site cannot keep on its
@@ -206,14 +446,36 @@ const fresh = freshness(live?.at, snap.fetchedAt,
 
 const others = liveCoins().filter((c) => c.slug !== coin.slug);
 const title = `${coin.name} price — ${coin.symbol} perpetual, and what leverage costs`;
-const description = `Live ${coin.name} (${coin.symbol}) perpetual price from Hyperliquid, with the funding rate across three venues, open interest, and what holding a leveraged position actually costs per week.`;
+const description = `Live ${coin.name} (${coin.symbol}) perpetual price from Hyperliquid, with ${fundingReach ? `the funding rate ${fundingReach}, ` : ""}open interest, and what holding a leveraged position actually costs per week.`;
 ---
 
 <Base title={title} description={description} fetchedAt={oldestStamp(snap.fetchedAt, live?.at)} crumb={{ href: "/coins", label: "Coins", current: coin.name }}>
   <div class="page-head">
     <p class="crumb"><a href="/coins">Coins</a> › {coin.name}</p>
     <h1>{coin.name} price</h1>
-    <p>{coin.blurb}</p>
+    {/* THE PRICE IS THE HEADLINE AND THE COST IS THE POINT. This template's own argument — and
+        the sentence on /coins — is that it prints "the thing a price table leaves out": what the
+        contract charges to hold the exposure. Read cold, it opened with a one-line blurb and
+        then a very large price, and the cost lived under an h2 a screen and a half down. The
+        blurb is still here, after the claim it was standing in front of. */}
+    {perp && hl && Number.isFinite(hl.apr) ? (
+      <Overview>
+        {/* THE SAME MARK AS THE BIG PRICE UNDER IT, SO IT REPAINTS WITH IT. The hero figure is
+            data-repaint="mark" and this one was plain text, so thirty seconds after load the
+            sentence and the number beneath it named two prices for one contract. */}
+        <b>{coin.name} trades at <span data-repaint="mark" data-sym={coin.symbol} data-dp={dp}>{px(markNow)}</span></b> on the Hyperliquid perpetual.
+        {/* ON ONE LINE. Adjacent JSX expressions split across lines render a whitespace text
+            node between them, which put a space before the full stop — the same defect the
+            note at the quotable sentence in /funding/[symbol] records. */}
+        {carryNil ? (
+          <Fragment>Holding it long costs <b>next to nothing</b> right now: funding is <b>{pct(Math.abs(hl.apr))} a year</b>, under a cent a week on a $10,000 long.</Fragment>
+        ) : (
+          <Fragment>Holding it long is <b>{hl.apr >= 0 ? "a cost" : "paid"}</b>: {paysLabel(hl.apr)} at <b>{pct(Math.abs(hl.apr))} a year</b>, which is <b>{carryWeek}</b> a week {hl.apr >= 0 ? "on" : "to"} a $10,000 long.</Fragment>
+        )}{" "}{coin.blurb}
+      </Overview>
+    ) : (
+      <p>{coin.blurb}</p>
+    )}
   </div>
 
   {/* A PUBLISHED COIN WHOSE CONTRACT IS NOT IN THE SNAPSHOT. Coverage is gated on a publication
@@ -275,25 +537,24 @@ const description = `Live ${coin.name} (${coin.symbol}) perpetual price from Hyp
           {TIMEFRAMES.filter((t) => tfsAvailable.includes(t.key)).map((tf) => (
             <button type="submit" name="tf" value={tf.key} data-tf={tf.key} aria-pressed={tf.key === active!.tf.key}>{tf.label}</button>
           ))}
-          <input type="hidden" name="view" value={modeKey} data-tfcarry="view" />
         </div>
         <div class="tf" role="group" aria-label="Chart style">
           {MODES.map((m) => (
             <button type="submit" name="view" value={m.key} data-mode={m.key} aria-pressed={m.key === active!.mode.key}>{m.label}</button>
           ))}
-          <input type="hidden" name="tf" value={active!.tf.key} data-tfcarry="tf" />
         </div>
+        {/* NAMED APART FROM THE BUTTONS — see `tfAsked` in the frontmatter. A carry that shared
+            the button's name lost to its own position in the markup. `active!.mode.key`, not
+            `modeKey`, so the carry holds the style that was drawn, as `keep_tf` already does. */}
+        <input type="hidden" name="keep_view" value={active!.mode.key} data-tfcarry="view" />
+        <input type="hidden" name="keep_tf" value={active!.tf.key} data-tfcarry="tf" />
         <span class="tfbar__note">
           Hyperliquid perpetual candles — the traded contract, not the oracle index.
           {/* A GAP MUST BE STATED, NOT INFERRED FROM A MISSING BUTTON. The contract template has
               said this since its button bar was fixed; this one dropped timeframes silently, so a
               reader looking for a monthly view on a young contract found no button and no reason.
               Both pages now name what is absent and why. */}
-          {missingTf.length > 0 && (
-            <> {missingTf.join(" and ")}{" "}{missingTf.length === 1 ? "is" : "are"} not offered: there is not
-            yet enough history to draw {missingTf.length === 1 ? "it" : "them"} — fewer than {MIN_CHART_BARS} bars
-            at that size.</>
-          )}
+          {tfGapNote}
         </span>
       </form>
 
@@ -317,13 +578,27 @@ const description = `Live ${coin.name} (${coin.symbol}) perpetual price from Hyp
         </div>
       ))}
 
+      {/* THE REASON FOR NO BAND WAS WRITTEN FOR A SPOT CHART and outlived it. It read "funding is
+          a property of the perpetual, not of spot" — true when this chart was Coinbase spot, and
+          self-contradicting since 19 August 2026, when the chart became Hyperliquid perpetual
+          candles: the note above it says so, and so does "Where the numbers come from". Found on
+          16 September 2026 on /coins/chainlink, where the 220-bar series the page ships carries
+          no funding in any bar because the chart is built with `null` for funding. The sentence
+          now gives the reason that is true of this page whatever the chart is drawn from: the
+          rate is quoted where it stands, and its history is drawn on the funding page. */}
+      {/* EVERY FIGURE AND SENTENCE THAT BELONGS TO ONE PANEL IS A [data-tfstat], and
+          public/interact.js files each under the panel it was rendered with (timeframe AND
+          style), so a switch repaints all of them together — including a switch back to the
+          panel this page was served with, which used to find nothing filed for it and kept the
+          previous timeframe's figures. `legend__style` is display:inline so a whole sentence
+          does not become the inline-block the swap transition gives short figures. */}
       <p class="legend">
-        Period high <b data-tfstat="high" data-group="cx" {...stat((p) => px(p.chart!.high))}>{px(active!.chart!.high)}</b>,
-        low <b data-tfstat="low" data-group="cx" {...stat((p) => px(p.chart!.low))}>{px(active!.chart!.low)}</b>,
-        over <b data-tfstat="bars" data-group="cx" {...stat((p) => `${p.chart!.bars} ${span(p.tf.key)}`)}>{active!.chart!.bars} {span(active!.tf.key)}</b>.
-        Candles are green for up and red for down, with the up candles hollow so direction reads
-        without relying on colour. No funding band here — funding is a property of the perpetual,
-        not of spot, and it has
+        Period high <b data-tfstat="high" data-group="cx">{px(active!.chart!.high)}</b>,
+        low <b data-tfstat="low" data-group="cx">{px(active!.chart!.low)}</b>,
+        over <b data-tfstat="bars" data-group="cx">{span(active!.tf, active!.chart!.bars)}</b>.
+        {" "}<span class="legend__style" data-tfstat="style" data-group="cx">{styleNote}</span>
+        {" "}No funding band on this chart: the funding rate is quoted at
+        its current value in the cards and the per-venue table below, and its history has
         {" "}<a class="link" href={`/funding/${coin.symbol.toLowerCase()}`}>its own chart</a>.
       </p>
     </>
@@ -379,19 +654,17 @@ const description = `Live ${coin.name} (${coin.symbol}) perpetual price from Hyp
   <h2 class="section">What leverage costs, per venue</h2>
   <p class="section-note">
     Each venue settles funding on its own interval, so the quoted numbers are not comparable to
-    each other. The weekly column is, because it is the same $10,000 position on all three.
+    each other. The weekly column is, because it is the same $10,000 position on {allRows}.
   </p>
   <div class="panel">
     <table class="tbl">
       <thead><tr><th>Venue</th><th class="num">Interval</th><th class="num">Annualised</th><th class="num">$10,000 long, per week</th><th>Direction</th></tr></thead>
       <tbody>
-        {ORDER.map((v) => {
-          const f = by.get(v);
-          const ok = f && Number.isFinite(f.apr);
+        {venueRows.map(({ v, f, ok, hasInterval }) => {
           return (
             <tr>
               <td>{VENUE_LABEL[v]}</td>
-              <td class="num">{f && Number.isFinite(f.intervalHours) ? `${f.intervalHours}h` : <span class="faint">—</span>}</td>
+              <td class="num">{hasInterval ? `${f!.intervalHours}h` : <span class="faint">—</span>}</td>
               <td class:list={["num", ok && paysClass(f!.apr)]} style="font-weight:600"
                   data-repaint={ok ? "apr" : undefined} data-sym={coin.symbol} data-venue={v}>{ok ? pct(f!.apr) : "—"}</td>
               {/* Both cells are DERIVED FROM THE SAME f.apr the cell before them carries, so
@@ -415,9 +688,11 @@ const description = `Live ${coin.name} (${coin.symbol}) perpetual price from Hyp
       <p class="section-note" style="max-width:88ch">
         No model and no assumption about who holds what. Given {coin.name}'s published margin
         tier — {tier1.maxLeverage}× maximum, {pct(maintenanceMarginFraction(tier1.maxLeverage), 3)} maintenance
-        margin — and a mark of {usd(perp.markPx, dp)}, these prices are arithmetic. The corridor is the
-        whole width a position survives: cross either end and it is closed, whatever the funding
-        was doing.
+        margin — and the mark of {px(markNow)}{markClock ? ` at ${markClock}` : ""}, the price
+        this page opened with, these prices are arithmetic. If the price at the top of the page has
+        moved since, these levels have not moved with it; reload to rework them from a newer mark.
+        The corridor is the whole width a position survives: cross either end and it is closed,
+        whatever the funding was doing.
       </p>
       <div class="panel" style="max-width:720px">
         <table class="tbl">
@@ -453,10 +728,10 @@ const description = `Live ${coin.name} (${coin.symbol}) perpetual price from Hyp
 
   <h2 class="section">Where the numbers come from</h2>
   <p class="prose">
-    Every figure on this page is <strong>Hyperliquid</strong>: the mark price, the 24-hour
-    figures, the candles, the funding and the open interest, all from the same feed the rest of
-    the site reads. This is a perpetual futures price, not a spot price — the contract, not the
-    coin — and the two can diverge.
+    Every figure on this page is <strong>Hyperliquid</strong>{exceptRows}: the mark price, the
+    24-hour figures, the candles, Hyperliquid's own funding rate and the open interest, all from
+    the same feed the rest of the site reads.{exceptNote} The price is a perpetual futures price,
+    not a spot price — the contract, not the coin — and the two can diverge.
   </p>
   <p class="prose">
     Until 19 August 2026 this page led with a spot price from a third-party exchange, and showed
@@ -467,7 +742,7 @@ const description = `Live ${coin.name} (${coin.symbol}) perpetual price from Hyp
   </p>
 
   <p style="margin-top:24px">
-    <a class="link" href={`/funding/${coin.symbol.toLowerCase()}`}>{coin.symbol} funding across three venues →</a>
+    <a class="link" href={`/funding/${coin.symbol.toLowerCase()}`}>{coin.symbol} funding{fundingReach ? ` ${fundingReach}` : ""} →</a>
     · <a class="link" href={liqMapHref(coin.symbol)}>Where {coin.symbol} leverage breaks →</a>
     · <a class="link" href={`/liquidations/survival?symbol=${coin.symbol}`}>What the rules did to past positions →</a>
   </p>
@@ -483,6 +758,7 @@ const description = `Live ${coin.name} (${coin.symbol}) perpetual price from Hyp
     .tfbar__note { font-size: var(--fs-xs); color: var(--text-faint); }
     .chart--price :global(svg) { aspect-ratio: var(--chartRatio); }
     .legend { max-width: 88ch; line-height: 1.6; margin-top: 12px; }
+    .legend__style { display: inline; }
     .related { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; }
     .chip-link {
       display: inline-block; padding: var(--gap-pair) var(--gap-cluster); border-radius: var(--r-pill);

@@ -1,0 +1,140 @@
+---
+/* =========================================================================================
+   ONE CONTRACT'S FUNDING SHAPE, AT ROW HEIGHT.
+
+   WHAT IT ADDS TO A TABLE THAT ALREADY HAS THE NUMBER. A rate is a level, and the tables stated
+   levels only: a reader could not tell whether 10.95% had held all week or arrived this morning,
+   and those are different facts about the same number. The shape has existed on this site since
+   the funding band was drawn under the contract candles — for one contract at a time, on two
+   templates, at thirteen per cent of one chart's height. This is that band, per row.
+
+   THE SAME GRAMMAR AS THE BAND, DELIBERATELY. Two mirrored areas around a drawn zero rule, amber
+   where longs pay and cyan where shorts do. Not a single line coloured by its latest value: the
+   series crosses zero, and one hue over the whole of it would be a claim about the whole week
+   made from today's reading. Each segment is coloured by the side it is on, which is the only
+   statement the data supports and the same one the row's own APR cell makes.
+
+   THE AXIS IS NOT THIS COMPONENT'S TO CHOOSE. `scale` is computed once for the whole column and
+   passed in — see sparkScale() in src/lib/sparks.ts for why a per-row axis turns a comparison
+   into decoration. A component that derived its own scale would be unable to be wrong loudly:
+   every row would look plausible and the column would mean nothing.
+   ========================================================================================= */
+import { sparkPoints, type SparkScale } from "../lib/sparks.ts";
+
+interface Props {
+  values: readonly number[] | undefined;
+  scale: SparkScale;
+  /** Named in the accessible label, so a screen reader is told which contract this is. */
+  symbol: string;
+  /** How many days the series spans, for the label. */
+  days: number;
+}
+const { values, scale, symbol, days } = Astro.props;
+
+const pts = values && values.length ? sparkPoints(values, scale) : [];
+
+/* =========================================================================================
+   THE COORDINATES ARE INTEGERS, AND THE RATCHET IS WHY.
+
+   The first version wrote x and y to one decimal over a 0–100 box: "12.2,47.7 " is ten
+   characters, two polygons a row, forty-two points each, fifty rows. /funding came in at 17,203b
+   on the wire against an 11,500b budget, and the note on that budget table is explicit about the
+   order — make it smaller first, and only then decide the page is allowed to be bigger.
+
+   THREE CHANGES, NONE OF THEM VISIBLE AT EIGHTEEN PIXELS TALL. The viewBox is the point count
+   rather than 100, so x is the index itself and needs no decimal at all. y is rounded to whole
+   units of a hundred, which at this height is 0.18px — below the rendering grid, let alone the
+   eye. And a side with nothing on it is not drawn: most contracts never cross zero in a week, so
+   most rows carried a second polygon that was a flat line along the axis saying nothing.
+   ========================================================================================= */
+const H = 100, ZERO = 50;
+const W = Math.max(1, pts.length - 1);
+
+const sidePath = (up: boolean) => {
+  if (pts.length < 2) return "";
+  /* Nothing on this side means nothing to draw — not a flat polygon along the zero rule. */
+  if (!pts.some((p) => (up ? p.y < ZERO - 0.5 : p.y > ZERO + 0.5))) return "";
+  const body = pts.map((p, i) => {
+    const y = up ? Math.min(p.y, ZERO) : Math.max(p.y, ZERO);
+    return `${i},${Math.round(y)}`;
+  }).join(" ");
+  return `0,${ZERO} ${body} ${W},${ZERO}`;
+};
+const up = sidePath(true);
+const down = sidePath(false);
+const anyClipped = pts.some((p) => p.clipped);
+/* WHERE IT LEFT THE SCALE, NOT JUST THAT IT DID. The first version outlined the whole cell when
+   any reading fell outside the shared axis. Looked at on the rendered page: 20 of 50 rows carried
+   a dashed border for 84 of 2,100 readings — four per cent of the data drawing a warning around
+   forty per cent of the column, which reads as "twenty rows are broken" rather than as "these
+   four hours were off the top". A mark at the edge where each clipped reading sits says the same
+   thing precisely, quietly, and in the place the reader is already looking. */
+const clipMarks = pts
+  .map((p, i) => ({ i, top: p.y < 50 }))
+  .filter((_, i) => pts[i].clipped);
+/* SHORT ON PURPOSE. The first version spelled out the shared scale in every label — fifty rows
+   of "on the scale shared by this column", which is a property of the COLUMN and is stated once
+   under the table where it belongs. What a screen reader needs from the cell is which contract
+   it is, what window it covers, and whether this particular row left the scale. */
+const label = pts.length
+  ? `${symbol} funding, ${days}d${anyClipped ? ", partly off scale" : ""}`
+  : `${symbol} funding history not collected yet`;
+---
+
+{pts.length >= 2 ? (
+  <svg class="spark" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img" aria-label={label}>
+    {/* THE ZERO RULE IS A CSS BACKGROUND, NOT AN ELEMENT. It is identical on every row, so as
+        markup it was seventy-six bytes repeated fifty times for a line that never varies; as a
+        background on .spark it is written once in the stylesheet and painted under the areas,
+        which is also the order it wants — the rule is the reference, not a border over the top. */}
+    {up && <polygon points={up} class="spark__l" />}
+    {down && <polygon points={down} class="spark__s" />}
+    {/* A READING THAT LEFT THE SHARED SCALE SAYS SO, AT THE POINT IT LEFT. Without this a clipped
+        series is a shape that flattens for no visible reason, which reads as the data going quiet
+        rather than as the axis running out. */}
+    {clipMarks.map((m) => (
+      <rect x={m.i === W ? m.i - 1 : m.i} y={m.top ? 0 : H - 4} width="1" height="4" class="spark__clip" />
+    ))}
+  </svg>
+) : (
+  /* NOT A FLAT LINE. An absent series drawn at zero is a claim that funding did not move. */
+  <span class="spark spark--none" title={label} aria-label={label}>&mdash;</span>
+)}
+
+<style is:global>
+  .spark {
+    display: block; width: 72px; height: 18px;
+    /* Tabular rows are short; the mark must not push them taller than the two-line APR cell
+       already makes them. Measured against .tbl td padding rather than chosen. */
+    overflow: visible;
+  }
+  /* The zero rule, painted rather than marked up — see the note in the template above. Drawn
+     with hard colour stops so it stays exactly one pixel at any row height. */
+  .spark {
+    background: linear-gradient(to bottom,
+      transparent calc(50% - 0.5px), var(--border) calc(50% - 0.5px),
+      var(--border) calc(50% + 0.5px), transparent calc(50% + 0.5px));
+  }
+  /* THE SITE'S FUNDING PAIR AND NOTHING ELSE — never the candles' green and red. Filled at
+     partial opacity so fifty of these read as a column of shapes rather than fifty solid blocks
+     competing with the figures beside them. */
+  .spark__l { fill: var(--pays-l); fill-opacity: .55; }
+  .spark__s { fill: var(--pays-s); fill-opacity: .55; }
+  /* The clip mark is ink, not hue: it says "the axis ends here", which is a statement about the
+     scale rather than about which side is paying. */
+  .spark__clip { fill: var(--text-faint); }
+  .spark--none { color: var(--text-faint); width: auto; }
+
+  /* IT IS NOT HIDDEN ON A PHONE, AND THE GATE IS WHY. The first version dropped the column under
+     700px with display:none, reasoning that 72px of shape would push the funding rate back off
+     the fold. hiddenFromEveryone caught it on /funding and /coins: it reads the stylesheet
+     statically, cannot evaluate a media query, and reports a display:none rule over real text —
+     "7d shape", and the dash a contract with no series renders — as content only a naive
+     extractor receives. That is the same objection the note in Figure.astro records about
+     `:empty { display: none }`, and it is right both times.
+
+     It also turned out to be solving a problem that no longer existed. The column sits AFTER the
+     funding rate in both tables, so it cannot push it anywhere; the phone reader scrolls to it
+     like every other column, which is what the table already does at that width. */
+  .tbl th.spark-col, .tbl td.spark-col { width: 80px; }
+</style>

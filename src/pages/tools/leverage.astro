@@ -2,13 +2,15 @@
 import Base from "../../layouts/Base.astro";
 import { getSnapshot, coldStart, requestedPerp } from "../../lib/hyperliquid.ts";
 import { usd, pct, queryNum } from "../../lib/funding.ts";
-import { liquidationPrice, tierFor, maintenanceMarginFraction, nextTierBoundary, type MarginTable, type Side } from "../../lib/margin.ts";
+import { corridorAt, tierFor, maintenanceMarginFraction, type MarginTable, type Side } from "../../lib/margin.ts";
+import { extremeBy } from "../../lib/extreme.ts";
 import tables from "../../data/margin-tables.json";
 
 import Advisory from "../../components/Advisory.astro";
 import Figure from "../../components/Figure.astro";
 import Interests from "../../components/Interests.astro";
 import { priceDp } from "../../lib/funding.ts";
+import ASSETS from "../../data/assets.json";
 const snap = await getSnapshot((Astro.locals as any)?.runtime?.env?.SNAPSHOT, import.meta.env.DEV);
 // Cold store: 503 + Retry-After rather than a page rendered from nothing.
 if (!snap.available) return coldStart();
@@ -29,8 +31,24 @@ const side = (q.get("side") === "short" ? "short" : "long") as Side;
 // on the case the headline number gets wrong rather than on the case where it happens to hold.
 const boundary = [...table.marginTiers].sort((a, b) => a.lowerBound - b.lowerBound)[1]?.lowerBound;
 const defaultNotional = boundary ? Math.round(boundary * 1.2) : 250_000;
-const notional = queryNum(q.get("notional"), defaultNotional, { min: 1 });
-const requested = queryNum(q.get("leverage"), perp.maxLeverage, { min: 1, max: 1000 });
+/* ONE SET OF BOUNDS FOR THE PARSER, THE FORM AND THE SENTENCE THAT OWNS UP TO A REPLACEMENT.
+   Measured 16 September 2026: /tools/leverage?symbol=BTC&side=long&notional=0&leverage=10 answered
+   "$180.00M of notional sits in tier 2, where the cap is 20×" — queryNum rejected 0 (min 1) and
+   substituted the default without a word, while the form's own input said min="0" and the live
+   script, before submit, had shown "$0 of notional sits in tier 1, where the cap is 40×". The same
+   for notional= and notional=-5000, and for any leverage above 1000, which the form (no max) let
+   through. Now the form's min/max/required are these constants, so it cannot submit what the
+   parser throws away, and a hand-edited link that still does is named in the verdict. */
+const N_MIN = 1, N_MAX = 1e12, L_MIN = 1, L_MAX = 1000;
+const rawN = q.get("notional"), rawL = q.get("leverage");
+const notional = queryNum(rawN, defaultNotional, { min: N_MIN, max: N_MAX });
+const requested = queryNum(rawL, perp.maxLeverage, { min: L_MIN, max: L_MAX });
+// queryNum answers the fallback for an absent value and a rejected one alike; NaN tells them apart.
+const ignoredN = rawN !== null && Number.isNaN(queryNum(rawN, NaN, { min: N_MIN, max: N_MAX }));
+const ignoredL = rawL !== null && Number.isNaN(queryNum(rawL, NaN, { min: L_MIN, max: L_MAX }));
+const shown = (s: string) => (s.length > 24 ? `${s.slice(0, 24)}…` : s);
+const ignoredLine = (what: string, raw: string, range: string, used: string) =>
+  `The link's ${what}${raw.trim() ? `, “${shown(raw)}”, is not one this calculator takes (${range})` : " is blank"}, so these figures use ${used}. `;
 
 /* PRICE PRECISION FROM MAGNITUDE, the same rule the contract pages use
    (src/pages/funding/[symbol].astro). usd(x, 2) annihilates anything under half a cent, so
@@ -47,9 +65,16 @@ const clamped = requested > permitted;
 const headline = perp.maxLeverage;                 // what the contract advertises
 const initialMargin = notional / effective;
 const maintenanceMargin = notional * mmf;
-const size = perp.markPx > 0 ? notional / perp.markPx : 0;
-const r = liquidationPrice({ entryPrice: perp.markPx, positionSize: size, leverage: requested, side, table });
-const next = nextTierBoundary(table, notional);
+/* THE LIQUIDATION PRICE USES THE TIER THIS PAGE NAMES. It went through liquidationPrice(), which
+   rebuilds the notional as markPx × (notional ÷ markPx) and picks its own tier from that. The round
+   trip is not exact: across 1.2M random marks tested on 16 September 2026 it landed $0.0000005 short
+   of the boundary about one time in forty, so ?notional=3000000 on such a mark would say "tier 2,
+   where the cap is 5×" and price liquidation at tier 1's maintenance margin. corridorAt takes the
+   maintenance fraction directly — the same one the cards print — and is the formula the script
+   below repeats, so the server and a keystroke cannot differ on it either. */
+const corridor = corridorAt(perp.markPx, effective, mmf);
+const liq = side === "long" ? corridor.longLiq : corridor.shortLiq;
+const liqDist = side === "long" ? corridor.longDist : corridor.shortDist;
 
 // Headroom: how far the price can move before maintenance margin is breached.
 const buffer = initialMargin - maintenanceMargin;
@@ -71,7 +96,108 @@ const ladder = [...table.marginTiers]
     active: i === index,
   }));
 const ladderMax = Math.max(...ladder.map((t) => t.max), 1);
+
+/* WHERE THE ADVERTISED NUMBER HOLDS IS A FACT ABOUT THIS TABLE, NOT A SENTENCE ABOUT EXCHANGES.
+   The intro, the "Advertised maximum" card and the section below all said the headline "applies
+   to the smallest tier only" and that the table "steps the cap down as position size grows".
+   Measured 16 September 2026 on /tools/leverage?symbol=LIT&side=long&notional=10000&leverage=3:
+   LIT's table 5 has ONE tier (5× from $0), the page's own meta description said so, and 20 more
+   contracts sit on single-tier tables. And on ?symbol=BTC&notional=10000&leverage=10 the intro read
+   "the real ceiling is 40× against the 40× on the front of the page" — a contrast between two equal
+   numbers. So the page now asks the table: the first tier whose cap is below the advertised number
+   (`split`), whether the caps only ever fall (`monotone`), and states one of four answers. None of
+   them mentions the reader's size, so none goes stale when the script repaints the cards. */
+const top = extremeBy(ladder, (t) => t.max);
+const contractCap = top.kind === "none" ? permitted : top.value;
+const split = ladder.findIndex((t) => t.max < headline);
+const monotone = ladder.every((t, i) => i === 0 || t.max <= ladder[i - 1].max);
+/* "SOME" MEANS SOME TIERS DO AND SOME DO NOT, and "none" is asked of every tier, not of the first.
+   It was `!monotone ? "some" : split === 0 ? "none" : "below"`, so a table whose caps rise and
+   fall without ever reaching the headline was "some" — where the prose says "the table below
+   shows the tiers where it does", naming tiers that do not exist. And the prose for
+   "some" said the table "steps the cap down as position size grows", which a cap that rises again
+   contradicts, while the meta description for the same table already said "changes with position
+   size" (verifier's reading of the code, 16 September 2026; none of the 50 local tables has that
+   shape, which is why no fetch showed it). Both now read `monotone`, the one flag the description
+   uses, so the two cannot describe one table two ways. The "none" prose had the same slip in
+   miniature: "follow that lower cap" is the table's highest cap, which a larger position on a
+   table of several tiers does not follow, so it names that cap only when there is one tier. */
+const reach: "every" | "below" | "none" | "some" = split < 0 ? "every" : contractCap < headline ? "none" : monotone ? "below" : "some";
+const dropAt = reach === "below" ? ladder[split] : null;
+const tierCount = table.marginTiers.length;
+const stepped = permitted < headline;
+/* "NOT AVAILABLE AT THIS SIZE" BLAMED THE SIZE FOR THE CONTRACT'S LIMIT. Measured 16 September 2026
+   on ?symbol=BTC&side=long&notional=10000&leverage=100: "100× is not available at this size.
+   $10,000 of notional falls in tier 1, which caps leverage at 40×" — while no tier on BTC allows
+   more than 40×, so no size would. Above the highest cap in the table the verdict says "any size". */
+const anySize = requested > contractCap;
+/* THE NEXT STEP IS THE NEXT LOWER CAP, not the next row. nextTierBoundary returns the next row by
+   size, and the sentences built on it say the cap "drops" and maintenance "rises" there; a table
+   with two consecutive tiers at one cap would have made both false. */
+const next = ladder.find((t) => t.from > notional && t.max < permitted) ?? null;
+
+/* A CAP ABOVE YOUR TIER'S IS NOT A MARGIN YOU CAN POST. The tier table's last column was headed
+   "Initial margin on $180.00M" and filled every row with notional ÷ that row's cap. Measured on
+   16 September 2026 at the default BTC size: tier 1 read $4.50M (180M ÷ 40) while the same page
+   put $180.00M in tier 2, said "40× is not available at this size" and showed $9.00M on the
+   Initial margin card — a figure for a leverage the page itself rules out, in a column that
+   presented it as yours. Any leverage up to the cap that applies is allowed, so a row's figure is
+   real exactly when its cap is at or below `permitted`; rows above it now say so instead of
+   printing a number. The header names the cap, because the cell is the margin AT that cap and
+   the card uses the leverage you asked for — ?leverage=10 is $18.00M there, $9.00M here.
+   Derived from `permitted` per render, so no symbol, size or table can reopen the gap.
+
+   THE HEADER NAMES THE CAP INSTEAD OF THE NOTIONAL, not as well as it. "Initial margin on
+   $180.00M at the tier's cap" cannot wrap (.tbl th is nowrap) and took the column from 212px to
+   334px: at a 1024px viewport the table measured 774px in a 664px panel, and $9.00M — the figure
+   this change corrected — sat past the panel's edge behind a scroll macOS does not draw. "Initial
+   margin at the cap" is 205px, so the table fits as it did; the notional it is on is stated in
+   the note directly above, which the script below keeps live. And the script now redraws the
+   rows: it updated the cards and the verdict on every keystroke but never the table, so typing
+   100,000 read "40× is available at this size" over a tier-1 row saying "not at this size". */
+const tierRows = ladder.map((t) => ({
+  ...t,
+  available: t.max <= permitted,
+  margin: notional / t.max,
+}));
 const compactUsd = (v: number) => (v >= 1e6 ? `$${(v / 1e6).toFixed(v >= 1e7 ? 0 : 1)}M` : v >= 1e3 ? `$${Math.round(v / 1e3)}K` : `$${Math.round(v)}`);
+
+/* A SIZE IS PRINTED SO THAT READING IT BACK LANDS IN THE SAME TIER. Measured 16 September 2026 on
+   /tools/leverage?symbol=XPL&side=long&notional=2999999&leverage=10: "Your notional of $3.00M is
+   in tier 1" beside a table whose tier 2 is "Notional from $3.00M", and a figure reading "At $3.0M
+   you are still in the top rung … The next step down begins at $3.0M". Rounding carried the
+   size across the boundary. So each formatted size is parsed back; if that number falls in a
+   different tier from the real one, the size is printed in whole dollars ($2,999,999), which
+   cannot cross an integer boundary. The script below applies the same test to what it repaints. */
+const MULT: Record<string, number> = { K: 1e3, M: 1e6, B: 1e9 };
+const sided = (fmt: (v: number) => string) => (v: number) => {
+  const s = fmt(v), m = /^\$([\d,]+(?:\.\d+)?)([KMB]?)$/.exec(s);
+  const back = m ? Number(m[1].replace(/,/g, "")) * (MULT[m[2]] ?? 1) : NaN;
+  return Number.isFinite(back) && tierFor(table, back).index !== tierFor(table, v).index ? `$${Math.floor(v).toLocaleString("en-US")}` : s;
+};
+const money = sided((v) => usd(v));
+const brief = sided(compactUsd);
+/* HALF-OPEN RANGES, LABELLED AS HALF-OPEN. The bars read "$0–$150M" and "$150M+", so exactly $150M
+   fit both labels, and the page put it in tier 2 (measured 16 September 2026 on
+   ?symbol=BTC&side=long&notional=150000000&leverage=40; the same on ETH at $100M). tierFor counts a
+   boundary in the tier it opens, so the tier below it is "under" that boundary. */
+const barLabel = (t: (typeof ladder)[number]) =>
+  t.to === null ? `${brief(t.from)}+` : t.from === 0 ? `under ${brief(t.to)}` : `${brief(t.from)} to under ${brief(t.to)}`;
+
+const reachLine =
+  reach === "below" && dropAt ? `On ${perp.symbol} the advertised ${headline}× applies only below ${money(dropAt.from)} of notional, where the cap steps down to ${dropAt.max}×.`
+  : reach === "every" ? (tierCount === 1 ? `${perp.symbol} has a single margin tier, so the advertised ${headline}× applies at every position size.` : `Every margin tier on ${perp.symbol} allows the advertised ${headline}×, so it applies at every position size.`)
+  : reach === "none" ? `No margin tier on ${perp.symbol} allows the advertised ${headline}×: the most any position size gets is ${contractCap}×.`
+  : `On ${perp.symbol} the advertised ${headline}× does not apply at every position size.`;
+const reachMeta =
+  reach === "below" && dropAt ? `applies below ${brief(dropAt.from)} only`
+  : reach === "every" ? "applies at every size"
+  : reach === "none" ? "no tier allows it"
+  : "not at every size";
+const whyHeading =
+  reach === "every" ? `Why the advertised number is your number on ${perp.symbol}`
+  : reach === "none" ? "Why the advertised number is not your number"
+  : "Why the advertised number is not always your number";
 
 const title = `Leverage calculator — what ${perp.symbol} actually allows at your size`;
 /* THE DESCRIPTION MUST NOT PROMISE A STEP THAT DOES NOT EXIST. It asserted unconditionally
@@ -88,10 +214,17 @@ const title = `Leverage calculator — what ${perp.symbol} actually allows at yo
    have a single margin tier" while the table on the same page rendered two: at the default
    $180M notional BTC is already in its LAST tier, so there is no next step and the contract
    still has more than one. The description now counts tiers, which is the thing it asserts. */
-const tierCount = table.marginTiers.length;
-const description = tierCount > 1
-  ? `Maximum leverage on ${perp.symbol} perpetuals steps down as position size grows, across ${tierCount} margin tiers. This shows the tier that applies at your notional, the margin required, and where the next step falls.`
-  : `${perp.symbol} perpetuals have a single margin tier: the same maximum leverage and maintenance margin at every position size. This shows what that means for the margin you post and the liquidation price you get.`;
+/* COUNTING TIERS IS NOT COUNTING STEPS. "Steps down as position size grows" was chosen by
+   tierCount > 1, so a table of two tiers at one cap, or one whose cap rises again, would have
+   told a search result about a step that is not there (none of the ten tables in
+   src/data/margin-tables.json on 16 September 2026 is shaped so, which is why nobody saw it; the
+   file is regenerated from the venue by scripts/gen-margin-tables.mjs). The
+   sentence now asks the ladder the same two questions the intro does: how many distinct caps,
+   and whether they only ever fall. */
+const capCount = new Set(ladder.map((t) => t.max)).size;
+const description = capCount > 1
+  ? `Maximum leverage on ${perp.symbol} perpetuals ${monotone ? "steps down as position size grows" : "changes with position size"}, across ${tierCount} margin tiers. This shows the tier that applies at your notional, the margin required, and where the next step falls.`
+  : `${perp.symbol} perpetuals have ${tierCount === 1 ? "a single margin tier" : `${tierCount} margin tiers at one cap`}: the same maximum leverage and maintenance margin at every position size. This shows what that means for the margin you post and the liquidation price you get.`;
 ---
 
 <Base title={title} description={description} fetchedAt={snap.fetchedAt} crumb={{ href: "/tools", label: "Tools", current: "Leverage" }}>
@@ -99,18 +232,19 @@ const description = tierCount > 1
     <p class="crumb"><a href="/tools">Tools</a> › Leverage</p>
     <h1>Leverage calculator</h1>
     <p>
-      The advertised maximum applies to the smallest tier only &mdash; at the size this opens on,
-      the real ceiling is <strong>{permitted}&times;</strong> against the {headline}&times; on the
-      front of the page. Opens on {perp.symbol} at
-      {" "}{px(perp.markPx)}, advertised at {perp.maxLeverage}×; this shows what that really allows
-      at <strong>your</strong> notional, and what it costs in margin.
+      {reachLine} Opens on {perp.symbol} at {px(perp.markPx)}; this shows what the tier table really
+      allows at <strong>your</strong> notional, and what it costs in margin.
     </p>
     <Advisory />
   </div>
 
+  {/* NO value= ON THE COIN OPTIONS: an option without one submits its text, which is the symbol.
+      Fifty copies of value="…" were 219b of brotli on this page (measured 16 September 2026, q4, the
+      level that reproduces the live wire size) — the bytes that pay for the keystroke path below
+      naming the liquidation price, the "any size" verdict and tier-safe sizes. */}
   <form method="GET" class="calc">
     <label>Coin
-      <select name="symbol">{snap.perps.map((p) => <option value={p.symbol} selected={p.symbol === perp.symbol}>{p.symbol}</option>)}</select>
+      <select name="symbol">{snap.perps.map((p) => <option selected={p.symbol === perp.symbol}>{p.symbol}</option>)}</select>
     </label>
     <label>Side
       <select name="side">
@@ -119,29 +253,29 @@ const description = tierCount > 1
       </select>
     </label>
     <label>Position notional (USD)
-      <input type="number" name="notional" value={notional} step="any" min="0" />
+      <input type="number" name="notional" value={notional} step="any" min={N_MIN} max={N_MAX} required />
     </label>
     <label>Leverage wanted
-      <input type="number" name="leverage" value={requested} step="1" min="1" />
+      <input type="number" name="leverage" value={requested} step="any" min={L_MIN} max={L_MAX} required />
     </label>
     <button class="btn btn--primary" type="submit">Calculate</button>
   </form>
 
   <Figure
-    title={`${perp.symbol} margin tiers \u2014 the ceiling at every size`}
-    lead={`${permitted}\u00d7`}
-    leadNote={`at your ${compactUsd(notional)} notional \u00b7 the contract advertises ${headline}\u00d7`}
+    title={`${perp.symbol} margin tiers — the ceiling at every size`}
+    lead={`${permitted}×`}
+    leadNote={`at ${brief(notional)} of notional · the contract advertises ${headline}×`}
     fetchedAt={snap.fetchedAt}>
     <div class="bars">
       {ladder.map((t) => (
         <>
-          <span class="bars__label">{t.to ? `${compactUsd(t.from)}\u2013${compactUsd(t.to)}` : `${compactUsd(t.from)}+`}</span>
+          <span class="bars__label">{barLabel(t)}</span>
           <span class="bars__track">
             <span
               class="bars__fill"
               style={`width:${Math.max(3, (t.max / ladderMax) * 100)}%${t.active ? ";background:var(--accent)" : ""}`}></span>
           </span>
-          <span class="bars__value">{t.max}&times;{t.active && <span class="faint"> you</span>}</span>
+          <span class="bars__value">{t.max}&times;{t.active && <span class="faint"> at {brief(notional)}</span>}</span>
         </>
       ))}
     </div>
@@ -151,15 +285,26 @@ const description = tierCount > 1
           every reader whose size is still in the first tier, which is most of them. The ladder
           is a fact about the contract; whether YOU have stepped down is a fact about your size,
           and they are different sentences. */}
-      Every venue publishes a ladder like this and quotes only its top rung. Yours is the
-      highlighted row.
-      {permitted < headline
-        ? <> At {compactUsd(notional)} the most this contract will give you is <b>{permitted}&times;</b>,
-          not the {headline}&times; on the front of the page.</>
-        : <> At {compactUsd(notional)} you are still in the top rung, so the advertised
-          {" "}<b>{headline}&times;</b> is really available &mdash; it is size, not the contract, that
-          takes it away.</>}
-      {next && <> The next step down begins at {compactUsd(next.lowerBound)}, where the ceiling becomes {next.maxLeverage}&times;.</>}
+      {/* THE FIGURE NAMES THE SIZE IT WAS DRAWN AT, NOT "YOURS". Typing a new size updates the cards
+          and, since 16 September, the tier table below — but not this figure, so a figure saying
+          "your $180M" and "you" beside a table reading "$100,000 · tier 1" disagreed about whose size
+          it was. Redrawing it live would cost script this page has 67 bytes of wire budget left for;
+          naming the size costs nothing and cannot disagree. Submitting the form redraws it. */}
+      {/* A ONE-RUNG LADDER HAS NOTHING FOR SIZE TO TAKE AWAY. Measured 16 September 2026 on
+          ?symbol=LIT&side=long&notional=500000000&leverage=20: "At $500M you are still in the top
+          rung, so the advertised 5× is really available — it is size, not the contract, that takes
+          it away", under one bar ("$0+ 5×"). The ladder sentence is for tables with more than one
+          tier, "you are still in the top rung" went because a tie at the top would put a reader in one
+          of several, and what takes the headline away is now read from `reach`. The ladder sentence
+          itself stands only when the advertised number IS the table's highest cap (extremeBy), which
+          is what "quotes only its top rung" asserts. */}
+      {tierCount > 1
+        ? <>{headline === contractCap && "Every venue publishes a ladder like this and quotes only its top rung. "}The highlighted row is the tier {brief(notional)} falls in.</>
+        : <>{perp.symbol} has one rung, so the highlighted row is the ceiling at every size.</>}
+      {stepped
+        ? <> At {brief(notional)} the most this contract will give you is <b>{permitted}&times;</b>, not the {headline}&times; on the front of the page.</>
+        : <> At {brief(notional)} the advertised <b>{headline}&times;</b> is really available &mdash; {reach === "every" ? "no size takes it away" : "it is size, not the contract, that takes it away"}.</>}
+      {next && <> The next step down begins at {brief(next.from)}, where the ceiling becomes {next.max}&times;.</>}
     </p>
   </Figure>
 
@@ -172,7 +317,7 @@ const description = tierCount > 1
     <div class="card">
       <div class="card__label">Advertised maximum</div>
       <div class="card__value dim" id="out-headline">{headline}×</div>
-      <div class="card__meta">applies to the smallest tier only</div>
+      <div class="card__meta">{reachMeta}</div>
     </div>
     <div class="card">
       <div class="card__label">Initial margin</div>
@@ -188,30 +333,51 @@ const description = tierCount > 1
 
   <div class:list={["verdict", clamped ? "verdict--warn" : "verdict--ok"]} id="out-verdict">
     <div id="out-verdict-text">
+      {ignoredN && ignoredLine("notional", rawN!, `${usd(N_MIN)} to $${N_MAX.toLocaleString("en-US")}`, `the default ${money(notional)}`)}
+      {ignoredL && ignoredLine("leverage", rawL!, `${L_MIN}× to ${L_MAX.toLocaleString("en-US")}×`, `the advertised ${requested}×`)}
       {clamped ? (
-        <><b>{requested}× is not available at this size.</b> {usd(notional)} of notional falls in tier
+        <><b>{requested}× is not available at {anySize ? "any size" : "this size"}</b>{anySize ? `: no tier on this contract goes above ${contractCap}×. ` : ". "}{money(notional)} of notional falls in tier
         {" "}{index + 1}, which caps leverage at <b>{permitted}×</b>. The order is filled at the cap or
         rejected, depending on the venue — either way the position is not the one you sized.</>
       ) : (
-        <><b>{requested}× is available at this size.</b> {usd(notional)} of notional sits in tier
+        <><b>{requested}× is available at this size.</b> {money(notional)} of notional sits in tier
         {" "}{index + 1}, where the cap is {permitted}×. Liquidation falls at
-        {" "}<b>{px(r.liquidationPrice)}</b>, {pct(r.distancePct)} from the mark.</>
+        {" "}<b>{px(liq)}</b>, {pct(liqDist)} from the mark.</>
       )}
     </div>
   </div>
 
-  <h2 class="section">Why the advertised number is not your number</h2>
-  <p class="prose">
-    Exchanges publish a single headline maximum — {headline}× on this contract — and then apply a
-    <strong>margin tier table</strong> that steps the cap down as position size grows. The headline
-    applies only to the smallest tier. Above it, both the permitted leverage and the maintenance
-    margin change, and the liquidation price moves with them.
-  </p>
+  <h2 class="section">{whyHeading}</h2>
+  {reach === "every" ? (
+    <p class="prose">
+      {tierCount === 1
+        ? <>A margin tier table can step the cap down as position size grows. {perp.symbol}'s table has a single tier: a {permitted}× cap and {pct(mmf, 3)} maintenance margin at every size, so the advertised {headline}× is available however large the position.</>
+        : <>Every tier in {perp.symbol}'s <strong>margin tier table</strong> allows at least the advertised {headline}×, so it is available at every size; the maintenance margin still follows the tier, as the table below shows.</>}
+    </p>
+  ) : reach === "none" ? (
+    <p class="prose">
+      Exchanges publish a single headline maximum — {headline}× on this contract — and then apply a
+      {" "}<strong>margin tier table</strong>. No tier in {perp.symbol}'s table allows the headline: the most any
+      size gets is {contractCap}×, and the maintenance margin and the liquidation price follow {tierCount === 1 ? "that lower cap" : "the cap of the tier a position falls in"}.
+    </p>
+  ) : (
+    <p class="prose">
+      Exchanges publish a single headline maximum — {headline}× on this contract — and then apply a
+      {" "}<strong>margin tier table</strong> that {monotone ? "steps the cap down" : "changes the cap"} as position size grows.
+      {dropAt
+        ? <> Here the headline applies only below <strong>{money(dropAt.from)}</strong>. From there, both the permitted leverage and the maintenance margin change, and the liquidation price moves with them.</>
+        : <> Here the headline does not hold at every size; the table below shows the tiers where it does and where it does not.</>}
+    </p>
+  )}
+  {/* THE NEXT STEP IS NAMED FROM THE SIZE IT WAS COUNTED FROM. "The next step here is at $150.00M"
+      stayed on the page when typing 200,000,000 moved the cards to tier 2 (measured 16 September
+      2026 on ?symbol=BTC&side=long&notional=10000&leverage=10), pointing at a step the new size had
+      passed. The script does not redraw this paragraph, so it says which size "next" is next to. */}
   {next && (
     <p class="prose">
-      The next step here is at <strong>{usd(next.lowerBound)}</strong>, where the cap drops to
-      {" "}<strong>{next.maxLeverage}×</strong> and maintenance margin rises to
-      {" "}<strong>{pct(maintenanceMarginFraction(next.maxLeverage), 3)}</strong>. Sizing across that
+      For {money(notional)} of notional the next step is at <strong>{money(next.from)}</strong>, where the cap drops to
+      {" "}<strong>{next.max}×</strong> and maintenance margin rises to
+      {" "}<strong>{pct(maintenanceMarginFraction(next.max), 3)}</strong>. Sizing across that
       boundary changes the terms of the position already open.
     </p>
   )}
@@ -219,19 +385,19 @@ const description = tierCount > 1
   <h2 class="section">Every tier on {perp.symbol}</h2>
   <p class="section-note">
     Contract table <code>{perp.marginTableId}</code>{table.description ? ` — ${table.description}` : ""}.
-    Your notional of <strong style="color:var(--text)">{usd(notional)}</strong> is in tier {index + 1}.
+    Your notional of <strong style="color:var(--text)" id="out-tbl-notional">{money(notional)}</strong> is in tier <span id="out-tbl-tier">{index + 1}</span>.
   </p>
   <div class="panel" style="max-width:720px">
-    <table class="tbl">
-      <thead><tr><th>Tier</th><th class="num">Notional from</th><th class="num">Max leverage</th><th class="num">Maintenance margin</th><th class="num">Initial margin on {usd(notional)}</th></tr></thead>
+    <table class="tbl" id="tier-table">
+      <thead><tr><th>Tier</th><th class="num">Notional from</th><th class="num">Max leverage</th><th class="num">Maintenance margin</th><th class="num">Initial margin at the cap</th></tr></thead>
       <tbody>
-        {table.marginTiers.map((t, i) => (
-          <tr class={i === index ? "is-active" : undefined}>
-            <td>{i + 1}{i === index ? " · yours" : ""}</td>
-            <td class="num">{usd(t.lowerBound)}</td>
-            <td class="num">{t.maxLeverage}×</td>
-            <td class="num">{pct(maintenanceMarginFraction(t.maxLeverage), 3)}</td>
-            <td class="num">{usd(notional / t.maxLeverage)}</td>
+        {tierRows.map((t, i) => (
+          <tr class={t.active ? "is-active" : undefined}>
+            <td>{i + 1}{t.active ? " · yours" : ""}</td>
+            <td class="num">{money(t.from)}</td>
+            <td class="num">{t.max}×</td>
+            <td class="num">{pct(maintenanceMarginFraction(t.max), 3)}</td>
+            <td class="num">{t.available ? usd(t.margin) : <span class="faint">not at this size</span>}</td>
           </tr>
         ))}
       </tbody>
@@ -243,43 +409,84 @@ const description = tierCount > 1
     · <a class="link" href="/methodology">How these numbers are produced →</a>
   </p>
 
-  <script is:inline define:vars={{ table, markPx: perp.markPx, headline, pdp }}>
+  {/* A MODULE, SO THE MONEY IS FORMATTED BY THE SERVER'S usd(). The classic script carried its
+      own `money` — whole dollars with separators — so a typed 180,000,000 turned the $9.00M the
+      page opened on into $9,000,000. Harmless while only the cards changed; once the tier table
+      redraws too, a local formatter would print $9,000,000 beside the server's $150.00M in one
+      table. Imported with the asset version, as /tools/position-size does and for its reason.
+      The rows are redrawn by position: server and script both sort the tiers by lowerBound. That
+      note lives here rather than in the script because is:inline ships its comments, and the
+      page was 7,723b of brotli on 16 September 2026 against the 8,000b verify-live budget, and
+      this version measures 7,933b at the same level (q4, which reproduces the live 7,723). */}
+  {/* ONLY WHAT THE SCRIPT READS IS INJECTED. define:vars ships every entry as a `const` line in
+      the body, and markPx, headline and pdp were read by nothing but `price`, a formatter nothing
+      called — astro check had flagged it as unused. Removing the four together gave back the bytes
+      the tier-table redraw cost when /tools/leverage went 197b over its wire budget on
+      16 September 2026. */}
+  {/* WHAT THE KEYSTROKE PATH NOW SAYS, AND WHAT PAID FOR IT (16 September 2026).
+      - markPx is back, because the recalculated verdict dropped the liquidation price the server
+        prints: "10× is available at this size. $200.00M of notional sits in tier 2, where the cap
+        is 20×." and nothing after it. It is corridorAt's formula with the side folded into a sign,
+        and pct/priceDp come from /shared.js like usd, so its figures are the server's.
+      - `top` is the table's highest cap, for the "any size" verdict the server now gives.
+      - `nu` is the server's `money`: usd(), unless reading it back lands in another tier.
+      - The guard reads the form's own min attributes, so a keystroke preview never shows a size
+        the form will not submit ($0 in tier 1 while the server answered $180.00M in tier 2).
+      - AND ITS max ATTRIBUTES. With only min read, typing 10000000000000000 on
+        ?symbol=BTC&side=long&notional=10000&leverage=10 (16 September 2026) previewed "10× is
+        available at this size. — of notional sits in tier 2" (usd() prints an em dash from 1e15),
+        and leverage 5000 previewed "5000× is not available at any size" for a value the form's
+        max="1000" will not send and the server would replace with 40×. Both bounds now come from
+        the attributes the server renders from N_MIN/N_MAX/L_MIN/L_MAX, so the preview, the form
+        and the parser share one range.
+      - AND STEP, BY ASKING THE FORM INSTEAD OF COPYING ITS ATTRIBUTES. Skipping step left the same
+        gap one attribute over (16 September 2026, ?symbol=BTC&side=long&notional=10000&leverage=10):
+        typing 2.5 previewed "2.5× is available at this size … Liquidation falls at $45,966.20,
+        39.24% from the mark" while step="1" made the form refuse to send it ("nearest valid values:
+        2 and 3"), and a link with ?leverage=2.5 — which the server honours — rendered value="2.5"
+        into that step="1" input, so the page opened on a form that failed its own validation. The
+        leverage input is now step="any", as the parser has always been, and the guard is
+        form.checkValidity(): whatever min, max, step or required the form carries, a keystroke
+        previews exactly what Calculate would send. It is also shorter than the four comparisons.
+      Paid for by the local `pc` (pct replaces it), the null checks on ids and on the form that
+      this page always renders, the per-branch className string and the forEach tier search. */}
+  <script is:inline type="module" define:vars={{ table, markPx: perp.markPx, sharedV: ASSETS["/shared.js"] }}>
+    const { usd, pct, priceDp } = await import("/shared.js" + (sharedV ? `?v=${sharedV}` : ""));
     const form = document.querySelector(".calc");
-    if (form) {
-      /* MUST MATCH the server's px() above. Math.round() is right for notional and margin —
-         whole dollars — and catastrophic for a PRICE: it turns every sub-cent liquidation into
-         $0. The server picks decimals from magnitude; so does this. */
-      const money = (x) => "$" + Math.round(Math.abs(x)).toLocaleString("en-US");
-      const price = (x) => "$" + Math.abs(x).toLocaleString("en-US", { minimumFractionDigits: pdp, maximumFractionDigits: pdp });
-      const pc = (x, d = 3) => (x * 100).toFixed(d) + "%";
-      const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
-      const tiers = [...table.marginTiers].sort((a, b) => a.lowerBound - b.lowerBound);
-      const recalc = () => {
-        const N = Number(form.notional.value), L = Number(form.leverage.value);
-        if (!(N >= 0) || !(L > 0)) return;
-        let idx = 0;
-        tiers.forEach((t, i) => { if (N >= t.lowerBound) idx = i; });
-        const permitted = tiers[idx].maxLeverage;
-        const mmf = 1 / (2 * permitted);
-        const eff = Math.min(L, permitted);
-        const im = N / eff, mm = N * mmf;
-        set("out-permitted", permitted + "×");
-        set("out-tier", String(idx + 1));
-        set("out-mmf", pc(mmf));
-        set("out-im", money(im));
-        set("out-eff", String(eff));
-        set("out-mm", money(mm));
-        set("out-buffer", money(im - mm));
-        const v = document.getElementById("out-verdict");
-        if (v) v.className = "verdict " + (L > permitted ? "verdict--warn" : "verdict--ok");
-        const t = document.getElementById("out-verdict-text");
-        if (t) t.textContent = L > permitted
-          ? `${L}× is not available at this size. ${money(N)} of notional falls in tier ${idx + 1}, which caps leverage at ${permitted}×. The order is filled at the cap or rejected, depending on the venue — either way the position is not the one you sized.`
-          : `${L}× is available at this size. ${money(N)} of notional sits in tier ${idx + 1}, where the cap is ${permitted}×.`;
-      };
-      form.addEventListener("input", recalc);
-      form.addEventListener("change", (e) => { if (e.target.name === "symbol") form.submit(); else recalc(); });
-    }
+    const set = (id, v) => document.getElementById(id).textContent = v;
+    const tiers = [...table.marginTiers].sort((a, b) => a.lowerBound - b.lowerBound);
+    const top = Math.max(...tiers.map((t) => t.maxLeverage));
+    const ix = (v) => tiers.reduce((a, t, i) => v >= t.lowerBound ? i : a, 0);
+    const nu = (v) => { const s = usd(v), m = /([\d,.]+)([MB]?)$/.exec(s); return m && ix(m[1].replace(/,/g, "") * (m[2] ? m[2] == "M" ? 1e6 : 1e9 : 1)) != ix(v) ? "$" + Math.floor(v).toLocaleString("en-US") : s; };
+    const rows = document.querySelectorAll("#tier-table tbody tr");
+    const recalc = () => {
+      const N = Number(form.notional.value), L = Number(form.leverage.value);
+      if (!form.checkValidity()) return;
+      const idx = ix(N), permitted = tiers[idx].maxLeverage, mmf = 1 / (2 * permitted);
+      const eff = Math.min(L, permitted), im = N / eff, mm = N * mmf;
+      const s = form.side.value == "short" ? -1 : 1, liq = markPx * (1 - s / L) / (1 - s * mmf);
+      set("out-permitted", permitted + "×");
+      set("out-tier", idx + 1);
+      set("out-mmf", pct(mmf, 3));
+      set("out-im", usd(im));
+      set("out-eff", eff);
+      set("out-mm", usd(mm));
+      set("out-buffer", usd(im - mm));
+      set("out-tbl-notional", nu(N));
+      set("out-tbl-tier", idx + 1);
+      rows.forEach((row, i) => {
+        const cap = tiers[i].maxLeverage;
+        row.classList.toggle("is-active", i === idx);
+        row.cells[0].textContent = `${i + 1}${i === idx ? " · yours" : ""}`;
+        row.cells[4].innerHTML = cap <= permitted ? usd(N / cap) : '<span class="faint">not at this size</span>';
+      });
+      document.getElementById("out-verdict").className = "verdict verdict--" + (L > permitted ? "warn" : "ok");
+      set("out-verdict-text", L > permitted
+        ? `${L}× is not available at ${L > top ? `any size: no tier on this contract goes above ${top}×` : "this size"}. ${nu(N)} of notional falls in tier ${idx + 1}, which caps leverage at ${permitted}×. The order is filled at the cap or rejected, depending on the venue — either way the position is not the one you sized.`
+        : `${L}× is available at this size. ${nu(N)} of notional sits in tier ${idx + 1}, where the cap is ${permitted}×. Liquidation falls at ${usd(liq, priceDp(markPx))}, ${pct(s * (markPx - liq) / markPx)} from the mark.`);
+    };
+    form.addEventListener("input", recalc);
+    form.addEventListener("change", (e) => { if (e.target.name === "symbol") form.submit(); else recalc(); });
   </script>
   <Interests />
 </Base>

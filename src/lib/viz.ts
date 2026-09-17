@@ -27,6 +27,7 @@
    ========================================================================================= */
 import { INK, esc, rect, line } from "./chart.ts";
 
+import { pluralityOf } from "./extreme.ts";
 /** Rounds a limit up to something a person would choose, so the axis ends on a real number. */
 function niceLimit(v: number): number {
   if (!Number.isFinite(v) || v <= 0) return 1;
@@ -60,16 +61,42 @@ const svgOpen = (w: number, h: number, title: string) =>
  * and the cells that glow are the ones the market has priced.
  */
 export interface HeatScale {
-  /** The column's typical value; deviation is measured from here. */
+  /** The column's typical value — its resting rate when it has one, else its median. */
   mid: number;
   /** The deviation that reaches full tint. Zero means the column is flat and nothing is tinted. */
   scale: number;
 }
 
+/* ========================================================================================
+   "TYPICAL" IS THE RATE THE COLUMN RESTS ON, NOT ITS MEDIAN — AND THE PROSE SAID SO FIRST.
+
+   /funding tells the reader: "a contract resting on the venue's usual rate stays plain and the
+   ones the market has actually priced stand out." This function measured deviation from the
+   column MEDIAN. On Hyperliquid those are the same number, because thirty-odd of fifty contracts
+   sit on the base rate. On Binance and Bybit they are not. Measured by the claim-vs-table audit on
+   16 September: 13 of 47 Binance cells held exactly 10.95% — the interest component every quiet
+   contract rests on — and every one was tinted heat--4, as hot as ETH at −5.22%; the only plain
+   Binance cells were SUI 2.18%, BTC 2.42%, TRUMP 2.51% and XRP 2.57%, priced contracts that
+   happened to sit near a median of 2.57%. The tint said the opposite of its own legend on two of
+   three columns.
+
+   SO THE REFERENCE IS A RESTING RATE WHEN THE COLUMN HAS ONE. A value shared by a real share of the
+   column — at least three cells and at least a fifth of them — is a rate contracts sit on when the
+   market has no view, and deviation is measured from it. A column with no such value has no resting
+   rate to speak of, and the median is the honest fallback. The threshold is stated rather than
+   tuned: two contracts coinciding on a rate is a coincidence, a fifth of the venue is a regime.
+   ======================================================================================== */
+export const RESTING_MIN_COUNT = 3;
+export const RESTING_MIN_SHARE = 0.2;
+
 export function heatScale(values: number[]): HeatScale | null {
   const col = values.filter((v) => Number.isFinite(v)).sort((a, b) => a - b);
   if (!col.length) return null;
-  const mid = col[Math.floor(col.length / 2)];
+  /* 1e-9 is the tolerance extreme.ts uses: contracts on a venue constant arrive through identical
+     arithmetic and land on the same float. */
+  const rest = pluralityOf(col, 1e-9);
+  const resting = rest !== null && rest.count >= RESTING_MIN_COUNT && rest.count >= RESTING_MIN_SHARE * col.length;
+  const mid = resting ? rest!.value : col[Math.floor(col.length / 2)];
   const devs = col.map((v) => Math.abs(v - mid)).sort((a, b) => a - b);
   /* THE 90th PERCENTILE OF THE DEVIATIONS, not of the values. One contract at 96% against a
      median of 11% would otherwise set the scale and leave every other cell colourless — the same
@@ -244,3 +271,57 @@ export function distribution(values: number[], opts: DistributionOpts): Distribu
    So they live as classes in src/layouts/Base.astro — `.bars` and `.scale` — and the pages
    compose them. Only the distribution stays here, because twenty-one bucket heights are geometry
    and nothing else. See the class comments there. */
+
+/* =========================================================================================
+   A DIVERGING BAR, WITH ITS SIDE AND ITS COLOUR COMPUTED IN ONE PLACE.
+
+   THE DEFECT THIS CLOSES. /funding drew its ten off-base contracts with the funding hue chosen
+   by `apr > baseRate` and the bar length by `|apr − baseRate|`. The legend above it, and every
+   table cell below it, used those same two hues for who-pays-whom. So SOL at +6.71% — a contract
+   where longs are paying, amber everywhere else on the page — was drawn cyan, because it sits
+   below the venue's base rate. One hue pair carrying two propositions on one page, and the only
+   instrument that could see it was a person looking at the rendered page.
+
+   The fix was to position by the signed value and colour by the sign. That is correct and it is
+   also two expressions that a later edit can pull apart: change the axis without changing the
+   class, or the reverse, and the chart silently disagrees with itself again.
+
+   SO THEY ARE ONE RETURN VALUE. `side` and `cls` are derived from the same comparison as `left`
+   and `width`, and scripts/viz-cases.mjs asserts the invariant across the whole domain rather
+   than on the ten rows that happen to be on the page today: a bar is amber if and only if it lies
+   to the right of the zero mark. There is no way to satisfy one half and not the other.
+
+   `at` and `zeroAt` are percentages along the track, from whatever axis the caller built — this
+   does not own the scale, only the agreement between geometry and hue.
+   ========================================================================================= */
+export interface SignedBar {
+  /** Percentage from the track's left edge. */
+  readonly left: number;
+  /** Width as a percentage of the track. Never zero: a rate of exactly zero still gets a mark. */
+  readonly width: number;
+  /** Which side of the zero mark the bar lies on. */
+  readonly side: "positive" | "negative";
+  /** The fill class, in the site's funding pair: amber pays long, cyan pays short. */
+  readonly cls: "bars__fill--l" | "bars__fill--s";
+}
+
+/**
+ * MIN_BAR is the floor that keeps a near-zero rate visible as a mark rather than collapsing into
+ * the zero rule itself. It is a presence, not a magnitude: a reader must be able to see that the
+ * row has a reading at all, and the number beside it says how small.
+ */
+export const MIN_BAR = 0.6;
+
+export function signedBar(value: number, at: number, zeroAt: number): SignedBar {
+  /* The sign decides both. Zero itself is drawn on the positive side because at a rate of zero
+     nobody is paying anybody, and paysClass() — the function the tables and the strip use — puts
+     `>= 0` in the long-pays class for exactly the same reason. The two must agree or the figure
+     and the row beneath it will disagree about a contract sitting on zero. */
+  const positive = !(value < 0);
+  return {
+    left: positive ? zeroAt : Math.min(at, zeroAt),
+    width: Math.max(MIN_BAR, Math.abs(at - zeroAt)),
+    side: positive ? "positive" : "negative",
+    cls: positive ? "bars__fill--l" : "bars__fill--s",
+  };
+}

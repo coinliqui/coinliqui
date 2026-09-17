@@ -1,8 +1,11 @@
 ---
 import Base from "../../layouts/Base.astro";
-import StatStrip from "../../components/StatStrip.astro";
+import Overview from "../../components/Overview.astro";
 import { getSnapshot, coldStart, findPerp, getLive, oldestStamp } from "../../lib/hyperliquid.ts";
-import { usd, pct, paysClass, LEGEND_PAYS } from "../../lib/funding.ts";
+import { usd, pct, paysClass, paysLabel, carryCost, LEGEND_PAYS } from "../../lib/funding.ts";
+import { extremeBy } from "../../lib/extreme.ts";
+import Spark from "../../components/Spark.astro";
+import { readSparks, sparkScale, SPARK_POINTS, SPARK_STEP_MS } from "../../lib/sparks.ts";
 import { COINS, isLive } from "../../lib/coins.ts";
 
 import { priceDp } from "../../lib/funding.ts";
@@ -54,9 +57,36 @@ const rows = COINS.map((c) => {
 }).sort((a, b) => (b.ntl || 0) - (a.ntl || 0));
 
 const pending = rows.filter((r) => !r.live);
-const stripOi = snap.perps.reduce((t, p) => t + (Number.isFinite(p.oiNotional) ? p.oiNotional : 0), 0);
 const stripUp = snap.perps.filter((p) => Number.isFinite(p.change24h) && p.change24h > 0).length;
 const stripDown = snap.perps.filter((p) => Number.isFinite(p.change24h) && p.change24h < 0).length;
+
+/* THE STATED SITUATION. What this page claims to be for is "the thing a price table leaves out"
+   — what the contract charges to hold the exposure — and a reader on a phone could not see that
+   column at all: the table scrolled sideways and stopped after Coin, Mark and 24h change. The
+   column moved left, and the cost it carries is said in words here before any table.
+
+   IN MONEY, NOT ONLY IN PERCENT. "10.95% a year" is a rate a reader has to do arithmetic on;
+   "about $21 a week per $10,000" is the same fact already spent. carryCost is the same function
+   the calculators use, so this sentence and /tools/funding-cost cannot disagree. */
+const priced = rows.filter((r) => Number.isFinite(r.apr));
+const costing = priced.filter((r) => r.apr > 0).length;
+const paying = priced.filter((r) => r.apr < 0).length;
+const dearest = extremeBy(priced, (r) => r.apr, "max");
+const bestPaid = extremeBy(priced, (r) => r.apr, "min");
+const weekOn = (apr: number) => carryCost(10_000, apr, 7);
+
+/* THE SHAPE COLUMN. One KV get; the scale is computed once over the ten series this table draws
+   and shared by every row — see src/lib/sparks.ts for why a per-row axis makes the column
+   decoration. Computed over THESE ten rather than over the whole map, because the axis has to
+   describe the comparison a reader is actually making on this page. */
+const sparks = await readSparks(env?.SNAPSHOT);
+const sparkOf = (sym: string) => (sparks.status === "ready" ? sparks.map.series[sym] : undefined);
+const sparkScaleAll = sparks.status === "ready"
+  ? sparkScale(rows.map((r) => sparkOf(r.symbol)).filter((v): v is number[] => Array.isArray(v) && v.length > 1))
+  : null;
+const sparkDays = sparks.status === "ready"
+  ? Math.max(1, Math.round((Math.min(sparks.covered, SPARK_POINTS) * SPARK_STEP_MS) / 86_400_000))
+  : 0;
 const dp = priceDp;
 const arrow = (n: number) => (n >= 0 ? "▲" : "▼");
 const fmtDate = (s: string) => new Date(s + "T00:00:00Z").toLocaleDateString("en-GB", { day: "numeric", month: "long", timeZone: "UTC" });
@@ -68,27 +98,41 @@ const description = "Perpetual futures prices for the major coins on Hyperliquid
 <Base title={title} description={description} fetchedAt={oldestStamp(snap.fetchedAt, live?.at)}>
   <div class="page-head">
     <h1>Perpetual prices</h1>
-    <p>
-      The <strong>perpetual futures</strong> price for each major coin on Hyperliquid, beside the
-      thing a price table leaves out: what the contract is charging to hold that exposure. These
-      are contract prices, not spot prices — the perpetual can trade above or below the coin, and
-      the funding rate is the mechanism that pulls it back.
+    {/* THE ANSWER FIRST. The four-figure readout that stood here — coins covered, perpetuals,
+        open interest, 24h breadth — is gone except for the breadth, which is the only one of the
+        four that was a conclusion rather than a count. See src/components/Overview.astro. */}
+    <Overview>
+      Across the {snap.perps.length} perpetuals, <b>{stripUp} are up over 24 hours and {stripDown} are down</b>.
+      {costing > 0 && <>{" "}Holding a <b>long costs money on {costing} of the {priced.length} coins below</b></>}
+      {costing > 0 && paying > 0 && <> and is paid on {paying}</>}
+      {costing === 0 && paying > 0 && <>{" "}A <b>long is paid on {paying} of the {priced.length} coins below</b></>}.
+      {dearest.kind === "unique" && dearest.value > 0 && <>{" "}It is dearest on <b>{dearest.item.name}</b> at {pct(dearest.value)} a year &mdash; about <b>{usd(Math.abs(weekOn(dearest.value)), 0)}</b> a week per $10,000 held.</>}
+      {dearest.kind === "tied" && dearest.value > 0 && <>{" "}{dearest.items.length} of them share the dearest rate, {pct(dearest.value)} a year &mdash; about {usd(Math.abs(weekOn(dearest.value)), 0)} a week per $10,000 held.</>}
+      {bestPaid.kind === "unique" && bestPaid.value < 0 && <>{" "}On <b>{bestPaid.item.name}</b> it runs the other way: {paysLabel(bestPaid.value)}{" "}{pct(Math.abs(bestPaid.value))}.</>}
+    </Overview>
+    <p class="section-note" style="margin-top:12px">
+      These are <strong>contract prices, not spot prices</strong> &mdash; the perpetual can trade
+      above or below the coin, and the funding rate is the mechanism that pulls it back.
+      Funding colour: {LEGEND_PAYS}.
+      {sparkScaleAll && <> The <b>{sparkDays}-day shape</b> is Hyperliquid funding in four-hour means,
+      on <b>one axis shared by every row</b> running &plusmn;{pct(sparkScaleAll.max)} a year, so a taller
+      shape is a bigger move rather than a differently-scaled one.</>}
     </p>
   </div>
-
-  <StatStrip items={[
-    { label: "Coins covered", value: String(rows.length) },
-    { label: "Perpetuals", value: String(snap.perps.length), href: "/funding" },
-    { label: "Open interest", value: usd(stripOi), href: "/open-interest" },
-    { label: "24h breadth", value: `${stripUp} up, ${stripDown} down` },
-  ]} />
 
   <div class="panel">
     <table class="tbl" data-sortable>
       <thead>
         <tr>
-          <th>Coin</th><th class="num">Mark</th><th class="num">24h change</th><th class="num">24h volume</th>
-          <th class="num">Funding APR</th><th class="num">Open interest</th>
+          {/* FUNDING THIRD, NOT FIFTH. At 375px this table scrolls sideways and a reader sees
+              three columns; measured on production those three were Coin, Mark and 24h change,
+              so the column this page exists for — "the thing a price table leaves out" — was off
+              screen behind a horizontal scroll with no affordance pointing at it. Ordering by
+              what the page is for costs nothing on the desktop and is the whole difference on a
+              phone. */}
+          <th>Coin</th><th class="num">Mark</th><th class="num">Funding APR</th>
+          {sparkScaleAll && <th class="spark-col">{sparkDays}d shape</th>}
+          <th class="num">24h change</th><th class="num">24h volume</th><th class="num">Open interest</th>
         </tr>
       </thead>
       <tbody>
@@ -101,15 +145,20 @@ const description = "Perpetual futures prices for the major coins on Hyperliquid
             <td class="num" data-repaint="mark" data-sym={r.symbol} data-dp={Number.isFinite(r.mark) ? dp(r.mark) : 2}>
               {Number.isFinite(r.mark) ? usd(r.mark, dp(r.mark)) : "—"}
             </td>
+            <td class:list={["num", Number.isFinite(r.apr) && paysClass(r.apr)]} style="font-weight:600">
+              {Number.isFinite(r.apr) ? pct(r.apr) : "—"}
+            </td>
+            {sparkScaleAll && (
+              <td class="spark-col">
+                <Spark values={sparkOf(r.symbol)} scale={sparkScaleAll} symbol={r.symbol} days={sparkDays} />
+              </td>
+            )}
             {/* chgmark, not chg — see the note on the coin page hero. The spot kinds require a
                 payload block that no longer exists, so this cell never repainted. */}
             <td class="num" data-repaint="chgmark" data-sym={r.symbol} data-prev={r.perp?.prevDayPx}>
               {Number.isFinite(r.chg) ? `${arrow(r.chg)} ${(Math.abs(r.chg) * 100).toFixed(2)}%` : "—"}
             </td>
             <td class="num">{Number.isFinite(r.ntl) ? usd(r.ntl) : "—"}</td>
-            <td class:list={["num", Number.isFinite(r.apr) && paysClass(r.apr)]} style="font-weight:600">
-              {Number.isFinite(r.apr) ? pct(r.apr) : "—"}
-            </td>
             <td class="num">{r.perp ? usd(r.perp.oiNotional) : "—"}</td>
           </tr>
         ))}

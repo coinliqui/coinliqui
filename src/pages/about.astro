@@ -1,11 +1,12 @@
 ---
 import Base from "../layouts/Base.astro";
 import Related from "../components/Related.astro";
-import { SITE, IDENTITY, STORE_NS } from "../lib/site.ts";
+import { SITE, IDENTITY, STORE_NS, STORED_ON_DEVICE, storedCounts, countWords } from "../lib/site.ts";
 import { publishedSameAs } from "../lib/corroboration.ts";
 import { getSnapshot, OI_NOTIONAL_FLOOR } from "../lib/hyperliquid.ts";
 import { usd } from "../lib/funding.ts";
 
+import { coverageRule, coverageToday } from "../lib/coverage.ts";
 /**
  * THE IDENTITY PAGE, and it exists for a specific reason.
  *
@@ -40,6 +41,7 @@ const description =
   "Coinliqui is a free, independent, read-only reference site for crypto derivatives data. " +
   "It is not an exchange, broker, wallet or custodian: there are no accounts, no deposits and " +
   "no wallet connection, and it is not affiliated with Liqui or any other trading venue.";
+const stored = storedCounts();
 ---
 
 <Base title={title} description={description} fetchedAt={snap.fetchedAt} namesFounder>
@@ -93,7 +95,15 @@ const description =
         </tr>
         <tr>
           <td><strong>No accounts</strong></td>
-          <td class="reason">No sign-up, no login, no password, no email capture. The one thing stored on your device is a cookie named <code>rail</code> recording whether you collapsed the sidebar, plus a <code set:text={`${STORE_NS}.pinned`} /> list of coins you pinned, held in your own browser and never sent anywhere.</td>
+          <td class="reason">No sign-up, no login, no password, no email capture. {/* COUNTED FROM THE LIST /privacy
+            renders. This sentence said "the one thing stored on your device is a cookie named rail
+            … plus a coinliqui.pinned list" and omitted the two Google Analytics cookies the site
+            has set since 27 August — see STORED_ON_DEVICE in src/lib/site.ts. */}What this site
+            stores on your device is {countWords(stored.cookies, "cookie", "cookies")} and
+            {" "}{countWords(stored.storage, "local-storage key", "local-storage keys")}:
+            {" "}{STORED_ON_DEVICE.filter((i) => i.by === "this site").map((i) => i.name).join(" and ")} are
+            this site's own and are never sent anywhere; {STORED_ON_DEVICE.filter((i) => i.by === "Google Analytics").map((i) => i.name).join(" and ")} are
+            set by Google Analytics. <a href="/privacy">Each one, and what it is for →</a></td>
         </tr>
         <tr>
           <td><strong>No financial advice</strong></td>
@@ -241,10 +251,9 @@ const description =
         <tr>
           <td>Coverage is deliberately narrow</td>
           <td class="reason">
-            A contract gets a page only once it holds {usd(OI_NOTIONAL_FLOOR)} of open interest.
-            {" "}{snap.eligibleCount} of {snap.universeCount} clear that floor today and
-            {" "}{snap.perps.length} are published. Publishing the rest would mean hundreds of
-            pages with nothing behind them.
+            {coverageRule()} {coverageToday(snap)} Publishing every listed contract would mean
+            {" "}{snap.universeCount - snap.perps.length} more pages, most of them for contracts too
+            thin to carry a funding history worth reading.
           </td>
         </tr>
         <tr>
@@ -344,9 +353,8 @@ const description =
       </>
     )}
     {" "}{new Date(IDENTITY.launched).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" })}.
-    Coverage grows deliberately slowly: a contract gets a page once it holds
-    {" "}{usd(OI_NOTIONAL_FLOOR)} of open interest, and pages are added at a few a week rather
-    than generated in bulk.
+    Coverage grows deliberately slowly — {coverageRule().charAt(0).toLowerCase() + coverageRule().slice(1, -1)} — and
+    pages are added at a few a week rather than generated in bulk.
   </p>
   <p class="prose">
     <strong>Every figure on this site names its source and its age.</strong> A name tells you

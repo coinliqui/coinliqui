@@ -1,25 +1,62 @@
 ---
 import Base from "../layouts/Base.astro";
 import { getSnapshot, coldStart } from "../lib/hyperliquid.ts";
-import { pct, usd, paysClass, paysArrow, LEGEND_FUNDING } from "../lib/funding.ts";
-import { PINNED_KEY } from "../lib/site.ts";
-
+import { pct, usd, paysClass, LEGEND_FUNDING, type Venue } from "../lib/funding.ts";
+import { PINNED_KEY, GA_ENABLED } from "../lib/site.ts";
+import { ageWords, minutesSince } from "../lib/freshness.ts";
+import { coverageRule, coverageToday } from "../lib/coverage.ts";
 // Every covered contract renders server-side, so the page is a complete, useful table for a
 // first-time visitor who has pinned nothing. Pinning only REORDERS what is already here —
 // it never fetches, and there is no empty state to fall into.
 //
-// noindex, follow: by construction this is the same 25 rows as /funding. Indexing both would
-// split equity between two pages answering the same query and neither would win. It stays
+// noindex, follow: by construction these are the same snap.perps rows as /funding. Indexing both
+// would split equity between two pages answering the same query and neither would win. It stays
 // crawlable so the directive is actually seen and so link equity flows on to the symbol pages.
 const snap = await getSnapshot((Astro.locals as any)?.runtime?.env?.SNAPSHOT, import.meta.env.DEV);
 if (!snap.available) return coldStart();
 
 const maxOi = Math.max(...snap.perps.map((p) => p.oiNotional || 0), 1);
+
+/* The venue key the overlay looks the Hyperliquid rate up by. Typed, so a misspelling fails the
+   build instead of leaving fifty cells that never repaint. */
+const HL: Venue = "HlPerp";
+
+/* WHY A PINNED COIN HAS NO ROW, STATED AS THE RULE AND NOT AS A GUESS.
+   The note said every missing pin was "below the coverage floor today". Measured 16 September
+   2026 on https://coinliqui.com/watchlist: the page's own foot line read "58 of 234 coins clear
+   the $5M open-interest floor" over a 50-row table, and Hyperliquid had VIRTUAL at $7.63M (rank 51)
+   and PENGU at $5.41M (rank 57) — both above the floor, both left out by the cap. Pinning the two
+   printed "2 pinned coins are below the coverage floor today". Locally the same afternoon PENGU
+   sat 57th at $5.39M and pinned alone drew "1 pinned coin is below the coverage floor today".
+
+   A coin with no row can be under the floor, or above it and outranked, and this page does not
+   know which, so the note names the coins and states THE RULE, not a reason. It is coverageRule(),
+   the sentence every page that states coverage renders, and not a clause retyped here: the first
+   repair wrote only the entry half ("joins when it holds $5.00M and ranks among the largest 50"),
+   and on the same day SYMBOL_RETAIN_EXTRA let the table hold up to 55 rows, some under $5M or
+   ranked past 50th. A reader who had pinned a $5.4M coin could then find a $4M row in the table
+   and a sentence that gave only the way in, which cannot account for it; the whole rule, keep
+   conditions included, accounts for both. The sentence travels in a data attribute because the
+   client, which alone knows the pins, writes the note. */
+const pinRule = coverageRule();
+
+/* WHAT NEVER LEAVES THE BROWSER IS THE LIST, NOT THE VISIT.
+   The lede said "nothing is sent anywhere" and the meta description "nothing transmitted".
+   Measured on this page on 16 September 2026: it carries the gtag config for Google Analytics
+   (from Base), which sends the page's origin and path to Google, and interact.js polls
+   /api/live.json. What IS true is narrower, and checked against every script the page loads:
+   the only reader of the pinned key is the inline script below, it writes localStorage and never
+   fetches, and GA is given origin and path only — so the pins reach no one. The sentence now
+   says that, and the note about the page view is derived from GA_ENABLED, the same switch
+   Base renders the tag from, so it cannot claim a counter that is off or omit one that is on. */
+const visitNote = GA_ENABLED
+  ? " Opening the page is still counted by Google Analytics; the list is not part of what it sends."
+  : "";
 ---
 
 <Base
   title="Watchlist — pin the coins you follow"
-  description="Pin the coins you follow — BTC, ETH, SOL and the rest — with funding, open interest and 24-hour volume on every row. Stored in your own browser, no account, nothing transmitted."
+  description="Pin the coins you follow — BTC, ETH, SOL and the rest — with funding, open interest and 24-hour volume on every row. The list stays in your own browser: no account, never transmitted."
   fetchedAt={snap.fetchedAt}
   noindex
 >
@@ -27,8 +64,8 @@ const maxOi = Math.max(...snap.perps.map((p) => p.oiNotional || 0), 1);
     <h1>Your watchlist</h1>
     <p>
       All {snap.perps.length} covered coins, with the ones you pin held at the top.
-      Pinning is saved in <strong>this browser only</strong> — nothing is sent anywhere, there is
-      no account, and clearing your browser data clears the list.
+      Your pins are saved in <strong>this browser only</strong> — the list is never sent anywhere,
+      there is no account, and clearing your browser data clears it.{visitNote}
       <a class="link" href="/privacy">What the site stores →</a>
     </p>
   </div>
@@ -44,10 +81,54 @@ const maxOi = Math.max(...snap.perps.map((p) => p.oiNotional || 0), 1);
         can know that, because the pins live in localStorage and the server has never seen them. */}
     <button class="btn wl-clear" type="button" id="wl-clear" hidden></button>
   </div>
-  <p class="section-note wl-off" id="wl-offcoverage" hidden></p>
+  <p class="section-note wl-off" id="wl-offcoverage" data-rule={pinRule} hidden></p>
+
+  {/* ONE CLOCK WAS STANDING FOR FOUR COLUMNS, AND THE OVERLAY REFRESHED ONE OF THEM.
+      Measured 16 September 2026 on https://coinliqui.com/watchlist: only the 48 spread cells
+      carried data-repaint. After the first pull 38 spread cells changed and none of the 150 APR,
+      open-interest and volume cells did, while the topbar clock moved forward and the foot still
+      read "Figures as of 12:47 UTC". TRUMP kept "▲ 1.04%" (longs pay) beside a spread repainted to
+      3.71%, which is computed from a Hyperliquid rate of -0.65% (shorts pay); a second fetch at
+      13:12 had GRAM at "▼ -8.51%" beside 26.56%, computed from +2.73%. Two cells of one row, from
+      two moments, disagreeing on who pays.
+
+      So the rate repaints with the spread, from the same payload on the same tick, as it already
+      did on /funding. THE ARROW IS DRAWN FROM THE CLASS, not typed into the cell: the overlay writes
+      pct() into the element and flips pays-l/pays-s with the sign, so a typed arrow would be wiped
+      on the first pull (or survive it pointing the wrong way), while an arrow read off the class
+      cannot disagree with the colour. The cell also stays plain text, which is what
+      scripts/verify-live.mjs §12 reads to compare this column with /funding.
+
+      Open interest and volume are not in /api/live.json (its keys are at, liveAt, snapAt, sources,
+      mark, apr), so nothing can repaint them. They name their own snapshot instead, on a <time>
+      WITHOUT data-clock: the overlay rewrites every data-clock it finds, and a clock that moved
+      forward over figures that did not is the defect this replaces. It ages; it never jumps.
+
+      THE TOPBAR PILL WAS STILL THAT DEFECT, ONE LEVEL UP. Base renders it with data-clock="at",
+      and /api/live.json sets at = min(liveAt, snapAt), so the pill moves the moment a new
+      snapshot lands (every five minutes in production, on every pull in dev) while open interest
+      and volume stay as served. Measured 16 September 2026 on http://localhost:4322/watchlist
+      with the payload's `at` set five minutes ahead: after one pull the pill's data-fresh had
+      moved +300,421 ms and this line's had not moved at all — "Updated just now" over two
+      columns five minutes old. A page-wide clock can only be true of every figure if it is the
+      OLDEST of them, which is the rule live.json already states for choosing `at`; here the
+      oldest figures are the served open interest and volume. So the island takes data-clock off
+      the pill before interact.js first pulls (a module script runs after the parse; this inline
+      one runs during it) and the pill ages from the served snapshot, as the Base footer's
+      "Figures as of" stamp already does. The newer clock is not lost: it moves to THIS line, on
+      a <time data-clock="at"> beside the two columns it is true of, so the rate and spread still
+      state the age of what they show. The cleaner home is a Base prop that renders the pill
+      without data-clock; until one exists this page cannot let a page-wide clock outrun its own
+      slowest column. */}
+  <p class="clock" style="margin:0 0 12px">
+    Funding APR and venue spread updated
+    <b><time data-fresh={snap.fetchedAt} data-clock="at">{ageWords(minutesSince(snap.fetchedAt))}</time></b>;
+    open interest and 24-hour volume from the snapshot taken
+    <b><time data-fresh={snap.fetchedAt}>{ageWords(minutesSince(snap.fetchedAt))}</time></b>.
+  </p>
 
   <div class="panel">
-    {/* SORTABLE, LIKE THE FOUR OTHER TABLES THAT ARE A LIST OF THESE SAME FIFTY CONTRACTS.
+    {/* SORTABLE, LIKE THE FOUR OTHER TABLES THAT ARE A LIST OF THESE SAME CONTRACTS.
         It was left out when sorting shipped, so a reader who learned the control on /funding
         tapped a heading here and nothing happened — the worst state for an affordance is one
         that exists on some pages and not others that look identical.
@@ -55,9 +136,41 @@ const maxOi = Math.max(...snap.perps.map((p) => p.oiNotional || 0), 1);
         THE PIN COLUMN IS EXCLUDED. It holds a toggle and a visually-hidden label, so a sort
         button on it would be a control with no readable name ordering rows by nothing.
 
-        SORTING OVERRIDES THE PINNED-FIRST ORDER, and that is recoverable rather than lost: the
-        third click restores the order the server sent, which IS pinned-first. The promise this
-        page makes in its own lede is one tap away at all times. */}
+        PINS STAY ON TOP UNDER A SORT, AND A PIN TOGGLE KEEPS THE SORT. This comment used to say
+        sorting overrode the pinned-first order and "the third click restores the order the server
+        sent, which IS pinned-first". Neither half held. Measured 16 September 2026 on
+        https://coinliqui.com/watchlist with TRX and SOL pinned after load: a click on Open interest
+        left SOL at row 5 and TRX at row 40, and the third click put back interact.js's copy of the
+        rows taken at load — SOL 5, ADA 24, TRX 40 — because pins made later are not in it. The
+        other way round, after an ascending sort a pin toggle ran paint(), which put every unpinned
+        row back in served order (largest first) under a header still saying aria-sort="ascending"
+        and "smallest first". Locally the same day: pins on load, sort ascending, pin ADA, and the
+        rows read TRX, SOL, VIRTUAL, ADA, BTC, ETH… beneath "smallest first".
+
+        The island now listens on <thead>. interact.js's handler sits on the button, so it has
+        already reordered the rows when the click bubbles here; the island takes THAT order as its
+        reference (or the served order when no header is sorted) and repaints, lifting pins.
+        Nothing re-parses the printed figures, so there is no second sort to drift from the first,
+        and every route that moves rows — sort, pin, Clear — ends in the same paint(). Within the
+        pinned group a sort orders by the column too, so "largest first" is true of both groups,
+        and the button's title says the pins stay on top.
+
+        A SORT ON A LIVE COLUMN IS RE-APPLIED WHEN THE OVERLAY REPAINTS IT. Once the rate cells
+        repainted like the spread cells, a sort on either could go stale under its own header,
+        because interact.js sorts on a click and never again. Measured 16 September 2026 on
+        http://localhost:4322/watchlist with a stubbed /api/live.json: sort "Hyperliquid funding
+        APR" (0 pairs out of order), one pull, and 24 adjacent pairs were out of order under
+        aria-sort="descending" and "largest first". The island now watches the tbody for text
+        changes, and when one lands in the column the header says is sorted it clicks that
+        header's own button until aria-sort reads what it read before (three clicks round the
+        served / largest / smallest cycle). So the rows are re-sorted by interact.js's comparator
+        on the printed text, not by a second parser here that could disagree with it, and each
+        click ends in the island's paint() as a reader's click does, so pins stay on top. Row
+        moves blur a focused pin or link, so the element focused before is focused again without
+        scrolling. Sorts on Coin, open interest and volume never re-apply: nothing repaints them.
+        The general fix, a re-sort after every overlay paint, belongs in interact.js, and this
+        stays correct if that lands (the island's clicks would then re-sort an already sorted
+        column). */}
     <table class="tbl" id="wl" data-sortable>
       <thead>
         <tr>
@@ -78,7 +191,7 @@ const maxOi = Math.max(...snap.perps.map((p) => p.oiNotional || 0), 1);
               </button>
             </td>
             <td class="sym"><a href={`/funding/${p.symbol.toLowerCase()}`}>{p.symbol}</a></td>
-            <td class:list={["num", paysClass(p.hlApr)]}>{paysArrow(p.hlApr)} {pct(p.hlApr)}</td>
+            <td class:list={["num", Number.isFinite(p.hlApr) && paysClass(p.hlApr)]} data-repaint="apr" data-sym={p.symbol} data-venue={HL}>{pct(p.hlApr)}</td>
             <td class="num" data-repaint={p.aprSpread != null ? "spread" : undefined} data-sym={p.symbol}>{p.aprSpread != null ? pct(p.aprSpread) : <span class="faint">—</span>}</td>
             <td class="num">
               <span class="magnitude">
@@ -108,45 +221,61 @@ const maxOi = Math.max(...snap.perps.map((p) => p.oiNotional || 0), 1);
 
   <p class="section-note" style="margin-top:20px">
     <a class="link" href="/funding">All coins with per-venue detail →</a>
-    · {snap.eligibleCount} of {snap.universeCount} coins clear the $5M open-interest floor
+    · {/* COUNTS FROM coverageToday(), NOT RETYPED — six pages restated these numbers by hand and
+        "N of 234" counted 56 delisted markets as listed (audit, 16 September 2026). */}{coverageToday(snap)}
   </p>
 
+  {/* THE ISLAND'S REASONING LIVES HERE, NOT INSIDE IT. is:inline ships the script body verbatim,
+      comments included, to every reader.
+
+      THE SERVER ORDER IS CAPTURED ONCE (`served`) AND NEVER RE-READ FROM THE DOM.
+      It used to be read inside paint(), which quietly redefined "unpinned" as "wherever the last
+      paint left you" instead of "where the server put you". Measured on the real page: pin MON,
+      unpin MON, and MON stayed at row 1 — above BTC, with 1/113th of its open interest, with the
+      pin dark, no row highlight and the Clear button hidden. Pinning four coins and unpinning all
+      four left 45 of 50 rows displaced, worst by 43 positions. `rows` is the reference order paint()
+      restores: the served order, or the order a header sort produced (see the table comment). It is
+      replaced only by a sort click, never by a paint. `ord` is an explicit tiebreaker rather than a
+      lean on Array#sort being stable. scripts/watchlist-order.mjs runs this island and fails if
+      paint() re-reads `rows` from the DOM.
+
+      MOVING A ROW BLURS THE BUTTON INSIDE IT. appendChild relocates the node, and a focused element
+      that is moved loses focus — document.activeElement becomes <body> and the tab order restarts at
+      the top of the page. So pinning with the keyboard threw you back to the site navigation every
+      time. Nothing was visibly broken, which is why it survived: with a mouse it is invisible.
+
+      PINS FOR COINS WITH NO ROW TODAY. A pin is a ticker string in this browser; the table is the
+      contracts that have a page in this snapshot. With only such pins the page rendered every row
+      with none highlighted, no star lit — and "Clear pinned coins" offering to clear nothing
+      visible, because the button read raw storage length as a state of the table. The pins are NOT
+      pruned: coverage moves both ways, and silently deleting a pin would lose a choice the reader
+      made. The note names the coins and states the coverage rule (data-rule, coverageRule() from the
+      frontmatter); it does not say why each one is absent, because a coin can be under the floor
+      or outranked by the cap and this page does not know which. */}
   <script is:inline define:vars={{ KEY: PINNED_KEY }}>
     (function () {
+      var pill = document.querySelector(".freshness [data-clock]");
+      if (pill) pill.removeAttribute("data-clock");
       var tbody = document.querySelector("#wl tbody");
       var clear = document.getElementById("wl-clear");
       if (!tbody) return;
-      var read = function () { try { return JSON.parse(localStorage.getItem(KEY) || "[]"); } catch (e) { return []; } };
+      var read = function () { try { var v = JSON.parse(localStorage.getItem(KEY) || "[]"); return Array.isArray(v) ? v : []; } catch (e) { return []; } };
       var write = function (v) { try { localStorage.setItem(KEY, JSON.stringify(v)); } catch (e) {} };
 
-      /* THE SERVER ORDER IS CAPTURED ONCE, HERE, AND NEVER RE-READ FROM THE DOM.
-         It used to be read inside paint(), which quietly redefined "unpinned" as
-         "wherever the last paint left you" instead of "where the server put you".
-         Measured on the real page: pin MON, unpin MON, and MON stays at row 1 —
-         above BTC, with 1/113th of its open interest, with the pin dark, no row
-         highlight and the Clear button hidden. Every visual signal said "this is
-         the ordinary open-interest table" and it was not. Pinning four coins and
-         unpinning all four left 45 of 50 rows displaced, worst by 43 positions.
-
-         `ord` is an explicit tiebreaker rather than a lean on Array#sort being
-         stable. The guarantee is real in every engine that matters, but a
-         comparator whose commonest branch returns 0 is stating no opinion about
-         the case that matters most, and that is how this got lost the first time. */
-      var rows = Array.prototype.slice.call(tbody.querySelectorAll("tr"));
+      var served = Array.prototype.slice.call(tbody.querySelectorAll("tr"));
+      var rows = served.slice();
+      var sorted = false;
       var ord = function (tr) { return rows.indexOf(tr); };
-      var byId = {};
-      rows.forEach(function (tr) { byId[tr.getAttribute("data-sym")] = tr; });
+      var byId = Object.create(null);
+      served.forEach(function (tr) { byId[tr.getAttribute("data-sym")] = tr; });
       var note = document.getElementById("wl-offcoverage");
+      var head = document.querySelector("#wl thead");
+      var ON_TOP = "; pinned coins stay at the top";
+      var names = function (xs) { return xs.length < 2 ? xs.join("") : xs.slice(0, -1).join(", ") + " and " + xs[xs.length - 1]; };
 
       function paint() {
         var pinned = read();
 
-        /* MOVING A ROW BLURS THE BUTTON INSIDE IT.
-           appendChild relocates the node, and a focused element that is moved loses focus —
-           document.activeElement becomes <body> and the tab order restarts at the top of the
-           page. So pinning with the keyboard threw you back to the site navigation every
-           time, and pinning four coins meant tabbing down the whole document four times.
-           Nothing was visibly broken, which is why it survived: with a mouse it is invisible. */
         var active = document.activeElement;
         var refocus = active && active.classList && active.classList.contains("pin")
           ? active.getAttribute("data-sym") : null;
@@ -161,7 +290,6 @@ const maxOi = Math.max(...snap.perps.map((p) => p.oiNotional || 0), 1);
             b.setAttribute("aria-label", (on ? "Unpin " : "Pin ") + sym);
           }
         });
-        // Pinned rows rise, in the order they were pinned; everything else returns to server order.
         rows
           .slice()
           .sort(function (a, b) {
@@ -170,7 +298,7 @@ const maxOi = Math.max(...snap.perps.map((p) => p.oiNotional || 0), 1);
             if (ia === -1 && ib === -1) return ord(a) - ord(b);
             if (ia === -1) return 1;
             if (ib === -1) return -1;
-            return ia - ib;
+            return sorted ? ord(a) - ord(b) : ia - ib;
           })
           .forEach(function (tr) { tbody.appendChild(tr); });
 
@@ -179,31 +307,26 @@ const maxOi = Math.max(...snap.perps.map((p) => p.oiNotional || 0), 1);
           if (back) back.focus();
         }
 
-        /* PINS FOR COINS THAT HAVE LEFT COVERAGE.
-           A pin is a ticker string in this browser; the table is the ~50 contracts above the
-           open-interest floor today. Pin PENGU, let it fall below the floor, and the page
-           rendered fifty rows with none highlighted, no star lit — and "Clear pinned coins"
-           sitting there offering to clear nothing visible. The button was reading raw storage
-           length and reporting it as a state of the table.
-
-           The pins are NOT pruned. Coverage moves both ways and a coin that drops out this
-           week can come back next; silently deleting the pin would lose a choice the reader
-           made, to tidy a number. So the button now follows what is actually pinned ON THIS
-           PAGE, and the count of the others is stated rather than hidden — which is the same
-           rule the rest of the site follows about things it cannot show. */
         var present = pinned.filter(function (s) { return byId[s]; }).length;
         var offCoverage = pinned.length - present;
         if (clear) {
           clear.hidden = present === 0 && offCoverage === 0;
-          /* Written, not revealed — see the markup above. */
           clear.textContent = clear.hidden ? "" : "Clear pinned coins";
         }
+        if (head) {
+          Array.prototype.forEach.call(head.querySelectorAll(".th-sort"), function (b) {
+            var t = (b.title || "").replace(ON_TOP, "");
+            b.title = t && present ? t + ON_TOP : t;
+          });
+        }
         if (note) {
+          var one = offCoverage === 1;
+          var rule = note.dataset && note.dataset.rule;
           note.hidden = offCoverage === 0;
           note.textContent = offCoverage === 0 ? "" :
-            offCoverage + (offCoverage === 1 ? " pinned coin is" : " pinned coins are") +
-            " below the coverage floor today, so nothing is listed for " +
-            (offCoverage === 1 ? "it" : "them") + ". The pin is kept and returns when it does.";
+            offCoverage + (one ? " pinned coin is" : " pinned coins are") + " not in the table today: " +
+            names(pinned.filter(function (s) { return !byId[s]; }).map(String)) + ". " + (rule ? rule + " " : "") +
+            (one ? "The pin is kept, and the row appears once the coin gets a page." : "The pins are kept, and each row appears once its coin gets a page.");
         }
       }
 
@@ -218,6 +341,23 @@ const maxOi = Math.max(...snap.perps.map((p) => p.oiNotional || 0), 1);
         paint();
       });
       if (clear) clear.addEventListener("click", function () { write([]); paint(); });
+      if (head) head.addEventListener("click", function (e) {
+        if (!e.target.closest || !e.target.closest(".th-sort")) return;
+        sorted = !!head.querySelector('[aria-sort="ascending"], [aria-sort="descending"]');
+        rows = sorted ? Array.prototype.slice.call(tbody.querySelectorAll("tr")) : served.slice();
+        paint();
+      });
+      if (head && typeof MutationObserver === "function") new MutationObserver(function (ms) {
+        var th = head.querySelector('[aria-sort="ascending"], [aria-sort="descending"]');
+        var b = th && th.querySelector(".th-sort");
+        if (!b || !ms.some(function (m) {
+          var c = m.target.nodeType === 1 ? m.target : m.target.parentNode;
+          return c !== tbody && c.cellIndex === th.cellIndex;
+        })) return;
+        var want = th.getAttribute("aria-sort"), keep = document.activeElement;
+        for (var k = 0; k < 3; k++) { b.click(); if (th.getAttribute("aria-sort") === want) break; }
+        if (keep && keep !== document.activeElement && tbody.contains(keep)) keep.focus({ preventScroll: true });
+      }).observe(tbody, { subtree: true, childList: true, characterData: true });
       paint();
     })();
   </script>
@@ -227,6 +367,10 @@ const maxOi = Math.max(...snap.perps.map((p) => p.oiNotional || 0), 1);
     .wl-off { margin: -6px 0 var(--gap-block); }
     .wl-off[hidden] { display: none; }
     .wl-clear { margin-left: auto; height: 32px; padding: 0 12px; font-size: 13px; }
+    /* The direction mark follows the class the overlay flips with the sign — see the note above
+       the clock line. Same threshold as paysArrow(): pays-l is apr >= 0. */
+    #wl td.pays-l[data-repaint="apr"]::before { content: "\25B2\00A0"; }
+    #wl td.pays-s[data-repaint="apr"]::before { content: "\25BC\00A0"; }
     .pin {
       position: relative;
       display: grid; place-items: center; width: 28px; height: 28px; padding: 0;

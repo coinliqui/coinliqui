@@ -26,7 +26,7 @@
  *
  *   node --experimental-strip-types scripts/viz-cases.mjs
  */
-import { distribution, heatScale, heatStep } from "../src/lib/viz.ts";
+import { distribution, heatScale, heatStep, signedBar, MIN_BAR } from "../src/lib/viz.ts";
 
 let bad = 0;
 const ok = (cond, what, detail = "") => {
@@ -64,7 +64,40 @@ console.log("\nheat scale — how hot a cell is, against the columns that exist\
   ok(heatStep(lone, 0.96) === 6, "and the outlier is the only thing lit");
 
   /* The value AT the median is by definition typical, whatever the column looks like. */
-  ok(heatStep(spiky, spiky.mid) === 0, "a rate sitting on the column median is never tinted");
+  ok(heatStep(spiky, spiky.mid) === 0, "a rate sitting on the column's typical value is never tinted");
+
+  /* THE COLUMN THAT SHIPPED WRONG, and the reason `mid` is a resting rate rather than a median.
+     Binance on 16 September: 13 of 47 contracts resting on 10.95% — the interest component a quiet
+     contract sits on — and the rest priced below it with a median near 2.57%. Measured from the
+     median, all thirteen resting cells were tinted as hot as ETH at −5.22% while four priced
+     contracts near 2.57% stayed plain: the legend says the opposite. */
+  const BASE = 0.0000125 * 8760;
+  const binance = [
+    ...Array(13).fill(BASE),
+    0.0218, 0.0242, 0.0251, 0.0257, 0.0257, 0.0260, 0.0265, 0.0270, 0.0281, 0.0290,
+    0.0301, 0.0199, 0.0188, 0.0175, 0.0150, 0.0120, 0.0101, 0.0080, 0.0045, 0.0020,
+    -0.0022, -0.0060, -0.0105, -0.0180, -0.0240, -0.0310, -0.0420, -0.0441, -0.0522,
+    -0.0858, -0.0858, -0.1200, -0.1600, -0.2100,
+  ];
+  const bh = heatScale(binance);
+  ok(bh !== null && Math.abs(bh.mid - BASE) < 1e-12, "a column where a fifth of the venue rests on one rate measures from that rate", `mid=${bh?.mid}`);
+  ok(heatStep(bh, BASE) === 0, "so a contract resting on the venue's usual rate stays plain, as the legend promises");
+  ok(heatStep(bh, 0.0257) > 0, "and a priced contract that merely sits near the median is tinted", `step=${heatStep(bh, 0.0257)}`);
+
+  /* THE FALLBACK. Two contracts coinciding on a rate is a coincidence, not a regime; a column with
+     no resting rate is measured from its median exactly as before. */
+  const noRest = heatScale([0.01, 0.02, 0.02, 0.03, 0.04, 0.05, 0.06, 0.07, 0.08, 0.09, 0.10, 0.11]);
+  ok(noRest !== null && noRest.mid === 0.06, "a column whose largest shared value is a pair falls back to the median", `mid=${noRest?.mid}`);
+
+  /* BLIND: the median rule, reproduced, must fail the Binance column. */
+  {
+    const col = [...binance].sort((a, b) => a - b);
+    const medMid = col[Math.floor(col.length / 2)];
+    const devs = col.map((v) => Math.abs(v - medMid)).sort((a, b) => a - b);
+    const medScale = devs[Math.floor(devs.length * 0.9)];
+    const medStep = (v) => Math.min(6, Math.round(Math.min(1, Math.abs(v - medMid) / medScale) * 6));
+    ok(medStep(BASE) > 0, "and the median rule it replaces does tint the resting cells — the case can see the defect", `old step=${medStep(BASE)}`);
+  }
 
   ok(heatScale([]) === null, "an empty column produces no scale rather than throwing");
   ok(heatStep(null, 0.5) === 0, "and a missing scale tints nothing");
@@ -133,6 +166,56 @@ const barsIn = (svg) => (svg.match(/<rect/g) ?? []).length - 1; // less the well
   const funding = distribution([-0.1, 0.1, 0.05, -0.02, 0.2, -0.3], { title: "t" });
   ok(!price.svg.includes("--pays-"), "a price distribution uses no funding colour");
   ok(funding.svg.includes("--pays-"), "a funding distribution does");
+}
+
+
+/* ---------------------------------------------------------- the diverging bar */
+console.log("\ndiverging bars — the side a bar falls on and the colour it is drawn in\n");
+{
+  /* THE INVARIANT, ASSERTED ACROSS THE DOMAIN rather than on the ten rows that happen to be on
+     the page today. /funding shipped a chart whose hue said "below the venue's base rate" while
+     the legend directly above it said "shorts pay longs", so a contract at +6.71% — longs paying,
+     amber in every table cell on the same page — was drawn cyan. A person looking at the rendered
+     page found that; no instrument did. This is the instrument: amber if and only if the bar lies
+     to the right of the zero mark, over every axis shape the page can build. */
+  let checked = 0, disagreements = 0, offTrack = 0;
+  for (const [lo, hi] of [[-50, 11], [-1, 1], [0, 20], [-20, 0], [-100, 100], [-0.5, 60]]) {
+    const span = hi - lo;
+    const at = (v) => ((v - lo) / span) * 100;
+    const zeroAt = at(0);
+    for (let step = 0; step <= 60; step++) {
+      const v = lo + (span * step) / 60;
+      const bar = signedBar(v, at(v), zeroAt);
+      checked++;
+      if ((bar.cls === "bars__fill--l") !== (bar.left >= zeroAt - 1e-9)) disagreements++;
+      if (bar.left < -1e-9 || bar.left + bar.width > 100 + MIN_BAR + 1e-9) offTrack++;
+    }
+  }
+  ok(disagreements === 0, "across every axis shape, a bar is amber exactly when it lies right of zero",
+     `${checked} positions checked`);
+  ok(offTrack === 0, "and no bar is drawn off the end of its own track");
+
+  /* A rate of exactly zero: nobody is paying, and paysClass() files >= 0 in the long-pays class.
+     The figure and the table row beneath it must agree about the one value where the convention
+     is arbitrary, or the page contradicts itself on it. */
+  const z = signedBar(0, 50, 50);
+  ok(z.cls === "bars__fill--l", "a rate of exactly zero takes the same class as paysClass(0)");
+  ok(z.width >= MIN_BAR, "and is still drawn as a mark rather than vanishing into the rule", `width=${z.width}`);
+
+  /* A near-zero rate must read as a presence. Its NUMBER says how small; a bar of zero width says
+     the row has no reading at all, which is a different claim and a false one. */
+  const tiny = signedBar(-0.0001, 49.9999, 50);
+  ok(tiny.width >= MIN_BAR, "a near-zero rate keeps a visible mark", `width=${tiny.width}`);
+  ok(tiny.cls === "bars__fill--s", "on the side its sign puts it");
+
+  /* THE OLD BEHAVIOUR, NAMED. Colouring by distance from a non-zero reference is what shipped.
+     These two rates sit on the same side of ZERO and opposite sides of a 10.95% BASE RATE, and
+     they must now come back the same colour — under the old rule they did not. */
+  const ax = (v) => ((v + 0.5) / 1.0) * 100;
+  const below = signedBar(0.0671, ax(0.0671), ax(0));
+  const above = signedBar(0.15, ax(0.15), ax(0));
+  ok(below.cls === above.cls, "two positive rates either side of the base rate share one hue",
+     `${below.cls} / ${above.cls}`);
 }
 
 console.log(bad ? `\n${bad} failure(s)\n` : "\nevery figure scale holds on the shapes that broke it\n");

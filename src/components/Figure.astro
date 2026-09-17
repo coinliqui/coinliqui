@@ -32,14 +32,17 @@ interface Props {
   /** Set when the figure's own numbers are modelled rather than observed. */
   modelled?: boolean;
   class?: string;
+  /** A hook for a page script that repaints this figure. An id, not a class: a class the
+      stylesheet never defines is what the smoke gate reports as markup nobody styled. */
+  id?: string;
 }
-const { title, lead, leadNote, fetchedAt, modelled = false, class: cls } = Astro.props;
+const { title, lead, leadNote, fetchedAt, modelled = false, class: cls, id } = Astro.props;
 const stamp = Number.isFinite(fetchedAt)
   ? new Date(fetchedAt!).toISOString().slice(0, 16).replace("T", " ") + " UTC"
   : null;
 ---
 
-<figure class:list={["fig", cls]}>
+<figure id={id} class:list={["fig", cls]}>
   <figcaption class="fig__head">
     <span class="fig__title">{title}</span>
     {lead && <strong class="fig__lead">{lead}</strong>}

@@ -36,8 +36,8 @@ const small = liquidationPrice({ entryPrice: ENTRY, positionSize: 10_000, levera
 const large = liquidationPrice({ entryPrice: ENTRY, positionSize: 40_000, leverage: REQUESTED_LEVERAGE, side: "long", table });
 
 /* HOW FAR THE PRICE HAS TO FALL, AT EACH LEVERAGE, from one entry. The arithmetic on this page
-   is correct and abstract: a reader follows it and still does not feel that doubling leverage
-   roughly halves the room. Five bars do that in one look, and they are computed with the same
+   is correct and abstract: a reader follows it and still does not feel how fast the room goes
+   as leverage rises. Five bars do that in one look, and they are computed with the same
    liquidationPrice() the calculators and the map use — not a formula retyped for illustration,
    which is how an explainer drifts from the thing it explains.
 
@@ -50,6 +50,18 @@ const rungs = [2, 5, 10, 20, 40]
     return { L, at: r.liquidationPrice, drop: (ENTRY - r.liquidationPrice) / ENTRY };
   });
 const rungMax = Math.max(...rungs.map((r) => r.drop), 1e-9);
+/* THE DOUBLING, COMPUTED — AND IT CONTRADICTED THE SENTENCE IT REPLACES. The note under this figure
+   read "Doubling it does not quite halve the room". The figure beside it drew 15.79% at 5× and
+   5.26% at 10×: doubling cut the room to a THIRD. The intuition (1 ÷ leverage) says a half; the
+   maintenance margin makes it worse than a half, not better. Confirmed three votes to none by the
+   claim-vs-table audit on 16 September. The pair and the ratio are taken from the rungs drawn. */
+const doubling = (() => {
+  for (let i = 0; i < rungs.length; i++) {
+    const j = rungs.findIndex((r) => r.L === rungs[i].L * 2);
+    if (j > i) return { from: rungs[i], to: rungs[j], ratio: rungs[j].drop / rungs[i].drop };
+  }
+  return null;
+})();
 
 const title = "How a liquidation price is actually calculated";
 const description =
@@ -79,10 +91,12 @@ const description =
         ))}
       </div>
       <p slot="note">
-        One entry at {ENTRY}, one long, one venue tier table — only the leverage changes. Doubling
-        it does not quite halve the room, because the maintenance margin is subtracted before the
-        division, and that gap between the intuition and the arithmetic is exactly where positions
-        are lost. Every price here comes from the same function the calculators and the
+        One entry at {ENTRY}, one long, one venue tier table — only the leverage changes.
+        {doubling && <> Doubling it from {doubling.from.L}× to {doubling.to.L}× takes the room from
+        {" "}{pct(doubling.from.drop)} to {pct(doubling.to.drop)} —{" "}
+        {doubling.ratio < 0.45 ? <>more than halving it</> : doubling.ratio > 0.55 ? <>less than halving it</> : <>roughly halving it</>},
+        because the maintenance margin is taken out of the room before the leverage divides it, and
+        that gap between the intuition and the arithmetic is exactly where positions are lost.</>} Every price here comes from the same function the calculators and the
         liquidation map use.
       </p>
     </Figure>
@@ -137,8 +151,7 @@ const description =
         <tr><td>Maintenance margin fraction</td><td class="num">{pct(small.maintenanceMarginFraction)}</td><td class="num">{pct(large.maintenanceMarginFraction)}</td></tr>
         <tr><td>Common formula says</td><td class="num">{usd(small.naivePrice, 2)}</td><td class="num">{usd(large.naivePrice, 2)}</td></tr>
         <tr><td><strong>Venue liquidates at</strong></td><td class="num"><strong set:text={usd(small.liquidationPrice, 2)} /></td><td class="num"><strong set:text={usd(large.liquidationPrice, 2)} /></td></tr>
-        <tr><td>Gap between the two</td><td class="num">{usd(small.differenceAbs, 2)} ({pct(small.differencePct)})</td><td class="num">{usd(large.differenceAbs, 2)} ({pct(large.differencePct)})</td></tr>
-        <tr><td>Room from entry, in truth</td><td class="num">{pct(small.distancePct)}</td><td class="num">{pct(large.distancePct)}</td></tr>
+        <tr><td>Room from entry, formula → venue</td><td class="num">{pct(small.naiveDistancePct)} → {pct(small.distancePct)}</td><td class="num">{pct(large.naiveDistancePct)} → {pct(large.distancePct)}</td></tr>
       </tbody>
     </table>
   </div>
@@ -148,7 +161,11 @@ const description =
     committed to this project. Nothing here is a number somebody typed in once.
   </p>
 
-  <h2 class="section">Why the larger position is worse off</h2>
+  {/* THE HEADING SAID "WORSE OFF" OVER NUMBERS SHOWING MORE ROOM. The larger position is clamped
+      to the lower tier's leverage, so it has to post more margin for the same exposure — and, for
+      the same reason, sits further from liquidation. "Worse off" asserted a direction the table
+      beside it contradicted; what is true is that it gets less leverage. */}
+  <h2 class="section">Why the larger position gets less leverage</h2>
   <p class="prose">
     Maximum leverage is not a property of the venue or of the coin. It is a property of the
     <strong> tier</strong>, and tiers step down as the position grows, because a larger position

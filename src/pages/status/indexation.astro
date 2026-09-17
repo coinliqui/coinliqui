@@ -1,5 +1,10 @@
 ---
 import Base from "../../layouts/Base.astro";
+/* The worker computes the search window; this page describes it. Both read the same two
+   numbers, so the intro cannot describe a different window from the one on the tables. */
+import {
+  REPORT_FORMAT, SEARCH_LAG_DAYS, SEARCH_WINDOW_DAYS, HISTORY_KEEP, searchWindow, isoWeek, indexHistoryRows, type IndexPoint,
+} from "../../../worker/report.ts";
 
 /**
  * The weekly indexation report, as produced by the ingest Worker.
@@ -13,7 +18,7 @@ import Base from "../../layouts/Base.astro";
  * operational, not editorial.
  */
 const env = (Astro.locals as any)?.runtime?.env;
-let doc: { week: string; at: number; tookMs: number; md: string } | null = null;
+let doc: { week: string; at: number; tookMs: number; md: string; format?: number } | null = null;
 let progress: { week: string; phase: string; i: number } | null = null;
 let err: string | null = null;
 try {
@@ -33,12 +38,24 @@ const inline = (s: string) =>
     .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
     .replace(/\*([^*]+)\*/g, "<em>$1</em>");
 
-function render(md: string): string {
+function render(md: string, notes: readonly string[] = []): string {
   const out: string[] = [];
   const lines = md.split("\n");
   let i = 0;
   while (i < lines.length) {
     const l = lines[i];
+    if (l.startsWith(NOTE)) {
+      out.push(notes[Number(l.slice(NOTE.length))] ?? "");
+      i++;
+      continue;
+    }
+    /* The worker writes its covered-set caveat as "> " lines; they printed with a literal "&gt;". */
+    if (/^>\s?/.test(l)) {
+      const quote: string[] = [];
+      while (i < lines.length && /^>\s?/.test(lines[i])) quote.push(lines[i++].replace(/^>\s?/, ""));
+      out.push(`<p class="prose quote">${inline(quote.join(" "))}</p>`);
+      continue;
+    }
     if (/^\|/.test(l) && /^\|[\s:|-]+\|$/.test(lines[i + 1] ?? "")) {
       const cells = (r: string) => r.replace(/^\||\|$/g, "").split("|").map((c) => c.trim());
       const head = cells(l);
@@ -60,9 +77,16 @@ function render(md: string): string {
       const d = l.match(/^#+/)![0].length;
       out.push(d === 1 ? "" : `<h${d} class="section">${inline(l.replace(/^#+\s*/, ""))}</h${d}>`);
     } else if (/^\s*[-\d]/.test(l) && /^\s*(-|\d+\.)\s/.test(l)) {
-      out.push(`<p class="li">${inline(l.replace(/^\s*(-|\d+\.)\s/, "· "))}</p>`);
+      /* An item wrapped onto indented lines is one item: split per line, "*Discovered — currently"
+         and "not indexed*" each kept a literal asterisk. */
+      let item = l.replace(/^\s*(-|\d+\.)\s/, "· ");
+      while (/^\s+\S/.test(lines[i + 1] ?? "") && !/^\s*(-|\d+\.)\s/.test(lines[i + 1])) item += " " + lines[++i].trim();
+      out.push(`<p class="li">${inline(item)}</p>`);
     } else if (l.trim()) {
-      out.push(`<p class="prose">${inline(l)}</p>`);
+      /* A paragraph wrapped at 100 columns is one paragraph, not four spaced apart. */
+      let para = l;
+      while (/\S/.test(lines[i + 1] ?? "") && !/^[|#>]|^\s*(-|\d+\.)\s/.test(lines[i + 1]) && !lines[i + 1].startsWith(NOTE)) para += " " + lines[++i].trim();
+      out.push(`<p class="prose">${inline(para)}</p>`);
     }
     i++;
   }
@@ -70,6 +94,274 @@ function render(md: string): string {
 }
 
 const utc = (ms: number) => new Date(ms).toISOString().slice(0, 16).replace("T", " ") + " UTC";
+
+/* =========================================================================================
+   "A MONDAY RUN COVERS THE WHOLE OF THE PREVIOUS WEEK" — IT COVERS EIGHT DAYS THAT ARE NOT IT.
+   Measured 16 September 2026 on https://coinliqui.com/status/indexation: report 2026-W38,
+   generated Monday 2026-09-14, headed its search table "2026-09-05 to 2026-09-12" — Saturday
+   of W36 to Saturday of W37, eight days inclusive, Sunday 13 left out. The window's words are
+   now built from the constants the worker computes it with, and the weekdays from running
+   that same function on a Monday, so changing either constant changes this sentence.
+   ========================================================================================= */
+const WORDS = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve", "thirteen", "fourteen"];
+const word = (n: number) => WORDS[n] ?? String(n);
+const DAYNAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const dayName = (iso: string) => DAYNAMES[new Date(`${iso}T00:00:00Z`).getUTCDay()];
+const MONDAY_RUN = Date.UTC(2026, 8, 14, 8); // any Monday after 07:00 UTC
+const mondayRun = searchWindow(MONDAY_RUN);
+const lagWords = `${word(SEARCH_LAG_DAYS)} day${SEARCH_LAG_DAYS === 1 ? "" : "s"}`;
+const windowWords = `the ${word(SEARCH_WINDOW_DAYS)} days ending ${lagWords} before the run, both dates included`;
+/* "Not the week the report is named for" was true and left the reader to assume the week before.
+   Whether the window IS that week is computed too, so the sentence names what it is either way. */
+const isPrevIsoWeek = SEARCH_WINDOW_DAYS === 7 && dayName(mondayRun.start) === "Monday"
+  && isoWeek(new Date(`${mondayRun.start}T00:00:00Z`)) === isoWeek(new Date(MONDAY_RUN - 7 * 86_400_000));
+const windowDays = isPrevIsoWeek
+  ? "for a Monday run, exactly the ISO week before the one the report is named for"
+  : `for a Monday run, ${dayName(mondayRun.start)} to ${dayName(mondayRun.end)}, which is neither the ISO week the report is named for nor the one before it`;
+
+/* =========================================================================================
+   A STORED REPORT OUTLIVES THE WORDS THAT WROTE IT.
+   The report is written once a Monday and read all week, so a correction in worker/report.ts
+   reaches this page only after the worker is deployed AND the next run completes. Until then
+   the doc in KV still carries the sentences the 16 September 2026 audit found false on
+   https://coinliqui.com/status/indexation (2026-W38):
+     - "watch the series below" — no series was below; index:history was rendered nowhere;
+     - "Top queries" — Search Console's click order cut at 15, 14 zero-click rows alphabetical,
+       while the band table counted 36 queries;
+     - "Every query Search Console recorded this week" — 36 queries, 54 impressions, 1 click,
+       against 542 impressions and 3 clicks in the page table for the same dates;
+     - "this week" — the dates were eight days, Saturday to Saturday;
+     - "Oldest reading: 26 days (hyperliquid-tou)" — all three documents read 26d.
+   Docs written after the fix carry `format` (REPORT_FORMAT in the worker). One without it is
+   checked for each sentence, and each one present gets a correction. Detection reads the doc
+   itself, so a correction is printed only for a sentence the doc actually contains, and
+   Section D's only when its own table shows the tie.
+
+   A CORRECTION THAT ONLY ADMITS THE SERIES IS MISSING STILL LEAVES THE READER NOTHING TO WATCH.
+   The old worker wrote a reading to index:history on every completed inspection and printed
+   none, so the page reads them, keeps only those taken no later than this doc (a run in
+   progress may have added a newer one), and prints them under the not-indexed table with the
+   worker's own row function, so "below" becomes true of the page. Only when the store cannot
+   supply a reading does the correction say so instead. Every other correction is counted from
+   the doc's own tables and headings — the dates, the left-out impressions, the alphabetical
+   tie — rather than typed, so a different stored week gets its own numbers or none at all.
+
+   A CORRECTION IN A BOX AT THE TOP LEAVES THE SENTENCE STANDING WHERE IT IS READ.
+   The second pass of this block (16 September 2026) printed all five corrections in one box
+   above the report, while "Top queries", "Every query Search Console recorded this week", both
+   "this week"s and "Oldest reading: 26 days (hyperliquid-tou)" stood unchanged several screens
+   lower — a reader who jumped to a table met the old heading and no correction, and the series
+   correction said "under that table" with no table named. Each correction is now a note spliced
+   into the doc directly under the passage it corrects, found by that passage's own text and
+   labelled with the doc's own heading; the box at the top only lists the notes and links to
+   each. The list is built from the same array as the notes, so it cannot name a note that is
+   not on the page.
+   ========================================================================================= */
+/** A line the worker never writes. render() swaps it for the note with that index. */
+const NOTE = "\u0000note:";
+type Fix = { at: number; label: string; text: string[] };
+const fixes: Fix[] = [];
+/** Extra doc lines to print after a given line of the stored doc (the series). */
+const inserts = new Map<number, string[]>();
+let reportMd = doc?.md ?? "";
+let notes: string[] = [];
+if (doc && !(Number(doc.format) >= REPORT_FORMAT)) {
+  const legacy = doc;
+  const md = legacy.md;
+  const lines = md.split("\n");
+  const isTable = (l: string) => /^\|/.test(l);
+  const isHeading = (l: string) => /^#{1,3}\s/.test(l);
+  const inPassage = (l: string | undefined) => l !== undefined && l.trim() !== "" && !isTable(l) && !isHeading(l);
+  /* A passage is the run of lines render() prints as consecutive prose around line n. */
+  const passageEnd = (n: number) => { let e = n; while (inPassage(lines[e + 1])) e++; return e; };
+  const passageStart = (n: number) => { let b = n; while (b > 0 && inPassage(lines[b - 1])) b--; return b; };
+  const headingText = (l: string) => l.replace(/^#+\s*/, "").trim();
+  const headingLine = (h: string) => lines.findIndex((l) => l.trim() === h);
+  /* Where a line stands, in the doc's own words: its ## section, then its ### heading, or the
+     bold lead of its passage when the caller asks for that instead. */
+  const labelAt = (n: number, useLead = false) => {
+    let sec = "", sub = "";
+    for (let k = n; k >= 0; k--) {
+      if (!sub && /^###\s/.test(lines[k])) sub = headingText(lines[k]);
+      if (/^##\s/.test(lines[k])) { sec = headingText(lines[k]); break; }
+    }
+    const lead = useLead ? lines[passageStart(n)].match(/^\*\*([^*]+)\*\*/)?.[1] ?? "" : "";
+    return [sec, lead || sub].filter(Boolean).join(" · ");
+  };
+  const where = (target: number, from: number) => (target < from ? "above" : "below");
+  /* The body rows of the first table after a heading, as cells — the same split render() uses. */
+  const tableAfter = (heading: string): string[][] => {
+    const at = md.indexOf(heading);
+    if (at < 0) return [];
+    const rest = md.slice(at).split("\n").slice(1);
+    const first = rest.findIndex((l) => isTable(l));
+    if (first < 0 || !/^\|[\s:|-]+\|$/.test(rest[first + 1] ?? "")) return [];
+    const body: string[][] = [];
+    for (const l of rest.slice(first + 2)) {
+      if (!isTable(l)) break;
+      body.push(l.replace(/^\||\|$/g, "").split("|").map((c) => c.trim().replace(/\*\*/g, "")));
+    }
+    return body;
+  };
+  const sum = (rows: string[][], col: number) => rows.reduce((a, r) => a + (Number(r[col]) || 0), 0);
+  const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+  /* ---- Section B, the not-indexed list: "watch the series below". */
+  const said = lines.findIndex((l) => l.includes("watch the series below"));
+  if (said >= 0) {
+    let points: IndexPoint[] | null = null;
+    let kept = 0;
+    try {
+      const h = await env?.SNAPSHOT?.get("index:history", "json");
+      if (Array.isArray(h)) {
+        kept = h.length;
+        points = (h as IndexPoint[])
+          .filter((p) => Number.isFinite(p?.at) && p.at <= legacy.at && Number.isFinite(p?.indexed) && Number.isFinite(p?.total))
+          .sort((a, b) => b.at - a.at);
+      } else if (h === null || h === undefined) {
+        points = [];
+      }
+    } catch { /* unreadable: stays null */ }
+    const end = passageEnd(said);
+    const label = labelAt(said, true);
+    if (points && points.length) {
+      /* Under the table that follows the passage, and under its "…and N more." when there is one. */
+      let seriesAfter = end;
+      let t = end + 1;
+      while (t < lines.length && !lines[t].trim()) t++;
+      if (isTable(lines[t] ?? "")) {
+        while (isTable(lines[t + 1] ?? "")) t++;
+        seriesAfter = t;
+        let j = t + 1;
+        while (j < lines.length && !lines[j].trim()) j++;
+        if (/^…and \d+ more\.$/.test((lines[j] ?? "").trim())) seriesAfter = j;
+      }
+      const first = points.length === 1 && kept < HISTORY_KEEP;
+      inserts.set(seriesAfter, [
+        "", "### Indexed share, reading by reading", "",
+        `Printed by this page, not by the stored report: the worker build that wrote it kept one reading per completed inspection without printing them. ${points.length === 1 ? `One reading up to this report${first ? "; it is the first, so movement shows from the next one" : ""}` : `${points.length} readings up to this report, newest first`}.`,
+        "", ...indexHistoryRows(points, first ? "— first reading" : "— earliest kept"), "",
+      ]);
+      fixes.push({ at: end, label, text: [
+        `This passage sends the reader to “the series below”, and the stored report printed none. ${seriesAfter === end
+          ? "The readings the worker kept are printed by this page directly under this note"
+          : "The readings the worker kept are printed by this page under the table of URLs that follows this note"}, headed “Indexed share, reading by reading”.`,
+      ] });
+    } else {
+      fixes.push({ at: end, label, text: [
+        `This passage sends the reader to “the series below”, and no series follows: the worker build that stored this report kept its readings without printing them, and ${points === null ? "they could not be read here" : "the store holds none taken before this report was generated"}.`,
+      ] });
+    }
+  }
+
+  /* ---- Section B, "Top queries". */
+  const bandsHead = headingLine("### Where the queries sit");
+  const bandsAt = bandsHead < 0 ? -1 : lines.findIndex((l, n) => n > bandsHead && isTable(l));
+  const bands = tableAfter("### Where the queries sit");
+  const named = sum(bands, 1);
+  const topAt = headingLine("### Top queries");
+  const top = topAt >= 0 ? tableAfter("### Top queries") : [];
+  if (top.length) {
+    const imps = top.map((r) => Number(r[1]));
+    const clicks = top.map((r) => Number(r[2]));
+    const nonIncreasing = (xs: number[]) => xs.every((x, n) => n === 0 || x <= xs[n - 1]);
+    const byImpressions = nonIncreasing(imps);
+    const byClicks = nonIncreasing(clicks);
+    /* The longest run of rows tied on clicks, and whether it stands in plain code-point order. */
+    let run = { from: 0, len: 1 };
+    for (let s = 0, n = 1; n <= top.length; n++) {
+      if (n === top.length || clicks[n] !== clicks[s]) {
+        if (n - s > run.len) run = { from: s, len: n - s };
+        s = n;
+      }
+    }
+    const tiedNames = top.slice(run.from, run.from + run.len).map((r) => r[0]);
+    const alphabetical = byClicks && run.len > 2 && tiedNames.every((q, n) => n === 0 || tiedNames[n - 1] <= q);
+    const leftOut = bands.length ? named - top.length : 0;
+    const leftImp = sum(bands, 2) - sum(top, 1);
+    /* Every query has at least one impression, so impressions spread over the left-out queries
+       put at least ceil(total / count) on one of them. */
+    const seenMore = leftOut > 0 && leftImp > 0 && Math.ceil(leftImp / leftOut) > Math.min(...imps);
+    if (leftOut > 0 || !byImpressions || alphabetical) {
+      const listed = leftOut > 0
+        ? `${top.length} of the ${named} queries the band table ${where(bandsAt, topAt)} counts`
+        : bands.length ? `all ${count(top.length, "query", "queries")}` : count(top.length, "query", "queries");
+      fixes.push({ at: topAt, label: labelAt(topAt), text: [[
+        `The table under “${headingText(lines[topAt])}” is not a ranking: it lists ${listed}, in the order Search Console returned them${byClicks ? " — most clicks first" : ""}${byImpressions ? "" : ", not by impressions"}.`,
+        alphabetical ? `The ${run.len} with ${count(clicks[run.from], "click", "clicks")} stand in alphabetical order.` : "",
+        seenMore ? `The ${count(leftOut, "query", "queries")} left out hold ${count(leftImp, "impression", "impressions")}, so at least one of them was seen more often than a listed query.` : "",
+      ].filter(Boolean).join(" ")] });
+    }
+  }
+
+  /* ---- Section B, "Every query Search Console recorded" and every "this week" in Section B. */
+  const perfAt = lines.findIndex((l) => /^### Search performance, /.test(l));
+  const win = md.match(/### Search performance, (\d{4}-\d{2}-\d{2}) to (\d{4}-\d{2}-\d{2})/);
+  const thisWeek = (from: number) => {
+    if (!win) return `“This week” here means ${windowWords}, not an ISO week.`;
+    const days = Math.round((Date.parse(win[2]) - Date.parse(win[1])) / 86_400_000) + 1;
+    const oneIsoWeek = days === 7 && dayName(win[1]) === "Monday";
+    return `“This week” here means ${win[1]} to ${win[2]}, the dates on the Search performance heading ${where(perfAt, from)}: ${oneIsoWeek
+      ? `the ISO week ${isoWeek(new Date(`${win[1]}T00:00:00Z`))}`
+      : `${word(days)} days, ${dayName(win[1])} to ${dayName(win[2])}, both included — not an ISO week`}.`;
+  };
+  const byEnd = new Map<number, Fix>();
+  const everyAt = lines.findIndex((l) => l.includes("Every query Search Console recorded"));
+  if (everyAt >= 0) {
+    const end = passageEnd(everyAt);
+    const perf = tableAfter("### Search performance").filter((r) => r[0] !== "total");
+    const [pImp, pClk, bImp, bClk] = [sum(perf, 1), sum(perf, 2), sum(bands, 2), sum(bands, 3)];
+    const fix: Fix = { at: end, label: labelAt(everyAt), text: [pImp > bImp || pClk > bClk
+      ? `“Every query Search Console recorded” is only the queries it names: the band table ${where(bandsAt, end)} holds ${count(bImp, "impression", "impressions")} and ${count(bClk, "click", "clicks")}, while the Search performance table ${where(perfAt, end)}, for the same dates, holds ${count(pImp, "impression", "impressions")} and ${count(pClk, "click", "clicks")}. Search Console leaves out queries too rare to name without identifying who searched, and the page table counts a search once for each page it showed.`
+      : "“Every query Search Console recorded” is only the queries it names: Search Console leaves out queries too rare to name without identifying who searched."] };
+    fixes.push(fix);
+    byEnd.set(end, fix);
+  }
+  const bStart = lines.findIndex((l) => /^## B\./.test(l));
+  const bEnd = bStart < 0 ? -1 : lines.findIndex((l, n) => n > bStart && /^##\s/.test(l));
+  if (bStart >= 0) {
+    for (let n = bStart; n < (bEnd < 0 ? lines.length : bEnd); n++) {
+      if (!/\bthis week\b/.test(lines[n]) || !inPassage(lines[n])) continue;
+      const end = passageEnd(n);
+      const fix = byEnd.get(end) ?? { at: end, label: labelAt(n), text: [] };
+      if (!byEnd.has(end)) { fixes.push(fix); byEnd.set(end, fix); }
+      const words = thisWeek(end);
+      if (!fix.text.includes(words)) fix.text.push(words);
+    }
+  }
+
+  /* ---- Section D, "Oldest reading". */
+  const oldestAt = lines.findIndex((l) => /^\*\*Oldest reading: \d+ days \([^)]+\)\.\*\*/.test(l));
+  const oldest = oldestAt >= 0 ? lines[oldestAt].match(/^\*\*Oldest reading: (\d+) days \(([^)]+)\)\.\*\*/) : null;
+  if (oldest) {
+    const same = tableAfter("## D. Legal reading age").filter((r) => r[1] === `${oldest[1]}d`).map((r) => r[0]);
+    if (same.length > 1) {
+      fixes.push({ at: passageEnd(oldestAt), label: labelAt(oldestAt), text: [
+        `This line names ${oldest[2]} as the oldest reading, but the table below shows ${same.length} documents last read ${oldest[1]} days before this report was generated: ${same.join(", ")}.`,
+      ] });
+    }
+  }
+
+  fixes.sort((a, b) => a.at - b.at);
+  /* Plain concatenation: a tag inside a template literal nested in another one ends the
+     frontmatter early for the Astro compiler (HTTP 500 in dev, measured 16 September 2026). */
+  const noteLead = (k: number) => "<b>Correction " + (k + 1) + " of " + fixes.length + ".</b> ";
+  notes = fixes.map((f, k) =>
+    "<div class=\"verdict verdict--warn correction\" id=\"correction-" + (k + 1) + "\"><div>" +
+    f.text.map((t, m) => "<p>" + (m === 0 ? noteLead(k) : "") + inline(t) + "</p>").join("") +
+    "</div></div>");
+  if (fixes.length || inserts.size) {
+    reportMd = lines.flatMap((l, n) => [
+      l,
+      ...fixes.flatMap((f, k) => (f.at === n ? ["", `${NOTE}${k}`, ""] : [])),
+      ...(inserts.get(n) ?? []),
+    ]).join("\n");
+  }
+}
+const correctionsLead = `Read this report with ${fixes.length === 1 ? "one correction" : `${word(fixes.length)} corrections`}.`;
+const correctionsWhere = fixes.length === 1
+  ? "It was stored by a worker build that predates it, and it is printed directly under the passage it corrects:"
+  : "It was stored by a worker build that predates them, and each is printed directly under the passage it corrects:";
 ---
 
 <Base
@@ -81,8 +373,8 @@ const utc = (ms: number) => new Date(ms).toISOString().slice(0, 16).replace("T",
     <h1>Indexation report</h1>
     <p>
       Built by the ingest Worker across a few ticks each Monday and stored in KV — no CI, no
-      committed file, no extra credential. Search Console lags about two days, so a Monday run
-      covers the whole of the previous week.
+      committed file, no extra credential. Search Console lags about {lagWords}, so the
+      search tables cover {windowWords} — {windowDays}.
     </p>
   </div>
 
@@ -103,7 +395,16 @@ const utc = (ms: number) => new Date(ms).toISOString().slice(0, 16).replace("T",
       <p class="section-note">
         {doc.week} · generated {utc(doc.at)} · {Math.round(doc.tookMs / 60000)} min from first tick to last
       </p>
-      <div class="report" set:html={render(doc.md)} />
+      {fixes.length > 0 && (
+        <div class="verdict verdict--warn corrections">
+          <div>
+            <b>{correctionsLead}</b>{" "}
+            {correctionsWhere}
+            <ol>{fixes.map((f, k) => <li><a class="link" href={`#correction-${k + 1}`}>{f.label}</a></li>)}</ol>
+          </div>
+        </div>
+      )}
+      <div class="report" set:html={render(reportMd, notes)} />
     </>
   ) : !progress && (
     <div class="empty">
@@ -124,5 +425,13 @@ const utc = (ms: number) => new Date(ms).toISOString().slice(0, 16).replace("T",
     .report :global(.prose) { margin: var(--gap-pair) 0; }
     .report :global(.li) { margin: 4px 0 4px 4px; color: var(--text-dim); max-width: 86ch; }
     .report :global(code) { font-size: 12px; }
+    .corrections ol { margin: 8px 0 0; padding-left: 20px; }
+    .corrections li { margin: 2px 0; }
+    /* The box links jump to each note; without the margin the sticky topbar covered its first
+       line, and the extra 48px keeps the last line of the passage it corrects in view above it. */
+    .report :global(.correction) { margin: 4px 0 18px; scroll-margin-top: calc(var(--topbar-h) + 48px); }
+    .report :global(.correction p) { margin: 0; max-width: 86ch; }
+    .report :global(.correction p + p) { margin-top: 6px; }
+    .report :global(.quote) { border-left: 2px solid var(--border); padding-left: 12px; }
   </style>
 </Base>

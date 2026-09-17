@@ -39,7 +39,54 @@ const hl = btcVenues.find((v) => v.venue === "HlPerp") ?? btcVenues[0];
    their head; the rate is whatever the market is doing at the moment the page is served. */
 const EXAMPLE_NOTIONAL = 10_000;
 const EXAMPLE_DAYS = 30;
-const exampleCost = btc ? carryCost(EXAMPLE_NOTIONAL, btc.hlApr, EXAMPLE_DAYS) : 0;
+
+/* ONE BTC COST, ON A VENUE THE TABLE NEVER NAMED. This was a single row, "BTC funding,
+   annualised, right now", fed by `btc.hlApr` — Hyperliquid's rate — with "A long pays" beneath
+   it, and nothing in the section said Hyperliquid. Measured on production at 10:18 UTC on
+   16 September 2026: the venue table directly above printed BTC at 2.42% on Binance, 10.95% on
+   Hyperliquid and 5.18% on Bybit, and this one printed 10.95% as BTC funding and $90.00 as what
+   a long pays. That is the highest of the three, unlabelled, under the one section heading that
+   promises what a position costs; the same arithmetic on Binance's rate was about $20, 4.5×
+   less. On a page whose whole lesson is that venues quote different rates for the same coin at
+   the same moment, one venue's figure had become the coin's.
+
+   So the cost is now computed for EVERY venue the comparison table renders, from the same
+   `btcVenues` entries, and each row's name comes from its own `venue` field. A figure cannot sit
+   under another venue's name or under none, and a venue missing from the snapshot simply has no
+   row. Direction is per row too: venues can disagree in sign, and "a long pays" over a negative
+   rate would be a sentence its own number contradicts.
+
+   EACH COST IS COMPUTED FROM THE RATE AS PRINTED, not from the stored one, because the note
+   invites the reader to repeat the arithmetic on every row. Hyperliquid's 10.95% is usually
+   exact, which is why the single-row version never showed it; the other venues are not. Measured
+   on the local render the same day, Bybit printed 5.20% beside $42.71, while $10,000 × 5.20% ×
+   (30 ÷ 365) is $42.74 — the cost had come from 5.196%. Parsing the printed percentage makes the
+   row reproduce by construction, at a price of at most 0.005 points of rate, about 4 cents on
+   this position. */
+const costRows = btcVenues
+  .filter((v) => Number.isFinite(v.apr))
+  .map((v) => {
+    const shown = pct(v.apr);
+    const cost = carryCost(EXAMPLE_NOTIONAL, Number(shown.slice(0, -1)) / 100, EXAMPLE_DAYS);
+    return { venue: v.venue, label: VENUE_LABEL[v.venue], shown, cost, verb: cost >= 0 ? "pays" : "receives" };
+  });
+/* The worked arithmetic is shown for one named row — Hyperliquid's where it exists, because the
+   callout at the top quotes that venue — and signed, so the product printed is the product of
+   the factors printed beside it. */
+const worked = costRows.find((r) => r.venue === "HlPerp") ?? costRows[0];
+const workedResult = worked ? `${worked.cost < 0 ? "-" : ""}${usd(Math.abs(worked.cost), 2)}` : "";
+/* The spread between venues, worded by the signs actually present: both pay, both receive, or
+   one pays while the other is paid. Absent when there is nothing to compare. */
+const byCost = [...costRows].sort((a, b) => a.cost - b.cost);
+const lowCost = byCost[0];
+const highCost = byCost[byCost.length - 1];
+const costSpread = byCost.length < 2 || lowCost.cost === highCost.cost
+  ? ""
+  : lowCost.cost >= 0
+    ? `Same coin, same moment, same position: a long pays ${usd(lowCost.cost, 2)} on ${lowCost.label} and ${usd(highCost.cost, 2)} on ${highCost.label}.`
+    : highCost.cost <= 0
+      ? `Same coin, same moment, same position: a long receives ${usd(-highCost.cost, 2)} on ${highCost.label} and ${usd(-lowCost.cost, 2)} on ${lowCost.label}.`
+      : `Same coin, same moment, same position: a long pays ${usd(highCost.cost, 2)} on ${highCost.label} and is paid ${usd(-lowCost.cost, 2)} on ${lowCost.label}.`;
 
 /* ONE QUOTED RATE, THREE VENUES, THREE COMPLETELY DIFFERENT COSTS — which is this page's whole
    lesson and the reason the rest of the site annualises anything at all. A reader who has seen
@@ -65,10 +112,49 @@ const cadenceMax = Math.max(...cadence.map((c) => c.apr), 1e-9);
 /* Widest absolute annualised rates on the book. NOT the widest venue spreads — that is the
    arbitrage table on /funding — but the contracts where simply holding a position costs or
    pays the most, which is what this page is about. */
-const extremes = [...perps]
+/* A LIST CUT AT TWELVE WAS CHOOSING AMONG EQUAL RATES BY OPEN INTEREST. This was the first twelve
+   contracts by absolute Hyperliquid rate, introduced as "the 12 covered contracts with the largest
+   annualised rates on Hyperliquid" under "Where funding is most expensive right now". Measured on
+   the local render at 11:07 UTC on 16 September 2026: four rows were genuinely larger (XLM -31.73%
+   down to ADA -22.02%) and the other eight — BTC, ETH, HYPE, ZEC, XRP, LIT, NEAR, PUMP — all printed
+   exactly 10.95%, the value most of the book sits on (/funding counted 38 of 50 at 11:05). The sort
+   is stable over a list already ordered by open interest, so those eight were the largest books
+   among thirty-odd identical rates, and the heading offered Hyperliquid's base rate as the most
+   expensive reading on the venue.
+
+   SO THE CUT MAY NOT SPLIT A TIE. When the rate in twelfth place is shared by a contract below the
+   cut, every contract on that rate leaves the table and is counted in the prose instead, so each
+   listed row is further from zero than every contract left out. Equal means equal AS PRINTED: two
+   rates that both read 10.95% are the same rate to the reader whatever their fifth decimal. The
+   count, the sign and whether the shared value is the base rate are all read from the book, so the
+   sentence follows the book when it moves; the base rate is only named when the value matches
+   0.0000125 an hour, the constant /funding and the home page test against in the same way. At
+   11:10 the section listed five contracts and counted 37 of 50 on 10.95%; /funding rendered in the
+   same second showed the same five beyond 10.95% and the same 37. */
+const EXTREMES_MAX = 12;
+const HL_BASE_APR = 0.0000125 * 8760;
+const magShown = (p: { hlApr: number }) => pct(Math.abs(p.hlApr));
+const ranked = [...perps]
   .filter((p) => Number.isFinite(p.hlApr))
-  .sort((a, b) => Math.abs(b.hlApr) - Math.abs(a.hlApr))
-  .slice(0, 12);
+  .sort((a, b) => Math.abs(b.hlApr) - Math.abs(a.hlApr));
+const tieEdge = ranked.length > EXTREMES_MAX && magShown(ranked[EXTREMES_MAX]) === magShown(ranked[EXTREMES_MAX - 1])
+  ? magShown(ranked[EXTREMES_MAX])
+  : null;
+const extremes = ranked.slice(0, EXTREMES_MAX).filter((p) => tieEdge === null || magShown(p) !== tieEdge);
+const tied = tieEdge === null ? [] : ranked.filter((p) => magShown(p) === tieEdge);
+const tiedLongsPay = tied.filter((p) => p.hlApr >= 0).length;
+const tiedRate = tiedLongsPay === tied.length ? tieEdge : tiedLongsPay === 0 ? `-${tieEdge}` : `${tieEdge} one way or the other`;
+const tiedIsBase = tied.length > 0 && tied.every((p) => Math.abs(p.hlApr - HL_BASE_APR) < 1e-9);
+const tiedSentence = tied.length === 0
+  ? ""
+  : tiedIsBase
+    ? `${tied.length} of the ${ranked.length} covered contracts sit at exactly ${tiedRate}, Hyperliquid’s base rate: a venue constant rather than a view about any of them, so they are counted here rather than listed.`
+    : `${tied.length} of the ${ranked.length} covered contracts sit at exactly ${tiedRate}; a shared rate ranks none of them above the others, so they are counted here rather than listed.`;
+const extremesLead = tieEdge === null
+  ? `The ${extremes.length} covered contracts with the largest annualised rates on Hyperliquid, in either direction.`
+  : extremes.length === 0
+    ? `No covered contract carries an annualised rate on Hyperliquid further from zero than ${tieEdge}. ${tiedSentence}`
+    : `The ${extremes.length === 1 ? "one covered contract" : `${extremes.length} covered contracts`} whose annualised rate on Hyperliquid is further from zero than ${tieEdge}, in either direction. ${tiedSentence}`;
 
 /* THE DEFINITION WAS ABSTRACT ON A SITE HOLDING FIFTY LIVE ANSWERS TO IT. /learn/open-interest
    puts the live total inside its definition — "a book with $9.85B of open interest has $9.85B of
@@ -77,9 +163,12 @@ const extremes = [...perps]
    with no figure at all. Same treatment, from `hl`, which was already read above.
 
    THE DIRECTION IS COMPUTED, NOT ASSUMED. A funding rate is signed and this one goes negative;
-   printing "longs pay shorts" over a negative rate would be a sentence the number contradicts. */
+   printing "longs pay shorts" over a negative rate would be a sentence the number contradicts.
+   THE VENUE IS READ, NOT TYPED, for the same reason: `hl` falls back to the first venue when BTC
+   has no Hyperliquid entry, and a literal "On Hyperliquid" would then name a venue whose rate it
+   is not printing. */
 const liveRate = hl && Number.isFinite(hl.apr)
-  ? `On Hyperliquid right now it runs ${pct(Math.abs(hl.apr))} a year on ${btc.symbol}, ${hl.apr >= 0 ? "longs paying shorts" : "shorts paying longs"}.`
+  ? `On ${VENUE_LABEL[hl.venue]} right now it runs ${pct(Math.abs(hl.apr))} a year on ${btc.symbol}, ${hl.apr >= 0 ? "longs paying shorts" : "shorts paying longs"}.`
   : "";
 
 const title = "Funding rate explained: who pays, how it is calculated, what it costs";
@@ -205,15 +294,21 @@ const description =
   {btc && btcVenues.length > 0 && (
     <div class="panel">
       <table class="tbl">
-        <thead><tr><th>Venue</th><th class="num">Quoted rate</th><th class="num">Interval</th><th class="num">Settlements per year</th><th class="num">Annualised</th></tr></thead>
+        {/* THE ANSWER SECOND, NOT LAST. Read left to right this table was the arithmetic — quoted rate,
+            interval, settlements, result — and at 375px the result was the column fully off screen:
+            measured 16 September 2026, Venue, Quoted rate and Interval filled the panel, Settlements
+            per year was 22% visible and Annualised 0%. The section exists to show that the annualised
+            figures compare and the quoted ones do not, so the comparable column sits beside the venue
+            and the inputs follow it; the multiplication is stated in the sentence above the table. */}
+        <thead><tr><th>Venue</th><th class="num">Annualised</th><th class="num">Quoted rate</th><th class="num">Interval</th><th class="num">Settlements per year</th></tr></thead>
         <tbody>
           {btcVenues.map((v) => (
             <tr>
               <td>{VENUE_LABEL[v.venue]}</td>
+              <td class="num">{pct(v.apr)}</td>
               <td class="num">{rawRate(v.rate, v)}</td>
               <td class="num">{v.intervalHours}h</td>
               <td class="num">{Math.round(settlementsPerYear(v.intervalHours)).toLocaleString("en-US")}</td>
-              <td class="num">{pct(v.apr)}</td>
             </tr>
           ))}
         </tbody>
@@ -235,26 +330,35 @@ const description =
         that at ten times leverage — which is why leverage multiplies the cost relative to the
         capital at risk without changing the cost itself.
       </p>
-      <div class="panel">
-        <table class="tbl">
-          <thead><tr><th>Input</th><th class="num">Value</th></tr></thead>
-          <tbody>
-            <tr><td>Position notional</td><td class="num">{usd(EXAMPLE_NOTIONAL)}</td></tr>
-            <tr><td>{btc.symbol} funding, annualised, right now</td><td class="num">{pct(btc.hlApr)}</td></tr>
-            <tr><td>Holding period</td><td class="num">{EXAMPLE_DAYS} days</td></tr>
-            <tr>
-              <td><strong set:text={exampleCost >= 0 ? "A long pays" : "A long receives"} /></td>
-              <td class="num"><strong set:text={usd(Math.abs(exampleCost), 2)} /></td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      <p class="section-note" style="margin-top:10px">
-        {usd(EXAMPLE_NOTIONAL)} × {pct(btc.hlApr)} × ({EXAMPLE_DAYS} ÷ 365). The rate is today's
-        and will not be tomorrow's, so this is what the position would cost if it stayed here —
-        an arithmetic result, not a projection.
-        {" "}<a class="link" href="/tools/funding-cost">Run it on your own numbers →</a>
-      </p>
+      {worked && (
+        <>
+          <p class="prose">
+            Take a {usd(EXAMPLE_NOTIONAL)} {btc.symbol} long and hold it for {EXAMPLE_DAYS} days at
+            each venue's rate from the table above:
+          </p>
+          <div class="panel">
+            <table class="tbl">
+              <thead><tr><th>Venue</th><th class="num">Annualised</th><th class="num">Long, {EXAMPLE_DAYS} days</th></tr></thead>
+              <tbody>
+                {costRows.map((r) => (
+                  <tr>
+                    <td>{r.label}</td>
+                    <td class="num">{r.shown}</td>
+                    <td class="num">{r.verb}{" "}<strong set:text={usd(Math.abs(r.cost), 2)} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p class="section-note" style="margin-top:10px">
+            On {worked.label}: {usd(EXAMPLE_NOTIONAL)} × {worked.shown} × ({EXAMPLE_DAYS} ÷ 365) = {workedResult}, and
+            the same arithmetic on every row.{costSpread && <>{" "}{costSpread}</>} The rates are today's and will
+            not be tomorrow's, so each figure is what the position would cost if its rate stayed
+            here — an arithmetic result, not a projection.
+            {" "}<a class="link" href="/tools/funding-cost">Run it on your own numbers →</a>
+          </p>
+        </>
+      )}
     </>
   )}
 
@@ -276,14 +380,22 @@ const description =
   {hl && (
     <>
       <h2 class="section">Where funding is most expensive right now</h2>
+      {/* "BOTH COLUMNS" DESCRIBED A TABLE THIS PAGE NO LONGER DRAWS. The sentence ended "the same
+          warning about direction applies to both columns"; measured on production on 16 September
+          2026, the table under it has four columns (Coin, Annualised, Who pays, Open interest) and
+          ONE list of both signs sorted by size — 6 negative rows then 6 positive — so there were
+          no two direction columns for a reader to find. The warning now names what it applies to,
+          a rate pointing either way, which stays true whatever mix of signs the list holds, and
+          the rates are scoped to Hyperliquid: every figure here is `hlApr`, and the column beside
+          it already said so for open interest while the rate itself named no venue. */}
       <p class="prose">
-        The {extremes.length} covered contracts with the largest annualised rates in either
-        direction. A large negative figure is not a bargain — it is a crowded short paying to
-        stay short, and the same warning about direction applies to both columns.
+        {extremesLead} A large negative figure is not a bargain — it is a crowded short
+        paying to stay short. The warning above holds whichever way a rate points: it is the
+        cost of holding a position, not a call on where the price goes next.
       </p>
-      <div class="panel">
+      {extremes.length > 0 && <div class="panel">
         <table class="tbl">
-          <thead><tr><th>Coin</th><th class="num">Annualised</th><th>Who pays</th><th class="num">Open interest <span class="thscope">Hyperliquid</span></th></tr></thead>
+          <thead><tr><th>Coin</th><th class="num">Annualised <span class="thscope">Hyperliquid</span></th><th>Who pays</th><th class="num">Open interest <span class="thscope">Hyperliquid</span></th></tr></thead>
           <tbody>
             {extremes.map((p) => (
               <tr>
@@ -295,7 +407,7 @@ const description =
             ))}
           </tbody>
         </table>
-      </div>
+      </div>}
     </>
   )}
 

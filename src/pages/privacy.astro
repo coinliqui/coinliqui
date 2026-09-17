@@ -1,7 +1,7 @@
 ---
 import Base from "../layouts/Base.astro";
 import Related from "../components/Related.astro";
-import { PINNED_KEY, IDENTITY, GA_MEASUREMENT_ID } from "../lib/site.ts";
+import { PINNED_KEY, IDENTITY, GA_MEASUREMENT_ID, STORED_ON_DEVICE, storedCounts, countWords } from "../lib/site.ts";
 
 /**
  * AN ORDINARY PRIVACY POLICY. Deliberately short, deliberately unremarkable.
@@ -51,10 +51,16 @@ import { PINNED_KEY, IDENTITY, GA_MEASUREMENT_ID } from "../lib/site.ts";
  * page describing what a reader receives has to be written from a request shaped like a
  * reader's.
  */
+/* WHAT THIS SITE PUTS ON YOUR MACHINE comes from STORED_ON_DEVICE in src/lib/site.ts, which
+   /about reads as well — see the note there. The summary below counts the same rows the table
+   renders, so the two cannot disagree; before 16 September they did, on this page and on /about. */
+const { cookies: cookieCount, storage: storageCount } = storedCounts();
+
 const title = "Privacy";
 const description =
-  "What Coinliqui collects: cookieless page-view analytics that reads no query string, one " +
-  "preference cookie, and no payment or personal information. Every claim here is checkable.";
+  `What Coinliqui collects: two page-view counters, ${countWords(cookieCount, "cookie", "cookies")} and ` +
+  `${countWords(storageCount, "local-storage key", "local-storage keys")}, each one named and ` +
+  "explained here — and no payment details, no account and no personal information.";
 /* THE DATE IS THE ONE ON THE MOST RECENT CHANGE TO WHAT THIS PAGE DESCRIBES, not the date of
    the last edit to the file. Both fall on 27 August 2026: the Cloudflare beacon was permitted
    and Google Analytics 4 was restored, on the same day. */
@@ -174,44 +180,14 @@ const updated = "27 August 2026";
     <table class="tbl">
       <thead><tr><th>Name</th><th>Kind</th><th>Purpose</th><th>Expires</th></tr></thead>
       <tbody>
-        <tr>
-          <td><code>rail</code></td>
-          <td>Cookie</td>
-          <td>Whether you collapsed the sidebar. Two possible values; not an identifier</td>
-          <td>1 year</td>
-        </tr>
-        <tr>
-          {/* `set:text` RATHER THAN `<code>{PINNED_KEY}</code>`, and it is not a style choice.
-              An expression as the only child of an inline element inside a table cell makes
-              @astrojs/compiler emit two phantom `<code>` elements, one of them left open after
-              the enclosing `</div>` — which put every element from here to the end of this page
-              in monospace, on the live site, until 19 August. scripts/checks.mjs
-              phantomInlineElements now fails the build on it. Renders identically. */}
-          <td><code set:text={PINNED_KEY} /></td>
-          <td>Local storage</td>
-          <td>The coins you pinned on <a href="/watchlist">your watchlist</a>. Never sent anywhere</td>
-          <td>Until you clear it</td>
-        </tr>
-        {/* THE TWO GOOGLE COOKIES ARE LISTED BECAUSE THEY EXIST, and this table is the place a
-            reader looks to find out what a page put on their machine. The section above says
-            GA4 sets them; a cookie table that then lists two entries and calls itself complete
-            would be the page contradicting itself one heading later. Both are first-party —
-            written by gtag.js on this domain, not by Google's — which changes who can read
-            them and does not change that they identify a returning browser. */}
-        <tr>
-          <td><code>_ga</code></td>
-          <td>Cookie · Google Analytics</td>
-          <td>A random identifier for your browser, so a second visit is counted as the same
-              browser rather than a new one. Set by <code>gtag.js</code> on this domain</td>
-          <td>2 years</td>
-        </tr>
-        <tr>
-          <td><code set:text={`_ga_${GA_MEASUREMENT_ID.slice(2)}`} /></td>
-          <td>Cookie · Google Analytics</td>
-          <td>Session state for this specific property — when the current visit started and how
-              many there have been. Named after the measurement ID, so it changes if that does</td>
-          <td>2 years</td>
-        </tr>
+        {STORED_ON_DEVICE.map((r) => (
+          <tr>
+            <td><code set:text={r.name} /></td>
+            <td>{r.kind === "cookie" ? "Cookie" : "Local storage"}{r.by === "Google Analytics" ? " \u00b7 Google Analytics" : ""}</td>
+            <td set:html={r.purpose} />
+            <td>{r.expires}</td>
+          </tr>
+        ))}
       </tbody>
     </table>
   </div>

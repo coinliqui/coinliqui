@@ -23,8 +23,8 @@ import { SITE, IDENTITY } from "../lib/site.ts";
  */
 const title = "Terms and disclaimer";
 const description =
-  `${SITE.name} provides no financial, custodial or advisory service. It holds nothing, ` +
-  `receives nothing and cannot execute anything. What the site is, in plain terms.`;
+  `${SITE.name} provides no financial, custodial or advisory service. It holds no funds, takes no ` +
+  `payments and cannot execute anything. What the site is, in plain terms.`;
 ---
 
 <Base title={title} description={description} crumb={{ href: "/about", label: "About", current: "Terms and disclaimer" }}>
@@ -34,9 +34,17 @@ const description =
   </div>
 
   <p class="prose">
+    {/* THE SUMMARY SAID MORE THAN THE SITE CAN. "It does not hold anything of yours, cannot receive
+        anything from you" (and "holds nothing, receives nothing" in the description) sat on the page
+        that points to /privacy, which says serving a page means the host handles your IP address and
+        the URL you asked for, that calculator inputs reach request logs, and that Google Analytics
+        sends page views to Google. The claim-vs-table audit of 16 September 2026 confirmed the
+        contradiction. What is structurally true is narrower: no money, no credentials, no account. */}
     This page is short because there is little to agree to. {SITE.name} publishes numbers as
-    ordinary web pages. It does not hold anything of yours, cannot receive anything from you,
-    and asks nothing of you.
+    ordinary web pages. It holds no funds or assets of yours, cannot take a payment or a
+    credential from you, and has no account for you to create. What an ordinary page request does
+    send, and what the site's analytics collect, is set out on{" "}
+    <a class="link" href="/privacy">Privacy</a>.
   </p>
 
   <h2 class="section">No financial service, in the structural sense</h2>
@@ -50,8 +58,8 @@ const description =
   <p class="prose">
     That is a description of how the site is built rather than a promise about how it behaves,
     which means you do not have to believe it.
-    {" "}<a class="link" href="/about">About</a> lists the ways to check each part in your own
-    browser in under a minute.
+    {" "}<a class="link" href="/about">About</a> lists what can be checked in your own browser,
+    including that there is no account to create.
   </p>
 
   <h2 class="section">Nothing here is advice</h2>
@@ -60,8 +68,9 @@ const description =
     financial, legal or tax advice, a recommendation, a solicitation, or an opinion about what
     anyone should do. Figures described as <em>modelled</em> — liquidation levels in particular —
     are the output of stated assumptions applied to public inputs, printed alongside those
-    assumptions, and are not predictions.
-    {" "}<a class="link" href="/methodology">Methodology</a> shows the arithmetic.
+    assumptions, and are not predictions. The liquidation map prints its assumptions on the map page
+    itself; <a class="link" href="/methodology">Methodology</a> shows how funding rates are
+    annualised.
   </p>
   <p class="prose">
     This applies in full to every figure the site <em>derives</em> rather than receives, and those
@@ -104,8 +113,8 @@ const description =
   <h2 class="section">Use of the site</h2>
   <p class="prose">
     Read it and link to it freely. Quote it with attribution, and automated access is welcome
-    within reason — {" "}<a class="link" href="/robots.txt">robots.txt</a> states which crawlers
-    are asked to stay away and why. Do not present the data as your own, and do not rely on it as
+    within reason — {" "}<a class="link" href="/robots.txt">robots.txt</a> lists the crawlers that
+    are asked to stay away. Do not present the data as your own, and do not rely on it as
     a sole source for anything that matters. The site may change or stop publishing at any time;
     where a URL is withdrawn it is withdrawn honestly, with a 410 rather than a redirect.
   </p>
@@ -120,20 +129,28 @@ const description =
     not, and cannot, cover the <strong>upstream data</strong> underneath. Funding rates, marks,
     open interest and on-chain contract state belong to the venues and networks that published
     them, and reach you under their terms rather than ours.
-    {" "}<a class="link" href="/data-sources">Data sources</a> links each one, including the
-    endpoint every figure came from. If you intend to republish upstream figures — at scale, or
+    {" "}<a class="link" href="/data-sources">Data sources</a> names each one and the endpoint every
+    figure came from, and links the venue terms that could be found. If you intend to republish upstream figures — at scale, or
     commercially — read the venue's terms. Nothing on this page grants you anything in respect of
     them, and nothing on this page is a representation that they permit it.
   </p>
   <p class="prose">
-    No personal data is collected that could be returned or deleted; what is and is not
-    collected is set out on <a class="link" href="/privacy">Privacy</a>.
+    {/* "NO PERSONAL DATA IS COLLECTED" WAS NOT TRUE, AND THIS IS THE LEGAL PAGE. /privacy lists a
+        Google Analytics cookie that is "a random identifier for your browser", says GA4 "sends data
+        to Google, a third party", and says the host handles your IP address. An identifier and an IP
+        address can be personal data. The sentence now says what the site does not do and sends the
+        reader to the page that states what it does — it does not assert an absence it cannot prove. */}
+    There are no accounts, so there is no profile here to return or delete. Some data is processed
+    when you use the site: the host handles your IP address and the address of each page you
+    request, and Google Analytics sets an identifier in your browser and sends page views to Google.
+    What each of these is, and how to block the analytics, is set out on{" "}
+    <a class="link" href="/privacy">Privacy</a>.
   </p>
 
   <Related items={[
     { href: "/about", label: "About", note: "What the site is, what it structurally is not, and how to check both." },
     { href: "/privacy", label: "Privacy", note: "What is collected, in specifics rather than assurances." },
-    { href: "/methodology", label: "Methodology", note: "The arithmetic behind every published figure." },
+    { href: "/methodology", label: "Methodology", note: "How funding rates are annualised, and what is deliberately absent." },
     { href: "/data-sources", label: "Data sources", note: "Every upstream endpoint, its cadence, and what is deliberately absent." },
   ]} />
 </Base>

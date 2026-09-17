@@ -8,7 +8,7 @@
     {
       "key": "releasing",
       "label": "Releasing now",
-      "meaning": "The contract is paying out at a rate it publishes on-chain, and it holds enough to keep doing so. This is the only state a conventional unlock calendar can represent."
+      "meaning": "The contract is paying out at a rate it publishes on-chain{paysWith}.{runway} This is the only state a conventional unlock calendar can represent."
     },
     {
       "key": "overhang",
@@ -23,7 +23,7 @@
     {
       "key": "emptied",
       "label": "Finished and emptied",
-      "meaning": "Schedule complete and the balance is zero — confirmed by reading the balance, not assumed from the date having passed. The distinction between this and 'unlocked, not withdrawn' is invisible without an on-chain read, and it is the difference between nothing and 45% of a supply."
+      "meaning": "Schedule complete and the balance is zero — confirmed by reading the balance, not assumed from the date having passed. The distinction between this and 'unlocked, not withdrawn' is invisible without an on-chain read{stakes}."
     }
   ],
   "tokens": [
@@ -35,7 +35,7 @@
       "decimals": 18,
       "pattern": "ENS TokenLock",
       "source": "identified on-chain — see addressNote",
-      "addressNote": "The address is NOT taken from a document. ENS's own docs name the token but not this contract, so it was identified by reading the chain: it exposes token(), unlockBegin(), unlockCliff() and unlockEnd(), its token() returns the ENS token, and it holds 45.59% of ENS supply. That combination cannot be coincidental, and every step of it is reproducible with an RPC endpoint — but the provenance of the ADDRESS is on-chain inference, not a primary source, and that is a weaker claim than the other rows here make.",
+      "addressNote": "The address is NOT taken from a document. ENS's own docs name the token but not this contract, so it was identified by reading the chain: it exposes token(), unlockBegin(), unlockCliff() and unlockEnd(), its token() returns the ENS token, and it holds the share of ENS supply shown in its row. That combination cannot be coincidental, and every step of it is reproducible with an RPC endpoint — but the provenance of the ADDRESS is on-chain inference, not a primary source, and that is a weaker claim than the other rows here make.",
       "getters": ["token()", "unlockBegin()", "unlockCliff()", "unlockEnd()", "balanceOf(lock)"],
       "schedules": [
         {
@@ -48,7 +48,7 @@
           "cliff": "2022-05-04",
           "end": "2025-11-04",
           "lastUpdate": null,
-          "note": "The contract publishes the schedule but not the amount originally locked — there is no getter for it — so the figure here is the balance it holds right now, read at the stated block. The four-year linear unlock finished on 4 November 2025, which means all of it is unlocked and none of it has moved."
+          "note": "The contract publishes the schedule but not the amount originally locked — there is no getter for it — so the figure here is the balance it held at the stated block. The {span} linear unlock finished on {end}, which means all of it is unlocked and none of it has moved."
         }
       ]
     },
@@ -72,7 +72,7 @@
           "cliff": "2020-08-13",
           "end": "2021-08-13",
           "lastUpdate": null,
-          "note": "The one-year escrow for liquidity providers who were active before CRV existed finished on 13 August 2021. Five years later the contract still holds 10,302,751 CRV of the 151,515,152 it was funded with — claimable by their recipients at any moment, with nothing scheduled and nothing to announce. This row did not exist until the register started reading balances rather than dates."
+          "note": "The {span} escrow for liquidity providers who were active before CRV existed finished on {end}. At the stated block the contract still held {heldNow} CRV of the {amount} it was funded with — claimable by their recipients at any moment, with nothing scheduled and nothing to announce. This row did not exist until the register started reading balances rather than dates."
         }
       ]
     },
@@ -131,7 +131,7 @@
           "lastUpdate": "2024-04-27"
         }
       ],
-      "note": "All four vesters point at the same recipient, 0x1a9c8182c09f50c8318d769245bea52c32be35bc. Their schedules were already on file; what was NOT on file was whether the tokens had actually left, because the data recorded dates and not balances. All four read zero: 430,000,000 UNI, vested and withdrawn. That is the honest opposite of the ENS row, and neither could be told from the other without reading the chain."
+      "note": "All {count} vesters point at the same recipient, 0x1a9c8182c09f50c8318d769245bea52c32be35bc. Their schedules were already on file; what was NOT on file was whether the tokens had actually left, because the data recorded dates and not balances. All {count} read zero: {amount} UNI, vested and withdrawn. That is the honest opposite of the ENS row, and neither could be told from the other without reading the chain."
     }
   ],
   "unverified": [
@@ -192,9 +192,10 @@
       "availableSupply": 16000000,
       "distributionEnd": "2123-11-30",
       "fundedTokens": 5855.939,
+      "paysFrom": "allowance",
       "vault": "0x25f2226b597e8f9514b3f68f00f494cf4f286491",
       "mechanism": "emissionPerSecond, fixed until governance changes it",
-      "note": "This is NOT new issuance. AAVE's supply is capped at 16,000,000 and fully minted; these tokens move out of the Ecosystem Reserve to stakers, so they are supply arriving on the market rather than supply being created. DISTRIBUTION_END is set to 2123, which is a sentinel meaning 'no end', so the real limit is not the date — it is the allowance the Reserve has granted the staking contract, which is read here too and covers roughly 39 days at the current rate. That number is the honest forward horizon and no calendar publishes it.",
+      "note": "This is NOT new issuance. AAVE's supply is capped at {supply} and fully minted; these tokens move out of the Ecosystem Reserve to stakers, so they are supply arriving on the market rather than supply being created. DISTRIBUTION_END is set to {endYear}, which is a sentinel meaning 'no end', so the real limit is not the date — it is the allowance the Reserve has granted the staking contract, which is read here too. The date that allowance would be spent at the current rate is the nearest thing to a forward horizon the chain gives.",
       "detail": "The contract publishes an emissionPerSecond that is constant until governance votes to change it, so the daily figure is exact rather than projected."
     },
     {
@@ -203,17 +204,19 @@
       "state": "releasing",
       "provenance": "contract",
       "contract": "0xd533a949740bb3306d119cc777fa900ba034cd52",
-      "getters": ["rate()", "start_epoch_time()", "mining_epoch()", "available_supply()", "totalSupply()"],
+      "getters": ["rate()", "start_epoch_time()", "future_epoch_time_write()", "mining_epoch()", "available_supply()", "totalSupply()"],
       "ratePerSecond": 3.080982847904,
       "perDay": 266196.92,
       "epochStart": "2026-08-12",
+      "epochEnd": "2027-08-12",
       "miningEpoch": 6,
       "availableSupply": 2420239053,
       "totalSupply": 2409939735,
-      "note": "Emission is algorithmic: the contract mints at a fixed rate that steps down once per 365-day epoch. Unlike discretionary vesting, the forward number is readable today.",
-      "event": "Protocol emission, epoch 6",
-      "mechanism": "rate(), stepping down once per 365-day epoch",
-      "detail": "rate() returns tokens per second and is held constant until the current 365-day epoch ends and steps down on-chain."
+      "paysFrom": "mint",
+      "note": "Emission is algorithmic: the contract mints at a fixed rate that steps down at the end of every epoch. Unlike discretionary vesting, the rate to the end of the current epoch is readable today.",
+      "event": "Protocol emission",
+      "mechanism": "rate(), stepping down at the end of every epoch",
+      "detail": "rate() returns tokens per second and is held constant until the current epoch ends and steps down on-chain. The end of the epoch is read too: future_epoch_time_write() is not a view function, but called with eth_call it changes nothing on-chain and returns the moment the current epoch ends."
     },
     {
       "symbol": "COMP",
@@ -228,12 +231,12 @@
       "perDay": 3600,
       "startBlock": 10229427,
       "drippedToDate": 4504950.4126,
-      "notionalOwed": 3259611,
-      "heldNow": 0,
+            "heldNow": 0,
       "target": "0x3d9819210a31b4961b30ef54be2aed79b9c9cd3b",
       "totalSupply": 10000000,
+      "paysFrom": "balance",
       "mechanism": "dripRate() per block, paid only out of the balance the contract holds",
-      "note": "The clearest case on this page for why a published rate is not a forecast. dripRate() returns 0.5 COMP per block — about 3,600 a day — and has done since block 10,229,427. The contract's own arithmetic therefore says 7,764,561 COMP should have reached the Comptroller by now, and dripped() says 4,504,950 actually has. The difference, 3,259,611 COMP or 32.6% of total supply, is what the contract owes on paper. Its balance is zero, so none of it can move. Anything that reads the rate and multiplies by time forecasts supply this contract cannot deliver.",
+      "note": "The clearest case on this page for why a published rate is not a forecast.",
       "caveat": "This does not say COMP distribution has stopped. Distribution is governed by the Comptroller, which governance can fund by other routes; what is readable here is only that THIS contract publishes a rate it cannot pay.",
       "detail": "Reservoir.drip() transfers min(rate × blocks elapsed − already dripped, its own balance). With a zero balance that minimum is zero regardless of the rate."
     }

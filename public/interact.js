@@ -364,6 +364,15 @@ const { paysClass, paysLabel, carryCost, spreadOf, pct, changeWords, ageWords, n
     const hasModes = Boolean(group.querySelector("[data-mode]"));
     let tf = pressed("data-tf")?.dataset.tf ?? null;
     let mode = pressed("data-mode")?.dataset.mode ?? null;
+    /* STATS ARE FILED UNDER THE PANEL THEY CAME WITH — timeframe AND style — and the panel the
+       server rendered is filed at load. They were filed under the timeframe alone and only when
+       a fetch landed, so the served panel had no entry: load 1D, press 1W, press 1D, and apply()
+       found nothing for 1D and left the 1W figures up. Measured on production on 16 September
+       2026, /coins/cardano: "over 115 weekly bars" under the 220-bar daily chart. A sentence that
+       differs by style (the candle legend) could not be filed by timeframe at all. */
+    const keyOf = (t, m) => (hasModes && m ? `${t}.${m}` : t);
+    const slot = (key) => "v" + String(key).replace(/\W/g, "");
+    if (tf) stats.forEach((s) => { s.dataset[slot(keyOf(tf, mode))] = s.textContent; });
 
     /* Rebuilt from the SAME pts-* JSON the chart was drawn from, which is server-rendered into
        the page. Switching timeframe used to swap the chart and leave the table showing the
@@ -406,7 +415,7 @@ const { paysClass, paysLabel, carryCost, spreadOf, pct, changeWords, ageWords, n
     };
     const have = (key) => document.querySelector(`[data-tfpanel="${key}"][data-group="${id}"]`);
     const fetchPanel = (t, m) => {
-      const key = hasModes && m ? `${t}.${m}` : t;
+      const key = keyOf(t, m);
       if (have(key)) return Promise.resolve(key);
       if (inflight.has(key)) return inflight.get(key);
       const job = fetch(panelUrl(t, m), { headers: { accept: "text/html" } })
@@ -415,6 +424,12 @@ const { paysClass, paysLabel, carryCost, spreadOf, pct, changeWords, ageWords, n
           const doc = new DOMParser().parseFromString(html, "text/html");
           const incoming = doc.querySelector(`[data-tfpanel][data-group="${id}"]`);
           if (!incoming) throw new Error("no panel in response");
+          /* THE SERVER MAY ANSWER A DIFFERENT PANEL than the one asked for — a timeframe whose
+             history no longer reaches the floor falls back to another. Filing that panel and its
+             figures under the requested key would caption one chart with another's numbers, so
+             it is refused and the catch below navigates, where the server's own pressed state
+             says what it drew. */
+          if (incoming.dataset.tfpanel !== key) throw new Error("server answered a different panel");
           /* NEXT TO ITS SIBLINGS, NOT AT THE END OF THE PAGE.
              This was `document.querySelector('[data-tfpanel]...').parentNode.appendChild(...)`,
              and that parent is <main>: the element that holds the whole page. So a fetched panel
@@ -463,7 +478,7 @@ const { paysClass, paysLabel, carryCost, spreadOf, pct, changeWords, ageWords, n
           });
           document.querySelectorAll(`[data-tfstat][data-group="${id}"]`).forEach((el, i) => {
             const k = el.dataset.tfstat || `#${i}`;
-            if (from.has(k)) el.dataset["v" + String(t).replace(/\W/g, "")] = from.get(k);
+            if (from.has(k)) el.dataset[slot(key)] = from.get(k);
           });
           if (unnamed) console.warn(`[coinliqui] ${unnamed} unnamed data-tfstat in group ${id} — paired by position, which document order can break`);
           return key;
@@ -480,7 +495,7 @@ const { paysClass, paysLabel, carryCost, spreadOf, pct, changeWords, ageWords, n
     let seq = 0;
 
     const apply = (label) => {
-      const key = hasModes && mode ? `${tf}.${mode}` : tf;
+      const key = keyOf(tf, mode);
       panels = document.querySelectorAll(`[data-tfpanel][data-group="${id}"]`);
       /* NEVER LEAVE THE READER WITH NO CHART.
          This was `panels.forEach(p => p.toggleAttribute("data-on", p.dataset.tfpanel === key))`,
@@ -509,12 +524,17 @@ const { paysClass, paysLabel, carryCost, spreadOf, pct, changeWords, ageWords, n
       const carryView = group.querySelector('[data-tfcarry="view"]');
       if (carryTf) carryTf.value = tf;
       if (carryView && mode) carryView.value = mode;
+      /* A PENDING SWAP IS CANCELLED FIRST. The text lands 110ms after the press, so pressing 1W
+         then 1D inside that window found the 1D text still showing, returned early, and let the
+         1W timer write "weekly bars" under the daily chart a moment later. */
       stats.forEach((s) => {
-        const next = s.dataset["v" + String(tf).replace(/\W/g, "")];
+        const next = s.dataset[slot(key)];
+        clearTimeout(s._swap);
+        s.removeAttribute("data-swap");
         if (next === undefined || s.textContent === next) return;
         if (reduced) { s.textContent = next; return; }
         s.setAttribute("data-swap", "1");
-        setTimeout(() => { s.textContent = next; s.removeAttribute("data-swap"); }, 110);
+        s._swap = setTimeout(() => { s.textContent = next; s.removeAttribute("data-swap"); }, 110);
       });
       if (label) syncTable(tf, label);
       /* THE READER'S CHOICE BELONGS IN THE URL, and this line used to delete it.

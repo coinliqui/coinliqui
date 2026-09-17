@@ -1,7 +1,8 @@
 ---
 import Base from "../../layouts/Base.astro";
 import Related from "../../components/Related.astro";
-import { PROFILES } from "../../lib/liqmap.ts";
+import { PROFILES, profilesCoincide } from "../../lib/liqmap.ts";
+import { countWords } from "../../lib/site.ts";
 
 /**
  * THE LIQUIDATION-HEATMAP EXPLAINER, AND THE ONE PAGE IN THIS SECTION THAT ARGUES AGAINST ITS
@@ -23,6 +24,29 @@ import { PROFILES } from "../../lib/liqmap.ts";
  * the argument for stating them do not change hourly, so this route takes a committed date and
  * the sitemap says so. The live figures belong on /liquidations, which is one click away.
  */
+/* WHERE THE THREE PROFILES STOP BEING THREE. "Three profiles, selectable on the map itself" and
+   "Aggressive: Most size at high leverage" were printed with no limit, while on a 3× contract every
+   profile renormalises to 100% at 2× — measured 16 September 2026 on
+   https://coinliqui.com/liquidations/vvv?profile=aggressive&win=30, whose weight table read
+   2× = 100.00% ($53.78M) under "Aggressive", as did the Conservative render. The limit is computed
+   from the same profilesCoincide() the map uses, over the profiles' own rungs: `firstApart` is the
+   lowest cap at which the profiles differ, and `merged` the rungs a lower cap leaves them sharing.
+   No typed "5×", so editing a profile moves this sentence with it.
+   AND WHERE THE SWITCH IS. "Selectable on the map itself" placed the control on the picture; the
+   form sits after the map, its assumptions table and its result tables, which is where the owner
+   moved it — the "Where to go next" note below says the same. */
+const ladder = [...new Set(PROFILES.flatMap((p) => p.weights.map(([L]) => L)))].sort((a, b) => a - b);
+const firstApart = ladder.find((L) => !profilesCoincide(L));
+const merged = firstApart === undefined ? [] : ladder.filter((L) => L < firstApart);
+const rungText = (xs: number[]) =>
+  xs.length > 1 ? `${xs.slice(0, -1).map((L) => `${L}×`).join(", ")} and ${xs[xs.length - 1]}×` : xs.map((L) => `${L}×`).join("");
+const ladderLo = ladder[0], ladderHi = ladder[ladder.length - 1];
+/* THE COUNT OPENING THE PARAGRAPH IS THE ARRAY'S. The line rewritten on 16 September 2026 still
+   began with a typed "Three profiles" while the limit sentence and the ladder beside it were
+   computed from PROFILES — the one number in the section that would not move with the table. */
+const profilesCounted = countWords(PROFILES.length, "profile", "profiles");
+const profilesLead = profilesCounted.charAt(0).toUpperCase() + profilesCounted.slice(1);
+
 const title = "What a liquidation heatmap actually shows";
 const description =
   "A liquidation heatmap is a model, not a measurement: no venue publishes where other " +
@@ -94,10 +118,14 @@ const description =
 
   <h2 class="section">The leverage assumptions this site uses</h2>
   <p class="prose">
-    Three profiles, selectable on the map itself. Each is a distribution of notional across
+    {profilesLead}, switchable in the form that follows each map and its assumptions. Each is a distribution of notional across
     leverage levels; the shares sum to one, and levels above a contract's own maximum leverage
     are redistributed rather than silently dropped. These are assumptions, published so that a
     reader can disagree with a specific number rather than with the picture in general.
+    {merged.length > 0 && firstApart !== undefined && <>{" "}The redistribution has a limit. A contract
+      capped at {merged[0]}× or more but under {firstApart}× keeps only the {rungText(merged)} level{merged.length === 1 ? "" : "s"}, so
+      every profile becomes the same {merged.length === 1 ? `100% at ${merged[0]}×` : "shares"}, and switching
+      between them changes nothing on that contract's map; the map says so where it happens.</>}
   </p>
   <div class="panel">
     <table class="tbl">
@@ -118,7 +146,8 @@ const description =
     </table>
   </div>
   <p class="section-note" style="margin-top:10px">
-    {PROFILES.map((p) => `${p.label}: ${p.note}`).join(" ")}
+    As written, across the full {ladderLo}×–{ladderHi}× ladder above. {PROFILES.map((p) => `${p.label}: ${p.note}`).join(" ")}
+    {" "}Under a lower cap the rescaled shares are what the model uses, and the map prints them beneath the picture.
   </p>
 
   <h2 class="section">How to read one without being misled</h2>
@@ -174,7 +203,7 @@ const description =
   <Related
     title="Where to go next"
     items={[
-      { href: "/liquidations", label: "The liquidation map", note: "The model itself, with its assumptions printed above the picture and the profile switchable." },
+      { href: "/liquidations", label: "The liquidation map", note: "The model itself, with its assumptions printed beneath the picture and a form below them to switch the profile." },
       { href: "/liquidations/survival", label: "Position survival", note: "How long a position at a given leverage would have survived the actual price path." },
       { href: "/methodology/liquidations", label: "Why no liquidation totals", note: "The throttled feeds, the measured scale of the understatement, and what we publish instead." },
       { href: "/learn/liquidation-price", label: "Liquidation price, explained", note: "The arithmetic behind step 3, and why the popular formula gets it wrong." },
