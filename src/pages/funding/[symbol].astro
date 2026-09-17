@@ -4,13 +4,13 @@ import { getSnapshot, coldStart, findPerp, getLive } from "../../lib/hyperliquid
 import { VENUE_LABEL, pct, usd, rawRate, carryCost, settlementsPerYear, nextSettlement, paysClass, paysLabel, type Venue } from "../../lib/funding.ts";
 import { liquidationPrice, type MarginTable, roomVerdict } from "../../lib/margin.ts";
 import { getCandles, getM15, getHourly, getFunding } from "../../lib/candles.ts";
-import { TIMEFRAMES, DEFAULT_TF, MIN_CHART_BARS, drawnBars, barSpan, buildPriceChart, buildFundingChart, shortDate, CHART_H } from "../../lib/series.ts";
+import { TIMEFRAMES, DEFAULT_TF, MIN_CHART_BARS, drawnBars, barSpan, buildPriceChart, buildFundingChart, candleStyleNote, timeframeGapNote, shortDate, CHART_H } from "../../lib/series.ts";
 import { CH } from "../../lib/chart.ts";
 import tables from "../../data/margin-tables.json";
 import { COINS, isLive } from "../../lib/coins.ts";
-import { liqMapHref } from "../../lib/routes.ts";
+import { liqMapHref, canonicalRedirect } from "../../lib/routes.ts";
 import { qty } from "../../lib/funding.ts";
-import { freshness, ageWords, minutesSince } from "../../lib/freshness.ts";
+import { freshness, ageWords, minutesSince, utcStamp } from "../../lib/freshness.ts";
 import Overview from "../../components/Overview.astro";
 import Figure from "../../components/Figure.astro";
 import { extremeBy, standing } from "../../lib/extreme.ts";
@@ -29,12 +29,7 @@ const p = findPerp(snap.perps, wanted);
    from the REQUESTED path, each would declare itself canonical. That is the same
    duplicate-content split the trailing-slash redirect exists to prevent, so it gets the same
    answer: everything that is not the lower-case form is a 301 to it. */
-if (p && wanted !== p.symbol.toLowerCase()) {
-  return new Response(null, {
-    status: 301,
-    headers: { location: `/funding/${p.symbol.toLowerCase()}`, "cache-control": "public, max-age=86400" },
-  });
-}
+if (p && wanted !== p.symbol.toLowerCase()) return canonicalRedirect(`/funding/${p.symbol.toLowerCase()}`, Astro.url.searchParams, ["symbol"]);
 /* Conditional emission: no entity page below the coverage floor. A thin page is worse than
    none — but an EMPTY 404 body is worse still. A bare `new Response(null, {status: 404})` was
    handed to Astro's stock not-found page: unbranded, no navigation, no explanation, on a URL
@@ -89,12 +84,7 @@ const markAt = markNow === liveMark && live && Number.isFinite(live.at) ? live.a
    live key written a minute ago and ambiguous on one the worker last wrote yesterday — the fallback
    to the snapshot, or a candle store two sweeps behind. The date is added only when it differs from
    the render's, so the ordinary sentence stays short and the stale one cannot pass for today's. */
-const utcStamp = (t: number) => {
-  const iso = new Date(t).toISOString();
-  return iso.slice(0, 10) === new Date().toISOString().slice(0, 10)
-    ? `${iso.slice(11, 16)} UTC`
-    : `${iso.slice(0, 16).replace("T", " ")} UTC`;
-};
+/* utcStamp() is in src/lib/freshness.ts, shared with /coins. */
 const liq = liquidationPrice({ entryPrice: markNow, positionSize: 1, leverage: 10, side: "long", table });
 /* Not `new Date(hl.nextFundingTime)`. That field sits in the PAST on every Hyperliquid
    contract — see nextSettlement() in src/lib/funding.ts — so this card announced a settlement
@@ -378,7 +368,7 @@ const hasChart = Boolean(active);
    from the band:false above plus a copy of its coverage threshold. See the legend. */
 const bandDrawn = Boolean(active?.chart.svg.includes('aria-label="Price, volume and funding history"'));
 const fundedBars = active ? active.chart.points.filter((q) => Number.isFinite(q[7])).length : 0;
-const missingTf = TIMEFRAMES.filter((tf) => !offered.some((o) => o.key === tf.key)).map((tf) => tf.label);
+const tfGapNote = timeframeGapNote(TIMEFRAMES.filter((tf) => !offered.some((o) => o.key === tf.key)).map((tf) => ({ tf, baseBars: baseFor(tf)?.length ?? 0 })));
 /* THE TOKEN-QUANTITY RULE WAS IMPLEMENTED INLINE HERE — a third copy, and the one interact.js
    was swept against by the gate. It is qty() in public/shared.js now, the same function the
    browser calls, and the call sites below name it directly rather than aliasing it: an alias
@@ -558,12 +548,8 @@ const description = `What a ${p.symbol} perpetual costs to hold, against ${usd(p
         </div>
         <span class="tfbar__note">
           Real traded candles only — Hyperliquid's pre-launch backfill carries zero volume and is excluded.
-          {missingTf.length > 0 && (
-            <> {missingTf.join(" and ")}{" "}{missingTf.length === 1 ? "is" : "are"} not offered: there is not
-            yet enough history to draw {missingTf.length === 1 ? "it" : "them"} — fewer than {MIN_CHART_BARS} bars
-            at that size. Either this contract entered coverage recently or it has not existed long enough,
-            and the series behind it is still filling.</>
-          )}
+          {/* Why a timeframe is missing is timeframeGapNote() in src/lib/series.ts, shared with /coins. */}
+          {tfGapNote}
         </span>
       </form>
 
@@ -577,10 +563,15 @@ const description = `What a ${p.symbol} perpetual costs to hold, against ${usd(p
         </div>
       ))}
 
+      {/* "THE UP CANDLES ARE HOLLOW" WAS SAID OF EVERY TIMEFRAME, AND BARS TOO SHORT TO OUTLINE ARE SOLID.
+          /coins/[coin] counted them on 16 September 2026 (30 of 99 green candles on 4H) and worded its
+          legend from the drawn chart; this page, drawing the same bars through the same builder, kept the
+          flat claim (production, 17 September 2026). candleStyleNote() is now the one sentence, and it is
+          a [data-tfstat] so a timeframe switch replaces it with the panel. */}
       <p class="legend">
-        <b>Candles</b> are green for up and red for down. The up candles are <b>hollow</b>, which is
-        the older convention and the one that matters here: simulated for protanopia the two candle
-        colours separate by very little, so the body carries the direction when the hue cannot.
+        <span data-tfstat="style" data-group="px">{candleStyleNote(active!.chart, "candle")}</span>
+        {" "}Hollow is the older convention and the one that matters here: simulated for protanopia the two
+        candle colours separate by very little, so an outlined body carries the direction when the hue cannot.
         {/* THE LEGEND DESCRIBED A BAND THIS CHART NO LONGER DRAWS. The price chart is built with
             band:false since funding got its own figure above, and the legend went on explaining "the
             band under the volume histogram", its shading and its scale — measured 16 September 2026
@@ -818,7 +809,8 @@ const description = `What a ${p.symbol} perpetual costs to hold, against ${usd(p
       <div class="banner__title">Where these levels sit across the modelled positions</div>
       <div class="banner__sub">The modelled liquidation density for {p.symbol}, built from these same tiers, over the real candles.</div>
     </div>
-    <a class="btn btn--primary" href={`/liquidations?symbol=${p.symbol}`}>Open the map</a>
+    {/* liqMapHref, as the paragraph link above already was: /liquidations?symbol= answers 301. */}
+    <a class="btn btn--primary" href={liqMapHref(p.symbol)}>Open the map</a>
   </div>
 
   <h2 class="section">Funding rates for other coins</h2>

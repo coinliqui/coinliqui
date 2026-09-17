@@ -1,5 +1,6 @@
 ---
 import Base from "../../layouts/Base.astro";
+import { liqMapHref } from "../../lib/routes.ts";
 import { getSnapshot, coldStart, findPerp } from "../../lib/hyperliquid.ts";
 import { usd, pct, rawRate, toApr, VENUE_LABEL, paysClass, queryNum, LEGEND_PAYS, type VenueFunding } from "../../lib/funding.ts";
 import { extremeBy, widestSpread, type Extreme } from "../../lib/extreme.ts";
@@ -516,7 +517,7 @@ const dayBounds = [DAYS.min, DAYS.max, DAYS.places];
     converge, invert, or gap apart within hours; the position is delta-neutral on price but
     emphatically not on funding. And both legs must stay solvent — a move against the short leg can
     liquidate it while the long leg is fine, leaving you directional at the worst moment.
-    <a class="link" href={`/liquidations?symbol=${perp.symbol}`}>See where the levels sit for {perp.symbol} →</a>
+    <a class="link" href={liqMapHref(perp.symbol)}>See where the levels sit for {perp.symbol} →</a>
   </p>
   <p class="prose">
     Capital is split evenly across the legs here. Anything else changes the delta and this stops

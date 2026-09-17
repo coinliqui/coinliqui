@@ -4,7 +4,7 @@ import { IDENTITY } from "../lib/site.ts";
 import { getSnapshot } from "../lib/hyperliquid.ts";
 import { reachRows } from "../lib/corroboration.ts";
 import { EXPECTED_WORKER_BUILD } from "../lib/version.ts";
-import { VENUE_LABEL, type Venue } from "../lib/funding.ts";
+import { VENUE_LABEL, ageWords, type Venue } from "../lib/funding.ts";
 /* The Worker owns the endpoint list, the key name and the label rule. This page reads them
    rather than restating them — src/pages/[key].txt.ts already imports from the same module. */
 import { ENDPOINTS, STATE_KEY, endpointLabel } from "../../worker/indexnow.ts";
@@ -357,7 +357,7 @@ const utc = (ms: number) => new Date(ms).toISOString().slice(0, 16).replace("T",
     <div class="verdict verdict--warn">
       <div>
         <b>The snapshot is stale.</b> It was last written
-        {ageMin === null ? " never" : ` ${ageMin} minutes ago`}, against a 5-minute cron. Pages are
+        {ageMin === null ? " never" : <>{" "}<time datetime={new Date(snap.fetchedAt).toISOString()} data-fresh={snap.fetchedAt}>{ageWords(ageMin)}</time></>}, against a 5-minute cron. Pages are
         still serving — they read the last good value and never call upstream — but every figure on
         the site is now as old as the timestamp says. Check the cron trigger and the runs below.
       </div>

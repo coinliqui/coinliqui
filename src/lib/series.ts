@@ -124,6 +124,23 @@ export function slotBars(base: Candle[] | undefined, baseMin: number, factor: nu
 export const drawnBars = (base: Candle[] | undefined, tf: Timeframe): Candle[] =>
   slotBars(base, BASE_MIN[tf.base], tf.factor).slice(-tf.bars);
 
+/**
+ * WHY A TIMEFRAME IS NOT OFFERED, decided from its base series. Two reasons, and /funding/[symbol]
+ * gave only the second for both: a store that could not be read (getCandles/getHourly/getM15 return
+ * null) is not "not yet enough history". /coins/[coin] learned this on 16 September 2026 when
+ * /coins/dogecoin blamed the length of a history it never read; the contract page kept one reason
+ * and joined its list with "and … and" (read from source, 17 September 2026).
+ */
+export function timeframeGapNote(missing: readonly { tf: Timeframe; baseBars: number }[]): string {
+  const list = (xs: string[]) => xs.length < 3 ? xs.join(" and ") : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`;
+  const note = (labels: string[], why: (one: boolean) => string) =>
+    labels.length ? ` ${list(labels)} ${labels.length === 1 ? "is" : "are"} not offered: ${why(labels.length === 1)}` : "";
+  const absent = missing.filter((m) => !(m.baseBars > 0)).map((m) => m.tf.label);
+  const short = missing.filter((m) => m.baseBars > 0).map((m) => m.tf.label);
+  return note(absent, (one) => `the candle series ${one ? "it is" : "they are"} built from could not be read when this page was rendered, so ${one ? "it is" : "they are"} left out rather than drawn from another.`) +
+    note(short, (one) => `there is not yet enough history to draw ${one ? "it" : "them"} — fewer than ${MIN_CHART_BARS} bars at that size.`);
+}
+
 /* Numbers a bar length is said in. Only lengths the timeframes use need a word; any other falls
    back to digits, which stays true. */
 const WORD: Record<number, string> = { 2: "two", 3: "three", 4: "four", 6: "six", 12: "twelve", 15: "fifteen", 30: "thirty" };
@@ -159,6 +176,38 @@ export interface PriceChart {
   fundingCoverage: number; fundingFrom: number | null;
   fundingMax: number; fundingClipped: number;
   dp: number; bars: number;
+}
+
+/* THE CANDLE SENTENCE DESCRIBED CANDLES ON THE LINE VIEW. It was one server string for both chart
+   styles, and the client swap never touched it: /coins/bnb?tf=1m&view=line, on production on 16
+   September 2026, drew one neutral close line (stroke #e8ecf1) and no candle bodies at all under
+   "Candles are green for up and red for down, with the up candles hollow". All 26 line variants
+   fetched that day said it.
+   It was also not true of every candle on the Candles view. buildPriceChart outlines an up body
+   only when it is tall enough to outline, and draws the rest solid: counted on the local render
+   of /coins/bitcoin the same day, 30 of the 99 green candles on 4H and 33 of 154 on 30m were
+   solid — the ones whose direction can be read only from colour.
+   So the sentence is chosen by the style that was drawn, and the solid bodies are COUNTED FROM
+   THE DRAWN SVG: every hollow body is the only <rect fill="none"> the price chart emits, and
+   every green candle is a point whose close is at or above its open (the same `c >= o` that picks
+   the colour). No threshold is copied out of series.ts, so if that one moves this count follows
+   it. The sentence is a [data-tfstat] so the client swaps it with the panel — see the note on the
+   legend below.
+   MOVED HERE ON 17 SEPTEMBER 2026 because the contract page kept the sentence this replaced: its
+   legend said "The up candles are hollow" under the same buildPriceChart bars, on every timeframe
+   of /funding/{symbol}. */
+export function candleStyleNote(chart: PriceChart, mode: ChartMode): string {
+  if (mode === "line") {
+    return "The line joins each bar's close instead of drawing candles, so a bar's high and low are not on it and the period high and low can sit beyond it; the volume bars beneath are green where a bar closed at or above its open and red where it closed below.";
+  }
+  const green = chart.points.filter((p) => p[5] >= p[2]).length;
+  const hollow = (chart.svg.match(/<rect\b[^>]*\bfill="none"/g) ?? []).length;
+  const solid = Math.max(0, green - hollow);
+  const lead = "Candles and the volume bars beneath them are green where a bar closed at or above its open and red where it closed below";
+  if (green === 0) return `${lead}.`;
+  if (solid === 0) return `${lead}, and every green body is hollow, so direction reads without relying on colour.`;
+  if (hollow === 0) return `${lead}. Every green body here is too short to outline and is drawn solid, so on this view direction is carried by colour alone.`;
+  return `${lead}, and green bodies are hollow so direction reads without relying on colour — except ${solid} of the ${green} green candles, whose ${solid === 1 ? "body is" : "bodies are"} too short to outline and drawn solid.`;
 }
 
 /** Candles or a close line. The line is a presentation of the same array, not a second series. */

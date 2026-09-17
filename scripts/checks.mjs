@@ -310,6 +310,30 @@ export function typedVenueFacts(sources) {
   return out;
 }
 
+/**
+ * AN AGE WORKED OUT IN THE MARKUP.
+ *
+ * "from a snapshot 2 minutes old" on /liquidations and "last written 117 min ago" on /coins were
+ * minutes computed at render and printed as text: frozen while the top-bar pill aged beside them,
+ * and "1 minutes" at one minute (production, 17 September 2026). /funding and /watchlist had long
+ * since moved to ageWords() inside <time data-fresh>, which the client re-ages, or to utcStamp(),
+ * which stays true. One page knew; its siblings did the arithmetic again.
+ *
+ * THE RULE: in template markup, no division by 60,000 and no literal "N minutes ago/old" or "min
+ * ago" — an age is ageWords(), a moment is utcStamp(). Frontmatter is left alone, since the value
+ * is only a defect once it is printed, and durations ("12 min from first tick") are not ages.
+ */
+export function handComputedAges(sources) {
+  const out = [];
+  for (const [file, src] of sources) {
+    const body = src.replace(/^---[\s\S]*?^---/m, "");
+    for (const m of body.matchAll(/\/\s*60_?000\b|\b(?:minutes?|mins?) (?:ago|old)\b/g)) {
+      out.push(`${file}: "${body.slice(Math.max(0, m.index - 40), m.index + m[0].length).replace(/\s+/g, " ").trim()}" — an age in the markup must be ageWords() in <time data-fresh>, a moment utcStamp()`);
+    }
+  }
+  return out;
+}
+
 const VENDORS = ["coinbase", "okx", "coingecko", "binance", "bybit", "hyperliquid", "defillama",
                  "publicnode", "drpc", "1rpc", "kraken", "bitfinex"];
 /* A PERMISSION VERB IS NOT ENOUGH ON ITS OWN, and the first version of this check proved it:
@@ -569,7 +593,10 @@ const LADDER = [
  * hydration, and adding to the list is a decision somebody makes on purpose.
  */
 const SHARED_RULES = ["paysClass", "paysLabel", "paysArrow", "carryCost", "aprSpread", "pct",
-                      "changeWords", "ageWords", "minutesSince", "nf", "qty", "compact", "usd"];
+                      "changeWords", "ageWords", "minutesSince", "nf", "qty", "compact", "usd",
+                      /* 17 September 2026: two templates, two stamp formats, one job. */
+                      "utcStamp", "candleStyleNote", "timeframeGapNote", "slotBars", "drawnBars", "barSpan",
+                      "timeTicks", "widestSpread", "settlementWords", "venueReachWords"];
 
 /* Constants with the same standing. HL_BASE_APR was a const in three templates on 17 September
    2026, and the one without the home page's base-rate test called the base rate "the dearest". */
@@ -588,7 +615,8 @@ export function duplicateRuleImplementations(sources) {
          funding.ts and chart.ts both do it so callers keep their import paths. */
       const body = src.replace(/export\s*\{[^}]*\}\s*from\s*["'][^"']+["'];?/g, "");
       const patterns = [
-        new RegExp(`\\bfunction\\s+${rule}\\s*\\(`),
+        /* `[<(]`: a generic signature, function widestSpread<P …>(, is a definition too. */
+        new RegExp(`\\bfunction\\s+${rule}\\s*[<(]`),
         new RegExp(`\\bconst\\s+${rule}\\s*[:=][^=]*[=(]`),
         new RegExp(`\\blet\\s+${rule}\\s*=`),
       ];

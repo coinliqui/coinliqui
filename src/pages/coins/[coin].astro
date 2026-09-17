@@ -5,12 +5,12 @@ import { usd, pct, VENUE_LABEL, paysClass, paysLabel, carryCost, type Venue } fr
 import { maintenanceMarginFraction, corridorAt, type MarginTable } from "../../lib/margin.ts";
 import tables from "../../data/margin-tables.json";
 import { findCoin, isLive, liveCoins } from "../../lib/coins.ts";
-import { liqMapHref } from "../../lib/routes.ts";
+import { liqMapHref, canonicalRedirect } from "../../lib/routes.ts";
 import { countWords } from "../../lib/site.ts";
 import { getCandles, getHourly, getM15, type Candle } from "../../lib/candles.ts";
-import { freshness, ageWords, minutesSince } from "../../lib/freshness.ts";
+import { freshness, ageWords, minutesSince, utcStamp } from "../../lib/freshness.ts";
 import Overview from "../../components/Overview.astro";
-import { TIMEFRAMES, DEFAULT_TF, MIN_CHART_BARS, drawnBars, barSpan, buildPriceChart, CHART_H, type ChartMode } from "../../lib/series.ts";
+import { TIMEFRAMES, DEFAULT_TF, MIN_CHART_BARS, drawnBars, barSpan, buildPriceChart, candleStyleNote, timeframeGapNote, CHART_H, type ChartMode } from "../../lib/series.ts";
 import { CH } from "../../lib/chart.ts";
 
 import { priceDp } from "../../lib/funding.ts";
@@ -47,14 +47,9 @@ const coin = findCoin(Astro.params.coin);
    ITSELF canonical. That is a duplicate-content split across every coin page, and a canonical
    tag cannot fix it when both copies are self-referencing. The sibling template has had the
    301 since the trailing-slash work; this one was simply never given it. */
-if (coin && Astro.params.coin !== coin.slug) {
-  return new Response(null, {
-    status: 301,
-    headers: { location: `/coins/${coin.slug}`, "cache-control": "public, max-age=86400" },
-  });
-}
+if (coin && Astro.params.coin !== coin.slug) return canonicalRedirect(`/coins/${coin.slug}`, Astro.url.searchParams);
 // Staged publication: a coin that has not reached its date has no URL yet. See COINS.
-if (!coin || !isLive(coin)) return Astro.rewrite(`/404?symbol=${encodeURIComponent(Astro.params.coin ?? "")}`);
+if (!coin || !isLive(coin)) return Astro.rewrite(`/404?coin=${encodeURIComponent(Astro.params.coin ?? "")}`);
 
 const snap = await getSnapshot(env?.SNAPSHOT, import.meta.env.DEV);
 if (!snap.available) return coldStart();
@@ -107,7 +102,6 @@ const low24 = last24.length ? Math.min(...last24.map((c) => c[3])) : NaN;
    both sides of the fraction, which the old ratio never was. */
 /* WHEN THE HOURLY STORE WAS LAST WRITTEN, so the sentence beside the 24-hour high and low can
    name their real clock instead of borrowing the snapshot's. */
-const hourAge = hourset?.u ? Math.max(0, Math.round((Date.now() - hourset.u) / 60000)) : null;
 const perpNtl = perp?.dayNtlVlm ?? NaN;
 const oiToVol = perp && Number.isFinite(perpNtl) && perpNtl > 0 ? perp.oiNotional / perpNtl : NaN;
 
@@ -210,15 +204,7 @@ const tier1 = marginTable ? [...marginTable.marginTiers].sort((a, b) => a.lowerB
    so the sentence names the mark and its UTC time instead of calling it "a mark", and says that
    the price above moves on without it. `markAt` is the clock `markNow` actually came from. */
 const markAt = live?.mark?.[coin.symbol] != null ? live!.at : snap.fetchedAt;
-const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-const markClock = (() => {
-  if (!(Number.isFinite(markAt) && markAt > 0)) return null;
-  const iso = new Date(markAt).toISOString();
-  const d = new Date(markAt);
-  /* A time alone is only unambiguous on the day it names. */
-  const sameDay = iso.slice(0, 10) === new Date().toISOString().slice(0, 10);
-  return `${iso.slice(11, 16)} UTC${sameDay ? "" : ` on ${d.getUTCDate()} ${MON[d.getUTCMonth()]} ${d.getUTCFullYear()}`}`;
-})();
+const markClock = Number.isFinite(markAt) && markAt > 0 ? utcStamp(markAt) : null;
 const rungs = tier1 && perp && Number.isFinite(markNow) && markNow > 0
   ? [...new Set([1, 0.6, 0.4, 0.25].map((f) => Math.max(2, Math.round(tier1.maxLeverage * f))))]
       .filter((L) => L >= 2 && L <= tier1.maxLeverage)
@@ -276,13 +262,7 @@ const tfsAvailable = TIMEFRAMES.filter((tf) => barsOf(tf).length >= MIN_CHART_BA
    saw. The reason is now decided from the base series itself, each list joined with andList
    rather than "and … and", and its verb and pronoun follow its own count. */
 const missing = TIMEFRAMES.filter((tf) => !tfsAvailable.includes(tf.key));
-const absentTf = missing.filter((tf) => !(baseFor(tf)?.length)).map((tf) => tf.label);
-const shortTf = missing.filter((tf) => baseFor(tf)?.length).map((tf) => tf.label);
-const missingNote = (labels: string[], why: (one: boolean) => string) =>
-  labels.length ? ` ${andList(labels)} ${labels.length === 1 ? "is" : "are"} not offered: ${why(labels.length === 1)}` : "";
-const tfGapNote =
-  missingNote(absentTf, (one) => `the candle series ${one ? "it is" : "they are"} built from could not be read when this page was rendered, so ${one ? "it is" : "they are"} left out rather than drawn from another.`) +
-  missingNote(shortTf, (one) => `there is not yet enough history to draw ${one ? "it" : "them"} — fewer than ${MIN_CHART_BARS} bars at that size.`);
+const tfGapNote = timeframeGapNote(missing.map((tf) => ({ tf, baseBars: baseFor(tf)?.length ?? 0 })));
 const activeTf = TIMEFRAMES.find((tf) => tf.key === tfKey && tfsAvailable.includes(tf.key))
   ?? TIMEFRAMES.find((tf) => tfsAvailable.includes(tf.key));
 const activeMode = MODES.find((m) => m.key === modeKey) ?? MODES[0];
@@ -298,35 +278,8 @@ const hasChart = Boolean(active);
 /* The legend's bar count and unit come from barSpan() in src/lib/series.ts, shared with the contract
    page — which still called thirty-day bars "monthly" after this page stopped. */
 const arrow = (n: number) => (n >= 0 ? "▲" : "▼");
-/* THE CANDLE SENTENCE DESCRIBED CANDLES ON THE LINE VIEW. It was one server string for both chart
-   styles, and the client swap never touched it: /coins/bnb?tf=1m&view=line, on production on 16
-   September 2026, drew one neutral close line (stroke #e8ecf1) and no candle bodies at all under
-   "Candles are green for up and red for down, with the up candles hollow". All 26 line variants
-   fetched that day said it.
-   It was also not true of every candle on the Candles view. buildPriceChart outlines an up body
-   only when it is tall enough to outline, and draws the rest solid: counted on the local render
-   of /coins/bitcoin the same day, 30 of the 99 green candles on 4H and 33 of 154 on 30m were
-   solid — the ones whose direction can be read only from colour.
-   So the sentence is chosen by the style that was drawn, and the solid bodies are COUNTED FROM
-   THE DRAWN SVG: every hollow body is the only <rect fill="none"> the price chart emits, and
-   every green candle is a point whose close is at or above its open (the same `c >= o` that picks
-   the colour). No threshold is copied out of series.ts, so if that one moves this count follows
-   it. The sentence is a [data-tfstat] so the client swaps it with the panel — see the note on the
-   legend below. */
-const styleNote = (() => {
-  if (!activeChart) return "";
-  if (activeMode.key === "line") {
-    return "The line joins each bar's close instead of drawing candles, so a bar's high and low are not on it and the period high and low can sit beyond it; the volume bars beneath are green where a bar closed at or above its open and red where it closed below.";
-  }
-  const green = activeChart.points.filter((p) => p[5] >= p[2]).length;
-  const hollow = (activeChart.svg.match(/<rect\b[^>]*\bfill="none"/g) ?? []).length;
-  const solid = Math.max(0, green - hollow);
-  const lead = "Candles and the volume bars beneath them are green where a bar closed at or above its open and red where it closed below";
-  if (green === 0) return `${lead}.`;
-  if (solid === 0) return `${lead}, and every green body is hollow, so direction reads without relying on colour.`;
-  if (hollow === 0) return `${lead}. Every green body here is too short to outline and is drawn solid, so on this view direction is carried by colour alone.`;
-  return `${lead}, and green bodies are hollow so direction reads without relying on colour — except ${solid} of the ${green} green candles, whose ${solid === 1 ? "body is" : "bodies are"} too short to outline and drawn solid.`;
-})();
+/* The candle sentence is candleStyleNote() in src/lib/series.ts, shared with the contract page. */
+const styleNote = activeChart ? candleStyleNote(activeChart, activeMode.key) : "";
 
 /* THE SENTENCE IS CONDITIONAL NOW — see src/lib/freshness.ts. It used to assert "update every
    minute" whatever the clocks said, which is a promise a single-sourced site cannot keep on its
@@ -415,9 +368,13 @@ const description = `Live ${coin.name} (${coin.symbol}) perpetual price from Hyp
   <p class="clock">
     {fresh.note} Open interest and 24-hour volume come from the snapshot taken
     <b><time data-fresh={snap.fetchedAt} data-clock="snapAt">{ageWords(minutesSince(snap.fetchedAt))}</time></b>.
-    The 24-hour high and low are the extremes of the last 24 hourly bars of the same candle
-    series the chart is drawn from — the newest of them still open when it was collected —
-    collected every 2 hours{hourAge !== null ? <> and last written <b>{hourAge} min ago</b></> : null}.
+    {/* "THE SAME CANDLE SERIES THE CHART IS DRAWN FROM" was true only on 1H, 4H and 12H: the default 1D,
+        1W and 1M draw from the daily store and 15m/30m from the fifteen-minute one. And "last written 117
+        min ago" was an age that never ticked (production, 17 September 2026); the contract page had
+        already moved to a stamp. It is utcStamp() now, and the series is named. */}
+    The 24-hour high and low are the extremes of the last 24 bars of the hourly candle series
+    — the newest of them still open when it was collected —
+    collected every 2 hours{hourset?.u ? <> and last written at <b>{utcStamp(hourset.u)}</b></> : null}.
   </p>
 
   {hasChart ? (

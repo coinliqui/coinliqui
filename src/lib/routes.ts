@@ -169,3 +169,17 @@ export const SYMBOL_PARAMETERISED: { path: string; verdict: "addressed" | "param
     why: "As /tools/leverage. This is the URL Google currently has as 'Discovered — currently not indexed', which is the direct evidence that the tools template does not want more URLs.",
   },
 ];
+
+/**
+ * ONE URL PER ITEM, WHATEVER CASE IT IS ASKED IN — AND THE VIEW COMES ALONG.
+ * /liquidations/[symbol] carried the query through its 301 since 16 September 2026; /funding/[symbol]
+ * and /coins/[coin] did not, so /funding/BTC?tf=1w landed on /funding/btc at 1D and /coins/Bitcoin
+ * ?tf=1w&view=line on the default chart (production, 17 September 2026). `drop` names parameters
+ * that mean something else once the path names the item.
+ */
+export function canonicalRedirect(path: string, query: URLSearchParams, drop: readonly string[] = []): Response {
+  const carried = new URLSearchParams(query);
+  for (const k of drop) carried.delete(k);
+  const qs = carried.toString();
+  return new Response(null, { status: 301, headers: { location: qs ? `${path}?${qs}` : path, "cache-control": "public, max-age=86400" } });
+}

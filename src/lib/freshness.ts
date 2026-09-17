@@ -71,6 +71,20 @@ export const SNAP_STALE_MIN = 15;
    single-sourced site is most exposed to. One file now, imported by all of them. */
 export { ageWords, minutesSince } from "../../public/shared.js";
 
+/**
+ * A MOMENT, IN UTC, THAT NAMES ITS DAY WHEN IT IS NOT TODAY'S. "15:16 UTC" is exact on a key written a
+ * minute ago and ambiguous on one the worker last wrote yesterday. A stamp stays true after load, which
+ * an un-ticked age ("last written 117 min ago", /coins/bitcoin on 17 September 2026) cannot.
+ * /funding/[symbol] and /coins/[coin] each had their own — "2026-09-16 15:16 UTC" and "15:16 UTC on
+ * 16 Sep 2026" — for the same job; this is the one.
+ */
+const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+export function utcStamp(t: number, now = Date.now()): string {
+  const d = new Date(t);
+  const sameDay = d.toISOString().slice(0, 10) === new Date(now).toISOString().slice(0, 10);
+  return `${d.toISOString().slice(11, 16)} UTC${sameDay ? "" : ` on ${d.getUTCDate()} ${MON[d.getUTCMonth()]} ${d.getUTCFullYear()}`}`;
+}
+
 export interface Freshness {
   /** Whole minutes since the fastest clock this page depends on last advanced. */
   ageMin: number;

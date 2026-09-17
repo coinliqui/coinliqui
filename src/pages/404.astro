@@ -1,6 +1,7 @@
 ---
 import Base from "../layouts/Base.astro";
 import { getSnapshot, findPerp, OI_NOTIONAL_FLOOR, SYMBOL_CAP } from "../lib/hyperliquid.ts";
+import { liveCoins } from "../lib/coins.ts";
 import { usd } from "../lib/funding.ts";
 
 import { coverageRule, coverageToday } from "../lib/coverage.ts";
@@ -31,6 +32,15 @@ const covered = Boolean(findPerp(snap.perps, wanted));
    either code on its own, and it was mine. The contract route sets the status itself now and
    rewrites to /retired; see src/pages/funding/[symbol].astro. */
 const nearest = snap.perps.slice(0, 12);
+/* A COIN SLUG IS NOT A CONTRACT. /coins/[coin] rewrote unknown slugs here as ?symbol=, and the page
+   answered with the contract coverage rule and "If monero clears it and ranks inside the largest 50,
+   the page appears on its own" — false of coin pages, which come from a fixed list in src/lib/coins.ts
+   (production, /coins/monero, 17 September 2026). A coin miss now says what a coin page is, and
+   points to the contract page when the slug happens to be a covered ticker. */
+const rawCoin = Astro.url.searchParams.get("coin");
+const wantedCoin = rawCoin && /^[A-Za-z0-9._-]{1,40}$/.test(rawCoin) ? rawCoin : null;
+const coinAsContract = wantedCoin ? findPerp(snap.perps, wantedCoin) : undefined;
+const coinList = liveCoins();
 ---
 
 {/* fetchedAt IS PASSED HERE TOO, and it was not. Every other page carries the freshness pill
@@ -46,8 +56,15 @@ const nearest = snap.perps.slice(0, 12);
   noindex
 >
   <div class="page-head">
-    <h1>{wanted && !covered ? `${wanted} is not published` : "That page does not exist"}</h1>
-    {wanted && !covered ? (
+    <h1>{wantedCoin ? `${wantedCoin} has no coin page` : wanted && !covered ? `${wanted} is not published` : "That page does not exist"}</h1>
+    {wantedCoin ? (
+      <p>
+        Coin pages cover a fixed list of {coinList.length} coins, each added by hand; they are not generated from
+        open interest.{coinAsContract
+          ? <>{" "}{coinAsContract.symbol} is a contract this site covers: <a class="link" href={`/funding/${coinAsContract.symbol.toLowerCase()}`}>its funding and margin page →</a></>
+          : <>{" "}Every perpetual this site covers has a funding page instead.</>}
+      </p>
+    ) : wanted && !covered ? (
       <p>
         {coverageRule()} A thin page is worse than no page, so nothing is generated below the floor.
         {" "}{coverageToday(snap)} If {wanted} clears it and ranks inside the largest {SYMBOL_CAP} by open interest, the page appears on its own.
@@ -57,8 +74,13 @@ const nearest = snap.perps.slice(0, 12);
     )}
   </div>
 
-  <h2 class="section">{wanted && !covered ? "Coins with a funding page" : "Start here"}</h2>
-  {wanted && !covered ? (
+  <h2 class="section">{wantedCoin ? "Coin pages" : wanted && !covered ? "Coins with a funding page" : "Start here"}</h2>
+  {wantedCoin ? (
+    <p class="related">
+      {coinList.map((c) => <a class="chip-link" href={`/coins/${c.slug}`}>{c.name}</a>)}
+      <a class="chip-link" href="/coins">All coins →</a>
+    </p>
+  ) : wanted && !covered ? (
     <p class="related">
       {nearest.map((x) => <a class="chip-link" href={`/funding/${x.symbol.toLowerCase()}`}>{x.symbol}</a>)}
       <a class="chip-link" href="/funding">All {snap.perps.length} →</a>

@@ -28,7 +28,7 @@ import {
   contradictoryStates, rawEnums, founderAgreement, readmeCounts,
   basisSelfConsistent, uncoveredRoutes, staleDerivedCells, botPolicyReasons,
   undefinedClasses, undefinedVars, unreadableText, colourLegend, colourLanguageDrift,
-  chartAgreement, duplicateRuleImplementations, fixtureGaps, requestedLeverageLabels, phantomInlineElements, malformedAttributes, uncitedPermissionClaims, unconditionalCadenceClaims, typedVenueFacts,
+  chartAgreement, duplicateRuleImplementations, fixtureGaps, requestedLeverageLabels, phantomInlineElements, malformedAttributes, uncitedPermissionClaims, unconditionalCadenceClaims, typedVenueFacts, handComputedAges,
   staleCalculatorFigures, controlGroupOverflow, MEASUREMENT_EXPORTS, stampVerdict,
   stampSurfacesAgree,
   symbolAddressing,
@@ -70,6 +70,18 @@ const cases = [
     why: "a page carrying both an age and a claim it is not updating tells two stories at once",
     fire: () => contradictoryStates(doc(`<p>Updated 3 min ago</p><p>Not updating</p>`)),
     quiet: () => contradictoryStates(doc(`<p>Updated 3 min ago</p>`)),
+  },
+  {
+    check: "handComputedAges",
+    why: "an age computed in the markup freezes at render while the clocks beside it move",
+    /* Fire: the two sentences that shipped. Quiet: the shared forms, an age computed in frontmatter
+       but not printed as minutes, and a duration. */
+    fire: () => handComputedAges([["LiqMap.astro",
+      `---\nconst x = 1;\n---\n<p>from a snapshot {Math.round((Date.now() - snap.fetchedAt) / 60000)} minutes old.</p>` +
+      `<p>collected every 2 hours and last written <b>{hourAge} min ago</b>.</p>`]]),
+    quiet: () => handComputedAges([["LiqMap.astro",
+      `---\nconst ageMin = Math.round((now - at) / 60000);\n---\n<p>from the snapshot taken <time data-fresh={at}>{ageWords(ageMin)}</time>.</p>` +
+      `<p>last written at <b>{utcStamp(at)}</b>; generated in {tookMin} min from first tick; a reading {n} hours old.</p>`]]),
   },
   {
     check: "typedVenueFacts",
@@ -718,7 +730,11 @@ const cases = [
     ]),
     quiet: () => duplicateRuleImplementations([
       ["public/shared.js", "export function usd(x) { return `$${x}`; }\nexport const pct = (x) => `${x}%`;\nexport function paysClass(a){return a>=0?'pays-l':'pays-s';}\nexport const paysLabel=(a)=>a>=0?'l':'s';\nexport const paysArrow=(a)=>a>=0?'u':'d';\nexport const carryCost=(n,a,d)=>n*a*d;\nexport function spreadOf(x){return x;}\nexport function changeWords(x){return `${x}`;}\nexport function ageWords(m){return `${m}`;}\nexport const minutesSince=(a)=>a;\nexport const nf=(n,d)=>`${n}`;\nexport function qty(n){return `${n}`;}\nexport function compact(v){return `$${v}`;}\nexport function aprSpread(x){return x;}"],
-      ["src/lib/funding.ts", 'export { usd, pct, compact } from "../../public/shared.js";\nexport const HL_BASE_APR = 0.0000125 * 8760;'],
+      ["src/lib/funding.ts", 'export { usd, pct, compact } from "../../public/shared.js";\nexport const HL_BASE_APR = 0.0000125 * 8760;\nexport function settlementWords(p) {}\nexport function venueReachWords(p) {}'],
+      ["src/lib/series.ts", "export function slotBars(b) {}\nexport const drawnBars = (b, tf) => b;\nexport function barSpan(tf, n) {}\nexport function candleStyleNote(c, m) {}\nexport function timeframeGapNote(m) {}"],
+      ["src/lib/chart.ts", "export function timeTicks(t) {}"],
+      ["src/lib/extreme.ts", "export function widestSpread(p) {}"],
+      ["src/lib/freshness.ts", "export function utcStamp(t) {}"],
     ]),
   },
   {

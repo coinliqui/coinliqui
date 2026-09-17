@@ -362,6 +362,8 @@ const correctionsLead = `Read this report with ${fixes.length === 1 ? "one corre
 const correctionsWhere = fixes.length === 1
   ? "It was stored by a worker build that predates it, and it is printed directly under the passage it corrects:"
   : "It was stored by a worker build that predates them, and each is printed directly under the passage it corrects:";
+/* A duration, not an age: how long the report took to build. */
+const tookMinutes = (ms: number) => Math.round(ms / 60_000);
 ---
 
 <Base
@@ -393,7 +395,7 @@ const correctionsWhere = fixes.length === 1
   {doc ? (
     <>
       <p class="section-note">
-        {doc.week} · generated {utc(doc.at)} · {Math.round(doc.tookMs / 60000)} min from first tick to last
+        {doc.week} · generated {utc(doc.at)} · {tookMinutes(doc.tookMs)} min from first tick to last
       </p>
       {fixes.length > 0 && (
         <div class="verdict verdict--warn corrections">

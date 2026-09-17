@@ -23,6 +23,7 @@
    came to disagree about 22 URLs.
    ========================================================================================= */
 import { usd, pct } from "../lib/funding.ts";
+import { ageWords, minutesSince, utcStamp } from "../lib/freshness.ts";
 import { maintenanceMarginFraction, nextTierBoundary, corridorAt, type MarginTable } from "../lib/margin.ts";
 import { T, O, H, L, C, type Candle, type getHourly } from "../lib/candles.ts";
 import { buildLiqMap, PROFILES, mixUsed, profilesCoincide, MAP_WINDOWS, DEFAULT_WINDOW, resolveWindow, canDrawMap, mapDrawable, type MapWindow } from "../lib/liqmap.ts";
@@ -397,10 +398,14 @@ const formNote: string | null = (() => {
       </div>
 
           <p class="datanote">
-        Hourly candles to <b>{hourly ? new Date(hourly.d[hourly.d.length - 1][0]).toISOString().slice(11, 16) : "—"} UTC</b>,
+        {/* TWO CLOCKS, AND ONE OF THEM NEVER TICKED. "from a snapshot 2 minutes old" was arithmetic in the
+            markup — frozen at render, "1 minutes" at one minute, beside a top-bar pill that ages — and the
+            candle time had no date, so yesterday's last bar read as today's (production, 17 September 2026).
+            /funding and /watchlist had moved to ageWords() and data-fresh. Both are shared calls now. */}
+        Hourly candles to <b>{hourly ? utcStamp(hourly.d[hourly.d.length - 1][0]) : "—"}</b>,
         refreshed every 2 hours and drawn here in {win.factor}-hour steps. The dashed line is the
-        <b>live mark, {axisPx(mark)}</b>, from a snapshot
-        {" "}{Math.max(0, Math.round((Date.now() - snap.fetchedAt) / 60000))} minutes old. Two
+        <b>live mark, {axisPx(mark)}</b>, from the snapshot taken
+        {" "}<time datetime={new Date(snap.fetchedAt).toISOString()} data-fresh={snap.fetchedAt}>{ageWords(minutesSince(snap.fetchedAt))}</time>. Two
         different ages, so neither is allowed to stand for the other.
       </p>
 

@@ -39,6 +39,7 @@ import { type MarginTable } from "../../lib/margin.ts";
 import { getHourly } from "../../lib/candles.ts";
 import { mapTitle, mapDescription, mapState, resolveWindow } from "../../lib/liqmap.ts";
 import tables from "../../data/margin-tables.json";
+import { canonicalRedirect } from "../../lib/routes.ts";
 
 const env = (Astro.locals as any)?.runtime?.env;
 const wanted = (Astro.params.symbol ?? "").trim();
@@ -66,12 +67,7 @@ const carriedQs = carried.toString() ? `?${carried.toString()}` : "";
 /* ONE URL PER CONTRACT, whatever case it is asked for — the kBONK rule, applied here for the
    same reason: a canonical tag built from the requested path cannot deduplicate two paths
    that each declare themselves canonical. */
-if (p && wanted !== p.symbol.toLowerCase()) {
-  return new Response(null, {
-    status: 301,
-    headers: { location: `/liquidations/${p.symbol.toLowerCase()}${carriedQs}`, "cache-control": "public, max-age=86400" },
-  });
-}
+if (p && wanted !== p.symbol.toLowerCase()) return canonicalRedirect(`/liquidations/${p.symbol.toLowerCase()}`, Astro.url.searchParams, ["symbol"]);
 
 if (!p) {
   const retiredAt = await (async () => {
