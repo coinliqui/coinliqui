@@ -26,6 +26,13 @@ import { spreadOf, pct } from "../../public/shared.js";
 
 export const HOURS_PER_YEAR = 24 * 365; // 8760
 
+/** Hyperliquid's base rate, 0.0000125 an hour annualised: where a contract rests when the market has
+    no view. It was a const in three templates; a page that tested against its own copy is how the
+    base rate came to be called "the dearest rate" on /coins while the home page said "none is priced
+    above it" (production, 17 September 2026). */
+export const HL_BASE_APR = 0.0000125 * HOURS_PER_YEAR;
+export const isHlBaseApr = (apr: number) => Number.isFinite(apr) && Math.abs(apr - HL_BASE_APR) < 1e-9;
+
 export type Venue = "HlPerp" | "BinPerp" | "BybitPerp";
 
 export const VENUE_LABEL: Record<Venue, string> = {
@@ -33,6 +40,50 @@ export const VENUE_LABEL: Record<Venue, string> = {
   BinPerp: "Binance",
   BybitPerp: "Bybit",
 };
+
+/* =========================================================================================
+   HOW OFTEN EACH VENUE SETTLES, AND HOW MANY VENUES QUOTE A CONTRACT — read off the contracts.
+
+   Both were typed into prose, and both are variables. /learn and /learn/funding-rate said
+   "Binance and Bybit settle on an eight-hour cycle" while /funding and /methodology said "every
+   4 or 8 hours"; the snapshot of 17 September 2026 held Binance at 26 four-hour and 26 eight-hour
+   contracts and Bybit at 25 and 26. "Across three venues" and "all three venues" described a
+   book where 50 of 55 contracts were quoted on all three, 3 on two and 2 on Hyperliquid alone.
+   One page knew each fact; its siblings typed a version of it.
+   ========================================================================================= */
+const VENUE_ORDER: Venue[] = ["HlPerp", "BinPerp", "BybitPerp"];
+const NUM_WORD = ["no", "one", "two", "three"];
+const everyWords = (hours: number[]) =>
+  hours.length === 1 && hours[0] === 1 ? "hourly"
+    : `every ${hours.length === 1 ? hours[0] : `${hours.slice(0, -1).join(", ")} or ${hours[hours.length - 1]}`} hours` +
+      (hours.length > 1 ? ", depending on the contract" : "");
+
+/** "Hyperliquid settles hourly; Binance and Bybit settle every 4 or 8 hours, depending on the contract" */
+export function settlementWords(perps: readonly { venues: readonly VenueFunding[] }[]): string {
+  const sets = VENUE_ORDER.map((venue) => {
+    const hours = [...new Set(perps.flatMap((p) => p.venues.filter((v) => v.venue === venue && v.intervalHours > 0).map((v) => v.intervalHours)))].sort((a, b) => a - b);
+    return { venue, hours, key: hours.join(",") };
+  }).filter((x) => x.hours.length);
+  const groups: { names: string[]; hours: number[] }[] = [];
+  for (const x of sets) {
+    const g = groups.find((y) => y.hours.join(",") === x.key);
+    if (g) g.names.push(VENUE_LABEL[x.venue]); else groups.push({ names: [VENUE_LABEL[x.venue]], hours: x.hours });
+  }
+  return groups.map((g) => `${g.names.join(" and ")} ${g.names.length === 1 ? "settles" : "settle"} ${everyWords(g.hours)}`).join("; ");
+}
+
+/** "50 are quoted on all three venues, 3 on two and 2 on Hyperliquid alone" — or "all are quoted on all three venues". */
+export function venueReachWords(perps: readonly { venues: readonly VenueFunding[] }[]): string {
+  const count = new Map<number, number>();
+  for (const p of perps) count.set(p.venues.length, (count.get(p.venues.length) ?? 0) + 1);
+  const most = VENUE_ORDER.length;
+  if ((count.get(most) ?? 0) === perps.length) return perps.length === 1 ? `it is quoted on all ${NUM_WORD[most]} venues` : `all ${perps.length} are quoted on all ${NUM_WORD[most]} venues`;
+  const parts = [...count.entries()].sort((a, b) => b[0] - a[0]).map(([n, k]) =>
+    n === most ? `${k} ${k === 1 ? "is" : "are"} quoted on all ${NUM_WORD[most]} venues`
+      : n === 1 ? `${k} on ${VENUE_LABEL.HlPerp} alone`
+        : `${k} on ${NUM_WORD[n] ?? n}`);
+  return parts.length > 1 ? `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}` : parts[0];
+}
 
 export interface VenueFunding {
   venue: Venue;

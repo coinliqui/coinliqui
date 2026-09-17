@@ -157,8 +157,9 @@ venues' rates are compared through one venue's endpoint. Open interest is Hyperl
 alone, not the market's. No liquidation totals are published, because the public feed throttles
 during exactly the cascades that make the figure interesting. Coverage is capped by an
 open-interest floor rather than extended to every contract. The ingest fails sometimes and
-${base}/status renders the real rate including failures. Funding history cannot be backfilled,
-so it accrues from the launch date forward.
+${base}/status renders the real rate including failures. The cross-venue funding comparison cannot be
+backfilled, so it accrues from the launch date forward; Hyperliquid's own funding history is read
+back from Hyperliquid, and each contract page states where its stored series begins.
 
 Pages are GENERATED: numbers, charts and tables are produced by scheduled code from the
 endpoints listed at ${base}/data-sources, and the explanatory prose is written. Nothing here is

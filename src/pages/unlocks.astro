@@ -408,7 +408,7 @@ const lede = top
       <thead>
         <tr>
           <th>Token</th><th>Contract</th><th class="num">Held now</th><th class="num">Share of supply</th>
-          <th class="num">Unlocked since</th><th class="num">Days of volume to absorb</th><th>Provenance</th>
+          <th class="num">Unlocked since</th><th class="num">Days of volume to absorb <span class="thscope">Hyperliquid volume</span></th><th>Provenance</th>
         </tr>
       </thead>
       <tbody>
@@ -578,7 +578,7 @@ const lede = top
       <thead>
         <tr>
           <th>Token</th><th>Event</th><th class="num">Over {horizon} days</th><th class="num">Share of supply</th>
-          <th class="num">Days of volume to absorb</th><th>Provenance</th>
+          <th class="num">Days of volume to absorb <span class="thscope">Hyperliquid volume</span></th><th>Provenance</th>
         </tr>
       </thead>
       <tbody>
@@ -639,10 +639,17 @@ const lede = top
     trading two million a day is a week of selling pressure. That ratio is the column above:
     tokens × mark price, divided by 24-hour traded volume, both from the same snapshot every
     other page here reads.
+    {/* THE VOLUME WAS ONE VENUE'S AND THE PAGE NEVER SAID WHICH. The divisor is dayNtlVlm from
+        Hyperliquid's snapshot; /open-interest and the liquidation map name Hyperliquid because its
+        figures otherwise read as the market's, and this page named it only in the shared footer
+        (production, 17 September 2026). Adding any other venue's volume can only shrink the ratio,
+        so the direction of the error is certain and is said. */}
+    The volume is <strong>Hyperliquid's perpetual volume alone</strong>, one venue's, so the days
+    read longer than the whole market's volume would make them.
   </p>
   <p class="prose">
-    It fills only where this site already carries a perpetual for the token, because that is the
-    only volume series it trusts. Raising the published set to
+    It fills only where this site already carries a Hyperliquid perpetual for the token, because
+    that is the only volume series it collects. Raising the published set to
     {" "}<a class="link" href="/funding">{snap.perps.length || 50} coins</a> is what put CRV and AAVE
     on both sides of that gap. For anything else the cell stays blank rather than borrowing a
     number from a source the rest of the page would not accept.
@@ -811,7 +818,7 @@ const lede = top
   </p>
 
   <Related items={[
-    { href: "/coins", label: "Coins", note: "Spot prices and volume, which is what an unlock has to be absorbed by." },
+    { href: "/coins", label: "Coins", note: "Perpetual prices and Hyperliquid volume, coin by coin — the liquidity an unlock meets on one venue." },
     { href: "/funding/crv", label: "CRV funding", note: "One of the tokens here that also has a perpetual on this site." },
     { href: "/open-interest", label: "Open interest", note: "Turnover against open interest across every covered coin." },
     { href: "/data-sources", label: "Data sources", note: "Where each figure comes from, and its provenance." },

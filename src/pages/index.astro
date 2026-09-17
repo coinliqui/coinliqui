@@ -2,7 +2,7 @@
 import Base from "../layouts/Base.astro";
 import { SITE } from "../lib/site.ts";
 import { getSnapshot, coldStart } from "../lib/hyperliquid.ts";
-import { pct, usd, paysClass, paysArrow, paysLabel, LEGEND_FUNDING, VENUE_LABEL, type Venue } from "../lib/funding.ts";
+import { pct, usd, paysClass, paysArrow, paysLabel, LEGEND_FUNDING, VENUE_LABEL, isHlBaseApr, type Venue } from "../lib/funding.ts";
 import { readCachedFlips, describeCoverage } from "../lib/flips.ts";
 import { distribution } from "../lib/viz.ts";
 import { extremeBy, pluralityOf, widestSpread } from "../lib/extreme.ts";
@@ -38,9 +38,8 @@ const widestX = W.isSpread ? W.shown : ({ kind: "none" } as const);
    number, and that number is a venue constant rather than a reading. Detected, not assumed: it is
    only CALLED the base rate when it matches the documented value, so if Hyperliquid ever moves the
    floor the sentence degrades to "the most common rate" instead of lying. */
-const HL_BASE_APR = 0.0000125 * 8760;
 const mass = pluralityOf(snap.perps.map((p) => p.hlApr));
-const massIsBase = mass != null && Math.abs(mass.value - HL_BASE_APR) < 1e-9;
+const massIsBase = mass != null && isHlBaseApr(mass.value);
 /* The dearest reading IS the mass — nothing is priced above the base rate. Worth its own name because
    it is the condition under which "most expensive" is a sentence about nothing. */
 const pinnedAtTop = dearest.kind === "tied" && mass != null && Math.abs(dearest.value - mass.value) < 1e-9;
@@ -382,7 +381,7 @@ const description =
         <div class="empty__body">
           <p class="empty__title">No flips in the last 24 hours</p>
           <p class="empty__text">
-            Every coin kept the same side paying across all three venues for the full window.
+            Every coin kept the same side paying on every venue that quotes it, for the full window.
             This is a result, not a gap — the feed is live and has the history to say so.
           </p>
           <p class="empty__meta">Window <b>{utc(Date.now() - 86_400_000)}</b> → <b>{utc(Date.now())}</b></p>
@@ -406,7 +405,7 @@ const description =
     <div class="panel">
       <table class="tbl">
         <thead>
-          <tr><th>Coin</th><th class="num">Hyperliquid funding APR</th><th class="num">Venue spread (APR)</th><th class="num">Open interest</th><th class="num">24h volume</th></tr>
+          <tr><th>Coin</th><th class="num">Hyperliquid funding APR</th><th class="num">Venue spread (APR)</th><th class="num">Open interest <span class="thscope">Hyperliquid</span></th><th class="num">24h volume <span class="thscope">Hyperliquid</span></th></tr>
         </thead>
         <tbody>
           {top.map((p) => (

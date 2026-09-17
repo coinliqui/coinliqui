@@ -3,7 +3,7 @@ import Base from "../../layouts/Base.astro";
 import Related from "../../components/Related.astro";
 import Figure from "../../components/Figure.astro";
 import { getSnapshot, coldStart } from "../../lib/hyperliquid.ts";
-import { VENUE_LABEL, pct, usd, carryCost, rawRate, settlementsPerYear } from "../../lib/funding.ts";
+import { VENUE_LABEL, pct, usd, carryCost, rawRate, settlementsPerYear, settlementWords, HL_BASE_APR } from "../../lib/funding.ts";
 
 /**
  * THE FUNDING-RATE EXPLAINER.
@@ -132,7 +132,6 @@ const cadenceMax = Math.max(...cadence.map((c) => c.apr), 1e-9);
    11:10 the section listed five contracts and counted 37 of 50 on 10.95%; /funding rendered in the
    same second showed the same five beyond 10.95% and the same 37. */
 const EXTREMES_MAX = 12;
-const HL_BASE_APR = 0.0000125 * 8760;
 const magShown = (p: { hlApr: number }) => pct(Math.abs(p.hlApr));
 const ranked = [...perps]
   .filter((p) => Number.isFinite(p.hlApr))
@@ -185,7 +184,7 @@ const description =
 
   {cadence.length > 1 && (
     <Figure
-      title="The same quoted rate, on three settlement intervals"
+      title="The same quoted rate, at each venue's settlement interval"
       lead={pct(cadence[0].apr)}
       leadNote={`what 0.01% a settlement is worth per year on ${cadence[0].label}, against ${pct(cadence[cadence.length - 1].apr)} on ${cadence[cadence.length - 1].label}`}>
       <div class="bars">
@@ -279,8 +278,7 @@ const description =
   <p class="prose">
     This is the error that makes most published funding numbers unusable, and it is not subtle
     once seen. A venue quotes the rate it will charge <strong>per settlement</strong>, and
-    settlements are not the same length everywhere. Hyperliquid settles hourly. Binance and
-    Bybit settle on an eight-hour cycle. So an eight-hour rate of 0.01% and an hourly rate of
+    settlements are not the same length everywhere. {settlementWords(perps)}. So an eight-hour rate of 0.01% and an hourly rate of
     0.01% differ by a factor of eight in what they actually cost, and the two numbers look
     identical.
   </p>
@@ -414,7 +412,7 @@ const description =
   <Related
     title="Where to go next"
     items={[
-      { href: "/funding", label: "Funding, all venues", note: "Every covered contract, three venues, normalised to the same unit." },
+      { href: "/funding", label: "Funding, all venues", note: "Every covered contract, each venue's rate normalised to the same unit." },
       { href: "/tools/funding-cost", label: "Funding cost calculator", note: "What a position of your size costs to hold for your holding period." },
       { href: "/tools/funding-arbitrage", label: "Cross-venue carry", note: "What the spread between two venues would pay, with the costs that eat it." },
       { href: "/learn/open-interest", label: "Open interest, explained", note: "The other half of the positioning picture, and what it does and does not say." },

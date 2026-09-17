@@ -2,7 +2,7 @@
 import Base from "../../layouts/Base.astro";
 import Related from "../../components/Related.astro";
 import { getSnapshot, coldStart, findPerp } from "../../lib/hyperliquid.ts";
-import { pct, rawRate, settlementsPerYear, VENUE_LABEL, type Venue } from "../../lib/funding.ts";
+import { pct, rawRate, settlementsPerYear, settlementWords, VENUE_LABEL, type Venue } from "../../lib/funding.ts";
 
 import { coverageRule, coverageToday } from "../../lib/coverage.ts";
 import tables from "../../data/margin-tables.json";
@@ -55,8 +55,7 @@ const description =
   <p class="prose">
     A perpetual swap has no expiry, so it is tethered to spot by a periodic payment between
     longs and shorts called funding. Each venue quotes that payment <strong>per settlement
-    interval</strong> — and the intervals differ. Hyperliquid settles <strong>every hour</strong>.
-    Binance and Bybit settle <strong>every 4 or 8 hours</strong>, depending on the contract.
+    interval</strong> — and the intervals differ. {settlementWords(snap.perps)}.
   </p>
   <p class="prose">
     Placing those quoted numbers side by side, which is what essentially every funding

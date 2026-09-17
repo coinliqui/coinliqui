@@ -273,6 +273,43 @@ export function unconditionalCadenceClaims(sources) {
   return out;
 }
 
+/**
+ * A VENUE FACT THAT VARIES BY CONTRACT, TYPED AS IF IT DID NOT.
+ *
+ * On 17 September 2026 an audit of sibling pages found the same fact stated both ways across the
+ * site: /funding and /methodology said Binance and Bybit settle "every 4 or 8 hours", /learn and
+ * /learn/funding-rate said "on an eight-hour cycle" (26 of Binance's 52 contracts settle every four);
+ * the home card counted venues per contract while /learn said "the dearest and cheapest of the three
+ * venues" of a two-venue contract and /funding said "55 perpetual contracts across three venues" of a
+ * book where 5 are not on all three. Each correct page computed the fact; each wrong one typed it.
+ *
+ * THE RULE: these phrases may appear only as values — settlementWords() and venueReachWords() in
+ * src/lib/funding.ts, or a count read from the contract — never as literal template text. Named
+ * phrases, not a grammar: "compares three venues" names the set the site reads and stays legal.
+ */
+const TYPED_VENUE_FACTS = [
+  [/\bacross three venues\b/gi, "not every contract is quoted on three venues — venueReachWords()"],
+  [/\ball three venues\b/gi, "not every contract is quoted on three venues — say \"every venue that quotes it\" or count"],
+  [/\bcheapest of the three venues\b/gi, "the venues quoting a contract vary — count them from its venues"],
+  [/\bthree settlement intervals\b/gi, "the intervals on a page vary with the contract — count or describe per venue"],
+  [/\b(?:on an? eight-hour cycle|settles? every (?:8|eight) hours)\b/gi, "Binance and Bybit settle every 4 or 8 hours by contract — settlementWords()"],
+];
+export function typedVenueFacts(sources) {
+  const out = [];
+  for (const [file, src] of sources) {
+    const body = src.replace(/^---[\s\S]*?^---/m, "");
+    for (const [re, why] of TYPED_VENUE_FACTS) {
+      for (const m of body.matchAll(re)) {
+        const before = body.slice(Math.max(0, m.index - 600), m.index);
+        const opens = (before.match(/\{/g) ?? []).length, closes = (before.match(/\}/g) ?? []).length;
+        if (opens > closes) continue;
+        out.push(`${file}: "${m[0]}" is typed — ${why}`);
+      }
+    }
+  }
+  return out;
+}
+
 const VENDORS = ["coinbase", "okx", "coingecko", "binance", "bybit", "hyperliquid", "defillama",
                  "publicnode", "drpc", "1rpc", "kraken", "bitfinex"];
 /* A PERMISSION VERB IS NOT ENOUGH ON ITS OWN, and the first version of this check proved it:
@@ -534,8 +571,16 @@ const LADDER = [
 const SHARED_RULES = ["paysClass", "paysLabel", "paysArrow", "carryCost", "aprSpread", "pct",
                       "changeWords", "ageWords", "minutesSince", "nf", "qty", "compact", "usd"];
 
+/* Constants with the same standing. HL_BASE_APR was a const in three templates on 17 September
+   2026, and the one without the home page's base-rate test called the base rate "the dearest". */
+const SHARED_CONSTANTS = ["HL_BASE_APR"];
+
 export function duplicateRuleImplementations(sources) {
   const out = [];
+  for (const name of SHARED_CONSTANTS) {
+    const defs = [...sources].filter(([, src]) => new RegExp(`\\b(const|let|var)\\s+${name}\\s*=`).test(src)).map(([file]) => file);
+    if (defs.length !== 1) out.push(defs.length ? `${name} is defined ${defs.length} times — ${defs.join(", ")}. One constant, one definition; see src/lib/funding.ts` : `${name} is not defined anywhere — the shared source has lost a constant this check guards`);
+  }
   for (const rule of SHARED_RULES) {
     const defs = [];
     for (const [file, src] of sources) {

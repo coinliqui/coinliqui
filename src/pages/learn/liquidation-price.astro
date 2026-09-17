@@ -3,7 +3,7 @@ import Base from "../../layouts/Base.astro";
 import Related from "../../components/Related.astro";
 import Figure from "../../components/Figure.astro";
 import TABLES from "../../data/margin-tables.json";
-import { liquidationPrice, maintenanceMarginFraction, type MarginTable } from "../../lib/margin.ts";
+import { liquidationPrice, maintenanceMarginFraction, roomVerdict, type MarginTable } from "../../lib/margin.ts";
 import { pct, usd } from "../../lib/funding.ts";
 
 /**
@@ -63,11 +63,23 @@ const doubling = (() => {
   return null;
 })();
 
+/* "FURTHER FROM ENTRY THAN THE VENUE WILL", SAID OF A TABLE THAT SHOWS THE OPPOSITE. The description
+   and the callout called the formula's error one-directional, "the direction that costs money", above
+   a table whose $4.00M column reads "Room from entry, formula → venue 10.00% → 11.11%": the tier caps
+   10× at 5×, and the capped position has MORE room than the formula shows (production, 17 September
+   2026). /methodology/liquidations had already said the gap runs both ways. The two sentences now read
+   the direction off the two positions this page works through, with roomVerdict(), the function the
+   contract pages use. */
+const smallWay = roomVerdict(small), largeWay = roomVerdict(large);
+const bothWays = smallWay === "less" && (largeWay === "more-capped" || largeWay === "more");
 const title = "How a liquidation price is actually calculated";
-const description =
-  "The formula most calculators use leaves out maintenance margin, so it places the " +
-  "liquidation further from entry than the venue will. What maintenance margin is, how " +
-  "margin tiers change the answer with position size, and both figures worked through.";
+const description = bothWays
+  ? "The formula most calculators use leaves out maintenance margin, so it usually places the " +
+    "liquidation further from entry than the venue will — and once a margin tier caps the leverage it " +
+    "can miss the other way. How tiers change the answer with position size, both figures worked through."
+  : "The formula most calculators use leaves out maintenance margin and margin tiers, so it misses the " +
+    "venue's liquidation price. What maintenance margin is, how tiers change the answer with position " +
+    "size, and both figures worked through.";
 ---
 
 <Base title={title} description={description}>
@@ -105,9 +117,13 @@ const description =
   <p class="callout">
     A liquidation price is the price at which a venue closes a position because the collateral
     behind it has fallen to the minimum it will accept. That minimum is called
-    <strong> maintenance margin</strong>, and the formula in general circulation leaves it out —
-    which puts the liquidation further from entry than the venue actually will. The error is in
-    the direction that costs money.
+    <strong> maintenance margin</strong>, and the formula in general circulation leaves it out
+    {smallWay === "less"
+      ? <>— which puts the liquidation further from entry than the venue actually will, the direction
+        that costs money.{(largeWay === "more-capped" || largeWay === "more") && <>{" "}Not always: once a
+        margin tier caps the leverage, the capped position carries more margin, and the larger position in the
+        table below has more room than the formula shows.</>}</>
+      : <>, so it does not return the price the venue closes at.</>}
   </p>
 
   <h2 class="section">The formula you will usually be given</h2>

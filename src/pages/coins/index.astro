@@ -2,7 +2,7 @@
 import Base from "../../layouts/Base.astro";
 import Overview from "../../components/Overview.astro";
 import { getSnapshot, coldStart, findPerp, getLive, oldestStamp } from "../../lib/hyperliquid.ts";
-import { usd, pct, paysClass, paysLabel, carryCost, LEGEND_PAYS } from "../../lib/funding.ts";
+import { usd, pct, paysClass, paysLabel, carryCost, LEGEND_PAYS, isHlBaseApr } from "../../lib/funding.ts";
 import { extremeBy } from "../../lib/extreme.ts";
 import Spark from "../../components/Spark.astro";
 import { readSparks, sparkScale, SPARK_POINTS, SPARK_STEP_MS } from "../../lib/sparks.ts";
@@ -107,7 +107,11 @@ const description = "Perpetual futures prices for the major coins on Hyperliquid
       {costing > 0 && paying > 0 && <> and is paid on {paying}</>}
       {costing === 0 && paying > 0 && <>{" "}A <b>long is paid on {paying} of the {priced.length} coins below</b></>}.
       {dearest.kind === "unique" && dearest.value > 0 && <>{" "}It is dearest on <b>{dearest.item.name}</b> at {pct(dearest.value)} a year &mdash; about <b>{usd(Math.abs(weekOn(dearest.value)), 0)}</b> a week per $10,000 held.</>}
-      {dearest.kind === "tied" && dearest.value > 0 && <>{" "}{dearest.items.length} of them share the dearest rate, {pct(dearest.value)} a year &mdash; about {usd(Math.abs(weekOn(dearest.value)), 0)} a week per $10,000 held.</>}
+      {/* A TIE AT THE BASE RATE HAS NO DEAREST. "8 of them share the dearest rate, 10.95% a year" — the
+          rate a contract rests on when the market has no view, called a maximum (production, 17 September
+          2026). The home page had said "none is priced above it" of the same book since 16 September. */}
+      {dearest.kind === "tied" && isHlBaseApr(dearest.value) && <>{" "}{dearest.items.length} of the {priced.length} sit exactly on Hyperliquid&rsquo;s base rate, {pct(dearest.value)} a year &mdash; the rate a contract rests on when the market has no view &mdash; and none is priced above it.</>}
+      {dearest.kind === "tied" && !isHlBaseApr(dearest.value) && dearest.value > 0 && <>{" "}{dearest.items.length} of them share the dearest rate, {pct(dearest.value)} a year &mdash; about {usd(Math.abs(weekOn(dearest.value)), 0)} a week per $10,000 held.</>}
       {bestPaid.kind === "unique" && bestPaid.value < 0 && <>{" "}On <b>{bestPaid.item.name}</b> it runs the other way: {paysLabel(bestPaid.value)}{" "}{pct(Math.abs(bestPaid.value))}.</>}
     </Overview>
     <p class="section-note" style="margin-top:12px">
@@ -130,9 +134,9 @@ const description = "Perpetual futures prices for the major coins on Hyperliquid
               screen behind a horizontal scroll with no affordance pointing at it. Ordering by
               what the page is for costs nothing on the desktop and is the whole difference on a
               phone. */}
-          <th>Coin</th><th class="num">Mark</th><th class="num">Funding APR</th>
+          <th>Coin</th><th class="num">Mark</th><th class="num">Funding APR <span class="thscope">Hyperliquid</span></th>
           {sparkScaleAll && <th class="spark-col">{sparkDays}d shape</th>}
-          <th class="num">24h change</th><th class="num">24h volume</th><th class="num">Open interest</th>
+          <th class="num">24h change</th><th class="num">24h volume <span class="thscope">Hyperliquid</span></th><th class="num">Open interest <span class="thscope">Hyperliquid</span></th>
         </tr>
       </thead>
       <tbody>

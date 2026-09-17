@@ -28,7 +28,7 @@ import {
   contradictoryStates, rawEnums, founderAgreement, readmeCounts,
   basisSelfConsistent, uncoveredRoutes, staleDerivedCells, botPolicyReasons,
   undefinedClasses, undefinedVars, unreadableText, colourLegend, colourLanguageDrift,
-  chartAgreement, duplicateRuleImplementations, fixtureGaps, requestedLeverageLabels, phantomInlineElements, malformedAttributes, uncitedPermissionClaims, unconditionalCadenceClaims,
+  chartAgreement, duplicateRuleImplementations, fixtureGaps, requestedLeverageLabels, phantomInlineElements, malformedAttributes, uncitedPermissionClaims, unconditionalCadenceClaims, typedVenueFacts,
   staleCalculatorFigures, controlGroupOverflow, MEASUREMENT_EXPORTS, stampVerdict,
   stampSurfacesAgree,
   symbolAddressing,
@@ -70,6 +70,19 @@ const cases = [
     why: "a page carrying both an age and a claim it is not updating tells two stories at once",
     fire: () => contradictoryStates(doc(`<p>Updated 3 min ago</p><p>Not updating</p>`)),
     quiet: () => contradictoryStates(doc(`<p>Updated 3 min ago</p>`)),
+  },
+  {
+    check: "typedVenueFacts",
+    why: "a venue fact that varies by contract, typed on one page while its sibling computes it",
+    /* The fire fixture is the three sentences that shipped on 17 September 2026. The quiet fixture
+       is the computed form, a legal description of the venue set, and the defect quoted in a comment. */
+    fire: () => typedVenueFacts([["learn.astro",
+      `<td>Hyperliquid settles hourly; Binance and Bybit settle on an eight-hour cycle.</td>` +
+      `<p>{n} perpetual contracts across three venues, annualised.</p><td>{w}: the dearest and cheapest of the three venues.</td>`]]),
+    quiet: () => typedVenueFacts([["learn.astro",
+      `<td>{settlementWords(perps)}. Funding compares three venues; two of the three venues are read second-hand.</td>` +
+      `<p>{n} perpetual contracts; {venueReachWords(perps)}.</p>` +
+      `{/* it said "settle on an eight-hour cycle" */}`.replace(/\{\/\*[\s\S]*?\*\/\}/g, "")]]),
   },
   {
     check: "unconditionalCadenceClaims",
@@ -700,10 +713,12 @@ const cases = [
     fire: () => duplicateRuleImplementations([
       ["public/shared.js", "export function usd(x) { return `$${x}`; }\nexport const pct = (x) => `${x}%`;\nexport function paysClass(a){return a>=0?'pays-l':'pays-s';}\nexport const paysLabel=(a)=>a>=0?'l':'s';\nexport const paysArrow=(a)=>a>=0?'u':'d';\nexport const carryCost=(n,a,d)=>n*a*d;\nexport function spreadOf(x){return x;}\nexport function changeWords(x){return `${x}`;}\nexport function ageWords(m){return `${m}`;}\nexport const minutesSince=(a)=>a;\nexport const nf=(n,d)=>`${n}`;\nexport function qty(n){return `${n}`;}\nexport function compact(v){return `$${v}`;}\nexport function aprSpread(x){return x;}"],
       ["public/interact.js", "const usd = (x) => `$${x}`;"],
+      ["src/lib/funding.ts", "export const HL_BASE_APR = 0.0000125 * 8760;"],
+      ["src/pages/coins/index.astro", "const HL_BASE_APR = 0.0000125 * 8760;"],
     ]),
     quiet: () => duplicateRuleImplementations([
       ["public/shared.js", "export function usd(x) { return `$${x}`; }\nexport const pct = (x) => `${x}%`;\nexport function paysClass(a){return a>=0?'pays-l':'pays-s';}\nexport const paysLabel=(a)=>a>=0?'l':'s';\nexport const paysArrow=(a)=>a>=0?'u':'d';\nexport const carryCost=(n,a,d)=>n*a*d;\nexport function spreadOf(x){return x;}\nexport function changeWords(x){return `${x}`;}\nexport function ageWords(m){return `${m}`;}\nexport const minutesSince=(a)=>a;\nexport const nf=(n,d)=>`${n}`;\nexport function qty(n){return `${n}`;}\nexport function compact(v){return `$${v}`;}\nexport function aprSpread(x){return x;}"],
-      ["src/lib/funding.ts", 'export { usd, pct, compact } from "../../public/shared.js";'],
+      ["src/lib/funding.ts", 'export { usd, pct, compact } from "../../public/shared.js";\nexport const HL_BASE_APR = 0.0000125 * 8760;'],
     ]),
   },
   {

@@ -2,7 +2,7 @@
 import Base from "../../layouts/Base.astro";
 import Related from "../../components/Related.astro";
 import { getSnapshot, coldStart, OI_NOTIONAL_FLOOR } from "../../lib/hyperliquid.ts";
-import { VENUE_LABEL, pct, usd } from "../../lib/funding.ts";
+import { VENUE_LABEL, pct, usd, settlementWords, rawRate } from "../../lib/funding.ts";
 
 import { coverageRule, coverageToday } from "../../lib/coverage.ts";
 import { widestSpread } from "../../lib/extreme.ts";
@@ -114,13 +114,13 @@ const description =
         <tr>
           <td><a href="/open-interest">Open interest</a></td>
           <td class="num">{usd(totalOi)}</td>
-          <td>Hyperliquid's book alone, across those contracts — a minority of the market's, and not comparable with an aggregator's figure.</td>
+          <td>Hyperliquid's book alone, across those contracts — one venue's, not the market's, and not comparable with an aggregator's figure.</td>
         </tr>
         {btc && (
           <tr>
             <td><a href={`/funding/${btc.symbol.toLowerCase()}`}>{btc.symbol} funding, annualised</a></td>
             <td class="num">{pct(btc.hlApr)}</td>
-            <td>Hyperliquid's current hourly rate, multiplied out to a year. Positive means longs pay shorts.</td>
+            <td>Hyperliquid's published rate for the next hourly settlement, multiplied out to a year. Positive means longs pay shorts.</td>
           </tr>
         )}
         {widest && (
@@ -155,7 +155,7 @@ const description =
             {btcVenues.map((v) => (
               <tr>
                 <td>{VENUE_LABEL[v.venue]}</td>
-                <td class="num">{pct(v.rate, 5)}</td>
+                <td class="num">{rawRate(v.rate, v)}</td>
                 <td class="num">{v.intervalHours}h</td>
                 <td class="num">{pct(v.apr)}</td>
               </tr>
@@ -188,7 +188,7 @@ const description =
         </tr>
         <tr>
           <td>Settlement interval</td>
-          <td>How often that payment changes hands. Hyperliquid settles hourly; Binance and Bybit settle on an eight-hour cycle. Two rates quoted over different intervals are not comparable until both are annualised.</td>
+          <td>How often that payment changes hands. {settlementWords(perps)}. Two rates quoted over different intervals are not comparable until both are annualised.</td>
         </tr>
         <tr>
           <td>APR</td>
@@ -229,7 +229,7 @@ const description =
   <Related
     title="The pages these explain"
     items={[
-      { href: "/funding", label: "Funding", note: "All three venues, normalised, for every covered contract." },
+      { href: "/funding", label: "Funding", note: "Each venue's rate, normalised, for every covered contract." },
       { href: "/liquidations", label: "Liquidation map", note: "The model itself, with its assumptions printed above it." },
       { href: "/open-interest", label: "Open interest", note: "Hyperliquid's book and 24-hour turnover, per contract." },
       { href: "/tools", label: "Calculators", note: "Funding cost, position size, leverage and cross-venue carry." },

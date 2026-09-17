@@ -38,7 +38,7 @@ import { readdirSync, readFileSync } from "node:fs";
 /* Source is read as CODE by default — see scripts/lib/source.mjs. The two checks below that
    want the prose say so at their call site, with the reason. */
 import { readSource, readRaw } from "./lib/source.mjs";
-import { cssFor, undefinedClasses, undefinedVars, rawEnums, searchIndexGaps, unnamedUpstreams, duplicateRuleImplementations, uncoveredRoutes, unreadableText, chartAgreement, requestedLeverageLabels, inlineScriptSyntax, flipTableColour, colourPalettes, colourLanguageDrift, colourLegend, publishesAPerson, fixtureGaps, staleDerivedCells, basisSelfConsistent, sitemapLastmodHonesty, breadcrumbAgreement, founderAgreement, readmeCounts, botPolicyReasons, contradictoryStates, hiddenFromEveryone, pageWeight, weightFaults, dateModifiedAgreement, phantomInlineElements, malformedAttributes, uncitedPermissionClaims, unconditionalCadenceClaims, staleCalculatorFigures, controlGroupOverflow, stampSurfacesAgree, symbolAddressing, computedFigureFloor, COMPUTED_FIGURES, openingFigure, PROSE_ROUTES, handRolledLegends, collapsedStateEscapesMobile, leadReachesTheOpening} from "./checks.mjs";
+import { cssFor, undefinedClasses, undefinedVars, rawEnums, searchIndexGaps, unnamedUpstreams, duplicateRuleImplementations, uncoveredRoutes, unreadableText, chartAgreement, requestedLeverageLabels, inlineScriptSyntax, flipTableColour, colourPalettes, colourLanguageDrift, colourLegend, publishesAPerson, fixtureGaps, staleDerivedCells, basisSelfConsistent, sitemapLastmodHonesty, breadcrumbAgreement, founderAgreement, readmeCounts, botPolicyReasons, contradictoryStates, hiddenFromEveryone, pageWeight, weightFaults, dateModifiedAgreement, phantomInlineElements, malformedAttributes, uncitedPermissionClaims, unconditionalCadenceClaims, typedVenueFacts, staleCalculatorFigures, controlGroupOverflow, stampSurfacesAgree, symbolAddressing, computedFigureFloor, COMPUTED_FIGURES, openingFigure, PROSE_ROUTES, handRolledLegends, collapsedStateEscapesMobile, leadReachesTheOpening} from "./checks.mjs";
 
 /* The SERVER side of each duplicated formatter, transcribed from the file that owns it and
    named here so the pairing is explicit. Transcription is the honest cost of having no bundler:
@@ -278,6 +278,9 @@ try {
   const cad = unconditionalCadenceClaims(
     [...walkAstro("src/pages"), "src/layouts/Base.astro"].map((f) => [f, readSource(f)]));
   if (cad.length) { failures++; console.log(`\n  FAIL  ${cad.length} unconditional cadence claim(s):`); for (const l of cad) console.log(`          ${l}`); }
+  const typed = typedVenueFacts(
+    [...walkAstro("src/pages"), ...walkAstro("src/components"), "src/layouts/Base.astro"].map((f) => [f, readSource(f)]));
+  if (typed.length) { failures++; console.log(`\n  FAIL  ${typed.length} venue fact(s) typed where they vary by contract:`); for (const l of typed) console.log(`          ${l}`); }
 
   const un = uncoveredRoutes(await readFile(`${dir}/${manifest}`, "utf8"), ROUTES);
   if (un.length) {

@@ -243,7 +243,7 @@ const SERIES = [
   { key: "m15", label: "15-minute candles", gate: "2 h", drives: "the 15m and 30m charts" },
   { key: "hourly", label: "Hourly candles", gate: "2 h", drives: "the liquidation map and the 1H/4H charts" },
   { key: "candles", label: "Daily candles", gate: "12 h", drives: "the 1D/1W charts and leverage survival" },
-  { key: "funding", label: "Funding history", gate: "6 h", drives: "the funding band under every price chart" },
+  { key: "funding", label: "Funding history", gate: "6 h", drives: "the funding chart and 30-day standing on each contract page" },
 ];
 const covered = snap.perps.map((p) => p.symbol);
 const series = await Promise.all(

@@ -227,16 +227,18 @@ const stored = storedCounts();
             Every open-interest figure here is Hyperliquid's alone, and is labelled as such
             wherever it appears. It is not the market's open interest and this site does not
             know the market's open interest.
-            {/* THE SOURCE MEASUREMENT IS BTC ON ONE DAY, AND THIS SENTENCE HAD DROPPED BOTH
+            {/* (History.) THE SOURCE MEASUREMENT IS BTC ON ONE DAY, AND THIS SENTENCE HAD DROPPED BOTH
                 QUALIFIERS. /open-interest says it precisely: "on 18 August 2026, Hyperliquid held
                 $2.68B of BTC against $6.83B on Binance and $3.91B on Bybit". Here it became "a
                 fifth of their combined total" with no coin and no date — a share across all
                 venues and all coins, standing indefinitely. BTC open interest has moved +27%
                 since that reading, to $3.39B. This page's own standard is that every figure
-                names its source and its age; this one named neither. */}
-            {" "}<a class="link" href="/open-interest">Measured on 18 August 2026</a>, Hyperliquid held about a fifth
-            of the combined <strong>BTC</strong> open interest of the three venues named above. That is one
-            coin on one day, not a standing ratio.
+                names its source and its age; this one named neither.
+                AND THE DATED FORM HAD NO SOURCE EITHER: the Binance and Bybit books it rested on came
+                from no request this site makes (/data-sources), and /learn/open-interest dropped them on
+                16 September 2026. Removed here on 17 September, with /open-interest. */}
+            {" "}Hyperliquid is the only venue whose open interest this site collects, so it does
+            not print a share of the market's.
           </td>
         </tr>
         <tr>
@@ -275,12 +277,20 @@ const stored = storedCounts();
           </td>
         </tr>
         <tr>
-          <td>History starts at launch</td>
+          {/* "FUNDING HISTORY CANNOT BE BACKFILLED" WAS TRUE OF ONE SERIES AND SAID OF BOTH. Hyperliquid's
+              own rate is read back from its fundingHistory endpoint, which reaches 2023, and the worker
+              deepens each contract 21 days per rotation (worker/ingest.ts) — /funding/btc drew 90 days
+              and said "stored series begins 11 Feb 2026" on 17 September 2026, under this row saying
+              history accrues from launch. What cannot be backfilled is the three-venue comparison: the
+              Binance and Bybit rates arrive only inside Hyperliquid's current predictedFundings. */}
+          <td>Cross-venue history starts at launch</td>
           <td class="reason">
-            Funding history cannot be backfilled from these endpoints, so it accrues from
+            The comparison across venues cannot be backfilled: Binance and Bybit rates reach this
+            site only as Hyperliquid republishes them now, so that history accrues from
             {" "}{new Date(IDENTITY.launched).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" })}
-            {" "}forward. Where a window is not yet covered the page says so instead of showing
-            a shorter window as if it were the one asked for.
+            {" "}forward. Hyperliquid's own funding rate is read back from Hyperliquid's history, and
+            each contract page says where its stored series begins. Where a window is not yet covered
+            the page says so instead of showing a shorter window as if it were the one asked for.
           </td>
         </tr>
       </tbody>

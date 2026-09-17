@@ -5,6 +5,7 @@ import Figure from "../../components/Figure.astro";
 import { getSnapshot, coldStart, OI_NOTIONAL_FLOOR } from "../../lib/hyperliquid.ts";
 import { pct, usd } from "../../lib/funding.ts";
 import { extremeBy } from "../../lib/extreme.ts";
+import { coverageRule } from "../../lib/coverage.ts";
 
 /**
  * THE OPEN-INTEREST EXPLAINER.
@@ -325,13 +326,17 @@ const description =
   </p>
 
   <h2 class="section">Which contracts appear here at all</h2>
+  {/* THE RULE WAS TYPED HERE A FIFTH WAY. src/lib/coverage.ts exists because the coverage rule was
+      stated four ways; this paragraph still said a contract "is retired when it falls materially below
+      that and stays there" — no top-50 cap, no outranked exit, and a grace period the worker does not
+      have (production, 17 September 2026). It is coverageRule() now. The "410 Gone" link went to the
+      bare /retired page, which describes one contract's retirement that never happened; the words
+      stand without it. */}
   <p class="prose">
-    Coverage is decided by open interest and nothing else: a Hyperliquid perpetual is covered
-    once its open interest clears {usd(OI_NOTIONAL_FLOOR)}, and it is retired when it falls
-    materially below that and stays there. No venue, listing or partnership influences the set —
-    there are none. A contract that leaves coverage answers
-    {" "}<a class="link" href="/retired">410 Gone</a> rather than quietly redirecting, so a
-    crawler is told the page is over rather than left guessing.
+    Coverage is decided by open interest and nothing else. {coverageRule()} No venue, listing or
+    partnership influences the set — there are none. A contract that leaves coverage answers 410
+    Gone rather than quietly redirecting, so a crawler is told the page is over rather than left
+    guessing.
     {biggestSentence && <span>{" "}{biggestSentence}</span>}
   </p>
 

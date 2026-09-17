@@ -1,7 +1,7 @@
 ---
 import Base from "../../layouts/Base.astro";
 import { getSnapshot, coldStart, getLive } from "../../lib/hyperliquid.ts";
-import { VENUE_LABEL, pct, usd, rawRate, paysClass, paysLabel, LEGEND_FUNDING, type Venue } from "../../lib/funding.ts";
+import { VENUE_LABEL, pct, usd, rawRate, paysClass, paysLabel, LEGEND_FUNDING, settlementWords, venueReachWords, HL_BASE_APR, isHlBaseApr, type Venue } from "../../lib/funding.ts";
 
 import { freshness, ageWords, minutesSince } from "../../lib/freshness.ts";
 import Figure from "../../components/Figure.astro";
@@ -45,7 +45,6 @@ const hlAprs = snap.perps.map((p) => p.hlApr).filter((v) => Number.isFinite(v));
    THE BASE IS DETECTED, NOT ASSUMED. The modal rate is taken from the data and only CALLED the
    base rate when it matches the documented constant; if Hyperliquid ever moves it, the figure
    keeps working and the wording degrades to "the most common rate" rather than lying. */
-const HL_BASE_APR = 0.0000125 * 8760;
 const tallyApr = new Map<string, number>();
 for (const v of hlAprs) tallyApr.set(v.toFixed(6), (tallyApr.get(v.toFixed(6)) ?? 0) + 1);
 const modal = [...tallyApr.entries()].sort((a, b) => b[1] - a[1])[0];
@@ -249,7 +248,8 @@ const description =
           : <>No contract is paying either way</>}
       {flat > 0 && <> ({flat} {flat === 1 ? "is" : "are"} flat)</>}.
       {loudest.kind === "unique" && <>{" "}The steepest is <b>{loudest.item.symbol}</b>, where {paysLabel(loudest.value)}{" "}<b>{pct(Math.abs(loudest.value))}</b> a year.</>}
-      {loudest.kind === "tied" && <>{" "}The steepest reading, {pct(Math.abs(loudest.value))} a year with {paysLabel(loudest.value)}, is shared by <b>{loudest.items.length}</b> contracts.</>}
+      {/* A tie AT the base rate is not a steepest reading: the next sentence counts the contracts resting on it. */}
+      {loudest.kind === "tied" && !isHlBaseApr(loudest.value) && <>{" "}The steepest reading, {pct(Math.abs(loudest.value))} a year with {paysLabel(loudest.value)}, is shared by <b>{loudest.items.length}</b> contracts.</>}
       {" "}<b>{modalCount} of {hlAprs.length}</b> sit exactly on Hyperliquid&rsquo;s <b>{pct(modalApr)}</b>{modalIsBase ? " base rate" : " most common rate"}, a venue constant rather than a view about any of them &mdash; so the market has priced only <b>{offBase.length}</b> of them at all.
       {widestX.kind === "unique" && <>{" "}The widest gap between venues is <b>{widestX.item.symbol}</b> at {W.printed} APR.</>}
       {widestX.kind === "tied" && <>{" "}The widest gap between venues, {W.printed} APR, is shared by <b>{widestX.items.length}</b> contracts.</>}
@@ -319,8 +319,8 @@ const description =
       colour, after the evidence rather than in front of it. The two learn links travel with it —
       a reader who wants the definition wants it at this point, not before the answer. */}
   <p class="section-note" style="margin:0 0 12px">
-    {snap.perps.length} perpetual contracts across three venues, annualised. Hyperliquid settles
-    hourly; Binance and Bybit settle every 4 or 8 hours &mdash; so comparing the quoted numbers
+    {snap.perps.length} perpetual contracts, each venue's rate annualised; {venueReachWords(snap.perps)}.
+    {" "}{settlementWords(snap.perps)} &mdash; so comparing the quoted numbers
     directly makes the shorter interval look cheaper by exactly the interval ratio. A cell in the
     table is tinted by how far its rate sits from what is normal for that venue, so a contract
     resting on the venue&rsquo;s usual rate stays plain and the ones the market has actually
@@ -341,8 +341,8 @@ const description =
           {ORDER.map((v) => <th class="num">{VENUE_LABEL[v]} APR</th>)}
           {sparkScaleAll && <th class="spark-col">{sparkDays}d shape</th>}
           <th class="num">Venue spread (APR)</th>
-          <th class="num">Open interest</th>
-          <th class="num">24h volume</th>
+          <th class="num">Open interest <span class="thscope">Hyperliquid</span></th>
+          <th class="num">24h volume <span class="thscope">Hyperliquid</span></th>
         </tr>
       </thead>
       <tbody>

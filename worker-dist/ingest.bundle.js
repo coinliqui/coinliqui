@@ -1,5 +1,6 @@
 // src/lib/funding.ts
 var HOURS_PER_YEAR = 24 * 365;
+var HL_BASE_APR = 125e-7 * HOURS_PER_YEAR;
 function toApr(ratePerInterval, intervalHours) {
   if (!Number.isFinite(ratePerInterval) || !Number.isFinite(intervalHours) || intervalHours <= 0) {
     return NaN;
@@ -1301,7 +1302,7 @@ async function stepCorroborate(env, now = Date.now()) {
 }
 
 // worker/build-stamp.ts
-var WORKER_BUILD = "435ccb487fdc";
+var WORKER_BUILD = "a3cf1f0484f1";
 
 // worker/ingest.ts
 var RETAIN_HOURS = 720;
