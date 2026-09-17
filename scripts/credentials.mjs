@@ -13,12 +13,20 @@
  * once, and the operations that depend on a credential run it first.
  *
  *   node scripts/credentials.mjs          report, exit 0 unless something is already expired
- *   node scripts/credentials.mjs --strict exit 1 if anything expires within the margin
+ *   node scripts/credentials.mjs --strict before a deploy: every credential, and the wrangler
+ *                                          token made good for MARGIN_S first
+ *   node scripts/credentials.mjs --ensure right before a wrangler call: the wrangler token only
+ *
+ * --strict AND --ensure ACT ON THE WRANGLER TOKEN RATHER THAN STOPPING. A deploy stopped here twice
+ * on 17 September 2026 for a token the script itself knew how to renew; see scripts/lib/
+ * token-plan.mjs. The upload runs about twenty minutes after the pre-flight, behind the gate, so
+ * deploy:site asks again with --ensure immediately before `wrangler pages deploy`.
  */
 import { readFileSync, existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
+import { tokenPlan } from "./lib/token-plan.mjs";
 
 /* Long enough for a deploy, a verify-live pass, or an investigation of several calls. A token
    that lapses halfway through any of those produces a wrong answer, not a clean failure. */
@@ -31,18 +39,42 @@ const rows = [];
    says "wait" without saying how long is the same dead end as the one it replaced. */
 const add = (name, state, detail, left) => rows.push({ name, state, detail, left });
 
+const ACT = process.argv.includes("--strict") || process.argv.includes("--ensure");
+const ONLY_WRANGLER = process.argv.includes("--ensure");
+
 /* ---- 1. the wrangler OAuth token: Cloudflare Pages, Workers, KV, D1 ------------------- */
+const WRANGLER_CFG = join(homedir(), ".wrangler/config/default.toml");
+const readToken = () => {
+  if (!existsSync(WRANGLER_CFG)) return null;
+  const src = readFileSync(WRANGLER_CFG, "utf8");
+  const exp = (src.match(/^expiration_time\s*=\s*"([^"]+)"/m) || [])[1];
+  const scopes = (src.match(/scopes = \[([\s\S]*?)\]/) || [])[1] || "";
+  const has = (s) => new RegExp(`"${s}"`).test(scopes);
+  return { exp, has, left: exp ? Math.round((Date.parse(exp) - Date.now()) / 1000) : NaN, refreshable: has("offline_access") };
+};
+if (ACT) {
+  const t = readToken();
+  const plan = t ? tokenPlan({ left: t.left, refreshable: t.refreshable, need: MARGIN_S }) : { action: "login" };
+  if (plan.action === "wait") {
+    console.log(`wrangler token: ${t.left}s left, under the ${MARGIN_S}s a wrangler step needs, and it renews only on lapse — waiting ${plan.waitS}s, then renewing`);
+    await new Promise((r) => setTimeout(r, plan.waitS * 1000));
+  }
+  if (plan.action === "wait" || plan.action === "renew") {
+    try { execFileSync("npx", ["wrangler", "whoami"], { stdio: "ignore" }); } catch { /* judged by the expiry it leaves, below */ }
+    const after = readToken();
+    console.log(after && after.left >= MARGIN_S
+      ? `wrangler token: renewed — ${after.left}s left`
+      : `wrangler token: renewal did not take — ${after ? `${after.left}s` : "no config"} left`);
+  }
+}
 {
-  const p = join(homedir(), ".wrangler/config/default.toml");
-  if (!existsSync(p)) add("cloudflare (wrangler)", "ABSENT", "no ~/.wrangler/config/default.toml — run: npx wrangler login");
+  const t = readToken();
+  if (!t) add("cloudflare (wrangler)", "ABSENT", "no ~/.wrangler/config/default.toml — run: npx wrangler login");
   else {
-    const src = readFileSync(p, "utf8");
-    const exp = (src.match(/^expiration_time\s*=\s*"([^"]+)"/m) || [])[1];
-    const scopes = (src.match(/scopes = \[([\s\S]*?)\]/) || [])[1] || "";
-    const has = (s) => new RegExp(`"${s}"`).test(scopes);
-    if (!exp) add("cloudflare (wrangler)", "UNKNOWN", "no expiration_time in the config");
+    const has = t.has;
+    if (!t.exp) add("cloudflare (wrangler)", "UNKNOWN", "no expiration_time in the config");
     else {
-      const left = Math.round((Date.parse(exp) - Date.now()) / 1000);
+      const left = t.left;
       const state = left <= 0 ? "EXPIRED" : left < MARGIN_S ? "EXPIRING" : "ok";
       add("cloudflare (wrangler)", state,
         `${left <= 0 ? `lapsed ${-left}s ago` : `${left}s left`} · pages:write ${has("pages:write") ? "yes" : "NO"} · workers:write ${has("workers:write") ? "yes" : "NO"} · refreshable ${has("offline_access") ? "yes" : "NO"}`,
@@ -52,7 +84,7 @@ const add = (name, state, detail, left) => rows.push({ name, state, detail, left
 }
 
 /* ---- 2. the GitHub CLI token -------------------------------------------------------- */
-{
+if (!ONLY_WRANGLER) {
   try {
     const out = execFileSync("gh", ["auth", "status"], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
     const scopes = (out.match(/Token scopes:\s*(.+)/) || [])[1] || "unknown";
@@ -65,7 +97,7 @@ const add = (name, state, detail, left) => rows.push({ name, state, detail, left
 }
 
 /* ---- 3. worker secrets: named only, never read -------------------------------------- */
-{
+if (!ONLY_WRANGLER) {
   try {
     const out = execFileSync("npx", ["wrangler", "secret", "list", "--config", "wrangler.toml"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
     const names = [...out.matchAll(/"name":\s*"([^"]+)"/g)].map((m) => m[1]);
@@ -111,12 +143,21 @@ const remedy = (r) => {
   const s = Math.max(0, r.left);
   return `wrangler refreshes on LAPSE, not on proximity — wait ${s}s (${Math.ceil(s / 60)} min) for it to expire, then any wrangler call (\`npx wrangler whoami\`) renews it for an hour`;
 };
-if (dead.length) {
-  console.error(`\n  ${dead.length} credential(s) unusable — fix before drawing any conclusion from an API error.`);
-  for (const r of dead) if (r.name.includes("wrangler")) console.error(`  ${r.name}: it has lapsed, so \`npx wrangler whoami\` will renew it now.`);
+/* AFTER --strict OR --ensure, A WRANGLER ROW THAT IS STILL SHORT MEANS THE RENEWAL ITSELF FAILED —
+   the refresh grant is gone, and a browser login is the only way back. That, and nothing the
+   script could have done, is what stops a deploy now. */
+const login = ACT ? rows.filter((r) => r.name.includes("wrangler") && r.state !== "ok") : [];
+if (login.length) {
+  console.error(`\n  the wrangler token could not be made good for ${MARGIN_S}s (${login[0].state.toLowerCase()}, ${login[0].detail}).`);
+  console.error("  Renewal did not produce a fresh token, so the refresh grant no longer works: `npx wrangler login` in a browser, then deploy again.");
   process.exit(1);
 }
-if (soon.length && process.argv.includes("--strict")) {
+if (dead.length) {
+  console.error(`\n  ${dead.length} credential(s) unusable — fix before drawing any conclusion from an API error.`);
+  for (const r of dead) if (r.name.includes("wrangler")) console.error(`  ${r.name}: it has lapsed, so \`npx wrangler whoami\` will renew it now (--strict and --ensure do this themselves).`);
+  process.exit(1);
+}
+if (soon.length && ACT) {
   console.error(`\n  ${soon.length} credential(s) expire within ${MARGIN_S}s — too little for a deploy or an investigation.`);
   for (const r of soon) console.error(`  ${r.name}: ${remedy(r)}`);
   process.exit(1);
