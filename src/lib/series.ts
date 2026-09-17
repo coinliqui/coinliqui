@@ -1,5 +1,5 @@
 import { type Candle, type FundingPoint, T, O, H, L, C, V } from "./candles.ts";
-import { U, CH, INK, SANS, MONO, niceTicks, timeTicks, text, rect, line, fint, crosshair, n2, FS_AXIS, FS_MICRO, PILL_H, PILL_R, PILL_GAP } from "./chart.ts";
+import { U, CH, INK, SANS, MONO, niceTicks, timeTicks, xTick, text, rect, line, fint, crosshair, n2, FS_AXIS, FS_MICRO, PILL_H, PILL_R, PILL_GAP } from "./chart.ts";
 
 /* =========================================================================================
    PRICE CHART — candles, volume, and the funding band.
@@ -61,7 +61,10 @@ export const DEFAULT_TF = "1d";
 export const MIN_CHART_BARS = 6;
 
 
-export function aggregate(src: Candle[], factor: number): Candle[] {
+/** Chunks `factor` base bars at a time, counted BACK from the newest. Not exported: a page that
+    chunked its own bars is how /funding/[symbol] kept bars that moved with the render after
+    /coins/[coin] stopped. Pages draw slotBars() or drawnBars(). */
+function aggregate(src: Candle[], factor: number): Candle[] {
   if (factor <= 1) return src;
   const out: Candle[] = [];
   for (let end = src.length; end > 0; end -= factor) {
@@ -71,6 +74,73 @@ export function aggregate(src: Candle[], factor: number): Candle[] {
       s[s.length - 1][C], s.reduce((a, c) => a + c[V], 0)]);
   }
   return out;
+}
+
+/** Bar length of each base series, in minutes. */
+export const BASE_MIN = { m15: 15, hour: 60, day: 1440 } as const;
+const DAY_MS = 86_400_000;
+
+/**
+ * THE BARS A PAGE DRAWS FROM A BASE SERIES, built one way everywhere.
+ *
+ * Counting back from the newest base bar made where a bar opens depend on the minute of the
+ * render. It was fixed on /coins/[coin] on 16 September 2026 and nowhere else, because the fix
+ * lived in that template. Measured on production on 17 September 2026, /funding/btc: at 30m all
+ * 300 bars opened at :15 or :45, at 12H all 90 at 08:00 and 20:00, and the first 1W bar was three
+ * days wide under the same slot as a full week. /liquidations/sweep marked its $60,000 wick
+ * "5 Feb, 23:00" — the two-hour bar that happened to hold it — while its own sentence said
+ * 6 Feb 00:00. The liquidation map's 2- and 4-hour columns moved every hour.
+ *
+ * A bar length that divides a UTC day has fixed slots — floor(open / length) — and each bar is
+ * the base bars inside one slot, stamped with the slot's own start. A slot missing a base bar is
+ * drawn from the ones it has, in its own place. The oldest slot is dropped when the store began
+ * inside it, so it is not a stub; the newest is the bar still open. Nothing about the render
+ * time or the store's length can move a slot.
+ *
+ * Longer bars (7 and 30 days) keep whole chunks counted back from the newest day, with the
+ * remainder dropped first so every bar holds exactly `factor` base bars. floor(open / length)
+ * would anchor them on the epoch — weeks starting on a Thursday, 30-day bars starting nowhere a
+ * reader would recognise — and their legends, from barSpan(), say only "weekly" and "thirty-day".
+ */
+export function slotBars(base: Candle[] | undefined, baseMin: number, factor: number): Candle[] {
+  if (!base?.length) return [];
+  if (factor <= 1) return base;
+  const slotMs = baseMin * factor * 60_000;
+  if (DAY_MS % slotMs !== 0) return aggregate(base.slice(base.length % factor), factor);
+  const slots: Candle[][] = [];
+  for (const c of base) {
+    const open = slots[slots.length - 1];
+    if (open && Math.floor(open[0][T] / slotMs) === Math.floor(c[T] / slotMs)) open.push(c);
+    else slots.push([c]);
+  }
+  if (slots[0].length < factor) slots.shift();
+  return slots.map((s): Candle => {
+    const [bar] = aggregate(s, s.length);
+    return [Math.floor(s[0][T] / slotMs) * slotMs, bar[O], bar[H], bar[L], bar[C], bar[V]];
+  });
+}
+
+/** A timeframe's drawn bars: its base series in slots, the newest `tf.bars` of them. */
+export const drawnBars = (base: Candle[] | undefined, tf: Timeframe): Candle[] =>
+  slotBars(base, BASE_MIN[tf.base], tf.factor).slice(-tf.bars);
+
+/* Numbers a bar length is said in. Only lengths the timeframes use need a word; any other falls
+   back to digits, which stays true. */
+const WORD: Record<number, string> = { 2: "two", 3: "three", 4: "four", 6: "six", 12: "twelve", 15: "fifteen", 30: "thirty" };
+
+/**
+ * "26 thirty-day bars". The unit is worked out from the base bar length times the factor, so a
+ * re-defined timeframe is described by its own numbers. "1M" is thirty daily bars, not a month,
+ * and used to be called "monthly bars" (/coins/bnb?tf=1m, 16 September 2026: 26 bars 43,200
+ * minutes apart, opening on the 29th, then the 28th, then the 27th); the fix read "over 26 30-day
+ * bars", two numbers in a row. Only lengths English has a word for get the word.
+ */
+export function barSpan(tf: Timeframe, n: number): string {
+  const min = BASE_MIN[tf.base] * tf.factor;
+  const say = (k: number, unit: string) => `${WORD[k] ?? k}-${unit}`;
+  const unit = min === 60 ? "hourly" : min === 1440 ? "daily" : min === 10080 ? "weekly"
+    : min % 1440 === 0 ? say(min / 1440, "day") : min % 60 === 0 ? say(min / 60, "hour") : say(min, "minute");
+  return `${n.toLocaleString("en-US")} ${unit} ${n === 1 ? "bar" : "bars"}`;
 }
 
 /* Panel heights in U. Price takes whatever is left, which keeps it dominant at any viewBox
@@ -318,7 +388,7 @@ export function buildPriceChart(
   s.push(text(axisX + PILL_GAP + 37, lastY + 4, "$" + (dp ? px.toFixed(dp) : fint(px)), INK.accInk, 11.5, "middle", 600, MONO, ` data-live="txt"`));
 
   s.push(`<g data-ax="x">${timeTicks(candles.map((c) => c[T]), 8)
-    .map(({ i, label }) => text(xOf(i), LY.h - 9, label, INK.faint, FS_AXIS, "middle")).join("")}</g>`);
+    .map(({ i, label }) => xTick(xOf(i), LY.h - 9, label)).join("")}</g>`);
   s.push(crosshair(plotX, priceY, plotW, LY.h - CH.padB - priceY, axisX, { dot: true }));
 
   const first = candles[0][C];
@@ -443,7 +513,7 @@ export function buildFundingChart(candles: Candle[], funding: FundingPoint[] | n
   s.push(text(axisX + PILL_GAP, zeroY + 4, "0%", INK.dim, FS_MICRO));
   s.push(text(axisX + PILL_GAP, top + h - 2, `−${(max * 100).toFixed(0)}%`, INK.faint, FS_MICRO));
   s.push(`<g data-ax="x">${timeTicks(candles.map((c) => c[T]), 8)
-    .map(({ i, label }) => text(xOf(i), FUND_H - 9, label, INK.faint, FS_AXIS, "middle")).join("")}</g>`);
+    .map(({ i, label }) => xTick(xOf(i), FUND_H - 9, label)).join("")}</g>`);
 
   return {
     svg: `<svg viewBox="0 0 ${CH.w} ${FUND_H}" width="100%" role="img" aria-label="Funding rate history, annualised, with the side paying shown by colour">${s.join("")}</svg>`,

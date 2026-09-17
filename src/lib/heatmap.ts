@@ -1,5 +1,5 @@
 import type { LiqMap } from "./liqmap.ts";
-import { CH, INK, RAMP, transfer, rampIndex, rampValue, niceTicks, timeTicks, text, rect, line, fint, compact, crosshair, n2, MONO, FS_AXIS, FS_MICRO, PILL_GAP } from "./chart.ts";
+import { CH, INK, RAMP, transfer, rampIndex, rampValue, niceTicks, timeTicks, xTick, text, rect, line, fint, compact, crosshair, n2, MONO, FS_AXIS, FS_MICRO, PILL_GAP } from "./chart.ts";
 import { axisDp, nf } from "../../public/shared.js";
 
 /* =========================================================================================
@@ -130,7 +130,7 @@ export function paintHeatMap(m: LiqMap, opts: { height?: number; mid?: number; m
   s.push(`<g data-ax="y">${niceTicks(m.loPrice, m.hiPrice, 5)
     .map((v) => text(axisX + PILL_GAP, yOf(v) + 3.5, tick(v), INK.dim, FS_AXIS)).join("")}</g>`);
   s.push(`<g data-ax="x">${timeTicks(m.candles.map((c) => c[0]), 10)
-    .map(({ i, label }) => text(plotX + slot * (i + 0.5), h - 9, label, INK.faint, FS_AXIS, "middle")).join("")}</g>`);
+    .map(({ i, label }) => xTick(plotX + slot * (i + 0.5), h - 9, label)).join("")}</g>`);
 
   // MODELLED, said inside the picture — not only in the caption underneath it
   s.push(rect(plotX + 8, plotY + 8, 76, 19, "rgba(10,13,18,.72)", ' rx="4"'));

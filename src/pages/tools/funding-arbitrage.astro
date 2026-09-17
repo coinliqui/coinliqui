@@ -2,7 +2,7 @@
 import Base from "../../layouts/Base.astro";
 import { getSnapshot, coldStart, findPerp } from "../../lib/hyperliquid.ts";
 import { usd, pct, rawRate, toApr, VENUE_LABEL, paysClass, queryNum, LEGEND_PAYS, type VenueFunding } from "../../lib/funding.ts";
-import { extremeBy, type Extreme } from "../../lib/extreme.ts";
+import { extremeBy, widestSpread, type Extreme } from "../../lib/extreme.ts";
 
 import Advisory from "../../components/Advisory.astro";
 import Figure from "../../components/Figure.astro";
@@ -27,17 +27,18 @@ if (!snap.available) return coldStart();
    exact spread, so two contracts at 40.401% and 40.404% — both printed "40.40%" here and on
    /funding — gave one of them "the widest live spread" alone. extreme.ts asks callers to pass
    the precision they print at; the equivalent that cannot drift from pct is to compare the printed
-   figure itself, so `widestShown` ranks parseFloat(pct(spread)) and every sentence about "widest"
+   figure itself, so the printed pick ranks parseFloat(pct(spread)) and every sentence about "widest"
    reads from it. Rounding is monotone, so the exact maximum is always among the printed ones, and
    the contract the page OPENS on is still `widest`, the first at the exact maximum — the rule
    /tools mirrors to name this calculator's contract, which a printed-precision pick could break. */
-const tradable = snap.perps.filter((p) => p.venues.length >= 2);
-const widestX = extremeBy(tradable, (p) => p.aprSpread ?? NaN, "max");
-const widest = widestX.kind === "unique" ? widestX.item : widestX.kind === "tied" ? widestX.items[0] : undefined;
-const widestShown = extremeBy(tradable, (p) => parseFloat(pct(p.aprSpread ?? NaN)), "max");
-const widestSet: readonly (typeof tradable)[number][] = widestShown.kind === "unique" ? [widestShown.item] : widestShown.kind === "tied" ? widestShown.items : [];
-const widestPrinted = widestSet.length ? pct(widestSet[0].aprSpread ?? NaN) : pct(NaN);
-const widestIsSpread = widestSet.length > 0 && widestPrinted !== pct(0);
+/* Both picks now live in widestSpread() (src/lib/extreme.ts), shared with every page that names the
+   widest spread. */
+const W = widestSpread(snap.perps);
+const tradable = W.tradable;
+const widest = W.opens;
+const widestSet = W.set;
+const widestPrinted = W.printed;
+const widestIsSpread = W.isSpread;
 
 /* EVERY INPUT THE SERVER REPLACES IS NOW SAID ON THE PAGE, AND THE BOUNDS ARE ONE DECLARATION.
    Measured 16 September 2026: /tools/funding-arbitrage?symbol=BTC&capital=0&days=0 rendered 10000

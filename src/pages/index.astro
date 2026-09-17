@@ -5,7 +5,7 @@ import { getSnapshot, coldStart } from "../lib/hyperliquid.ts";
 import { pct, usd, paysClass, paysArrow, paysLabel, LEGEND_FUNDING, VENUE_LABEL, type Venue } from "../lib/funding.ts";
 import { readCachedFlips, describeCoverage } from "../lib/flips.ts";
 import { distribution } from "../lib/viz.ts";
-import { extremeBy, pluralityOf } from "../lib/extreme.ts";
+import { extremeBy, pluralityOf, widestSpread } from "../lib/extreme.ts";
 import Figure from "../components/Figure.astro";
 
 import { coverageRule, coverageToday } from "../lib/coverage.ts";
@@ -31,7 +31,9 @@ const flipProgress = Math.min(100, Math.round((coveredH / 24) * 100));
    extreme is genuinely alone, so the tied case has to be written out rather than papered over. */
 const dearest = extremeBy(snap.perps, (p) => p.hlApr, "max");
 const cheapest = extremeBy(snap.perps, (p) => p.hlApr, "min");
-const widestX = extremeBy(snap.perps, (p) => p.aprSpread ?? NaN, "max");
+/* Compared as printed, through widestSpread() — see src/lib/extreme.ts. */
+const W = widestSpread(snap.perps);
+const widestX = W.isSpread ? W.shown : ({ kind: "none" } as const);
 /* THE MASS, WHICH IS THE ACTUAL STORY AND WAS ONLY ON /funding. Most of this book rests on one
    number, and that number is a venue constant rather than a reading. Detected, not assumed: it is
    only CALLED the base rate when it matches the documented value, so if Hyperliquid ever moves the
@@ -123,10 +125,10 @@ const fundingClause: [string, boolean][] =
 const spreadClause: [string, boolean][] =
   widestX.kind === "unique"
     ? [["The widest spread between venues is ", false], [widestX.item.symbol, true],
-       [", ", false], [pct(widestX.value), true], [".", false]]
+       [", ", false], [W.printed, true], [".", false]]
     : widestX.kind === "tied"
       ? [[String(widestX.items.length), true], [" contracts share the widest venue spread, ", false],
-         [pct(widestX.value), true], [".", false]]
+         [W.printed, true], [".", false]]
       : [];
 const parts: [string, boolean][] = [
   ["Hyperliquid open interest across ", false], [String(snap.perps.length), true],
@@ -159,7 +161,7 @@ const description =
     <div class="cards">
       <a class="card" href={widestX.kind === "unique" ? `/funding/${widestX.item.symbol.toLowerCase()}` : "/funding"}>
         <div class="card__label">Widest venue spread</div>
-        <div class="card__value">{widestX.kind === "none" ? "—" : pct(widestX.value)}</div>
+        <div class="card__value">{widestX.kind === "none" ? "—" : W.printed}</div>
         {/* "ACROSS THREE VENUES" WAS A CONSTANT DESCRIBING A VARIABLE. The spread is max-min
             over whatever venues publish a rate for that coin, and four of the forty-nine
             published contracts have fewer than three — HYPE and PURR trade on Hyperliquid

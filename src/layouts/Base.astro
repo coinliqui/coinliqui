@@ -1584,7 +1584,7 @@ const schema = {
               Data via Hyperliquid (derivatives, including the Binance and Bybit funding rates it
               republishes) and Ethereum JSON-RPC (on-chain). <a href="/data-sources">Which endpoint feeds which
               figure →</a> <a href="/terms">Not investment advice →</a>
-              {fetchedAt && <> Figures as of <time datetime={new Date(fetchedAt).toISOString()}>{new Date(fetchedAt).toISOString().replace("T", " ").slice(0, 16)} UTC</time>.</>}
+              {fetchedAt ? <> Figures as of <time datetime={new Date(fetchedAt).toISOString()}>{new Date(fetchedAt).toISOString().replace("T", " ").slice(0, 16)} UTC</time>.</> : null}
             </p>
           </footer>
         </main>

@@ -10,8 +10,8 @@ import { countWords } from "../../lib/site.ts";
 import { getCandles, getHourly, getM15, type Candle } from "../../lib/candles.ts";
 import { freshness, ageWords, minutesSince } from "../../lib/freshness.ts";
 import Overview from "../../components/Overview.astro";
-import { TIMEFRAMES, DEFAULT_TF, MIN_CHART_BARS, aggregate, buildPriceChart, CHART_H, type ChartMode } from "../../lib/series.ts";
-import { CH, n2, timeTicks } from "../../lib/chart.ts";
+import { TIMEFRAMES, DEFAULT_TF, MIN_CHART_BARS, drawnBars, barSpan, buildPriceChart, CHART_H, type ChartMode } from "../../lib/series.ts";
+import { CH } from "../../lib/chart.ts";
 
 import { priceDp } from "../../lib/funding.ts";
 /* =========================================================================================
@@ -260,59 +260,12 @@ const modeKey: ChartMode = (qs.get("view") ?? qs.get("keep_view")) === "line" ? 
    has not arrived must be absent rather than approximated. */
 const baseFor = (tf: (typeof TIMEFRAMES)[number]) =>
   (tf.base === "m15" ? m15set?.d : tf.base === "hour" ? hourset?.d : dayset?.d);
-/* WHOLE BARS ONLY. aggregate() chunks backwards from the newest base bar, so when the series
-   does not divide by the factor the OLDEST chunk is a stub — and slice(-tf.bars) only cuts it
-   off when the series is longer than the window. On 1W it is not: the daily store holds about
-   800 days, 1W asks for 130 bars and gets 115, and the first of them was three days wide.
-   Measured on production on 16 September 2026, /coins/cardano?tf=1w: bar 1 opened Mon
-   2024-07-08, bar 2 Thu 2024-07-11 (a 4,320-minute gap, every other gap 10,080), drawn in a slot
-   as wide as a full week under a legend counting "115 weekly bars". Every coin's 1W had it.
-   Dropping the remainder BEFORE aggregating means every drawn bar holds exactly `factor` base
-   bars, whatever the length of the store on the day; the newest bar is the one still open, as
-   on every timeframe. The availability test reads the same trimmed series, so a button cannot
-   be offered on bars that are then not drawn. */
-/* AND A BAR THAT FITS THE DAY OPENS ON THE CLOCK, NOT WHERE THE COUNT HAPPENS TO START. Counting
-   back from the newest base bar made every intraday bar's opening minute depend on the minute of
-   the render. Measured on the local render on 16 September 2026 at 15:40 UTC,
-   /coins/cardano?tf=30m&view=candle: the newest fifteen-minute bar opened at 15:30, so the pairs
-   were 15:15–15:30, 14:45–15:00 … and every 30-minute bar opened at :15 or :45. The axis tick
-   under each of them read "06:00" while the bar it sat on opened at 06:15, outside its own half
-   hour; a render of the same URL between 15:45 and 16:00 had its bars on :00 and :30. 4H and
-   12H drifted the same way, by the hour.
-   A bar length that divides a UTC day now has fixed slots — floor(open / length) — and each
-   drawn bar is the base bars inside one slot, stamped with the slot's own start (a slot missing
-   a base bar is drawn from the ones it has, in its own place). The oldest slot is dropped when
-   the store began inside it, so it is not a stub; the newest is the bar still open. A slot is
-   computed from the timestamp, so no render time and no store length can move it.
-   1W and 1M keep the whole-chunk count above. They are longer than a day, and floor(open /
-   length) would anchor them on the epoch — weeks starting on a Thursday, 30-day bars starting
-   nowhere a reader would recognise — while their legends say only "weekly" and "30-day", which
-   the count already makes true. The bar length is the same arithmetic span() uses for those
-   legends, not a second table. */
-const BASE_MIN = { m15: 15, hour: 60, day: 1440 } as const;
-const DAY_MS = 86_400_000;
-const drawnBars = (tf: (typeof TIMEFRAMES)[number]): Candle[] => {
-  const b = baseFor(tf);
-  if (!b?.length) return [];
-  const slotMs = BASE_MIN[tf.base] * tf.factor * 60_000;
-  if (tf.factor === 1 || DAY_MS % slotMs !== 0) {
-    return aggregate(b.slice(b.length % tf.factor), tf.factor).slice(-tf.bars);
-  }
-  const slots: Candle[][] = [];
-  for (const c of b) {
-    const open = slots[slots.length - 1];
-    if (open && Math.floor(open[0][0] / slotMs) === Math.floor(c[0] / slotMs)) open.push(c);
-    else slots.push([c]);
-  }
-  if (slots[0].length < tf.factor) slots.shift();
-  return slots.map((s): Candle => {
-    const [bar] = aggregate(s, s.length);
-    return [Math.floor(s[0][0] / slotMs) * slotMs, bar[1], bar[2], bar[3], bar[4], bar[5]];
-  }).slice(-tf.bars);
-};
+/* Bars come from drawnBars() in src/lib/series.ts, the one place that says where a bar opens —
+   it was written here first and the contract page never got it. */
+const barsOf = (tf: (typeof TIMEFRAMES)[number]): Candle[] => drawnBars(baseFor(tf), tf);
 /* Same correction as the contract template: the test is on the aggregated bar count, because
    that is what gets drawn. See MIN_CHART_BARS in src/lib/series.ts. */
-const tfsAvailable = TIMEFRAMES.filter((tf) => drawnBars(tf).length >= MIN_CHART_BARS).map((tf) => tf.key);
+const tfsAvailable = TIMEFRAMES.filter((tf) => barsOf(tf).length >= MIN_CHART_BARS).map((tf) => tf.key);
 /* TWO REASONS A TIMEFRAME IS MISSING, AND THE NOTE GAVE ONLY ONE. It said every absent button
    had "not yet enough history — fewer than 6 bars at that size". That is true of a series too
    short to aggregate, and false of a series that was not there at all: getCandles, getHourly and
@@ -333,80 +286,17 @@ const tfGapNote =
 const activeTf = TIMEFRAMES.find((tf) => tf.key === tfKey && tfsAvailable.includes(tf.key))
   ?? TIMEFRAMES.find((tf) => tfsAvailable.includes(tf.key));
 const activeMode = MODES.find((m) => m.key === modeKey) ?? MODES[0];
-const activeCandles = activeTf ? drawnBars(activeTf) : [];
-/* AN AXIS OF TIMES WITH NO DATE CANNOT TELL ITS TICKS APART. timeTicks() (src/lib/chart.ts)
-   picks the coarsest calendar unit that yields about eight ticks; a 30m window of 300 bars is six
-   days, fewer than eight, so it fell through to six-hour ticks and thinned 25 of them by taking
-   every fourth — one per day, at whatever hour the series started, labelled with the hour alone.
-   Measured on production on 16 September 2026, /coins/cardano?tf=30m&view=candle: six ticks, all
-   "06:00", on bars of 11, 12, 13, 14, 15 and 16 September; bnb and avalanche the same. The 15m
-   axis read 00:00, 12:00, 00:00, 12:00 … across three days (local render, same day), dated nowhere.
-   The labelling lives in shared code; until it carries a date, this page relabels its own axis
-   from the bars under the ticks — `points` is the array the chart was drawn from, so a label is
-   read off the bar it sits on and cannot name another. Only an axis whose labels are bare times
-   is touched; an axis timeTicks() already dated is left exactly as drawn. When those time ticks are a day
-   or more apart they are re-picked as day ticks — the same timeTicks() asked for one tick per
-   date, which lands them on each date's first bar — so they read as dates rather than as one
-   hour repeated. When they are closer, each tick keeps its own time and the first tick of each
-   date carries the date, which is also what the first tick on the axis gets. */
-const TIME_LABEL = /^\d\d:\d\d$/;
-const dayMonth = (t: number) => `${new Date(t).getUTCDate()} ${MON[new Date(t).getUTCMonth()]}`;
-const clock = (t: number) => new Date(t).toISOString().slice(11, 16);
-const datedAxis = (svg: string, points: number[][]) =>
-  svg.replace(/<g data-ax="x">([\s\S]*?)<\/g>/, (whole, inner: string) => {
-    const ticks = [...inner.matchAll(/<text x="([\d.]+)"([^>]*)>([^<]*)<\/text>/g)].map((m) => ({
-      x: +m[1], attrs: m[2], label: m[3], t: points.find((p) => Math.abs(p[0] - +m[1]) < 0.02)?.[1],
-    }));
-    if (!ticks.length || ticks.some((k) => k.t === undefined || !TIME_LABEL.test(k.label))) return whole;
-    /* A dated label is up to twelve characters and centred on its bar, so near either edge of the
-       viewBox it is slid inward by the overhang (monospace advance ≈ 0.6 em at the tick's own
-       font-size) rather than cut off; the bar stays inside the label's span. */
-    const em = +(ticks[0].attrs.match(/font-size="([\d.]+)"/)?.[1] ?? 11) * 0.6;
-    const tag = (x: number, label: string) => {
-      const half = (label.length * em) / 2;
-      return `<text x="${n2(Math.min(Math.max(x, half), CH.w - half))}"${ticks[0].attrs}>${label}</text>`;
-    };
-    const dates = new Set(points.map((p) => Math.floor(p[1] / DAY_MS))).size;
-    const apart = ticks.length > 1 && ticks.every((k, i) => i === 0 || k.t! - ticks[i - 1].t! >= DAY_MS);
-    if (apart && dates >= 3) {
-      return `<g data-ax="x">${timeTicks(points.map((p) => p[1]), dates)
-        .map(({ i }) => tag(points[i][0], dayMonth(points[i][1]))).join("")}</g>`;
-    }
-    let seen = NaN;
-    return `<g data-ax="x">${ticks.map((k) => {
-      const day = Math.floor(k.t! / DAY_MS);
-      const label = day === seen ? clock(k.t!) : k.t! % DAY_MS === 0 ? dayMonth(k.t!) : `${dayMonth(k.t!)} ${clock(k.t!)}`;
-      seen = day;
-      return tag(k.x, label);
-    }).join("")}</g>`;
-  });
-const builtChart = activeTf
+const activeCandles = activeTf ? barsOf(activeTf) : [];
+/* The x axis dates its own ticks now — timeTicks() in src/lib/chart.ts. This page used to relabel
+   bare "06:00" ticks after the chart was built, and /funding/[symbol] never got that fix. */
+const activeChart = activeTf
   ? buildPriceChart(activeCandles, null, activeTf, activeMode.key)
   : null;
-const activeChart = builtChart ? { ...builtChart, svg: datedAxis(builtChart.svg, builtChart.points) } : null;
 const active = activeTf && activeChart ? { tf: activeTf, mode: activeMode, chart: activeChart } : null;
 const panels = active ? [active] : [];
 const hasChart = Boolean(active);
-/* A CHAIN OF TERNARIES ENDING IN "weekly bars" IS A DEFAULT THAT LIES. Adding 12H and 1M made
-   it say "over 90 weekly bars" on the 12-hour panel — rendered, on the live page, because a
-   fall-through default answers confidently for any key it has never heard of. A lookup with an
-   explicit fallback to the timeframe's own label cannot invent a unit it was not given. */
-/* AND A LOOKUP TYPED BY HAND STILL NAMED A UNIT THE DATA DOES NOT HAVE. "1m" was "monthly bars",
-   and the bars are not months: aggregate() takes thirty daily bars at a time, counted back from
-   the newest day. Measured on production on 16 September 2026, /coins/bnb?tf=1m: 26 bars opening
-   2024-07-29, 08-28, 09-27 … 2026-07-19, 08-18, every gap exactly 43,200 minutes, the opening day
-   sliding from the 29th to the 18th — under "over 26 monthly bars". Same on every coin.
-   The unit is now worked out from what aggregate() is given — the base series' bar length times
-   the factor — so a timeframe re-defined in src/lib/series.ts is described by its own numbers
-   and nobody has to remember this table. Only the three lengths English has a word for get the
-   word; everything else is said in minutes, hours or days. BASE_MIN is declared with drawnBars,
-   which needs it first. */
-const span = (tf: (typeof TIMEFRAMES)[number], n: number) => {
-  const min = BASE_MIN[tf.base] * tf.factor;
-  const unit = min === 60 ? "hourly" : min === 1440 ? "daily" : min === 10080 ? "weekly"
-    : min % 1440 === 0 ? `${min / 1440}-day` : min % 60 === 0 ? `${min / 60}-hour` : `${min}-minute`;
-  return `${n} ${unit} ${n === 1 ? "bar" : "bars"}`;
-};
+/* The legend's bar count and unit come from barSpan() in src/lib/series.ts, shared with the contract
+   page — which still called thirty-day bars "monthly" after this page stopped. */
 const arrow = (n: number) => (n >= 0 ? "▲" : "▼");
 /* THE CANDLE SENTENCE DESCRIBED CANDLES ON THE LINE VIEW. It was one server string for both chart
    styles, and the client swap never touched it: /coins/bnb?tf=1m&view=line, on production on 16
@@ -595,7 +485,7 @@ const description = `Live ${coin.name} (${coin.symbol}) perpetual price from Hyp
       <p class="legend">
         Period high <b data-tfstat="high" data-group="cx">{px(active!.chart!.high)}</b>,
         low <b data-tfstat="low" data-group="cx">{px(active!.chart!.low)}</b>,
-        over <b data-tfstat="bars" data-group="cx">{span(active!.tf, active!.chart!.bars)}</b>.
+        over <b data-tfstat="bars" data-group="cx">{barSpan(active!.tf, active!.chart!.bars)}</b>.
         {" "}<span class="legend__style" data-tfstat="style" data-group="cx">{styleNote}</span>
         {" "}No funding band on this chart: the funding rate is quoted at
         its current value in the cards and the per-venue table below, and its history has

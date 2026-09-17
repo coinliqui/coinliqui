@@ -1,5 +1,5 @@
 import type { Candle } from "./candles.ts";
-import { aggregate } from "./series.ts";
+import { slotBars } from "./series.ts";
 
 /* =========================================================================================
    MODELLED LIQUIDATION DENSITY — price on Y, time on X.
@@ -189,7 +189,7 @@ export const resolveWindow = (q: URLSearchParams): MapWindow =>
 export const canDrawMap = (series: Candle[], w: MapWindow) => series.length - w.cols > 4 && series.length > 40;
 /** The same test from raw hourly candles, for callers that have not aggregated them. */
 export const mapDrawable = (hourly: Candle[] | null | undefined, w: MapWindow) =>
-  !!hourly && canDrawMap(aggregate(hourly, w.factor), w);
+  !!hourly && canDrawMap(slotBars(hourly, 60, w.factor), w);
 
 /* THREE STATES, NOT TWO, BECAUSE "NO MAP" HAS TWO CAUSES AND ONLY ONE OF THEM IS "TOO LITTLE HISTORY".
    getHourly() in src/lib/candles.ts returns null for a key never written, a series written empty, a

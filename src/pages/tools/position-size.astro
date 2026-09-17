@@ -368,7 +368,7 @@ const description = `Risk-based position sizing for ${perp.symbol} perpetuals th
           <span
             class:list={["scale__tag", m.up ? "scale__tag--up" : "scale__tag--down",
               scaleAt(m.at) < SCALE.start && "scale__tag--start", scaleAt(m.at) > SCALE.end && "scale__tag--end"]}
-            style={`left:${scaleAt(m.at)}%`}>{m.label}<b>{px(m.at)}</b></span>
+            style={`left:${scaleAt(m.at)}%`}>{m.label}{" "}<b>{px(m.at)}</b></span>
         </>
       ))}
     </div>
@@ -648,7 +648,7 @@ const description = `Risk-based position sizing for ${perp.symbol} perpetuals th
           sc.innerHTML = '<span class="scale__line"></span>' + rows.map((m) => {
             const x = at(m.at);
             return `<span class="scale__mark${m.tone ? " scale__mark--" + m.tone : ""}" style="left:${x}%"></span>` +
-              `<span class="scale__tag scale__tag--${m.up ? "up" : "down"}${x < scaleCfg.start ? " scale__tag--start" : ""}${x > scaleCfg.end ? " scale__tag--end" : ""}" style="left:${x}%">${m.label}<b>${price(m.at)}</b></span>`;
+              `<span class="scale__tag scale__tag--${m.up ? "up" : "down"}${x < scaleCfg.start ? " scale__tag--start" : ""}${x > scaleCfg.end ? " scale__tag--end" : ""}" style="left:${x}%">${m.label} <b>${price(m.at)}</b></span>`;
           }).join("");
         }
 

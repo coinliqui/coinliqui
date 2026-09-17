@@ -4,7 +4,7 @@ import { getSnapshot, coldStart, requestedPerp } from "../../lib/hyperliquid.ts"
 import { usd, pct, nf, axisDp } from "../../lib/funding.ts";
 import { maintenanceMarginFraction, type MarginTable } from "../../lib/margin.ts";
 import { getCandles, survivalGrid, gridLevels } from "../../lib/candles.ts";
-import { CH, INK, RAMP, text, rect, timeTicks, niceTicks, fint, SANS, FS_AXIS, FS_MICRO } from "../../lib/chart.ts";
+import { CH, INK, RAMP, text, rect, timeTicks, xTick, niceTicks, fint, SANS, FS_AXIS, FS_MICRO } from "../../lib/chart.ts";
 import tables from "../../data/margin-tables.json";
 
 import Advisory from "../../components/Advisory.astro";
@@ -241,7 +241,7 @@ if (grid && grid.entries.length > 4) {
   });
 
   for (const { i, label } of timeTicks(grid.entries.map((c) => c[0]), 8)) {
-    out.push(text(hpL + i * colW + colW / 2, HH - 9, label, INK.faint, FS_AXIS, "middle"));
+    out.push(xTick(hpL + i * colW + colW / 2, HH - 9, label));
   }
   heatSvg = out.join("");
 }

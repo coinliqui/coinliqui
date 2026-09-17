@@ -15,9 +15,16 @@
  * DELIBERATELY NOT A WARNING BOX. A yellow panel above a calculator reads as a formality and
  * gets skipped; it also costs the page its first impression. This is small, quiet, adjacent to
  * the lede, and it links — which is the only property that actually matters.
+ *
+ * `modelled={false}` DROPS THE HALF THAT DESCRIBES A MODEL. A liquidation page with too little
+ * history draws no map, and says in its own words that "neither the picture nor its assumptions
+ * appear here" — under this line saying "modelled figures from stated assumptions". The
+ * disclaimer stays; the description of figures the page does not show goes.
  */
+interface Props { modelled?: boolean }
+const { modelled = true } = Astro.props;
 ---
 <p class="advisory">
-  Not investment advice — modelled figures from stated assumptions.
+  Not investment advice{modelled ? " — modelled figures from stated assumptions." : "."}
   {" "}<a href="/terms">Terms and disclaimer</a>
 </p>

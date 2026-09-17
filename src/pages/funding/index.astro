@@ -7,7 +7,7 @@ import { freshness, ageWords, minutesSince } from "../../lib/freshness.ts";
 import Figure from "../../components/Figure.astro";
 import Overview from "../../components/Overview.astro";
 import { heatScale, heatStep as heatStepOf, signedBar, type HeatScale } from "../../lib/viz.ts";
-import { extremeBy } from "../../lib/extreme.ts";
+import { extremeBy, widestSpread } from "../../lib/extreme.ts";
 import Spark from "../../components/Spark.astro";
 import { readSparks, sparkScale, SPARK_POINTS, SPARK_STEP_MS } from "../../lib/sparks.ts";
 import { coverageRule, coverageToday } from "../../lib/coverage.ts";
@@ -153,7 +153,9 @@ const shortsPay = paying.filter((p) => p.hlApr < 0).length;
 const flat = paying.length - longsPay - shortsPay;
 const steepestShort = extremeBy(paying, (p) => p.hlApr, "min");
 const steepestLong = extremeBy(paying.filter((p) => p.hlApr > 0), (p) => p.hlApr, "max");
-const widestX = extremeBy(snap.perps, (p) => p.aprSpread ?? NaN, "max");
+/* Compared as printed, through widestSpread() — see src/lib/extreme.ts. */
+const W = widestSpread(snap.perps);
+const widestX = W.isSpread ? W.shown : ({ kind: "none" } as const);
 /* The steeper of the two sides is the one worth naming first — a book where shorts are paying
    45% and longs 1% is a book about shorts, whichever side has more contracts on it. */
 const loudest = steepestShort.kind !== "none" && steepestLong.kind !== "none"
@@ -249,8 +251,8 @@ const description =
       {loudest.kind === "unique" && <>{" "}The steepest is <b>{loudest.item.symbol}</b>, where {paysLabel(loudest.value)}{" "}<b>{pct(Math.abs(loudest.value))}</b> a year.</>}
       {loudest.kind === "tied" && <>{" "}The steepest reading, {pct(Math.abs(loudest.value))} a year with {paysLabel(loudest.value)}, is shared by <b>{loudest.items.length}</b> contracts.</>}
       {" "}<b>{modalCount} of {hlAprs.length}</b> sit exactly on Hyperliquid&rsquo;s <b>{pct(modalApr)}</b>{modalIsBase ? " base rate" : " most common rate"}, a venue constant rather than a view about any of them &mdash; so the market has priced only <b>{offBase.length}</b> of them at all.
-      {widestX.kind === "unique" && <>{" "}The widest gap between venues is <b>{widestX.item.symbol}</b> at {pct(widestX.value)} APR.</>}
-      {widestX.kind === "tied" && <>{" "}The widest gap between venues, {pct(widestX.value)} APR, is shared by <b>{widestX.items.length}</b> contracts.</>}
+      {widestX.kind === "unique" && <>{" "}The widest gap between venues is <b>{widestX.item.symbol}</b> at {W.printed} APR.</>}
+      {widestX.kind === "tied" && <>{" "}The widest gap between venues, {W.printed} APR, is shared by <b>{widestX.items.length}</b> contracts.</>}
     </Overview>
   </div>
 

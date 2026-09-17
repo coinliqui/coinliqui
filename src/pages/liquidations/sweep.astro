@@ -4,7 +4,7 @@ import { usd, pct } from "../../lib/funding.ts";
 import { buildLiqMap, PROFILES } from "../../lib/liqmap.ts";
 import { paintHeatMap } from "../../lib/heatmap.ts";
 import { RAMP, CH, compact } from "../../lib/chart.ts";
-import { aggregate } from "../../lib/series.ts";
+import { slotBars } from "../../lib/series.ts";
 import type { Candle } from "../../lib/candles.ts";
 import frozen from "../../data/sweep-2026-02.json";
 
@@ -33,7 +33,7 @@ const mmf = 1 / (2 * frozen.maxLeverage);
 const profile = PROFILES.find((p) => p.key === Astro.url.searchParams.get("profile")) ?? PROFILES[1];
 
 const FACTOR = 2;                                   // 2-hour bars: 138 columns, candles still candles
-const series = aggregate(hourly, FACTOR);
+const series = slotBars(hourly, 60, FACTOR);
 const DISPLAY_FROM = Date.parse("2026-02-01T00:00:00Z");
 const DISPLAY_TO = Date.parse("2026-02-12T12:00:00Z");
 const start = series.findIndex((c) => c[0] >= DISPLAY_FROM);
@@ -47,9 +47,12 @@ const map = buildLiqMap({
   oiNotional: frozen.oiNotional, profile, rows: 150, ageBars, minSpan: 0.16,
 });
 const WICK_AT = Date.parse("2026-02-06T00:00:00Z");
-/* aggregate() chunks backwards from the end, so a 2-hour bar does not necessarily start on an
-   even hour. The bar to point at is the one whose window CONTAINS the wick, found by index —
-   comparing timestamps matched nothing and silently dropped the highlight. */
+/* The bar to point at is the one whose window CONTAINS the wick. Bars were chunked back from the
+   end of the frozen series, so the $60,000 hour fell in a bar opening 5 Feb 23:00 and the chart
+   was marked "5 Feb, 23:00 — low $60,000" beside a sentence saying 6 Feb 00:00 (production, 17
+   September 2026). slotBars() opens two-hour bars on even hours; the containing bar is still found
+   by window rather than by equal timestamps, so a series that starts off the hour cannot drop the
+   highlight. */
 const wickIdx = (() => {
   let k = 0;
   for (let i = 0; i < map.candles.length; i++) if (map.candles[i][0] <= WICK_AT) k = i;
@@ -215,8 +218,10 @@ const description =
     {/* THESE ARE TWO-HOUR BARS, and the table below this one is HOURLY. Both stamp their rows
         the same way, so "5 Feb, 19:00" appears in both with different OHLC and nothing said
         which is which. The width was stated for the chart and in the assumptions table, and
-        not here, where the ambiguity actually lands. Verified against the frozen data: this
-        row's o/h/l/c/v is exactly the 2-hour aggregate of 19:00 and 20:00. */}
+        not here, where the ambiguity actually lands. Bars open on even hours since 17 September
+        2026 (slotBars); verified against the frozen data the same day: the "6 Feb, 00:00" row is
+        exactly the 2-hour aggregate of the 00:00 and 01:00 hourly rows, and "5 Feb, 20:00" of
+        20:00 and 21:00. */}
     <strong>Each row is a two-hour bar</strong> — stamped with the hour it opens. The hourly
     candles are in the table below, so the same timestamp appears in both with different highs
     and lows.

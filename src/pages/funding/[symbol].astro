@@ -4,7 +4,7 @@ import { getSnapshot, coldStart, findPerp, getLive } from "../../lib/hyperliquid
 import { VENUE_LABEL, pct, usd, rawRate, carryCost, settlementsPerYear, nextSettlement, paysClass, paysLabel, type Venue } from "../../lib/funding.ts";
 import { liquidationPrice, type MarginTable, roomVerdict } from "../../lib/margin.ts";
 import { getCandles, getM15, getHourly, getFunding } from "../../lib/candles.ts";
-import { TIMEFRAMES, DEFAULT_TF, MIN_CHART_BARS, aggregate, buildPriceChart, buildFundingChart, shortDate, CHART_H } from "../../lib/series.ts";
+import { TIMEFRAMES, DEFAULT_TF, MIN_CHART_BARS, drawnBars, barSpan, buildPriceChart, buildFundingChart, shortDate, CHART_H } from "../../lib/series.ts";
 import { CH } from "../../lib/chart.ts";
 import tables from "../../data/margin-tables.json";
 import { COINS, isLive } from "../../lib/coins.ts";
@@ -289,10 +289,7 @@ const baseFor = (tf: (typeof TIMEFRAMES)[number]) =>
   (tf.base === "m15" ? m15set?.d : tf.base === "hour" ? hourset?.d : dayset?.d);
 /* AVAILABILITY IS TESTED ON WHAT WILL BE DRAWN, not on the series it is drawn from. See
    MIN_CHART_BARS in src/lib/series.ts for the defect this replaced. */
-const barsFor = (tf: (typeof TIMEFRAMES)[number]) => {
-  const b = baseFor(tf);
-  return b ? aggregate(b, tf.factor).slice(-tf.bars).length : 0;
-};
+const barsFor = (tf: (typeof TIMEFRAMES)[number]) => drawnBars(baseFor(tf), tf).length;
 const offered = TIMEFRAMES.filter((tf) => barsFor(tf) >= MIN_CHART_BARS);
 
 /* ONLY OFFER TIMEFRAMES THAT EXIST.
@@ -325,7 +322,7 @@ const candleWrittenAt = activeTf
 const candleCadence = activeTf && activeTf.base !== "day" ? "every 2 hours" : "every 12 hours";
 const candleWritten = candleWrittenAt ? utcStamp(candleWrittenAt) : "an unrecorded time";
 const activeChart = activeTf
-  ? buildPriceChart(aggregate(baseFor(activeTf)!, activeTf.factor).slice(-activeTf.bars), funding, activeTf, "candle", { band: false })
+  ? buildPriceChart(drawnBars(baseFor(activeTf), activeTf), funding, activeTf, "candle", { band: false })
   : null;
 const active = activeTf && activeChart ? { tf: activeTf, chart: activeChart } : null;
 
@@ -382,20 +379,6 @@ const hasChart = Boolean(active);
 const bandDrawn = Boolean(active?.chart.svg.includes('aria-label="Price, volume and funding history"'));
 const fundedBars = active ? active.chart.points.filter((q) => Number.isFinite(q[7])).length : 0;
 const missingTf = TIMEFRAMES.filter((tf) => !offered.some((o) => o.key === tf.key)).map((tf) => tf.label);
-/* A CHAIN OF TERNARIES ENDING IN "weekly bars" IS A DEFAULT THAT LIES. Adding 12H and 1M made
-   it say "over 90 weekly bars" on the 12-hour panel — rendered, on the live page, because a
-   fall-through default answers confidently for any key it has never heard of. A lookup with an
-   explicit fallback to the timeframe's own label cannot invent a unit it was not given. */
-/* The fallback is honest and still terse: with no daily series the page falls to 15m, and the hero
-   read "over 300 15m bars, $76,796.00 open to $75,684.00 close" (http://localhost:4322/funding/btc,
-   16 September 2026). The two intraday keys now carry words like the rest. */
-const SPAN: Record<string, string> = {
-  "15m": "15-minute bars", "30m": "30-minute bars",
-  "1h": "hourly bars", "4h": "4-hour bars", "12h": "12-hour bars",
-  "1d": "daily bars", "1w": "weekly bars", "1m": "monthly bars",
-};
-const span = (k: string) => SPAN[k] ?? `${(TIMEFRAMES.find((t) => t.key === k)?.label ?? k)} bars`;
-
 /* THE TOKEN-QUANTITY RULE WAS IMPLEMENTED INLINE HERE — a third copy, and the one interact.js
    was swept against by the gate. It is qty() in public/shared.js now, the same function the
    browser calls, and the call sites below name it directly rather than aliasing it: an alias
@@ -522,7 +505,7 @@ const description = `What a ${p.symbol} perpetual costs to hold, against ${usd(p
     {/* Each price is bound to its noun with a no-break space, so a wrap cannot leave "close" alone
         on a line under a number it belongs to. textContent keeps U+00A0 through a timeframe switch. */}
     <span class="hero__span"><span data-tfstat="bars" data-group="px">{active
-        ? `over ${active.chart.bars} ${span(active.tf.key)}${periodMove ? `, ${px(periodMove.open)} open to ${px(periodMove.close)} close` : ""}`
+        ? `over ${barSpan(active.tf, active.chart.bars)}${periodMove ? `, ${px(periodMove.open)} open to ${px(periodMove.close)} close` : ""}`
         : "24-hour change"}</span></span>
   </div>
 

@@ -2165,7 +2165,8 @@ export const COMPUTED_FIGURES = [
   ["mixUsed", "the leverage weights renormalised over the rungs this contract's cap leaves in play"],
   ["buildLiqMap", "the modelled liquidation density surface: clusters, swept notional, clipped share — no venue publishes position distribution"],
   ["survivalGrid", "the counterfactual: which leveraged entries the rules would have closed, over the real price path"],
-  ["aggregate", "the candle series resampled to a timeframe the venue does not serve"],
+  ["drawnBars", "the candle series resampled to a timeframe the venue does not serve, on fixed UTC slots"],
+  ["slotBars", "the hourly series resampled to the liquidation map's two- and four-hour columns, on fixed UTC slots"],
   ["fundingByBar", "funding aligned to the bars of a chart, which arrives as an unaligned series"],
   ["carryCost", "what holding a position costs over a horizon at that venue's own settlement cadence"],
 ];

@@ -22,7 +22,7 @@
  *   node --experimental-strip-types scripts/read-floor-cases.mjs
  */
 import { getCandles, getM15, getHourly, getFunding } from "../src/lib/candles.ts";
-import { TIMEFRAMES, MIN_CHART_BARS, aggregate } from "../src/lib/series.ts";
+import { TIMEFRAMES, MIN_CHART_BARS, slotBars } from "../src/lib/series.ts";
 import { readSource } from "./lib/source.mjs";
 
 /** A KV that holds exactly what it is given. */
@@ -30,9 +30,10 @@ const kvWith = (entries) => ({
   async get(key) { return key in entries ? entries[key] : null; },
   async put() {},
 });
-/** n plausible bars: [openTime, open, high, low, close, volume]. */
+/** n plausible bars: [openTime, open, high, low, close, volume], from 9 October 2025 08:00 UTC — on
+    the clock, so a bar count here is not also a test of where slotBars() starts a slot. */
 const bars = (n, stepMs) => Array.from({ length: n }, (_, i) => {
-  const t = 1_760_000_000_000 + i * stepMs;
+  const t = 1_759_996_800_000 + i * stepMs;
   return [t, 100 + i, 101 + i, 99 + i, 100.5 + i, 10];
 });
 const M15 = 900_000, H1 = 3_600_000, D1 = 86_400_000;
@@ -58,8 +59,8 @@ t("no binding at all is null", await getHourly(undefined, "BTC"), null);
 
 console.log("\n  and the chart layer decides availability, on the aggregated count");
 {
-  /* The template's rule, verbatim: aggregate to the timeframe, cap to its window, count. */
-  const offered = (base, factor) => aggregate(base, factor).length >= MIN_CHART_BARS;
+  /* The templates' rule: the bars drawnBars() would draw, counted. */
+  const offered = (base, factor) => slotBars(base, 15, factor).length >= MIN_CHART_BARS;
   const m15of = (n) => bars(n, M15);
   t("20 m15 bars -> 15m is offered", offered(m15of(20), 1), true);
   t("20 m15 bars -> 30m is offered (10 aggregated)", offered(m15of(20), 2), true);
@@ -74,7 +75,7 @@ console.log("\n  the consumers that need depth still refuse what is too short");
 {
   /* Their rules, from src/pages/liquidations.astro and liquidations/survival.astro. */
   const heatmapDraws = (hourlyBars, factor, cols) => {
-    const series = aggregate(bars(hourlyBars, H1), factor);
+    const series = slotBars(bars(hourlyBars, H1), 60, factor);
     return series.length - cols > 4 && series.length > 40;
   };
   const backtestRuns = (dailyBars, hold) => bars(dailyBars, D1).length > hold + 12;

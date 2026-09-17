@@ -398,10 +398,10 @@ const cases = [
     check: "computedFigureFloor",
     why: "forty-nine templated pages shipped in one day with 62% sibling overlap — the shape Google's scaled-content policy is aimed at, and the only defence offered at the time was an argument made after they had shipped",
     fire: () => computedFigureFloor(
-      [{ route: "/coins/[coin]", sources: ["const p = perp.markPx; const chart = aggregate(d, 1);"] }], {}, 3),
+      [{ route: "/coins/[coin]", sources: ["const p = perp.markPx; const chart = drawnBars(d, tf);"] }], {}, 3),
     quiet: () => [
       ...computedFigureFloor(
-        [{ route: "/liquidations/[symbol]", sources: ["buildLiqMap({}); corridorAt(1,2,3); mixUsed(a,b); aggregate(x,1);"] }], {}, 3),
+        [{ route: "/liquidations/[symbol]", sources: ["buildLiqMap({}); corridorAt(1,2,3); mixUsed(a,b); slotBars(x, 60, 2);"] }], {}, 3),
       ...computedFigureFloor([], {}, 3),
     ],
     /* THE FOUR WAYS THIS FLOOR CAN BE FOOLED, and it was written knowing them. */

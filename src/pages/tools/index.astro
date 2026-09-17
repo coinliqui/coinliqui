@@ -4,6 +4,7 @@ import { getSnapshot, coldStart, requestedPerp } from "../../lib/hyperliquid.ts"
 import { pct, usd, VENUE_LABEL } from "../../lib/funding.ts";
 import { liquidationPrice, maintenanceMarginFraction, type MarginTable } from "../../lib/margin.ts";
 import tables from "../../data/margin-tables.json";
+import { widestSpread } from "../../lib/extreme.ts";
 const snap = await getSnapshot((Astro.locals as any)?.runtime?.env?.SNAPSHOT, import.meta.env.DEV);
 // Cold store: 503 + Retry-After rather than a page rendered from nothing.
 if (!snap.available) return coldStart();
@@ -18,16 +19,21 @@ if (!snap.available) return coldStart();
    So each card now carries the contract its own calculator opens on, by that calculator's rule,
    and the lede is assembled from the four of them: it can say "every" only when all four agree.
    Position size and leverage call requestedPerp() with no symbol, as their pages do. Funding cost
-   and funding arbitrage choose inline in their own pages, so those two rules are mirrored here
-   line for line — funding-cost.astro takes perps[0] on Hyperliquid, funding-arbitrage.astro the
-   widest spread among contracts quoted on two venues or more. */
+   and funding arbitrage choose in their own pages: funding-cost.astro takes perps[0] on Hyperliquid,
+   mirrored here, and funding-arbitrage.astro the widest spread, through widestSpread(). */
 const venueOf = (p: (typeof snap.perps)[number]) => p.venues.find((v) => v.venue === "HlPerp") ?? p.venues[0];
 const pinned = requestedPerp(snap.perps, null, tables as Record<string, MarginTable>);
 const pinnedPerp = pinned && pinned !== "unknown" ? pinned.perp : null;
 const costPerp = snap.perps[0];
 const costVenue = venueOf(costPerp);
-const tradable = snap.perps.filter((p) => p.venues.length >= 2);
-const arbPerp = [...tradable].sort((a, b) => (b.aprSpread ?? 0) - (a.aprSpread ?? 0))[0] ?? snap.perps[0];
+/* Funding arbitrage's contract is widestSpread().opens, the same call its page makes, so the rule is
+   shared rather than mirrored. The lede calls it "the widest" only when widestSpread() says it is
+   alone at the printed maximum. */
+const W = widestSpread(snap.perps);
+const arbPerp = W.opens ?? snap.perps[0];
+const arbWidest = !W.isSpread || !W.set.includes(arbPerp) ? ""
+  : W.set.length === 1 ? `the widest live spread at ${W.printed} a year`
+  : `tied with ${W.set.length - 1} other contract${W.set.length === 2 ? "" : "s"} for the widest live spread, ${W.printed} a year`;
 
 // Only shipped tools are listed. There are no "coming soon" entries.
 // Each blurb names the specific thing the common formula gets wrong, because that is the
@@ -65,7 +71,7 @@ const tools = [
     blurb: "The cross-venue spread with both legs annualised on their own interval, not differenced as if the intervals matched.",
     opens: arbPerp,
     live: arbPerp.aprSpread != null ? `${arbPerp.symbol} spread ${pct(arbPerp.aprSpread)}` : arbPerp.symbol,
-    alone: arbPerp.aprSpread != null ? `${arbPerp.symbol}, the widest live spread at ${pct(arbPerp.aprSpread)} a year` : arbPerp.symbol,
+    alone: arbWidest ? `${arbPerp.symbol}, ${arbWidest}` : arbPerp.symbol,
   },
 ];
 

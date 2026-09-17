@@ -1,3 +1,4 @@
+import { pct } from "../../public/shared.js";
 /* =========================================================================================
    SUPERLATIVES THAT CANNOT LIE ABOUT A TIE.
 
@@ -73,6 +74,38 @@ export function extremeBy<T>(
   return at.length === 1
     ? { kind: "unique", item: at[0].item, value: best, of: finite.length }
     : { kind: "tied", items: at.map((f) => f.item), value: best, of: finite.length };
+}
+
+/**
+ * THE WIDEST FUNDING SPREAD BETWEEN VENUES, decided in one place.
+ *
+ * Five pages name it and they chose it four ways: /tools/funding-arbitrage compared the spread as
+ * printed, the home page and /funding compared it exactly, and /learn and /tools took
+ * `sort(...)[0]` — the shape this module exists to retire. All five named CASHCAT at 87.88% on
+ * production on 17 September 2026; they agreed because nothing was tied, and two contracts at
+ * 40.401% and 40.404% would have given /learn and /tools a single "widest" beside two equal
+ * printed figures, and the home page a different answer from the calculator it links to.
+ *
+ * `shown` ranks the spread AS pct() PRINTS IT, so "the widest" is said only of a contract alone
+ * at the printed maximum; its `value` is that printed number, so pages print `printed`, never
+ * pct(shown.value). `opens` is the first contract, in snapshot order, at the exact maximum — the
+ * one the arbitrage calculator opens on, and always inside the printed maximum, since rounding is
+ * monotone. `isSpread` is false when the maximum prints as 0.00%, which is not a spread.
+ */
+export function widestSpread<P extends { aprSpread: number | null; venues: readonly unknown[] }>(perps: readonly P[]) {
+  const tradable = perps.filter((p) => p.venues.length >= 2);
+  const exact = extremeBy(tradable, (p) => p.aprSpread ?? NaN, "max");
+  const shown = extremeBy(tradable, (p) => parseFloat(pct(p.aprSpread ?? NaN)), "max");
+  const set: readonly P[] = shown.kind === "unique" ? [shown.item] : shown.kind === "tied" ? shown.items : [];
+  const printed = set.length ? pct(set[0].aprSpread ?? NaN) : pct(NaN);
+  return {
+    tradable,
+    opens: exact.kind === "unique" ? exact.item : exact.kind === "tied" ? exact.items[0] : undefined,
+    shown,
+    set,
+    printed,
+    isSpread: set.length > 0 && printed !== pct(0),
+  };
 }
 
 /**

@@ -145,34 +145,67 @@ const UNITS: TickUnit[] = [
   { key: "month", label: (d) => `${MON[d.getUTCMonth()]} ’${String(d.getUTCFullYear()).slice(2)}`, bucket: (d) => `${d.getUTCFullYear()}-${d.getUTCMonth()}` },
   { key: "week", label: dm, bucket: (d) => `${d.getUTCFullYear()}-${Math.floor((Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) / 86400000 + 4) / 7)}` },
   { key: "day", label: dm, bucket: (d) => `${d.getUTCFullYear()}-${d.getUTCMonth()}-${d.getUTCDate()}` },
-  { key: "6h", label: (d) => `${pad(d.getUTCHours())}:00`, bucket: (d) => `${d.getUTCDate()}-${Math.floor(d.getUTCHours() / 6)}` },
-  { key: "hour", label: (d) => `${pad(d.getUTCHours())}:00`, bucket: (d) => `${d.getUTCDate()}-${d.getUTCHours()}` },
 ];
+
+const MIN_MS = 60_000, DAY_MS = 86_400_000;
+/* Tick spacings under a day, in minutes. Each divides a day, so a tick lands on the clock. */
+const SUBDAY_MIN = [720, 360, 180, 120, 60, 30, 15];
+const clock = (d: Date) => `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
 
 /**
  * Time ticks land on calendar boundaries, never on "every 25th bar". The unit is chosen as
  * the coarsest one that still yields roughly `want` labels, so a 30-day window is labelled
  * in days and a 2-year window in quarters without either being configured by hand.
+ *
+ * UNDER A DAY, A TICK CARRIES ITS DATE. Hour ticks used to be labelled with the hour alone and
+ * thinned by index. A 30m window of 300 bars is six days, under eight day ticks, so it fell to
+ * six-hour ticks, took every fourth, and printed one per day at whatever hour the series began:
+ * /funding/btc?tf=30m read "00:00" six times and ?tf=15m "12:00, 00:00, 12:00 …" with no date
+ * anywhere (production, 17 September 2026; /coins had the same on 16 September and relabelled
+ * its own axis, which left every other chart as it was).
+ * Now, when fewer than `want` day ticks fit, the finest spacing from SUBDAY_MIN that still
+ * fits is used, counted on the clock, and never thinned. When not even twelve-hour ticks fit,
+ * the axis stays in days. The first tick and the first tick of each date carry the date —
+ * "15 Sep" at midnight, "14 Sep 12:00" otherwise — and the rest the time alone.
  */
 export function timeTicks(times: number[], want = 8): { i: number; label: string }[] {
   if (times.length < 2) return [];
-  let chosen = UNITS[UNITS.length - 1];
+  /* Index of the first bar in each bucket, the first bar included. */
+  const starts = (key: (t: number) => string | number) => {
+    const idx: number[] = [];
+    for (let i = 0; i < times.length; i++) if (i === 0 || key(times[i]) !== key(times[i - 1])) idx.push(i);
+    return idx;
+  };
+  let chosen: TickUnit | null = null;
   let picks: number[] = [];
   for (const u of UNITS) {
-    const idx: number[] = [];
-    let prev = "";
-    for (let i = 0; i < times.length; i++) {
-      const b = u.bucket(new Date(times[i]));
-      if (b !== prev) { idx.push(i); prev = b; }
-    }
+    const idx = starts((t) => u.bucket(new Date(t)));
     if (idx.length >= 3) { chosen = u; picks = idx; }
     if (idx.length >= want) break;
+  }
+  let spacing = 0;
+  if (picks.length < want) {
+    for (const m of SUBDAY_MIN) {
+      const idx = starts((t) => Math.floor(t / (m * MIN_MS)));
+      if (idx.length > want) break;
+      spacing = m; picks = idx;
+    }
+    if (!spacing && !chosen) { spacing = SUBDAY_MIN[0]; picks = starts((t) => Math.floor(t / (spacing * MIN_MS))); }
   }
   if (picks.length > want) {
     const step = Math.ceil(picks.length / want);
     picks = picks.filter((_, k) => k % step === 0);
   }
-  return picks.filter((i) => i > 0).map((i) => ({ i, label: chosen.label(new Date(times[i])) }));
+  const shown = picks.filter((i) => i > 0);
+  if (!spacing) return shown.map((i) => ({ i, label: chosen!.label(new Date(times[i])) }));
+  let seen = NaN;
+  return shown.map((i) => {
+    const d = new Date(times[i]);
+    const day = Math.floor(times[i] / DAY_MS);
+    const label = day === seen ? clock(d) : times[i] % DAY_MS === 0 ? dm(d) : `${dm(d)} ${clock(d)}`;
+    seen = day;
+    return { i, label };
+  });
 }
 
 /* ------------------------------------------------------------------- svg primitives */
@@ -187,6 +220,12 @@ export const n2 = (v: number) => (Math.round(v * 100) / 100).toString();
 
 export function text(x: number, y: number, s: string, fill: string, size = 11, anchor: "start" | "middle" | "end" = "start", weight = 400, fam = MONO, extra = "") {
   return `<text x="${n2(x)}" y="${n2(y)}" fill="${fill}" font-size="${size}" font-family="${fam}" font-weight="${weight}" text-anchor="${anchor}"${extra}>${esc(s)}</text>`;
+}
+/** An x-axis tick label, centred on its bar and slid inward where it would overhang the viewBox.
+    A dated label is up to twelve characters; monospace advance is about 0.6 em. */
+export function xTick(x: number, y: number, label: string) {
+  const half = (label.length * FS_AXIS * 0.6) / 2;
+  return text(Math.min(Math.max(x, half), CH.w - half), y, label, INK.faint, FS_AXIS, "middle");
 }
 export function rect(x: number, y: number, w: number, h: number, fill: string, extra = "") {
   return `<rect x="${n2(x)}" y="${n2(y)}" width="${n2(Math.max(0, w))}" height="${n2(Math.max(0, h))}" fill="${fill}"${extra}/>`;

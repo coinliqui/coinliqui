@@ -93,11 +93,16 @@ const description =
         -38.74%). So "so the conversion can be checked there" is said only of the places that do not
         repaint, and the two that do are named as such. IF interact.js STARTS REPAINTING THE QUOTED RATE
         TOO, the "but not the quoted rates beside them" sentence becomes false and must go.
+        "THE CONTRACT PAGES UPDATE THEIR APRs" WAS WIDER THAN THE HOOKS. Measured on production on 17
+        September 2026, /funding/btc: data-repaint="apr" sits on three cells, the per-venue table's
+        Hyperliquid, Binance and Bybit APRs, and on nothing in the headline or the price-bar table.
+        The sentence names that table now. A repaint hook added elsewhere on the page makes it narrow
+        rather than false.
         The list of APRs without a quoted rate says "among others": /learn prints BTC's annualised
         rate alone too, and a closed list would be one more census to keep. */}
     The quoted rate and its interval are printed beside the APR in {hasExample && <>the worked example below, </>}the <a href="/tools/funding-cost">funding-cost</a> and <a href="/tools/funding-arbitrage">funding-arbitrage</a> calculators, the <a href="/funding">funding table</a>, and the per-venue table on each contract's page (<a href="/funding/btc">BTC's, for one</a>).
     In {hasExample ? "the worked example and the calculators" : "the calculators"} the pair stays as the page drew it, so the conversion can be checked there.
-    The funding table and the contract pages update their APRs from a one-minute feed as soon as they open, but not the quoted rates beside them, so there the pair can disagree once the rate has moved.
+    The funding table and the per-venue table on each contract's page update their APRs from a one-minute feed as soon as they open, but not the quoted rates beside them, so there the pair can disagree once the rate has moved.
     Many APRs carry no quoted rate at all: those on the home page, the watchlist and the coin pages, and in the headline and the price-bar table of each contract's page, among others.
   </p>
 

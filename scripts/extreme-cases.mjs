@@ -20,7 +20,7 @@
  *
  *   node --experimental-strip-types scripts/extreme-cases.mjs --blind
  */
-import { extremeBy, pluralityOf, standing } from "../src/lib/extreme.ts";
+import { extremeBy, pluralityOf, standing, widestSpread } from "../src/lib/extreme.ts";
 
 const blind = process.argv.includes("--blind");
 
@@ -157,6 +157,29 @@ console.log("\nwhere one reading sits in its own history\n");
   ok(standing([], 0.1) === null, "an empty history yields null rather than a share of zero");
   ok(standing([NaN, NaN], 0.1) === null, "and so does a history of absences");
   ok(standing(hist, NaN) === null, "an absent reading has no standing");
+}
+
+console.log(`\nthe widest venue spread, as the five pages that name it read it${blind ? "  [BLIND: sort-and-take-first on the exact spread]" : ""}\n`);
+{
+  /* Two contracts that print the same spread and differ in the fourth decimal of a percent, a
+     third that prints lower, and a one-venue contract with no spread at all. /learn and /tools
+     took sort(...)[0] and would have named TRX alone beside two printed 40.40% figures. */
+  const perp = (symbol, aprSpread, venues = 3) => ({ symbol, aprSpread, venues: Array.from({ length: venues }, () => ({})) });
+  const book = [perp("ADA", 0.40401), perp("TRX", 0.40404), perp("SOL", 0.39), perp("HYPE", null, 1)];
+  const w = blind
+    ? (() => { const x = sortAndTakeFirst(book.filter((p) => p.venues.length >= 2), (p) => p.aprSpread ?? NaN); return { shown: x, set: [x.item], opens: x.item, printed: "40.40%", isSpread: true }; })()
+    : widestSpread(book);
+  ok(w.shown.kind === "tied" && w.set.length === 2, "two spreads that print alike are a tie, not a winner", `kind=${w.shown.kind} set=${w.set.map((p) => p.symbol)}`);
+  ok(w.printed === "40.40%", "the figure printed is the spread as printed");
+  ok(w.opens?.symbol === "TRX", "the calculator still opens on the exact maximum");
+  ok(w.set.includes(w.opens), "and that contract is inside the printed tie");
+  if (!blind) {
+    const flat = widestSpread([perp("BTC", 0.00001), perp("ETH", 0)]);
+    ok(!flat.isSpread, "a maximum that prints as 0.00% is not a spread", `printed=${flat.printed}`);
+    const alone = widestSpread([perp("CASHCAT", 0.8788), perp("ADA", 0.556)]);
+    ok(alone.shown.kind === "unique" && alone.set[0].symbol === "CASHCAT" && alone.isSpread, "a contract alone at the printed maximum is the widest");
+    ok(widestSpread([perp("HYPE", null, 1)]).shown.kind === "none", "a book with no two-venue contract has no widest spread");
+  }
 }
 
 if (blind) {

@@ -5,6 +5,7 @@ import { getSnapshot, coldStart, OI_NOTIONAL_FLOOR } from "../../lib/hyperliquid
 import { VENUE_LABEL, pct, usd } from "../../lib/funding.ts";
 
 import { coverageRule, coverageToday } from "../../lib/coverage.ts";
+import { widestSpread } from "../../lib/extreme.ts";
 /**
  * THE EXPLAINERS' FRONT DOOR, AND THE FIRST PAGE ON THIS SITE WHOSE JOB IS A SENTENCE RATHER
  * THAN A NUMBER.
@@ -37,17 +38,22 @@ const btc = perps.find((p) => p.symbol === "BTC") ?? perps[0];
 const btcVenues = btc?.venues ?? [];
 /* The widest normalised spread on the book right now — the one figure that exists here and
    nowhere else, because it is only computable after the intervals are made comparable. */
-const widest = perps
-  .filter((p) => p.aprSpread !== null && Number.isFinite(p.aprSpread))
-  .sort((a, b) => (b.aprSpread as number) - (a.aprSpread as number))[0];
+/* A tie at the printed figure is said as a tie — widestSpread() in src/lib/extreme.ts. This was
+   sort(...)[0], which names one contract out of any tie. */
+const W = widestSpread(perps);
+const widest = W.isSpread && W.set.length === 1 ? W.set[0] : undefined;
+const widestVenues = widest ? widest.venues.filter((v) => Number.isFinite(v.apr)).length : 0;
+const spreadWords = widest
+  ? `the widest funding spread between venues is ${widest.symbol} at ${W.printed} a year`
+  : W.isSpread ? `${W.set.length} contracts share the widest funding spread between venues, ${W.printed} a year` : "";
 
 /* "FOUR QUESTIONS THIS SITE ANSWERS WITH NUMBERS", AND NOT ONE NUMBER IN THE OPENING. The
    sentence was accurate and the page did not keep it: fetched as GPTBot, the first 700
    characters of /learn carried no figure at all, while `totalOi`, `perps.length` and `widest`
    were already computed above to fill the cards below. Its sibling /learn/open-interest weaves
    the live total straight into the definition; this hub described the method instead. */
-const lede = widest
-  ? `Across ${perps.length} contracts this site is reading ${usd(totalOi)} of open interest right now, and the widest funding spread between venues is ${widest.symbol} at ${pct(widest.aprSpread as number)} a year.`
+const lede = spreadWords
+  ? `Across ${perps.length} contracts this site is reading ${usd(totalOi)} of open interest right now, and ${spreadWords}.`
   : "";
 
 const title = "Perpetual futures explained";
@@ -120,8 +126,8 @@ const description =
         {widest && (
           <tr>
             <td><a href={`/funding/${widest.symbol.toLowerCase()}`}>Widest venue spread</a></td>
-            <td class="num">{pct(widest.aprSpread as number)}</td>
-            <td>{widest.symbol}: the gap between the dearest and cheapest of the three venues, once their different settlement intervals are normalised.</td>
+            <td class="num">{W.printed}</td>
+            <td>{widest.symbol}: the gap between the dearest and cheapest of the {widestVenues} venues quoting it, once their different settlement intervals are normalised.</td>
           </tr>
         )}
       </tbody>

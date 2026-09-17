@@ -265,6 +265,14 @@ export function chartFaults(p, wantTf, now = Date.now(), expected = EXPECTED_TFS
   const age = now - ts[ts.length - 1];
   if (age > limit) f.push(`newest bar opened ${(age / 3.6e6).toFixed(1)}h ago — over the ${(limit / 3.6e6).toFixed(0)}h ceiling for a ${tf} chart (${(nominal / 3.6e6).toFixed(0)}h bar + ${((REFRESH_MS[tf] ?? 7.2e6) / 3.6e6).toFixed(0)}h sweep + 1h)`);
   if (age < -60_000) f.push(`newest bar is ${(-age / 6e4).toFixed(0)} min in the future`);
+  /* A BAR THAT FITS THE DAY OPENS ON ITS UTC SLOT. Bars used to be chunked back from the newest
+     base bar, so /funding/btc?tf=30m opened all 300 bars at :15 or :45 and ?tf=12h all 90 at 08:00
+     and 20:00 (production, 17 September 2026) — true to no clock and different on the next render.
+     1W and 1M do not divide a day and are not held to it. */
+  if (86_400_000 % nominal === 0) {
+    const off = ts.filter((v) => v % nominal !== 0);
+    if (off.length) f.push(`${off.length} of ${ts.length} bars open off their ${tf} slot, first at ${new Date(off[0]).toISOString().slice(11, 16)} UTC`);
+  }
 
   const xs = p.points.map((q) => q[0]);
   if (!xs.every((v, i) => i === 0 || v > xs[i - 1])) f.push("plotted x coordinates are not increasing — the picture is not the series");
@@ -280,20 +288,16 @@ export function chartFaults(p, wantTf, now = Date.now(), expected = EXPECTED_TFS
   return f;
 }
 
-/* Gaps are REPORTED, not failed, and the OLDEST one is excluded because it is arithmetic rather
-   than data. aggregate() in src/lib/series.ts buckets BACKWARDS from the newest bar, so the
-   first bucket is whatever is left over and is short by construction — which is why every
-   aggregated timeframe showed exactly one off-nominal gap per page, on all ten pages, in the
-   first run. One identical anomaly everywhere is a property of the code, not of the market.
-   An INTERIOR off-nominal gap is different: that is a hole in the upstream hourly or daily
-   series, worth naming and not worth failing a page over. */
+/* Gaps are REPORTED, not failed: an off-nominal gap is a hole in the upstream hourly or daily
+   series, worth naming and not worth failing a page over. The OLDEST gap used to be left out,
+   because bars chunked back from the newest one left a short stub at the start of every
+   aggregated timeframe. slotBars() in src/lib/series.ts drops that stub, so the first gap is data
+   again and is counted with the rest. */
 export function gapReport(points, tf) {
   const nominal = NOMINAL_MS[tf];
   const gaps = points.slice(1).map((q, i) => q[1] - points[i][1]);
-  const interior = gaps.slice(1);
-  const off = interior.filter((g) => Math.abs(g - nominal) > nominal * 0.05);
-  const leadShort = gaps.length && Math.abs(gaps[0] - nominal) > nominal * 0.05;
-  return { off: off.length, total: interior.length, leadShort,
+  const off = gaps.filter((g) => Math.abs(g - nominal) > nominal * 0.05);
+  return { off: off.length, total: gaps.length,
            worstH: off.length ? Math.max(...off.map((g) => Math.abs(g - nominal))) / 3.6e6 : 0 };
 }
 
@@ -354,6 +358,7 @@ if (BLIND) {
        relative to the limit rather than as a magic number, so relaxing the ceiling cannot
        silently relax the case with it. */
     ["a stale newest bar", (() => { const c = clone(clean); c.points.forEach((q) => { q[1] -= 9 * 3.6e6; }); return c; })(), /over the 4h ceiling for a 1h chart/],
+    ["bars off their slot", (() => { const c = clone(clean); c.points.forEach((q) => { q[1] -= 15 * 60_000; }); return c; })(), /bars open off their 1h slot/],
     ["a bar in the future", (() => { const c = clone(clean); c.points[c.points.length - 1][1] = NOW + 2 * 3.6e6; return c; })(), /in the future/],
     ["x coordinates not increasing", (() => { const c = clone(clean); c.points[7][0] = 5; return c; })(), /x coordinates are not increasing/],
     ["points outside the plot box", (() => { const c = clone(clean); c.points[0][0] = -50; return c; })(), /outside the plot box/],

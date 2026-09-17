@@ -2,7 +2,7 @@
 /**
  * EVERY BAR'S FUNDING MUST COME FROM THAT BAR'S OWN WINDOW.
  *
- * buildPriceChart() draws candles from aggregate(), which chunks BACKWARDS from the newest
+ * buildPriceChart() drew candles from aggregate(), which chunked BACKWARDS from the newest
  * hourly candle, so bar timestamps carry whatever offset the data implies — 07:00, 11:00, 15:00
  * on the day this was found, not 00:00, 04:00, 08:00. Funding used to be bucketed and read back
  * on an epoch grid (`Math.floor(t / barMs) * barMs`), so writer and reader agreed on the key and
@@ -26,7 +26,20 @@
  *   node --experimental-strip-types scripts/chart-bucketing.mjs
  *   node --experimental-strip-types scripts/chart-bucketing.mjs --blind
  */
-import { aggregate, fundingByBar, TIMEFRAMES } from "../src/lib/series.ts";
+import { fundingByBar, TIMEFRAMES } from "../src/lib/series.ts";
+
+/* Bars chunked back from the newest candle, the way every chart drew them until 17 September
+   2026. Pages now draw slotted bars (slotBars() in src/lib/series.ts), but fundingByBar() must be
+   right for bars at ANY offset, so the offsets are still produced here, by the test. */
+function chunkBack(src, factor) {
+  if (factor <= 1) return src;
+  const out = [];
+  for (let end = src.length; end > 0; end -= factor) {
+    const s = src.slice(Math.max(0, end - factor), end);
+    out.unshift([s[0][0], s[0][1], Math.max(...s.map((c) => c[2])), Math.min(...s.map((c) => c[3])), s[s.length - 1][4], s.reduce((a, c) => a + c[5], 0)]);
+  }
+  return out;
+}
 
 const HOUR = 3_600_000;
 const T = 0;
@@ -119,7 +132,7 @@ for (const tf of TIMEFRAMES.filter((t) => t.factor > 1)) {
     /* Funding is hourly upstream whatever the candle base is, so the series must span the same
        wall-clock window the candles do — a quarter of an hour per bar for the m15 base. */
     const funding = hourlyFunding(start, Math.max(8, Math.ceil(n * baseH)));
-    const candles = aggregate(src, tf.factor);
+    const candles = chunkBack(src, tf.factor);
     const truth = truthFor(candles, funding, barMs);
 
     /* The SHIPPED function, not a copy of it. That distinction is the whole point: the first
