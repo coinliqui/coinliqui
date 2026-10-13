@@ -526,9 +526,9 @@ var terms_baseline_default = {
       what: "Hyperliquid Terms of Use \u2014 the document the entire site now depends on",
       url: "https://app.hyperliquid.xyz/terms",
       lastUpdatedOnDocument: "2026-06-15",
-      readAt: "2026-08-19",
-      readHow: "browser; the page is a JS application and a plain fetch returns only the shell",
-      finding: "Scoped by its own first sentence to the Interface at app.hyperliquid.xyz. Binds on accessing and using that Interface. Twelve sections, none of them IP, data or licence. The words API, redistribute, republish and scrape do not appear. Section 1.1: 'The Interface is not the exclusive means of accessing Hyperliquid.'",
+      readAt: "2026-10-13",
+      readHow: "browser (built-in browser, full page text read top to bottom on 2026-10-13); the page is a JS application and a plain fetch returns only the shell",
+      finding: "Document still dated June 15, 2026 \u2014 unchanged since the 2026-08-19 reading. First sentence still scopes the Terms to the 'website-hosted user interface (Interface)' at app.hyperliquid.xyz, and users are bound on accessing and using that Interface. Twelve sections (Interface, No warranties, Prohibited activities, No professional advice, Programs, Limitations, Modifications, Release, Indemnity, Liability, Arbitration, Miscellaneous). No API-scoped or data-scoped instrument: the words API, redistribute, republish, scrape and licence do not appear in the body. The only IP language is 3.1.1, a ban on infringing third-party rights in one's own use of the Interface, not a database-right or data-licence clause. 3.1.8 (bots/scripts) is scoped to interacting with the Interface. No AI/ML clause. Section 1.1 still says the Interface is not the exclusive means of accessing Hyperliquid. Sections 1.7-1.8 and 2.2-2.4 cover outcome markets; they concern trading, not data use.",
       watchFor: "any API-scoped or data-scoped instrument; any IP or database-right clause; any change to the first sentence's definition of Interface; any AI/ML clause",
       reviewEveryDays: 30,
       intervalReason: "THIRTY DAYS, AND THE INTERVAL IS SET BY STAKES RATHER THAN BY OBSERVED CHURN. This document is the entire legal basis for every figure the site publishes; if it acquires an API-scoped or data-scoped clause, nothing breaks, nothing looks wrong, and the site is operating with no basis at all until someone notices. The interval is the exposure window, so it is the one that should be short. Observed churn is moderate \u2014 the copy read on 2026-08-19 was dated 2026-06-15, about two months old."
@@ -1302,7 +1302,7 @@ async function stepCorroborate(env, now = Date.now()) {
 }
 
 // worker/build-stamp.ts
-var WORKER_BUILD = "3f775d930f91";
+var WORKER_BUILD = "96f6f0bdfec0";
 
 // worker/ingest.ts
 var RETAIN_HOURS = 720;
