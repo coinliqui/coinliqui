@@ -10,7 +10,8 @@ import { countWords } from "../../lib/site.ts";
 import { getCandles, getHourly, getM15, type Candle } from "../../lib/candles.ts";
 import { freshness, ageWords, minutesSince, utcStamp } from "../../lib/freshness.ts";
 import Overview from "../../components/Overview.astro";
-import { TIMEFRAMES, DEFAULT_TF, MIN_CHART_BARS, drawnBars, barSpan, buildPriceChart, candleStyleNote, timeframeGapNote, CHART_H, type ChartMode } from "../../lib/series.ts";
+import PricePanel from "../../components/PricePanel.astro";
+import { narrowChart, TIMEFRAMES, DEFAULT_TF, MIN_CHART_BARS, drawnBars, barSpan, buildPriceChart, candleStyleNote, timeframeGapNote, CHART_H, type ChartMode } from "../../lib/series.ts";
 import { CH } from "../../lib/chart.ts";
 
 import { priceDp, changeWords, signedPct } from "../../lib/funding.ts";
@@ -407,25 +408,9 @@ const description = `Live ${coin.name} (${coin.symbol}) perpetual price from Hyp
         </span>
       </form>
 
-      {[active!].map(({ tf, mode, chart }) => (
-        <div data-tfpanel={`${tf.key}.${mode.key}`} data-group="cx"
-             data-on={tf.key === active!.tf.key && mode.key === active!.mode.key ? "" : undefined}
-             class="chart chart--price" style={`--chartRatio: ${CH.w} / ${CHART_H}`}>
-          <Fragment set:html={chart!.svg.replace("<svg ",
-            `<svg data-xhair="cpts-${tf.key}" data-feed="mark" data-plot="${chart!.plot.join(",")}" data-prange="${chart!.range[0]},${chart!.range[1]}" ` +
-            `data-axx="${chart!.axisX}" data-slot="${chart!.slot.toFixed(2)}" data-taxisy="${CHART_H - 27}" data-unit="${coin.symbol}" data-dp="${chart!.dp}" data-intraday="${tf.hours < 24 ? 1 : 0}" `)} />
-          {/* INSIDE THE PANEL, because only the panel is fetched.
-              public/interact.js copies `[data-tfpanel][data-group]` out of the response and
-              nothing else. This block sat NEXT to the panel, so switching a timeframe on a coin
-              page brought the chart across and left its crosshair payload behind: the new svg
-              asked for `cpts-4h` and the document still held only `cpts-1d`. The tooltip then
-              failed silently — getElementById returns null, JSON.parse throws, the handler
-              returns. Measured on the live page: after switching, jsonIds was still `cpts-1d`.
-              The contract template already had it inside, which is why only this one broke. */}
-          <script type="application/json" id={`cpts-${tf.key}`}
-                  set:html={JSON.stringify(chart!.points)} />
-        </div>
-      ))}
+      {/* The panel, its crosshair islands and the phone-width chart: src/components/PricePanel.astro. */}
+      <PricePanel chart={active!.chart} narrow={narrowChart(activeCandles, null, active!.tf, active!.mode.key)} tf={active!.tf}
+                  unit={coin.symbol} ptsPrefix="cpts" panel={`${active!.tf.key}.${active!.mode.key}`} group="cx" on={true} />
 
       {/* THE REASON FOR NO BAND WAS WRITTEN FOR A SPOT CHART and outlived it. It read "funding is
           a property of the perpetual, not of spot" — true when this chart was Coinbase spot, and
@@ -618,7 +603,8 @@ const description = `Live ${coin.name} (${coin.symbol}) perpetual price from Hyp
     .hero__span { font-size: var(--fs-sm); color: var(--text-faint); }
     .tfbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: var(--inset-panel) 0 var(--gap-block); }
     .tfbar__note { font-size: var(--fs-xs); color: var(--text-faint); }
-    .chart--price :global(svg) { aspect-ratio: var(--chartRatio); }
+    .chart--price :global(svg.pxw) { aspect-ratio: var(--chartRatio); }
+    .chart--price :global(svg.pxn) { aspect-ratio: var(--chartRatioN); }
     .legend { max-width: 88ch; line-height: 1.6; margin-top: 12px; }
     .legend__style { display: inline; }
     .related { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; }

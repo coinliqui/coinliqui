@@ -257,8 +257,11 @@ export function buildPriceChart(
      (An earlier version of this note said the coin pages keep the strip. They do not: /coins/{coin}
      passes no funding series at all, so its chart has never drawn one — a comment asserting what
      the code does not do, caught by a verifier on 16 September.) */
-  opts: { band?: boolean } = {},
+  opts: { band?: boolean; width?: number } = {},
 ): PriceChart | null {
+  /* The viewBox width. The narrow variant (narrowChart) draws fewer bars into a phone-shaped box so
+     its axis fits the bars a phone shows and its labels stay legible without sideways scrolling. */
+  const W = opts.width ?? CH.w;
   const gid = `f${tf.key}`;
   if (candles.length < 3) return null;
   const px = candles[candles.length - 1][C];
@@ -266,7 +269,7 @@ export function buildPriceChart(
      read "0.0000" down its whole axis — the defect public/shared.js records as fixed for the
      heatmap — and DOGE's price chart showed four decimals beside its heatmap's five. */
   const dp = axisDp(px);
-  const plotX = CH.padL, plotW = CH.w - CH.padL - CH.padR;
+  const plotX = CH.padL, plotW = W - CH.padL - CH.padR;
   const axisX = plotX + plotW;
 
   /* Funding coverage decides whether the band is drawn at all. A panel covering 3% of the
@@ -333,14 +336,15 @@ export function buildPriceChart(
   const clampF = (a: number) => Math.max(-fmax, Math.min(fmax, a));
 
   const s: string[] = [];
-  s.push(rect(0, 0, CH.w, LY.h, INK.well, ` rx="${CH.radius}"`));
+  s.push(rect(0, 0, W, LY.h, INK.well, ` rx="${CH.radius}"`));
 
   const lastY = yOf(px);
   /* Axis labels live in one group so the interaction layer can fade them while the crosshair
      is on. Without that the live pill lands on top of a static tick and both stay half
      readable, which is the single ugliest thing a crosshair can do. */
   const yLabels: string[] = [];
-  for (const v of niceTicks(lo, hi, 5)) {
+  /* A taller, narrower box takes more ticks, or the one near the live pill leaves a single label. */
+  for (const v of niceTicks(lo, hi, W < 800 ? 8 : 5)) {
     const y = yOf(v);
     s.push(line(plotX, y, axisX, y, INK.hair));
     if (Math.abs(y - lastY) > 16) yLabels.push(text(axisX + PILL_GAP, y + 3.5, dp ? v.toFixed(dp) : fint(v), INK.dim, FS_AXIS));
@@ -441,7 +445,7 @@ export function buildPriceChart(
   s.push(rect(axisX + PILL_GAP, lastY - PILL_H / 2, 74, PILL_H, INK.acc, ` rx="${PILL_R}" data-live="pill"`));
   s.push(text(axisX + PILL_GAP + 37, lastY + 4, "$" + (dp ? px.toFixed(dp) : fint(px)), INK.accInk, 11.5, "middle", 600, MONO, ` data-live="txt"`));
 
-  s.push(`<g data-ax="x">${timeTicks(candles.map((c) => c[T]), 8)
+  s.push(`<g data-ax="x">${timeTicks(candles.map((c) => c[T]), W < 800 ? 4 : 8)
     .map(({ i, label }) => xTick(xOf(i), LY.h - 9, label)).join("")}</g>`);
   s.push(crosshair(plotX, priceY, plotW, LY.h - CH.padB - priceY, axisX, { dot: true }));
 
@@ -453,7 +457,7 @@ export function buildPriceChart(
        about a panel that is not in the picture. A name asserting what its expression does not
        compute is the defect this codebase keeps finding in itself; it is the same fault whether
        the reader is a person or an extractor. */
-    svg: `<svg viewBox="0 0 ${CH.w} ${LY.h}" width="100%" role="img" aria-label="${fundOn ? "Price, volume and funding history" : "Price and volume history"}">${s.join("")}</svg>`,
+    svg: `<svg viewBox="0 0 ${W} ${LY.h}" width="100%" role="img" aria-label="${fundOn ? "Price, volume and funding history" : "Price and volume history"}">${s.join("")}</svg>`,
     points: candles.map((c, i) => [
       +xOf(i).toFixed(2), c[T], c[O], c[H], c[L], c[C], c[V],
       aprAt.has(c[T]) ? +aprAt.get(c[T])!.toFixed(6) : NaN, +yOf(c[C]).toFixed(2),
@@ -469,6 +473,28 @@ export function buildPriceChart(
     fundingMax: fmax, fundingClipped: fClipped,
     dp, bars: n,
   };
+}
+
+/* =========================================================================================
+   THE PRICE CHART ON A PHONE, DRAWN FOR A PHONE.
+
+   Below 760px the full chart scrolls sideways at a legible size and opens on its newest bars —
+   but its price axis is fitted to every bar, so on /funding/btc (15 October 2026) the sixty days a
+   phone showed, all above $74,000, sat in the top third of a box scaled to the 200-day low of
+   $57,768, with sixty per cent of the height empty. This is the same builder on the newest bars,
+   in a narrower box, so the axis fits what is on screen. The wide chart is unchanged and is the one
+   shown from 760px up; CSS picks one (Base.astro, .chart--price).
+   ========================================================================================= */
+export const NARROW_W = 380;
+export const NARROW_BARS = 60;
+export function narrowChart(candles: Candle[], funding: FundingPoint[] | null, tf: Timeframe, mode: ChartMode = "candle"): PriceChart | null {
+  return buildPriceChart(candles.slice(-NARROW_BARS), funding, tf, mode, { band: false, width: NARROW_W });
+}
+
+/** The crosshair's attributes for a price chart's svg, once for both pages and both widths. */
+export function xhairAttrs(chart: PriceChart, ptsId: string, unit: string, tf: Timeframe): string {
+  return `data-xhair="${ptsId}" data-feed="mark" data-plot="${chart.plot.join(",")}" data-prange="${chart.range[0]},${chart.range[1]}" ` +
+    `data-axx="${chart.axisX}" data-slot="${chart.slot.toFixed(2)}" data-taxisy="${CHART_H - 27}" data-unit="${unit}" data-dp="${chart.dp}" data-intraday="${tf.hours < 24 ? 1 : 0}" `;
 }
 
 export { shortDate } from "../../public/shared.js";

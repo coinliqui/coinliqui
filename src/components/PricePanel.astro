@@ -1,0 +1,42 @@
+---
+/* =========================================================================================
+   ONE TIMEFRAME PANEL OF A PRICE CHART, AT BOTH WIDTHS.
+
+   /funding/{symbol} and /coins/{coin} each wrote this panel out by hand — the svg, its crosshair
+   attributes and its points island — and the coin page once left the island outside the panel,
+   so a fetched timeframe lost its tooltip. It is written once here, and it now carries a second,
+   phone-shaped chart (narrowChart in src/lib/series.ts) whose axis fits the bars a phone shows.
+   CSS shows one: the wide chart from 760px up, the narrow one below (Base.astro, .chart--price).
+
+   The points islands stay INSIDE the panel, because public/interact.js copies only the panel out
+   of a fetched timeframe.
+   ========================================================================================= */
+import { CH, } from "../lib/chart.ts";
+import { CHART_H, NARROW_W, xhairAttrs, type PriceChart, type Timeframe } from "../lib/series.ts";
+
+interface Props {
+  chart: PriceChart;
+  narrow: PriceChart | null;
+  tf: Timeframe;
+  unit: string;
+  /** the id prefix of the points islands: "pts" on contract pages, "cpts" on coin pages */
+  ptsPrefix: string;
+  panel: string;
+  group: string;
+  on: boolean;
+}
+const { chart, narrow, tf, unit, ptsPrefix, panel, group, on } = Astro.props;
+const wideId = `${ptsPrefix}-${tf.key}`;
+const narrowId = `${ptsPrefix}-${tf.key}-n`;
+---
+<div data-tfpanel={panel} data-group={group} data-on={on ? "" : undefined} class="chart chart--price"
+     style={`--chartRatio: ${CH.w} / ${CHART_H}; --chartRatioN: ${NARROW_W} / ${CHART_H}`}>
+  <Fragment set:html={chart.svg.replace("<svg ", `<svg class="pxw" ${xhairAttrs(chart, wideId, unit, tf)}`)} />
+  <script type="application/json" id={wideId} set:html={JSON.stringify(chart.points)} />
+  {narrow && (
+    <>
+      <Fragment set:html={narrow.svg.replace("<svg ", `<svg class="pxn" ${xhairAttrs(narrow, narrowId, unit, tf)}`)} />
+      <script type="application/json" id={narrowId} set:html={JSON.stringify(narrow.points)} />
+    </>
+  )}
+</div>

@@ -5,7 +5,8 @@ import { getSnapshot, coldStart, findPerp, getLive, currentMark } from "../../li
 import { VENUE_LABEL, pct, usd, rawRate, carryCost, settlementsPerYear, nextSettlement, paysClass, paysLabel, type Venue } from "../../lib/funding.ts";
 import { liquidationPrice, type MarginTable, roomVerdict, tableFor } from "../../lib/margin.ts";
 import { getCandles, getM15, getHourly, getFunding } from "../../lib/candles.ts";
-import { TIMEFRAMES, DEFAULT_TF, MIN_CHART_BARS, drawnBars, barSpan, buildPriceChart, buildFundingChart, candleStyleNote, timeframeGapNote, shortDate, CHART_H } from "../../lib/series.ts";
+import PricePanel from "../../components/PricePanel.astro";
+import { narrowChart, TIMEFRAMES, DEFAULT_TF, MIN_CHART_BARS, drawnBars, barSpan, buildPriceChart, buildFundingChart, candleStyleNote, timeframeGapNote, shortDate, CHART_H } from "../../lib/series.ts";
 import { CH } from "../../lib/chart.ts";
 import { coinPageFor } from "../../lib/coins.ts";
 import { liqMapHref, canonicalRedirect } from "../../lib/routes.ts";
@@ -560,15 +561,9 @@ const description = `What a ${p.symbol} perpetual costs to hold, against ${usd(p
         </span>
       </form>
 
-      {[active!].map(({ tf, chart }) => (
-        <div data-tfpanel={tf.key} data-group="px" data-on="" class="chart chart--price"
-             style={`--chartRatio: ${CH.w} / ${CHART_H}`}>
-          <Fragment set:html={chart.svg.replace("<svg ",
-            `<svg data-xhair="pts-${tf.key}" data-feed="mark" data-plot="${chart.plot.join(",")}" data-prange="${chart.range[0]},${chart.range[1]}" ` +
-            `data-axx="${chart.axisX}" data-slot="${chart.slot.toFixed(2)}" data-taxisy="${CHART_H - 27}" data-unit="${p.symbol}" data-dp="${chart.dp}" data-intraday="${tf.hours < 24 ? 1 : 0}" `)} />
-          <script type="application/json" id={`pts-${tf.key}`} set:html={JSON.stringify(chart.points)} />
-        </div>
-      ))}
+      {/* The panel, its crosshair islands and the phone-width chart: src/components/PricePanel.astro. */}
+      <PricePanel chart={active!.chart} narrow={narrowChart(drawnBars(baseFor(active!.tf), active!.tf), funding, active!.tf, "candle")} tf={active!.tf}
+                  unit={p.symbol} ptsPrefix="pts" panel={active!.tf.key} group="px" on={true} />
 
       {/* "THE UP CANDLES ARE HOLLOW" WAS SAID OF EVERY TIMEFRAME, AND BARS TOO SHORT TO OUTLINE ARE SOLID.
           /coins/[coin] counted them on 16 September 2026 (30 of 99 green candles on 4H) and worded its
@@ -877,7 +872,8 @@ const description = `What a ${p.symbol} perpetual costs to hold, against ${usd(p
     .tfbar__note { font-size: var(--fs-xs); color: var(--text-faint); }
     /* The box is reserved from the viewBox ratio before paint, so switching timeframe or
        loading the script cannot move a single pixel of the page. */
-    .chart--price :global(svg) { aspect-ratio: var(--chartRatio); }
+    .chart--price :global(svg.pxw) { aspect-ratio: var(--chartRatio); }
+    .chart--price :global(svg.pxn) { aspect-ratio: var(--chartRatioN); }
     .legend { max-width: 88ch; line-height: 1.6; margin-top: 12px; }
     .src { margin-top: 12px; }
     .src summary { font-size: var(--fs-sm); color: var(--text-dim); cursor: pointer; padding: 8px 0; }

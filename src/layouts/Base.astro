@@ -1118,6 +1118,15 @@ const schema = {
         .chart > svg, .chart > figure > svg, figure.chart > svg { min-width: 1140px; }
       }
       .chart > svg, .chart > figure > svg, .chart__scroll > svg { display: block; width: 100%; height: auto; }
+      /* THE PRICE CHART PICKS ITS WIDTH. From 760px the wide chart; below it the phone-shaped one
+         (narrowChart, src/components/PricePanel.astro), whose axis fits the bars it shows, so the
+         panel stops scrolling sideways and loses its edge fade. */
+      .chart--price > svg.pxn { display: none; }
+      @media (max-width: 760px) {
+        .chart.chart--price { overflow-x: visible; -webkit-mask-image: none; mask-image: none; }
+        .chart--price > svg.pxw { display: none; }
+        .chart--price > svg.pxn { display: block; min-width: 0; }
+      }
       figure.chart > figcaption { font-size: var(--fs-sm); color: var(--text-faint); margin-top: var(--gap-block); max-width: 84ch; line-height: 1.55; }
 
       /* --- table rows respond, and the magnitude bar responds with them --- */
