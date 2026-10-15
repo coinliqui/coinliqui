@@ -1,6 +1,7 @@
 import { fetchSnapshot, fetchLive } from "../src/lib/hyperliquid.ts";
 import { fetchCandles, fetchHourly, fetchM15, fetchFundingHistory, mergeFunding, type FundingPoint } from "../src/lib/candles.ts";
 import { orderSweeps } from "../src/lib/sweep-order.ts";
+import { runSlice, rotateRetries } from "../src/lib/sweep-run.ts";
 import { stepIndexNow, publishedUrls } from "./indexnow.ts";
 import { collapsedCoverage, publishedSet, orphans } from "./coverage.ts";
 import { readFlips, readFlipEvents, writeCachedFlips, type D1Like } from "../src/lib/flips.ts";
@@ -130,10 +131,13 @@ const M15_REFRESH_HOURS = 2;
 const FUNDING_REFRESH_HOURS = 6;
 /** Canary rows are small but unbounded, so they are pruned on the same schedule. */
 const CANARY_RETAIN_HOURS = 168;
-/** Symbols per invocation. 24 + the snapshot's 2 + the funding rotation's 6 = 32, inside the
-    50-subrequest-per-invocation ceiling with room for a retry. At 49 contracts a full sweep
-    is three invocations — fifteen minutes — which is why the cycle list has to be frozen. */
-const CHUNK = 24;
+/** Symbols per invocation. It was 24, sized only against the 50-subrequest ceiling, and the
+    ceiling it met first was a different one: Hyperliquid's 1,200 weight a minute per IP, from
+    egress addresses the worker shares. 24 hourly candle requests weigh about 900 of it in one
+    burst, and on 15 October 2026 whole cycles came back 429 (see src/lib/sweep-run.ts).
+    12 is about 450, and the schedule still fits: at 55 contracts a cycle is five ticks, and the
+    hourly, m15, funding and daily cycles together need about 14 of the 24 ticks in two hours. */
+const CHUNK = 12;
 /** How long a priority fill that wrote nothing stands down for, so one unfetchable contract
     cannot hold the ordinary refresh cycle hostage. Two ticks' worth plus margin. */
 const FILL_BACKOFF_MS = 10 * 60_000;
@@ -677,9 +681,6 @@ async function run(env: Env): Promise<RunResult> {
        already in progress continues regardless of the gate, so a sweep can never stall
        half-finished. */
     try {
-      /* THE WEEKLY REPORT COMES FIRST, and takes the tick. It is roughly 140 subrequests
-         against a 50-per-invocation ceiling, so it walks itself across consecutive ticks and
-         the sweeps stand aside while it does — about twenty minutes, once a week. */
       /* A pending one-shot inspection runs before the sweeps and never competes with them:
          it is a single subrequest, it clears its own request key, and it happens at most once
          per probe written. Placed here so a diagnostic can never starve the ingest. */
@@ -691,9 +692,6 @@ async function run(env: Env): Promise<RunResult> {
          subrequest that must never compete with the sweeps. See worker/corroborate.ts. */
       const reach = await stepCorroborate(env);
       if (reach) result.corroborate = reach;
-
-      const step = await stepReport(env);
-      if (step) { result.report = step; throw SKIP_SWEEPS; }
 
       /* THE FLIP FEED IS MAINTAINED INCREMENTALLY. Nothing here reads 24 hours of history.
          A flip is a sign change between two consecutive samples and this pass holds both: the
@@ -765,7 +763,7 @@ async function run(env: Env): Promise<RunResult> {
       }
 
       /* ANNOUNCED ONLY WHEN THE SET OF PUBLISHED URLS CHANGES — see worker/indexnow.ts for
-         why that, and not "the page changed". Placed after the report and before the sweeps
+         why that, and not "the page changed". Placed after the flip feed and before the sweeps
          so a submission can never delay data collection, and so a failure here is a logged
          line rather than a lost pass: nothing a reader sees depends on it. */
       try {
@@ -795,6 +793,16 @@ async function run(env: Env): Promise<RunResult> {
          feed that reads them are one step; nothing may run between them that can end the tick. */
       const gsc = await stepGscExport(env);
       if (gsc) { result.gscExport = gsc; throw SKIP_SWEEPS; }
+
+      /* THE WEEKLY REPORT TAKES THE SWEEPS, and like the export above it comes after the flip
+         feed. It is roughly 140 subrequests against a 50-per-invocation ceiling, so it walks
+         itself across consecutive ticks and the sweeps stand aside while it does — about
+         twenty minutes, once a week. It used to sit before the feed, which meant every one of
+         those ticks wrote funding rows to D1 and then skipped the feed that reads them: the
+         defect the export shipped with on 15.10.2026, here every Monday since the report began.
+         A slice is about 22 subrequests; what runs before it here is a handful. */
+      const step = await stepReport(env);
+      if (step) { result.report = step; throw SKIP_SWEEPS; }
 
       const syms = published;
 
@@ -845,15 +853,11 @@ async function run(env: Env): Promise<RunResult> {
            name the cause and costs nothing; keeping all of them would just be the same string
            twenty-four times. */
         let firstErr = "";
+        /* In groups, stopping at the first 429 — see src/lib/sweep-run.ts for the measurement. */
         const run = async (slice: string[]) => {
-          const done: string[] = [];
-          const oks = await Promise.all(slice.map((s) =>
-            write(s).catch((e) => {
-              if (!firstErr) firstErr = `${s}: ${(e instanceof Error ? e.message : String(e)).slice(0, 90)}`;
-              return false;
-            })));
-          oks.forEach((ok, i) => { if (ok) done.push(slice[i]); });
-          return done;
+          const r = await runSlice(slice, write);
+          if (!firstErr) firstErr = r.firstErr;
+          return r.done;
         };
 
         const cursor = m?.i ?? 0;
@@ -885,7 +889,9 @@ async function run(env: Env): Promise<RunResult> {
              stop everything else. That was the risk that kept this untouched, and it is the
              existing mechanism rather than a new one. */
           const stale = (m?.skip ?? []).filter((x) => scope.includes(x));
-          const missing = [...new Set([...scope.filter((x) => !have.has(x)), ...stale])];
+          /* Rotated by tick: a fixed order let the same symbol (WLFI, 15.10.2026) sit last and
+             lose every retry the rate limit cut short. Holes stay in front. */
+          const missing = rotateRetries(scope.filter((x) => !have.has(x)), stale, Math.floor(Date.now() / 300_000));
           if (missing.length) {
             const done = await run(missing.slice(0, room));
             for (const s of done) have.add(s);
