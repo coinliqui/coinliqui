@@ -1,3 +1,9 @@
+// public/shared.js
+function pct(x, decimals = 2) {
+  if (!Number.isFinite(x)) return "\u2014";
+  return `${(x * 100).toFixed(decimals)}%`;
+}
+
 // src/lib/funding.ts
 var HOURS_PER_YEAR = 24 * 365;
 var HL_BASE_APR = 125e-7 * HOURS_PER_YEAR;
@@ -663,7 +669,7 @@ var b64url = (bytes) => {
   return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 };
 var b64urlStr = (s) => b64url(new TextEncoder().encode(s));
-var share = (a, b) => b ? `${(a / b * 100).toFixed(0)}%` : "\u2014";
+var share = (a, b) => b ? pct(a / b, 0) : "\u2014";
 async function gscToken(rawKey) {
   const key = JSON.parse(rawKey);
   const pem = key.private_key.replace(/-----[^-]+-----/g, "").replace(/\s+/g, "");
@@ -1443,7 +1449,7 @@ async function stepGscExport(env, now = Date.now()) {
 }
 
 // worker/build-stamp.ts
-var WORKER_BUILD = "85ad691ab302";
+var WORKER_BUILD = "1c231f8fa350";
 
 // worker/ingest.ts
 var RETAIN_HOURS = 720;

@@ -1,5 +1,6 @@
 import { type Candle, type FundingPoint, T, O, H, L, C, V } from "./candles.ts";
-import { axisDp, shortDate } from "../../public/shared.js";
+import { axisDp, shortDate, signedPct } from "../../public/shared.js";
+import { HOURS_PER_YEAR } from "./funding.ts";
 import { U, CH, INK, SANS, MONO, niceTicks, timeTicks, xTick, text, rect, line, fint, crosshair, n2, FS_AXIS, FS_MICRO, PILL_H, PILL_R, PILL_GAP } from "./chart.ts";
 
 /* =========================================================================================
@@ -238,8 +239,8 @@ export function fundingByBar(
     const end = ci + 1 < candles.length ? candles[ci + 1][T] : start + barMs;
     while (i < sorted.length && sorted[i][0] < start) i++;
     let sum = 0, cnt = 0, j = i;
-    while (j < sorted.length && sorted[j][0] < end) { sum += sorted[j][1] * 8760; cnt++; j++; }
-    if (cnt) out.set(start, sum / cnt);   // HL settles hourly: APR = rate x 8760
+    while (j < sorted.length && sorted[j][0] < end) { sum += sorted[j][1] * HOURS_PER_YEAR; cnt++; j++; }
+    if (cnt) out.set(start, sum / cnt);   // HL settles hourly: APR = rate x HOURS_PER_YEAR
     i = j;
   }
   return out;
@@ -426,8 +427,8 @@ export function buildPriceChart(
       s.push(`<polyline points="${pts}" fill="none" stroke="${side > 0 ? INK.paysL : INK.paysS}" stroke-width="1.1" stroke-linejoin="round" opacity=".9"/>`);
     }
     s.push(line(plotX, fz, axisX, fz, INK.zero));
-    s.push(text(axisX + PILL_GAP, fundY + 11, `+${(fmax * 100).toFixed(0)}% APR`, INK.faint, FS_MICRO));
-    s.push(text(axisX + PILL_GAP, fundY + fundH - 2, `−${(fmax * 100).toFixed(0)}%`, INK.faint, FS_MICRO));
+    s.push(text(axisX + PILL_GAP, fundY + 11, `${signedPct(fmax, 0)} APR`, INK.faint, FS_MICRO));
+    s.push(text(axisX + PILL_GAP, fundY + fundH - 2, signedPct(-fmax, 0), INK.faint, FS_MICRO));
   }
 
   /* THE LAST-PRICE MARKER IS TAGGED so the live layer can move it.
@@ -561,9 +562,9 @@ export function buildFundingChart(candles: Candle[], funding: FundingPoint[] | n
     s.push(`<polyline points="${pts}" fill="none" stroke="${side > 0 ? INK.paysL : INK.paysS}" stroke-width="1.4" stroke-linejoin="round" opacity=".95"/>`);
   }
   s.push(line(plotX, zeroY, axisX, zeroY, INK.zero));
-  s.push(text(axisX + PILL_GAP, top + 11, `+${(max * 100).toFixed(0)}% APR`, INK.faint, FS_MICRO));
+  s.push(text(axisX + PILL_GAP, top + 11, `${signedPct(max, 0)} APR`, INK.faint, FS_MICRO));
   s.push(text(axisX + PILL_GAP, zeroY + 4, "0%", INK.dim, FS_MICRO));
-  s.push(text(axisX + PILL_GAP, top + h - 2, `−${(max * 100).toFixed(0)}%`, INK.faint, FS_MICRO));
+  s.push(text(axisX + PILL_GAP, top + h - 2, signedPct(-max, 0), INK.faint, FS_MICRO));
   s.push(`<g data-ax="x">${timeTicks(candles.map((c) => c[T]), 8)
     .map(({ i, label }) => xTick(xOf(i), FUND_H - 9, label)).join("")}</g>`);
 

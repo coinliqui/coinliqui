@@ -97,10 +97,10 @@ export function tierFor(table: MarginTable, notional: number): { tier: MarginTie
   return { tier: tiers[index], index };
 }
 
-export function maintenanceMarginFraction(maxLeverage: number): number {
-  // Hyperliquid: maintenance margin is half the initial margin at max leverage.
-  return 1 / (2 * maxLeverage);
-}
+/* Hyperliquid: maintenance margin is half the initial margin at max leverage. Implemented in
+   public/shared.js so the calculators' browser scripts read the same rule. */
+export { maintenanceMarginFraction } from "../../public/shared.js";
+import { maintenanceMarginFraction } from "../../public/shared.js";
 
 export function naiveLiquidationPrice(entryPrice: number, leverage: number, side: Side): number {
   return side === "long" ? entryPrice * (1 - 1 / leverage) : entryPrice * (1 + 1 / leverage);

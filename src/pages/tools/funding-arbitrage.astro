@@ -2,7 +2,7 @@
 import Base from "../../layouts/Base.astro";
 import { liqMapHref } from "../../lib/routes.ts";
 import { getSnapshot, coldStart, findPerp } from "../../lib/hyperliquid.ts";
-import { usd, pct, rawRate, toApr, VENUE_LABEL, paysClass, queryNum, LEGEND_PAYS, type VenueFunding } from "../../lib/funding.ts";
+import { usd, pct, rawRate, toApr, carryCost, VENUE_LABEL, paysClass, queryNum, LEGEND_PAYS, type VenueFunding } from "../../lib/funding.ts";
 import { extremeBy, widestSpread, type Extreme } from "../../lib/extreme.ts";
 
 import Advisory from "../../components/Advisory.astro";
@@ -293,7 +293,7 @@ const opened = askedPerp ? "Showing" : "Opens on";
 
 // Delta-neutral means margin on BOTH legs, so the capital funds two positions.
 const perLeg = capital / 2;
-const grossPeriod = perLeg * spreadApr * (days / 365);
+const grossPeriod = carryCost(perLeg, spreadApr, days);
 const grossYear = perLeg * spreadApr;
 
 /* The naive spread: difference the QUOTED rates and annualise them at ONE assumed interval,
@@ -312,8 +312,8 @@ const grossYear = perLeg * spreadApr;
    With no legs (a level contract) there is no pair to difference, and neither card is shown. */
 const sameInterval = trade ? trade.short.intervalHours === trade.long.intervalHours : true;
 const ASSUMED = trade && sameInterval ? trade.short.intervalHours : 8;
-const naiveSpreadApr = trade ? (trade.short.rate - trade.long.rate) * (8760 / ASSUMED) : NaN;
-const naivePeriod = perLeg * naiveSpreadApr * (days / 365);
+const naiveSpreadApr = trade ? toApr(trade.short.rate - trade.long.rate, ASSUMED) : NaN;
+const naivePeriod = carryCost(perLeg, naiveSpreadApr, days);
 
 /* THE TWO LEGS SIDE BY SIDE, because the trade is a DIFFERENCE and a difference is a distance.
    The page states both rates and the spread as three numbers; drawn, the spread stops being
@@ -559,7 +559,7 @@ const dayBounds = [DAYS.min, DAYS.max, DAYS.places];
       On a contract with no trade spreadApr arrives as 0, not as the sub-print gap, so a repaint
       writes $0.00 like the first byte did. */}
   <script is:inline type="module" define:vars={{ spreadApr, naiveApr: naiveSpreadApr, CAP: capBounds, DAY: dayBounds, sharedV: ASSETS["/shared.js"] }}>
-    const { usd } = await import("/shared.js" + (sharedV ? `?v=${sharedV}` : ""));
+    const { usd, carryCost } = await import("/shared.js" + (sharedV ? `?v=${sharedV}` : ""));
     const form = document.querySelector(".calc");
     if (form) {
       /* The server's usd(), not a copy: the copy printed $1,234,567.89 where the first byte said
@@ -580,9 +580,9 @@ const dayBounds = [DAYS.min, DAYS.max, DAYS.places];
         if (!ok(C, CAP) || !ok(D, DAY)) return;
         const perLeg = C / 2;
         const stale = document.getElementById("link-notice"); if (stale) stale.remove();
-        set("out-period", money(perLeg * spreadApr * (D / 365)));
+        set("out-period", money(carryCost(perLeg, spreadApr, D)));
         set("out-year", money(perLeg * spreadApr));
-        set("v-gap", money(Math.abs(perLeg * spreadApr * (D / 365) - perLeg * naiveApr * (D / 365))));
+        set("v-gap", money(Math.abs(carryCost(perLeg, spreadApr, D) - carryCost(perLeg, naiveApr, D))));
         set("v-days", dayWords(D));
         set("out-days", dayWords(D));
         for (const el of document.querySelectorAll("[data-perleg]")) el.textContent = legWords(perLeg);

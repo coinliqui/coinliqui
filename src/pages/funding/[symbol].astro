@@ -620,7 +620,7 @@ const description = `What a ${p.symbol} perpetual costs to hold, against ${usd(p
             edge", measured 16 September 2026 on https://coinliqui.com/funding/useless?tf=4h. The
             clause is now one expression per count, so noun and verbs cannot be chosen apart. */}
         {bandDrawn && active!.chart.fundingClipped > 0 && (
-          <> The band is scaled to ±{(active!.chart.fundingMax * 100).toFixed(0)}% APR, the 96th percentile —
+          <> The band is scaled to ±{pct(active!.chart.fundingMax, 0)} APR, the 96th percentile —
           {" "}{active!.chart.fundingClipped === 1 ? "1 bar exceeds it and is" : `${active!.chart.fundingClipped} bars exceed it and are`} drawn at the edge; hover reads the true figure.</>
         )}
       </p>

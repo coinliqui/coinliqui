@@ -157,7 +157,7 @@ const description = mapDescription(perp.symbol, { state, maxLeverage: cap, days:
             <td class="num">{usd(r.p.markPx, priceDp(r.p.markPx))}</td>
             <td class="num">{usd(r.p.oiNotional)}</td>
             <td class="num">{r.L}×</td>
-            <td class="num">{(r.corridor * 100).toFixed(2)}%</td>
+            <td class="num">{pct(r.corridor)}</td>
           </tr>
         ))}
       </tbody>

@@ -14,7 +14,7 @@ import Overview from "../../components/Overview.astro";
 import { TIMEFRAMES, DEFAULT_TF, MIN_CHART_BARS, drawnBars, barSpan, buildPriceChart, candleStyleNote, timeframeGapNote, CHART_H, type ChartMode } from "../../lib/series.ts";
 import { CH } from "../../lib/chart.ts";
 
-import { priceDp, changeWords } from "../../lib/funding.ts";
+import { priceDp, changeWords, signedPct } from "../../lib/funding.ts";
 /* =========================================================================================
    ONE COIN.
 
@@ -570,9 +570,9 @@ const description = `Live ${coin.name} (${coin.symbol}) perpetual price from Hyp
               <tr class={r.L === tier1.maxLeverage ? "is-active" : undefined}>
                 <td class="num">{r.L}×{r.L === tier1.maxLeverage ? " · max" : ""}</td>
                 <td class="num">{usd(r.longLiq, dp)}</td>
-                <td class="num">−{(r.longDist * 100).toFixed(2)}%</td>
+                <td class="num">{signedPct(-r.longDist)}</td>
                 <td class="num">{usd(r.shortLiq, dp)}</td>
-                <td class="num">{(r.corridor * 100).toFixed(2)}%</td>
+                <td class="num">{pct(r.corridor)}</td>
               </tr>
             ))}
           </tbody>

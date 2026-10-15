@@ -2,7 +2,7 @@
 import Base from "../../layouts/Base.astro";
 import More from "../../components/More.astro";
 import { getSnapshot, coldStart, requestedPerp } from "../../lib/hyperliquid.ts";
-import { pct, usd, priceDp, VENUE_LABEL } from "../../lib/funding.ts";
+import { pct, usd, priceDp, carryCost, toApr, VENUE_LABEL } from "../../lib/funding.ts";
 import { liquidationPrice, maintenanceMarginFraction, type MarginTable } from "../../lib/margin.ts";
 import tables from "../../data/margin-tables.json";
 import { widestSpread } from "../../lib/extreme.ts";
@@ -136,7 +136,7 @@ const liq = picked && picked.perp.markPx > 0
 /* Reading a quoted rate as if it were daily is wrong by exactly the number of settlements in a
    day, which is the venue's interval and nothing else. Hyperliquid settles hourly, so 24x. */
 const dailyFactor = hl && hl.intervalHours > 0 ? 24 / hl.intervalHours : null;
-const realHold = hl ? SIZE_USD * hl.rate * (24 / hl.intervalHours) * HOLD_DAYS : null;
+const realHold = hl ? carryCost(SIZE_USD, toApr(hl.rate, hl.intervalHours), HOLD_DAYS) : null;
 const naiveHold = hl ? SIZE_USD * hl.rate * HOLD_DAYS : null;
 
 /* "FINE INSIDE THE FIRST MARGIN TIER" WAS CONTRADICTED BY THE ROW ABOVE IT. The closing note said

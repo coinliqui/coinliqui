@@ -26,6 +26,7 @@
 
 import TERMS from "../src/data/terms-baseline.json" with { type: "json" };
 import { extremeBy } from "../src/lib/extreme.ts";
+import { pct } from "../public/shared.js";
 
 /* THE SHAPE OF THE STORED DOC, SO A PAGE CAN TELL WHICH WORDING IT IS READING.
    The report is written once a week and read for the seven days after, so a correction to its
@@ -212,7 +213,7 @@ const b64urlStr = (s: string) => b64url(new TextEncoder().encode(s));
 /* A SHARE OF A TOTAL, not the rate formatter of the same name in public/shared.js. Two
    arguments, no decimals, a different question. Renamed because a colliding name is its own
    hazard: a reader who knows pct() from the site would read this as that. */
-const share = (a: number, b: number) => (b ? `${((a / b) * 100).toFixed(0)}%` : "—");
+const share = (a: number, b: number) => (b ? pct(a / b, 0) : "—");
 
 /**
  * A Google service-account access token, signed in the Worker.

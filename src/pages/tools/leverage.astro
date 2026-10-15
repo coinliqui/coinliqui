@@ -455,7 +455,7 @@ const description = capCount > 1
       Paid for by the local `pc` (pct replaces it), the null checks on ids and on the form that
       this page always renders, the per-branch className string and the forEach tier search. */}
   <script is:inline type="module" define:vars={{ table, markPx: perp.markPx, sharedV: ASSETS["/shared.js"] }}>
-    const { usd, pct, priceDp } = await import("/shared.js" + (sharedV ? `?v=${sharedV}` : ""));
+    const { usd, pct, priceDp, maintenanceMarginFraction } = await import("/shared.js" + (sharedV ? `?v=${sharedV}` : ""));
     const form = document.querySelector(".calc");
     const set = (id, v) => document.getElementById(id).textContent = v;
     const tiers = [...table.marginTiers].sort((a, b) => a.lowerBound - b.lowerBound);
@@ -466,7 +466,7 @@ const description = capCount > 1
     const recalc = () => {
       const N = Number(form.notional.value), L = Number(form.leverage.value);
       if (!form.checkValidity()) return;
-      const idx = ix(N), permitted = tiers[idx].maxLeverage, mmf = 1 / (2 * permitted);
+      const idx = ix(N), permitted = tiers[idx].maxLeverage, mmf = maintenanceMarginFraction(permitted);
       const eff = Math.min(L, permitted), im = N / eff, mm = N * mmf;
       const s = form.side.value == "short" ? -1 : 1, liq = markPx * (1 - s / L) / (1 - s * mmf);
       set("out-permitted", permitted + "×");

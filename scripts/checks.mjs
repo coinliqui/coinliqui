@@ -601,7 +601,7 @@ const SHARED_RULES = ["paysClass", "paysLabel", "paysArrow", "carryCost", "aprSp
                       /* 15 October 2026: five signed-percent copies with three rules for zero, five
                          month tables, two staleness limits, the map's sum on two sides of hydration. */
                       "signedPct", "moveCounts", "shortDate", "dateTimeUtc", "isStale",
-                      "cumulativeAt", "atReading", "parsePrice", "spanWords", "mapModel"];
+                      "cumulativeAt", "atReading", "parsePrice", "spanWords", "mapModel", "maintenanceMarginFraction"];
 
 /* THE SHAPE OF A RULE WRITTEN INLINE, which a definition count cannot see because it has no name.
    Each is a shape that shipped as a copy and disagreed with the shared rule; `only` names the one
@@ -611,6 +611,7 @@ const INLINE_SHAPES = [
   { what: "toLocaleDateString with a short month (prints \"Sept\")", re: /month:\s*["']short["']/, only: null, use: "shortDate" },
   /* a sign ternary with a percent sign after it on the same line — a signed COUNT ("+3 indexed")
      is not this rule */
+  { what: "a percentage formatted by hand", re: /\* 100\)\.toFixed\(\d\)\}?%/, only: "public/shared.js", use: "pct / signedPct" },
   { what: "a hand-made sign for a percentage", re: /\?\s*["']\+["']\s*:\s*["'](\u2212|\\u2212|-)["'][^\n]{0,80}%/, only: "public/shared.js", use: "signedPct" },
 ];
 

@@ -3,7 +3,7 @@ import Base from "../../layouts/Base.astro";
 import Related from "../../components/Related.astro";
 import Figure from "../../components/Figure.astro";
 import { getSnapshot, coldStart } from "../../lib/hyperliquid.ts";
-import { VENUE_LABEL, pct, usd, carryCost, rawRate, settlementsPerYear, settlementWords, HL_BASE_APR } from "../../lib/funding.ts";
+import { VENUE_LABEL, pct, usd, carryCost, toApr, rawRate, settlementsPerYear, settlementWords, HL_BASE_APR } from "../../lib/funding.ts";
 
 /**
  * THE FUNDING-RATE EXPLAINER.
@@ -105,7 +105,7 @@ const cadence = [...btcVenues]
     label: VENUE_LABEL[v.venue],
     hours: v.intervalHours,
     perDay: 24 / v.intervalHours,
-    apr: LESSON_RATE * (8760 / v.intervalHours),
+    apr: toApr(LESSON_RATE, v.intervalHours),
   }));
 const cadenceMax = Math.max(...cadence.map((c) => c.apr), 1e-9);
 

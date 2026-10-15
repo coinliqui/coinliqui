@@ -57,6 +57,10 @@ export function pct(x, decimals = 2) {
   return `${(x * 100).toFixed(decimals)}%`;
 }
 
+/** Hyperliquid's maintenance margin: half the initial margin at the tier's max leverage. Here so
+ *  the calculators' scripts read the server's rule instead of writing 1 / (2 * L) again. */
+export const maintenanceMarginFraction = (maxLeverage) => 1 / (2 * maxLeverage);
+
 /** MONTHS AND THE SHORT DATE, once. Five files carried their own month table, and two pages used
  *  toLocaleDateString("en-GB", {month: "short"}) instead — which prints "Sept" for September, so a
  *  date read "16 Sept 2026" on /unlocks and "16 Sep 2026" on every chart (15 October 2026). */

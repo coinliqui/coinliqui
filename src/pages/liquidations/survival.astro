@@ -369,7 +369,7 @@ const feesVsFunding = mapSide === "long" ? "the same sign as the funding a long 
                 <td class="num">{lv.tested}</td>
                 <td class="num">{lv.liquidated}</td>
                 <td class="num">{lv.tested - lv.liquidated}</td>
-                <td class="num">{((1 - lv.liquidated / Math.max(1, lv.tested)) * 100).toFixed(1)}%</td>
+                <td class="num">{pct(1 - lv.liquidated / Math.max(1, lv.tested), 1)}</td>
                 <td class="num">{medianClosure(lv) ?? "—"}</td>
               </tr>
             ))}

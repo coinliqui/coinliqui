@@ -1,6 +1,7 @@
 ---
 import Base from "../../layouts/Base.astro";
 import { usd, pct } from "../../lib/funding.ts";
+import { maintenanceMarginFraction } from "../../lib/margin.ts";
 import { MONTHS } from "../../../public/shared.js";
 import { buildLiqMap, PROFILES, spanWords } from "../../lib/liqmap.ts";
 import { paintHeatMap } from "../../lib/heatmap.ts";
@@ -31,7 +32,7 @@ const fmtT = (t: number) => {
 };
 
 const hourly = (frozen.candles as number[][]) as Candle[];
-const mmf = 1 / (2 * frozen.maxLeverage);
+const mmf = maintenanceMarginFraction(frozen.maxLeverage);
 const profile = PROFILES.find((p) => p.key === Astro.url.searchParams.get("profile")) ?? PROFILES[1];
 
 const FACTOR = 2;                                   // 2-hour bars: 138 columns, candles still candles
@@ -178,7 +179,7 @@ const description =
 
   <div class="reads">
     <div><b>{px(dayOpen)} → {px(dayLow)}</b><span>observed, {eventDays}</span></div>
-    <div><b>{(drawdown * 100).toFixed(1)}%</b><span>{drawdownLabel}</span></div>
+    <div><b>{pct(drawdown, 1)}</b><span>{drawdownLabel}</span></div>
     <div><b>{(biggestHour[5] / medVol).toFixed(0)}×</b><span>the busiest hour against the prior median</span></div>
     <div><b>{compact(sweptTotal)}</b><span>modelled notional price traded through</span></div>
   </div>
@@ -272,7 +273,7 @@ const description =
     At
     <strong>{fmtT(wick[0])} UTC</strong> BTC opened at {px(wick[1])}, printed a low of
     <strong>{px(wick[3])}</strong>, and closed back at {px(wick[4])} — a
-    {(((wick[1] - wick[3]) / wick[1]) * 100).toFixed(1)}% excursion recovered inside sixty minutes,
+    {pct((wick[1] - wick[3]) / wick[1], 1)} excursion recovered inside sixty minutes,
     on {btc(wick[5])} BTC of volume against a prior hourly median of {btc(medVol)}. A wick with
     no close behind it is the shape a forced-seller cascade leaves: the sells are not discretionary,
     so they take whatever bid is there, and the price snaps back once they stop. The model puts a
