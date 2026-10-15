@@ -3,6 +3,7 @@ import Base from "../layouts/Base.astro";
 import { getSnapshot, coldStart } from "../lib/hyperliquid.ts";
 import { pct, signedPct, usd } from "../lib/funding.ts";
 import Figure from "../components/Figure.astro";
+import More from "../components/More.astro";
 import Overview from "../components/Overview.astro";
 import { extremeBy } from "../lib/extreme.ts";
 import { readOiHistory, oiChange } from "../lib/oi-history.ts";
@@ -266,7 +267,11 @@ const noChangeReason = oiHist.status === "no-store"
           above it is long — correctly long, it is the page's most important sentence. Two
           important sentences compete for one window, so the one an extractor would QUOTE goes
           first and the one it must not omit follows immediately. */}
-      Every figure here is <strong>Hyperliquid's book alone</strong>, not the market's. It is
+      Every figure here is <strong>Hyperliquid's book alone</strong>, not the market's.
+    </p>
+    <More label="Why this page covers one venue only">
+    <p>
+      It is
       the venue this site collects from directly, and the only one whose open interest it
       collects, so it cannot say how this book compares with the rest of the market; a total that
       adds other venues' books is larger by construction.
@@ -279,8 +284,12 @@ const noChangeReason = oiHist.status === "no-store"
       {" "}<a class="link" href="/funding">funding</a> compares three venues and this page
       cannot. <a class="link" href="/data-sources">What is collected, and what is not →</a>
     </p>
+    </More>
   </div>
-  <p class="section-note" style="margin:0 0 20px;max-width:74ch">Across the book, 24-hour volume of {usd(stripVol)} is {Number.isFinite(stripTurn) ? `${stripTurn.toFixed(2)}\u00d7` : "\u2014"} the open interest. The turnover column is that ratio per contract: a high number means the position base is churning rather than accumulating. <a class="link" href="/learn/open-interest">What open interest does and does not tell you →</a></p>
+  <p class="section-note" style="margin:0 0 20px;max-width:74ch">Across the book, 24-hour volume of {usd(stripVol)} is {Number.isFinite(stripTurn) ? `${stripTurn.toFixed(2)}\u00d7` : "\u2014"} the open interest.</p>
+  <More label="What the turnover column means">
+    <p class="section-note" style="margin:0;max-width:74ch">The turnover column is that ratio per contract: a high number means the position base is churning rather than accumulating. <a class="link" href="/learn/open-interest">What open interest does and does not tell you →</a></p>
+  </More>
   {oiHist.status === "warming" && (
     <p class="clock" style="margin:0 0 12px">
       {oiGap
@@ -306,11 +315,13 @@ const noChangeReason = oiHist.status === "no-store"
           </>
         ))}
       </div>
-      <p slot="note">
-        Open interest is one venue&rsquo;s book, not the market&rsquo;s: these are Hyperliquid&rsquo;s
-        positions only. Bars are scaled to the largest, {usd(maxOi)}, and the percentage beside each
-        is its share of the whole book.
-      </p>
+      <More slot="note" label="How the bars are scaled">
+        <p>
+          Open interest is one venue&rsquo;s book, not the market&rsquo;s: these are Hyperliquid&rsquo;s
+          positions only. Bars are scaled to the largest, {usd(maxOi)}, and the percentage beside each
+          is its share of the whole book.
+        </p>
+      </More>
     </Figure>
   )}
 

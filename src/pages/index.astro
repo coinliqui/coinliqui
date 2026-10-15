@@ -8,6 +8,7 @@ import { utcStamp, readableAge } from "../lib/freshness.ts";
 import { distribution } from "../lib/viz.ts";
 import { extremeBy, pluralityOf, widestSpread } from "../lib/extreme.ts";
 import Figure from "../components/Figure.astro";
+import More from "../components/More.astro";
 
 import { coverageRule, coverageToday } from "../lib/coverage.ts";
 const env = (Astro.locals as any)?.runtime?.env;
@@ -239,15 +240,22 @@ const description =
           {breadth.zeroAt !== null && <span class="viz__zero" style={`left:${breadth.zeroAt}%`}>0%</span>}
           <span>{pct(breadth.hi)}</span>
         </div>
-        <p slot="note">
-          Green is a rise and red a fall — the same pair the price candles use elsewhere on this
-          site, never the amber and cyan that mean a funding direction. Each bar counts the
-          contracts whose 24-hour move landed in that band, so the tall part is where the market
-          actually is rather than where its extremes are. The centre band straddles
-          zero and stays neutral because its sign is an artefact of where the bucket edges fall.
-          {breadth.over > 0 && <> The axis covers the middle of the range, so <b>{breadth.over}</b> further
-          out {breadth.over === 1 ? "sits" : "sit"} in the end bands.</>}
-        </p>
+        <Fragment slot="note">
+          <p>
+            Green is a rise and red a fall — the same pair the price candles use elsewhere on this
+            site, never the amber and cyan that mean a funding direction.
+            {breadth.over > 0 && <> The axis covers the middle of the range, so <b>{breadth.over}</b> further
+            out {breadth.over === 1 ? "sits" : "sit"} in the end bands.</>}
+          </p>
+          <More label="How to read the bars">
+            <p>
+              Each bar counts the
+              contracts whose 24-hour move landed in that band, so the tall part is where the market
+              actually is rather than where its extremes are. The centre band straddles
+              zero and stays neutral because its sign is an artefact of where the bucket edges fall.
+            </p>
+          </More>
+        </Fragment>
       </Figure>
     )}
 
@@ -321,12 +329,14 @@ const description =
           </tbody>
         </table>
       </div>
-      <p class="section-note" style="margin-top:10px">
-        A flip is found by comparing a contract's consecutive snapshots, so the time is when the
-        reversal was first seen rather than when it occurred. Where the two samples were more than
-        15 minutes apart the row gives the window instead of a minute.
-        <a class="link" href="/data-sources">How often each figure is refreshed →</a>
-      </p>
+      <More label="Why the time is when a flip was detected">
+        <p class="section-note" style="margin-top:10px">
+          A flip is found by comparing a contract's consecutive snapshots, so the time is when the
+          reversal was first seen rather than when it occurred. Where the two samples were more than
+          15 minutes apart the row gives the window instead of a minute.
+          <a class="link" href="/data-sources">How often each figure is refreshed →</a>
+        </p>
+      </More>
       </>
     ) : flips.status === "stale" ? (
       /* A STALLED INGEST, NOT A WARM-UP. This used to arrive here as "warming" with hours: 0,
@@ -354,9 +364,14 @@ const description =
           <p class="empty__title">Collecting funding history</p>
           <p class="empty__text">
             A flip needs two readings to compare, so this feed reports nothing until the window
-            covers a full 24 hours. That way an empty list means <em>no coin flipped</em>,
-            rather than <em>we have not been watching long enough to say</em>.
+            covers a full 24 hours.
           </p>
+          <More label="Why the feed waits for a full day">
+            <p class="empty__text">
+              That way an empty list means <em>no coin flipped</em>,
+              rather than <em>we have not been watching long enough to say</em>.
+            </p>
+          </More>
           {/* A 0% bar reads as "nothing is happening". Before the first snapshot there is
               genuinely no progress to draw, so the sentence below carries the state instead. */}
           {flips.since > 0 && (

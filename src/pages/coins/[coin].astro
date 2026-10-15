@@ -445,11 +445,15 @@ const description = `Live ${coin.name} (${coin.symbol}) perpetual price from Hyp
         Period high <b data-tfstat="high" data-group="cx">{px(active!.chart!.high)}</b>,
         low <b data-tfstat="low" data-group="cx">{px(active!.chart!.low)}</b>,
         over <b data-tfstat="bars" data-group="cx">{barSpan(active!.tf, active!.chart!.bars)}</b>.
-        {" "}<span class="legend__style" data-tfstat="style" data-group="cx">{styleNote}</span>
-        {" "}No funding band on this chart: the funding rate is quoted at
-        its current value in the cards and the per-venue table below, and its history has
-        {" "}<a class="link" href={`/funding/${coin.symbol.toLowerCase()}`}>its own chart</a>.
       </p>
+      <More label="How to read the price chart">
+        <p class="legend">
+          <span class="legend__style" data-tfstat="style" data-group="cx">{styleNote}</span>
+          {" "}No funding band on this chart: the funding rate is quoted at
+          its current value in the cards and the per-venue table below, and its history has
+          {" "}<a class="link" href={`/funding/${coin.symbol.toLowerCase()}`}>its own chart</a>.
+        </p>
+      </More>
     </>
   ) : (
     <div class="empty">
@@ -467,11 +471,13 @@ const description = `Live ${coin.name} (${coin.symbol}) perpetual price from Hyp
       the uncited-claims sweep already taught: a sentence deleted in one place has copies, and
       the copies are not always sentences. */}
   <h2 class="section">What the position costs</h2>
-  <p class="section-note">
-    The number a price page usually leaves out. A perpetual has no expiry, so nothing pulls it
-    back toward the underlying except the funding payment — which means the rate is not a fee on
-    the side, it is the mechanism, and it is what holding this exposure actually costs.
-  </p>
+  <More label="Why funding is the cost of holding a perpetual">
+    <p class="section-note">
+      The number a price page usually leaves out. A perpetual has no expiry, so nothing pulls it
+      back toward the underlying except the funding payment — which means the rate is not a fee on
+      the side, it is the mechanism, and it is what holding this exposure actually costs.
+    </p>
+  </More>
   <div class="cards">
     {/* THIS CARD WAS THE BASIS and there is deliberately nothing in its place pretending to be
         it. The nearest available number is the mark against Hyperliquid's oraclePx, and that is
@@ -535,7 +541,11 @@ const description = `Live ${coin.name} (${coin.symbol}) perpetual price from Hyp
     <>
       <h2 class="section">How far {coin.symbol} can move before each leverage closes you</h2>
       <p class="section-note" style="max-width:88ch">
-        No model and no assumption about who holds what. Given {coin.name}'s published margin
+        No model and no assumption about who holds what.
+      </p>
+      <More label="How these levels are worked out">
+      <p class="section-note" style="max-width:88ch">
+        Given {coin.name}'s published margin
         tier — {tier1.maxLeverage}× maximum, {pct(maintenanceMarginFraction(tier1.maxLeverage), 3)} maintenance
         margin — and the mark of {px(markNow)}{markClock ? ` at ${markClock}` : ""}, the price
         this page opened with, these prices are arithmetic. If the price at the top of the page has
@@ -543,6 +553,7 @@ const description = `Live ${coin.name} (${coin.symbol}) perpetual price from Hyp
         The corridor is the whole width a position survives: cross either end and it is closed,
         whatever the funding was doing.
       </p>
+      </More>
       <div class="panel" style="max-width:720px">
         <table class="tbl">
           <thead>

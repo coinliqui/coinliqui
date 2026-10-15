@@ -5,6 +5,7 @@ import { getSnapshot, coldStart, findPerp, getLive, oldestStamp } from "../../li
 import { usd, pct, paysClass, paysLabel, carryCost, LEGEND_PAYS, isHlBaseApr } from "../../lib/funding.ts";
 import { extremeBy } from "../../lib/extreme.ts";
 import Spark from "../../components/Spark.astro";
+import More from "../../components/More.astro";
 import { readSparks, sparkScale, SPARK_POINTS, SPARK_STEP_MS } from "../../lib/sparks.ts";
 import { COINS, isLive } from "../../lib/coins.ts";
 
@@ -195,6 +196,7 @@ const description = "Perpetual futures prices for the major coins on Hyperliquid
   )}
 
   <h2 class="section">Why this is a perpetual price, not a spot price</h2>
+  <More label="Why there is no spot price or basis here">
   <p class="prose">
     Until 19 August 2026 this page led with a <strong>spot</strong> price from a third-party
     exchange, and printed the basis between that price and the perpetual. Both are gone. The terms
@@ -218,6 +220,7 @@ const description = "Perpetual futures prices for the major coins on Hyperliquid
     {" "}<a class="link" href="/data-sources">Data sources</a> lists every endpoint behind every
     figure here.
   </p>
+  </More>
 
   <style>
     .tick { color: var(--text-faint); font-weight: 400; margin-left: 8px; font-size: 12px; }

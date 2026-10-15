@@ -1,5 +1,6 @@
 ---
 import Base from "../layouts/Base.astro";
+import More from "../components/More.astro";
 import { getSnapshot, coldStart } from "../lib/hyperliquid.ts";
 import { pct, usd, paysClass, LEGEND_FUNDING, type Venue } from "../lib/funding.ts";
 import { PINNED_KEY, GA_ENABLED } from "../lib/site.ts";
@@ -207,6 +208,7 @@ const visitNote = GA_ENABLED
   </div>
 
   <h2 class="section">Why there is no login</h2>
+  <More label="Why your pins stay in this browser">
   <p class="prose">
     A pinned list is four ticker symbols. Storing that on a server would mean an account, a
     credential store, a reset flow and a row with your name on it — all so a table could sort
@@ -218,6 +220,7 @@ const visitNote = GA_ENABLED
     survive clearing your browser data. That is the entire cost, and it buys a feature that
     needs no account at all.
   </p>
+  </More>
 
   <p class="section-note" style="margin-top:20px">
     <a class="link" href="/funding">All coins with per-venue detail →</a>
