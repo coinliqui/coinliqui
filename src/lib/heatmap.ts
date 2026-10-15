@@ -51,18 +51,33 @@ export function paintHeatMap(m: LiqMap, opts: { height?: number; mid?: number; m
 
   /* Run-length merge along each row: 150 x 180 is 27,000 cells, and the field is mostly
      runs of one colour. Merging takes the emitted rect count down by roughly 8x. */
+  /* ONE PATH PER COLOUR, each run a subpath, rather than a <rect> per run. About four thousand rects
+     with two-decimal attributes were 32 KB of /liquidations's 59 KB on the wire and left it under a
+     kilobyte from its budget (15 October 2026). A subpath states the same box in half the characters
+     and to a tenth of a unit, below anything visible at this size. The hover readout still reads the
+     fill of the shape under the cursor (public/interact.js), and a path's fill is its colour. */
   let cells = 0;
+  const runs = new Map<string, string[]>();
+  const f1 = (v: number) => (Math.round(v * 10) / 10).toString();
+  const hgt = f1(rh + 0.4);
   for (let r = 0; r < m.rows; r++) {
-    const y = plotY + r * rh, g = m.grid[r];
+    const y = f1(plotY + r * rh), g = m.grid[r];
     let c0 = 0;
     while (c0 < m.cols) {
       const i0 = rampIndex(g[c0], scale, gamma);
       let c1 = c0 + 1;
       while (c1 < m.cols && rampIndex(g[c1], scale, gamma) === i0) c1++;
-      if (i0 > 0) { s.push(rect(plotX + c0 * cw, y, (c1 - c0) * cw + 0.35, rh + 0.4, RAMP[i0])); cells++; }
+      if (i0 > 0) {
+        const w = f1((c1 - c0) * cw + 0.35);
+        const k = RAMP[i0];
+        if (!runs.has(k)) runs.set(k, []);
+        runs.get(k)!.push(`M${f1(plotX + c0 * cw)} ${y}h${w}v${hgt}h-${w}z`);
+        cells++;
+      }
       c0 = c1;
     }
   }
+  for (const [k, d] of runs) s.push(`<path d="${d.join("")}" fill="${k}"/>`);
 
   /* THE SCARS — where price traded through a standing level.
      Drawn as VERTICAL ticks, not filled cells. The field's whole grammar is horizontal: a
