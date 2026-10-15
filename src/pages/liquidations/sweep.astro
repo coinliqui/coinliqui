@@ -1,7 +1,7 @@
 ---
 import Base from "../../layouts/Base.astro";
 import { usd, pct } from "../../lib/funding.ts";
-import { buildLiqMap, PROFILES } from "../../lib/liqmap.ts";
+import { buildLiqMap, PROFILES, spanWords } from "../../lib/liqmap.ts";
 import { paintHeatMap } from "../../lib/heatmap.ts";
 import { RAMP, CH, compact } from "../../lib/chart.ts";
 import { slotBars } from "../../lib/series.ts";
@@ -44,7 +44,7 @@ const ageBars = (POSITION_LIFE_DAYS * 24) / FACTOR;
 
 const map = buildLiqMap({
   candles: series, start, cols, mmf, maxLeverage: frozen.maxLeverage,
-  oiNotional: frozen.oiNotional, profile, rows: 150, ageBars, minSpan: 0.16,
+  oiNotional: frozen.oiNotional, profile, rows: 150, ageBars,
 });
 const WICK_AT = Date.parse("2026-02-06T00:00:00Z");
 /* The bar to point at is the one whose window CONTAINS the wick. Bars were chunked back from the
@@ -285,7 +285,7 @@ const description =
         <tr><td>Maintenance margin</td><td>{pct(mmf, 3)}, from Hyperliquid's tier 1 at {frozen.maxLeverage}× max leverage</td><td class="num">observed</td></tr>
         <tr class="is-active"><td>Modelled open positions</td><td>{usd(frozen.oiNotional)} — open interest when this file was frozen on {fetched}. Historical open interest is not published, so this sets the model's <em>scale</em>, not its shape.</td><td class="num">assumed</td></tr>
         <tr><td>Leverage mix</td><td><strong>{profile.label}</strong> — {profile.note}</td><td class="num">assumed</td></tr>
-        <tr><td>Drawn price range</td><td>{px(map.loPrice)} – {px(map.hiPrice)}, set by {map.spanRule === "traded" ? "the traded range" : "the ±8% minimum, the traded range being narrower"}. {pct(map.clipped)} of modelled notional liquidates outside it.</td><td class="num">observed</td></tr>
+        <tr><td>Drawn price range</td><td>{px(map.loPrice)} – {px(map.hiPrice)}. {spanWords(map, px)} {pct(map.clipped)} of modelled notional liquidates outside it.</td><td class="num">observed</td></tr>
       </tbody>
     </table>
   </div>

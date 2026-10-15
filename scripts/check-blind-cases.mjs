@@ -104,11 +104,13 @@ const cases = [
     /* hi 110, rows of $1: shorts $5 a row above the mark at 100, longs $10 a row below it. A move
        to 95 reaches the five long rows centred 99.5…95.5: $50. */
     fire: () => levelsAgree(levels([["\u22125%", "$60"]])),
-    quiet: () => levelsAgree(levels([["\u22125%", "$50"], ["+15%", "$50<sup>\u2020</sup>"]], "95",
+    quiet: () => levelsAgree(levels([["\u22125%", "$50"], ["+5%", "$25"]], "95",
       "A move to $95 (\u22125.00%) closes $50 of modelled longs on the way.")),
     also: () => [
       /* a move past the drawn range printed as though it were inside it */
       levelsAgree(levels([["+15%", "$50"]])).length > 0,
+      /* and one past it, honestly marked, is still a move the axis failed to reach */
+      levelsAgree(levels([["+15%", "$50<sup>\u2020</sup>"]])).length > 0,
       /* a reading worded apart from the shared sentence */
       levelsAgree(levels([], "95", "A move to $95 closes $50.")).length > 0,
       /* unparseable rows are said, not skipped silently */

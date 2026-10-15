@@ -2,6 +2,22 @@ import type { Candle } from "./candles.ts";
 import { slotBars } from "./series.ts";
 import { cumulativeAt } from "../../public/shared.js";
 
+/** The narrowest drawn span, as a fraction of the last price: ±8% either side. */
+export const MIN_SPAN = 0.16;
+/** How far either side of the live mark the axis must reach: the largest printed move (10%) plus a
+ *  margin, so the −10% row lands inside a row of the picture rather than on its frame. */
+export const LADDER_REACH = 0.11;
+
+/** Row 8's sentence — how the drawn range was set — once, for every page that draws a map. */
+export function spanWords(m: { spanRule: "traded" | "minSpan"; reached: boolean; tradedLo: number; tradedHi: number; loPrice: number; hiPrice: number }, fmt: (v: number) => string): string {
+  const base = m.spanRule === "traded"
+    ? `Fitted to the traded range, ${fmt(m.tradedLo)}–${fmt(m.tradedHi)}, plus headroom`
+    : `The traded range was quieter than the ±${Math.round(MIN_SPAN * 50)}% minimum, so the minimum set the axis — not the traded range`;
+  return m.reached
+    ? `${base}, then widened to ${fmt(m.loPrice)}–${fmt(m.hiPrice)} so a ${Math.round(Math.max(...MOVE_STEPS) * 100)}% move either way from the live mark stays on the picture.`
+    : `${base}.`;
+}
+
 /* =========================================================================================
    MODELLED LIQUIDATION DENSITY — price on Y, time on X.
 
@@ -113,6 +129,8 @@ export interface LiqMap {
   ageBars: number;
   /** which rule set the drawn price span */
   spanRule: "traded" | "minSpan";
+  /** the axis was widened past that rule so the live mark's ±10% moves stay on the picture */
+  reached: boolean;
   /** bars of warm-up modelled before the first drawn column; short of ageBars means partial */
   warmBars: number;
   /** The notional STILL STANDING at the right-hand edge, per price row, split by side and by
@@ -232,6 +250,8 @@ export function buildLiqMap(opts: {
   ageBars?: number;
   /** minimum drawn price span, as a fraction of last price */
   minSpan?: number;
+  /** a live price the axis must reach LADDER_REACH either side of — see the note at the range */
+  reach?: number;
 }): LiqMap {
   const rows = opts.rows ?? 150;
   const ageBars = opts.ageBars ?? 84;
@@ -262,14 +282,26 @@ export function buildLiqMap(opts: {
   const tradedHi = Math.max(...disp.map((c) => c[2]));
   const last = disp[disp.length - 1][4];
   const fromTraded = (tradedHi - tradedLo) * 1.14;
-  const fromMinSpan = last * (opts.minSpan ?? 0.16);
+  const fromMinSpan = last * (opts.minSpan ?? MIN_SPAN);
   /* Which rule won matters to the reader, so it is reported rather than assumed. In a quiet
      window the minimum span wins and the axis is NOT fitted to the traded range — saying it is would
      be a false statement on a page whose whole argument is that its inputs are stated. */
   const spanRule: "traded" | "minSpan" = fromTraded >= fromMinSpan ? "traded" : "minSpan";
   const span = Math.max(fromTraded, fromMinSpan) * 1.06;
   const mid = (tradedHi + tradedLo) / 2;
-  const hiPrice = mid + span / 2, loPrice = Math.max(0, mid - span / 2);
+  let hiPrice = mid + span / 2, loPrice = Math.max(0, mid - span / 2);
+  /* THE AXIS REACHES THE MOVES THE PAGE PRINTS. Fitted to the traded range alone, ETH's axis ended
+     4.6% under the live mark (15 October 2026), so the map's −5% and −10% rows both read "every long
+     inside the range", $206.3M, the same figure twice — an honest mark on a question the page did
+     not answer. So when a live price is given the axis is widened, never narrowed, to LADDER_REACH
+     either side of it. Widening only adds rows of price the model already places levels in; it
+     takes resolution from the picture, which is the price of answering. */
+  const reached = opts.reach !== undefined &&
+    (opts.reach * (1 + LADDER_REACH) > hiPrice || opts.reach * (1 - LADDER_REACH) < loPrice);
+  if (opts.reach !== undefined) {
+    hiPrice = Math.max(hiPrice, opts.reach * (1 + LADDER_REACH));
+    loPrice = Math.max(0, Math.min(loPrice, opts.reach * (1 - LADDER_REACH)));
+  }
   const band = (hiPrice - loPrice) / rows;
 
   /* For each price row, the first future bar that trades through it. Quantising the level to
@@ -382,7 +414,7 @@ export function buildLiqMap(opts: {
     clipped: clipped / Math.max(1e-9, clipped + placed),
     tradedLo, tradedHi,
     totalNotional: opts.oiNotional,
-    ageBars, spanRule, warmBars: warm,
+    ageBars, spanRule, reached, warmBars: warm,
     standing: { long: standLong, short: standShort, levs: lev.map((x) => x.L) },
   };
 }

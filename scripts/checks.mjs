@@ -1749,6 +1749,10 @@ export function levelsAgree(html) {
     if (got !== want) out.push(`${move}: the table prints ${got}, the published rows give ${want}`);
     const past = price < d.lo || price > d.hi;
     if (past !== cells[2].includes("\u2020")) out.push(`${move}: ${past ? "lands past the drawn range and carries no †" : "is inside the drawn range and is marked † as past it"}`);
+    /* And no move the table prints may land past it at all: the axis is widened to reach them
+       (LADDER_REACH in src/lib/liqmap.ts). A † is honest, but it is not an answer — ETH's −5% and
+       −10% once both read $206.3M, every long in the range. */
+    else if (past) out.push(`${move} lands past the drawn range (${d.lo}–${d.hi}) — the axis must reach every move the table prints`);
   }
   const field = html.match(/<input\b[^>]*\bdata-at-input\b[^>]*>/)?.[0] ?? "";
   const value = field.match(/\bvalue="([^"]*)"/)?.[1] ?? "";
