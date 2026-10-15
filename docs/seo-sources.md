@@ -52,3 +52,12 @@ title guidance already supports: the title and snippet must promise what the pag
 |---|---|---|---|
 | 16.10.2026 | "a ETH perpetual" → "the ETH perpetual" in 29 descriptions; the article follows the number in the funding-cost hold; `wrongArticles` check, live and blind | Helpful content: free of spelling and stylistic problems | live check, every deploy |
 | 16.10.2026 | /funding title names its venues: "Funding rates on Hyperliquid, Binance and Bybit, annualised" | Title links: describe the page; GSC: "hyperliquid funding rates" split across six URLs | position and CTR for that query after 30.10.2026 |
+| 16.10.2026 | /funding/{coin} title and heading carry the registry name, "Bitcoin (BTC)", for the ten coins in src/lib/coins.ts | GSC: "bitcoin funding rate perpetual" and similar reached a page that said only BTC | those queries after 30.10.2026 |
+| 16.10.2026 | Brand once in a title; no canonical on a 404 or 410 | Title links: concise branding; one URL per piece of content | — |
+
+## Queued, with the reason they wait
+
+- /liquidations and /liquidations/{coin}: name Hyperliquid and the registry name in the title, and build
+  the description from the page's own derived figures (snippet guidance: page-specific data). Waits
+  for the 22.10.2026 visits measurement of /liquidations*, so the two effects are not mixed.
+
