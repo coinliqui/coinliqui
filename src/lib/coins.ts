@@ -88,6 +88,9 @@ export const COINS: Coin[] = [
 /** Live if its publication date has passed. Compared in UTC, on date alone. */
 export const isLive = (c: Coin, now = Date.now()) => Date.parse(c.publishAt + "T00:00:00Z") <= now;
 export const liveCoins = (now = Date.now()) => COINS.filter((c) => isLive(c, now));
+/** The live coin page for a contract symbol, if the site has one — the one lookup every page that
+ *  links a contract to its coin uses (the liquidation map had none, 15 October 2026). */
+export const coinPageFor = (symbol: string, now = Date.now()) => COINS.find((c) => c.symbol === symbol && isLive(c, now));
 export const findCoin = (slug: string | undefined) =>
   slug ? COINS.find((c) => c.slug === slug.toLowerCase()) : undefined;
 

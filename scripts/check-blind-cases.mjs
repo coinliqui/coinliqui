@@ -797,6 +797,7 @@ const cases = [
       ["src/lib/liqmap.ts", "export function spanWords(m, f) {}\nexport function mapModel(o) {}\nexport function dayEarlierCut(h, q) {}"],
       ["src/lib/oi-history.ts", "export async function readOiAt(db, s, at) {}"],
       ["src/lib/sparks.ts", "export const sparkDaysOf = (s) => 0;"],
+      ["src/lib/coins.ts", "export const coinPageFor = (s) => null;"],
       /* a comment quoting the shape it replaced is not the shape */
       ["src/pages/x.astro", "/* was: [\"Jan\", \"Feb\", \"Mar\"] and d > 0 ? \"+\" : \"−\" */"],
     ]),

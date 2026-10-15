@@ -602,7 +602,7 @@ const SHARED_RULES = ["paysClass", "paysLabel", "paysArrow", "carryCost", "aprSp
                          month tables, two staleness limits, the map's sum on two sides of hydration. */
                       "signedPct", "moveCounts", "shortDate", "dateTimeUtc", "isStale",
                       "cumulativeAt", "atReading", "parsePrice", "spanWords", "mapModel", "maintenanceMarginFraction",
-                      "moneyAt", "printedMoney", "nearPrinted", "fitDecimals", "exactUsd", "fineNum", "dayEarlierCut", "readOiAt", "numberWord", "sparkDaysOf", "plural"];
+                      "moneyAt", "printedMoney", "nearPrinted", "fitDecimals", "exactUsd", "fineNum", "dayEarlierCut", "readOiAt", "numberWord", "sparkDaysOf", "plural", "coinPageFor"];
 
 /* THE SHAPE OF A RULE WRITTEN INLINE, which a definition count cannot see because it has no name.
    Each is a shape that shipped as a copy and disagreed with the shared rule; `only` names the one

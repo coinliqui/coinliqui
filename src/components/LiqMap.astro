@@ -32,6 +32,7 @@ import { RAMP, CH, INK, MONO, FS_AXIS, compact, niceTicks } from "../lib/chart.t
 import { dateTimeUtc } from "../../public/shared.js";
 import type { Perp, Snapshot } from "../lib/hyperliquid.ts";
 import { liqMapHref } from "../lib/routes.ts";
+import { coinPageFor } from "../lib/coins.ts";
 import { signedPct } from "../lib/funding.ts";
 import tables from "../data/margin-tables.json";
 
@@ -100,6 +101,7 @@ const { perp, table, snap, params: q, crumb, siblings = true, hourly, model } = 
    answers 404 — and a chip strip is exactly where fifty links to a 404 would go unnoticed.
    ========================================================================================= */
 const TABLES = tables as Record<string, unknown>;
+const coinPage = coinPageFor(perp.symbol);
 const mapSiblings = snap.perps.filter(
   (x) => x.symbol !== perp.symbol && Object.prototype.hasOwnProperty.call(TABLES, String(x.marginTableId)),
 );
@@ -797,8 +799,18 @@ const formNote: string | null = (() => {
         ))}
         <a class="chip-link" href={viewHref("/liquidations", win)}>All {mapSiblings.length + 1} →</a>
         <a class="chip-link" href={`/funding/${perp.symbol.toLowerCase()}`}>{perp.symbol} funding →</a>
+        {coinPage && <a class="chip-link" href={`/coins/${coinPage.slug}`}>{coinPage.name} price →</a>}
       </p>
     </>
+  )}
+  {/* THE HUB HAS NO SIBLING STRIP, BUT ITS CONTRACT STILL HAS A FUNDING PAGE AND A COIN PAGE. The funding
+      and coin pages both linked here and to each other; the map linked back to neither from the hub
+      and to the coin from nowhere (15 October 2026). */}
+  {!siblings && (
+    <p class="related">
+      <a class="chip-link" href={`/funding/${perp.symbol.toLowerCase()}`}>{perp.symbol} funding →</a>
+      {coinPage && <a class="chip-link" href={`/coins/${coinPage.slug}`}>{coinPage.name} price →</a>}
+    </p>
   )}
 
   <p style="margin-top:24px">
