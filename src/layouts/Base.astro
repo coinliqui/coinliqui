@@ -1,6 +1,6 @@
 ---
 import { SITE, NAV, FOOTER_LINKS, IDENTITY, origin, GA_MEASUREMENT_ID, GA_ENABLED, GA_DEFER, GA_CONFIG } from "../lib/site.ts";
-import { ageWords } from "../lib/freshness.ts";
+import { ageWords, utcStamp } from "../lib/freshness.ts";
 import { codeStamp } from "../lib/sitemap.ts";
 import { publishedSameAs } from "../lib/corroboration.ts";
 import ASSETS from "../data/assets.json";
@@ -1586,7 +1586,7 @@ const schema = {
               Data via Hyperliquid (derivatives, including the Binance and Bybit funding rates it
               republishes) and Ethereum JSON-RPC (on-chain). <a href="/data-sources">Which endpoint feeds which
               figure →</a> <a href="/terms">Not investment advice →</a>
-              {fetchedAt ? <> Figures as of <time datetime={new Date(fetchedAt).toISOString()}>{new Date(fetchedAt).toISOString().replace("T", " ").slice(0, 16)} UTC</time>.</> : null}
+              {fetchedAt ? <> Figures as of <time datetime={new Date(fetchedAt).toISOString()}>{utcStamp(fetchedAt)}</time>.</> : null}
             </p>
           </footer>
         </main>
