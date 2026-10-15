@@ -84,9 +84,9 @@ const cases = [
     /* The regression exactly as it would be written: the fold kept, its body swapped for a
        placeholder that fetches on open. */
     fire: () => collapsedTextShipped(doc(
-      `<details class="more" data-more><summary>How this is modelled</summary><div data-src="/api/more/liquidations"></div></details>`)),
+      `<details class="more"><summary>How this is modelled</summary><div data-src="/api/more/liquidations"></div></details>`)),
     quiet: () => collapsedTextShipped(doc(
-      `<details class="more" data-more><summary>How this is modelled</summary><div><p>Total notional equals Hyperliquid open interest; leverage mix is assumed.</p></div></details>`)),
+      `<details class="more"><summary>How this is modelled</summary><div><p>Total notional equals Hyperliquid open interest; leverage mix is assumed.</p></div></details>`)),
     also: () => [
       /* the fold removed altogether on a route that must carry one */
       collapsedTextShipped(doc(`<button data-load-more>See more</button>`), { expect: true }).length > 0,

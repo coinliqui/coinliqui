@@ -974,16 +974,12 @@ console.log("\n11. page weight on the wire");
        most of the book. The new ceiling is the observed size plus the usual quarter of headroom,
        not a round number picked to stop the alarm. */
     ["/open-interest", 9_000], ["/liquidations", 60_000], ["/liquidations/survival", 30_000],
-    /* RAISED 14,000 -> 17,900 ON 15 OCTOBER, on purpose, in a diff, with the reason. The page put
-       six of its explanations under "see more" folds (src/components/More.astro) and came in at
-       14,318b, 318 over. No text was removed — the rule is that folded text still ships in the
-       first response — so the growth is the six summaries and the fold's styles. What it buys is a
-       page whose first screen is the register rather than 1,830 words about it. 17,900 is the
-       observed 14,318 plus the usual quarter of headroom, not a round number. */
-    /* /tools/leverage RAISED 8,000 -> 10,300 ON 15 OCTOBER: its explanations went under two "see
-       more" folds and it came in at 8,239b, 239 over. No text was added; the growth is the folds'
-       markup. 10,300 is the observed size plus the usual quarter, not a round number. */
-    ["/unlocks", 17_900], ["/watchlist", 12_000], ["/tools/leverage", 10_300],
+    /* NOT RAISED FOR THE FOLDS (15 October 2026). /unlocks and /tools/leverage went 318b and 239b
+       over when their explanations moved under "see more", and both budgets were raised the same
+       day. Reversed: this measures what a reader downloads, folded text included, so the growth was
+       the signal. It came from the fold's own scoped styles — an inline <style> per page and a
+       data-astro-cid on five elements per fold — which now live in the cached global sheet. */
+    ["/unlocks", 14_000], ["/watchlist", 12_000], ["/tools/leverage", 8_000],
     /* RAISED 8,000 -> 10,600 ON 19 AUGUST, on purpose, in a diff, with the reason — which is what
        the paragraph above demands of anyone who touches these numbers. The ratchet did its job: it
        failed at 8,489b the first time it was run after /about gained the material that makes it a
