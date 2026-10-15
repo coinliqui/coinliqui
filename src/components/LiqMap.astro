@@ -413,11 +413,16 @@ const formNote: string | null = (() => {
             candle time had no date, so yesterday's last bar read as today's (production, 17 September 2026).
             /funding and /watchlist had moved to ageWords() and data-fresh. Both are shared calls now. */}
         Hourly candles to <b>{hourly ? utcStamp(hourly.d[hourly.d.length - 1][0]) : "—"}</b>,
-        refreshed every 2 hours and drawn here in {win.factor}-hour steps. The dashed line is the
-        <b>live mark, {axisPx(mark)}</b>, from the snapshot taken
-        {" "}<time datetime={new Date(snap.fetchedAt).toISOString()} data-fresh={snap.fetchedAt}>{ageWords(minutesSince(snap.fetchedAt))}</time>. Two
-        different ages, so neither is allowed to stand for the other.
+        refreshed every 2 hours and drawn here in {win.factor}-hour steps.
       </p>
+      <More label="The dashed line, and why the map carries two ages">
+        <p class="datanote">
+          The dashed line is the
+          <b>live mark, {axisPx(mark)}</b>, from the snapshot taken
+          {" "}<time datetime={new Date(snap.fetchedAt).toISOString()} data-fresh={snap.fetchedAt}>{ageWords(minutesSince(snap.fetchedAt))}</time>. Two
+          different ages, so neither is allowed to stand for the other.
+        </p>
+      </More>
 
       <div class="reads">
         <div><b>{compact(sweptTotal)}</b><span>modelled notional price traded through inside this window</span></div>

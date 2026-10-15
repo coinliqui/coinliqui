@@ -10,6 +10,7 @@ import type { Candle } from "../../lib/candles.ts";
 import frozen from "../../data/sweep-2026-02.json";
 
 import Advisory from "../../components/Advisory.astro";
+import More from "../../components/More.astro";
 /* =========================================================================================
    THE DEMONSTRATION CASE.
 
@@ -193,24 +194,34 @@ const description =
     <Fragment set:html={paint.legend} />
     <p class="scalebar__note">
       1–12 February 2026, two-hour bars. Brighter is more modelled notional standing at that price
-      at that moment; the most crowded spot holds {compact(map.peak)}. A band ends one of two ways: price trades
+      at that moment; the most crowded spot holds {compact(map.peak)}.
+    </p>
+  </div>
+  <More label="How a band ends on the picture">
+    <p class="section-note">
+      A band ends one of two ways: price trades
       through it, which is why the picture goes dark behind the candles, or the positions behind
       it age past the {POSITION_LIFE_DAYS}-day position life and it fades out in four steps.
     </p>
-  </div>
+  </More>
 
   <h2 class="section">What the picture actually claims</h2>
   <div class="verdict">
     <div>
-      <b>Price traded through where the model places levels.</b> That claim is checkable: the
+      <b>Price traded through where the model places levels.</b> <b>The claim is not</b> that {compact(sweptTotal)} of positions were
+      liquidated.
+    </div>
+  </div>
+  <More label="Why only the levels are claimed, not the amount liquidated">
+    <p class="prose">
+      That claim is checkable: the
       candles are Hyperliquid's own, the level arithmetic is on the published margin tiers, and
-      both are printed below. <b>The claim is not</b> that {compact(sweptTotal)} of positions were
-      liquidated. No venue publishes a complete liquidation feed — Binance throttles to one event
+      both are printed below. No venue publishes a complete liquidation feed — Binance throttles to one event
       per symbol per second, and Hyperliquid's block data carries no liquidation-typed action at
       all, which <a class="link" href="/methodology/liquidations">we checked directly</a>. What is
       modelled is where the levels were. What is observed is that price went there.
-    </div>
-  </div>
+    </p>
+  </More>
 
   <h2 class="section">The six bars that cleared the most</h2>
   <p class="section-note">
@@ -254,7 +265,11 @@ const description =
       Nor does the slide fill the window: 24 bars fall into the wick and six recover after it.
       Both counts are now indices into `event`. */}
   <p class="prose">
-    The slide across the first {slideHours} hours of this {event.length}-hour window is the setup; the payoff is a single bar. At
+    The slide across the first {slideHours} hours of this {event.length}-hour window is the setup; the payoff is a single bar.
+  </p>
+  <More label="The wick hour, figure by figure, and why its shape points to forced selling">
+  <p class="prose">
+    At
     <strong>{fmtT(wick[0])} UTC</strong> BTC opened at {px(wick[1])}, printed a low of
     <strong>{px(wick[3])}</strong>, and closed back at {px(wick[4])} — a
     {(((wick[1] - wick[3]) / wick[1]) * 100).toFixed(1)}% excursion recovered inside sixty minutes,
@@ -263,8 +278,9 @@ const description =
     so they take whatever bid is there, and the price snaps back once they stop. The model puts a
     dense band exactly in the path of that wick, and afterwards the band is gone.
   </p>
+  </More>
 
-  <h2 class="section">How this window was chosen</h2>
+  <More label="How this window was chosen">
   <p class="prose">
     Not from memory. The model was run forward over the full hourly series Hyperliquid publishes
     for BTC, accumulating the modelled notional each bar's range crossed, and the windows were
@@ -274,6 +290,7 @@ const description =
     have been drawn; this one shows the most. The {hourly.length.toLocaleString("en-US")} bars
     needed to redraw it are frozen in this repository.
   </p>
+  </More>
 
   <h2 class="section">Inputs, frozen</h2>
   <div class="panel" style="max-width:900px">
@@ -312,10 +329,15 @@ const description =
       is a useful thing to publish and a different claim to make. */}
   <p class="section-note">
     Hyperliquid's own candles from 5 February 00:00 to 6 February 06:00 UTC, unmodified — the
-    event itself, hour by hour. The chart above covers a wider window (1–12 February, in
-    two-hour bars), so these rows are the part of its input that matters most rather than all
-    of it.
+    event itself, hour by hour.
   </p>
+  <More label="How these hourly rows relate to the chart above">
+    <p class="section-note">
+      The chart above covers a wider window (1–12 February, in
+      two-hour bars), so these rows are the part of its input that matters most rather than all
+      of it.
+    </p>
+  </More>
   <div class="panel">
     <table class="tbl">
       <thead><tr><th>Hour (UTC)</th><th class="num">Open</th><th class="num">High</th><th class="num">Low</th><th class="num">Close</th><th class="num">Volume (BTC)</th><th class="num">vs prior hourly median</th></tr></thead>
