@@ -30,7 +30,7 @@ const froms = rows.filter((r) => r.from != null).map((r) => utcStamp(r.from!, 0)
     <p class="section-note">
       {symbol} and {refSymbol} perpetual marks read together at {utcStamp(at, 0)}{froms.length > 0 && <>; the longer windows run from the same daily close in both, {froms.join(" and ")}</>}.
     </p>
-    <div class="panel" style="max-width:560px"><table class="tbl">
+    <div class="panel"><table class="tbl">
       <thead><tr><th>Over</th><th class="num">{symbol}</th><th class="num">{refSymbol}</th><th class="num">Difference</th></tr></thead>
       <tbody>
         {rows.map((r) => (

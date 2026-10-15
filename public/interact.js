@@ -344,15 +344,18 @@ const { paysClass, paysLabel, carryCost, spreadOf, pct, changeWords, ageWords, n
     try { d = JSON.parse(fig.dataset.levels); } catch { return; }
     const svg = fig.querySelector("svg");
     const line = svg && svg.querySelector("[data-at-line]");
-    const label = svg && svg.querySelector("[data-at-label]");
+    const label = fig.querySelector("[data-at-label]");
+    const pill = fig.querySelector("[data-at-pill]");
     const form = document.querySelector("[data-at-form]");
     const input = form && form.querySelector("[data-at-input]");
     const out = form && form.querySelector("[data-at-out]");
-    if (!line || !label || !input || !out) return;
+    if (!line || !label || !pill || !input || !out) return;
     const place = (price, typed) => {
       const yv = Math.min(d.y0 + d.h, Math.max(d.y0, d.y0 + ((d.top - price) / (d.top - d.bottom)) * d.h));
       line.setAttribute("transform", `translate(0 ${yv})`);
       line.removeAttribute("display");
+      pill.style.top = `${yv}px`;
+      pill.hidden = false;
       const c = cumulativeAt(d.curve, d.mark, price);
       label.textContent = `${usd(price, d.dp)} → ${compactUsd(c.notional)} ${c.side === "long" ? "longs" : "shorts"}`;
       out.textContent = atReading(d.curve, d.mark, price, d.lo, d.hi, d.dp, d.then);

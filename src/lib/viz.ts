@@ -36,8 +36,11 @@ function niceLimit(v: number): number {
   return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 2.5 ? 2.5 : n <= 5 ? 5 : 10) * mag;
 }
 
+/* STRETCHED, NOT SCALED (15 October 2026). With the figure free to take the column, a 600x120 box
+   scaled to 1500px stood 300px tall; there is no text inside, so it stretches across and keeps a
+   fixed height (svg.dist in Base.astro), with strokes that do not thicken. */
 const svgOpen = (w: number, h: number, title: string) =>
-  `<svg viewBox="0 0 ${w} ${h}" role="img" aria-label="${esc(title)}" preserveAspectRatio="xMidYMid meet">` +
+  `<svg viewBox="0 0 ${w} ${h}" role="img" aria-label="${esc(title)}" preserveAspectRatio="none" class="dist">` +
   `<title>${esc(title)}</title>`;
 
 /**

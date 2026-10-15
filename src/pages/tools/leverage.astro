@@ -394,7 +394,7 @@ const description = capCount > 1
     Contract table <code>{perp.marginTableId}</code>{table.description ? ` — ${table.description}` : ""}.
     Your notional of <strong style="color:var(--text)" id="out-tbl-notional">{money(notional)}</strong> is in tier <span id="out-tbl-tier">{index + 1}</span>.
   </p>
-  <div class="panel" style="max-width:720px">
+  <div class="panel">
     <table class="tbl" id="tier-table">
       <thead><tr><th>Tier</th><th class="num">Notional from</th><th class="num">Max leverage</th><th class="num">Maintenance margin</th><th class="num">Initial margin at the cap</th></tr></thead>
       <tbody>

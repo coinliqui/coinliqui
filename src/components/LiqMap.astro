@@ -167,7 +167,6 @@ const ladderCarry: [string, string][] = [
   ...(ladder.win !== DEFAULT_WIN ? [[LADDER_PARAMS.win, String(ladder.win.days)] as [string, string]] : []),
 ];
 const carry: [string, string][] = [...heatCarry, ...ladderCarry];
-const atCarry: [string, string][] = atRaw !== null ? [["at", atRaw.slice(0, 40)]] : [];
 const hidden = (xs: [string, string][]) => xs.map(([k, v]) => `<input type="hidden" name="${k}" value="${v.replace(/"/g, "&quot;")}">`).join("");
 const paint = map ? paintHeatMap(map, { live: { px: mark, at: markNow.at } }) : null;
 const warmBars = map ? map.warmBars : 0;
@@ -383,25 +382,13 @@ const formNote: string | null = (() => {
     <Advisory modelled={Boolean(map)} />
   </div>
 
-  {/* THE CONTROLS ARE BACK ABOVE THE MAP, as one row that redraws on change (15 October 2026, the
-      owner's call). They had moved below it because two dropdowns and a button pushed the map under
-      a phone's fold; without the button, and with the sentence at the top already read, the row is
-      the switch a reader reaches for first. The button stays for a browser without JavaScript
-      (<noscript>); public/interact.js submits any form[data-autosubmit] when a select changes. */}
-  {/* ACTION IS PINNED TO /liquidations ON EVERY RENDERING, INCLUDING THE PER-COIN ONES.
-      A GET form submits to its own URL by default, so on /liquidations/eth changing the coin
-      to BTC would have produced /liquidations/eth?symbol=BTC — a page whose address says one
-      contract and whose content says another, which is the defect this whole split exists to
-      remove. /liquidations reads ?symbol= and answers 301 to the clean per-coin URL, so the
-      parameter form is a mechanism the reader passes through rather than a place they land.
-      No JavaScript is involved: one extra hop, always correct, works with scripting off. */}
-  <form method="GET" action="/liquidations" class="calc calc--chart" data-autosubmit>
-    <label>Coin
-      <select name="symbol">{snap.perps.map((p) => <option value={p.symbol} selected={p.symbol === perp.symbol}>{p.symbol}</option>)}</select>
-    </label>
-    <Fragment set:html={hidden(carry)} />
-    <noscript><button class="btn btn--primary" type="submit">Show</button></noscript>
-  </form>
+  {/* EACH CHART CARRIES ITS OWN SWITCHES, coin included, on its own heading, and redraws on change
+      (15 October 2026, the owner's call). public/interact.js submits any form[data-autosubmit] when
+      a select changes; the button is in <noscript>. Both forms post to /liquidations, which turns
+      ?symbol= into the clean per-coin address with a 301 and keeps every other parameter, so a coin
+      changed on one chart lands on that coin's page with both charts' views intact; the fragment
+      brings the reader back to the chart they changed. A reading (?at=) is a price of one coin and
+      is not carried to another view. */}
   {formNote && <p class="section-note">{formNote}</p>}
 
   {/* THE LIQUIDATION MAP COMES FIRST, because it answers the question the page is searched for —
@@ -410,14 +397,17 @@ const formNote: string | null = (() => {
   {ladder.map && levels && levels.bins.length > 0 && (
     <section class="now" id="now">
       <h2 class="section">If {perp.symbol} moves from here: what gets closed</h2>
-      <form method="GET" action={`${Astro.url.pathname}#now`} class="calc calc--chart" data-autosubmit>
+      <form method="GET" action="/liquidations#now" class="calc calc--chart" data-autosubmit>
+        <label>Coin
+          <select name="symbol">{snap.perps.map((p) => <option value={p.symbol} selected={p.symbol === perp.symbol}>{p.symbol}</option>)}</select>
+        </label>
         <label>Leverage mix
           <select name={LADDER_PARAMS.profile}>{PROFILES.map((p) => <option value={p.key} selected={p.key === ladder.profile.key}>{p.label}</option>)}</select>
         </label>
         <label>Built over
           <select name={LADDER_PARAMS.win}>{WINDOWS.map((w) => <option value={w.days} selected={w.days === ladder.win.days}>{w.label}</option>)}</select>
         </label>
-        <Fragment set:html={hidden([...heatCarry, ...atCarry])} />
+        <Fragment set:html={hidden(heatCarry)} />
         <noscript><button class="btn btn--primary" type="submit">Redraw</button></noscript>
       </form>
       <div class="now__grid">
@@ -431,14 +421,17 @@ const formNote: string | null = (() => {
   {map && paint ? (
     <>
       <h2 class="section" id="history">Over {win.label}: where levels sat, and what price cleared</h2>
-      <form method="GET" action={`${Astro.url.pathname}#history`} class="calc calc--chart" data-autosubmit>
+      <form method="GET" action="/liquidations#history" class="calc calc--chart" data-autosubmit>
+        <label>Coin
+          <select name="symbol">{snap.perps.map((p) => <option value={p.symbol} selected={p.symbol === perp.symbol}>{p.symbol}</option>)}</select>
+        </label>
         <label>Leverage mix
           <select name="profile">{PROFILES.map((p) => <option value={p.key} selected={p.key === profile.key}>{p.label}</option>)}</select>
         </label>
         <label>Window
           <select name="win">{WINDOWS.map((w) => <option value={w.days} selected={w.days === win.days}>{w.label}</option>)}</select>
         </label>
-        <Fragment set:html={hidden([...ladderCarry, ...atCarry])} />
+        <Fragment set:html={hidden(ladderCarry)} />
         <noscript><button class="btn btn--primary" type="submit">Redraw</button></noscript>
       </form>
       <div class="chart" style={`--mapRatio: ${CH.w} / 576`}>
@@ -507,7 +500,7 @@ const formNote: string | null = (() => {
       </div>
 
       <h2 class="section">The assumptions, in full</h2>
-      <div class="panel" style="max-width:940px">
+      <div class="panel">
         <table class="tbl">
           <thead><tr><th class="num">#</th><th>Assumption</th><th>Value used</th><th class="num">Observed or assumed</th></tr></thead>
           <tbody>
@@ -558,7 +551,7 @@ const formNote: string | null = (() => {
           ? <>{" "}Under that cap it is every profile's vector, so switching profile redraws this same table and this same picture.</>
           : <>{" "}The form below switches to any other profile in one submission.</>}
       </p>
-      <div class="panel" style="max-width:600px">
+      <div class="panel">
         <table class="tbl">
           <thead><tr><th class="num">Leverage</th><th class="num">Share of notional</th><th class="num">Modelled notional</th><th class="num">Long liquidation, % from mark</th></tr></thead>
           <tbody>
@@ -588,7 +581,7 @@ const formNote: string | null = (() => {
             {" "}The bar and its range are traded candles; what it cleared is the model's,
             and the two are separated in the columns below for that reason.
           </p>
-          <div class="panel" style="max-width:940px">
+          <div class="panel">
             <table class="tbl">
               <thead>
                 <tr>
@@ -786,7 +779,7 @@ const formNote: string | null = (() => {
     Maintenance margin is set by the tier the notional falls in.
     {nextTier && <> Above {usd(nextTier.lowerBound)} the corridor widens, because maintenance margin rises to {pct(maintenanceMarginFraction(nextTier.maxLeverage), 3)}.</>}
   </p>
-  <div class="panel" style="max-width:720px">
+  <div class="panel">
     <table class="tbl">
       <thead><tr><th>Tier</th><th class="num">Notional from</th><th class="num">Max leverage</th><th class="num">Maintenance margin</th></tr></thead>
       <tbody>
@@ -864,8 +857,8 @@ const formNote: string | null = (() => {
        take two columns, and the ladder's track (minimum 0) was squeezed to ~150px beside the form's
        260px minimum: a picture the width of a thumbnail (15 October 2026). The ladder now never
        goes below 420px beside the reads; under 864px of content it takes the full width. */
-    .now__grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; align-items: start; }
-    @container now (min-width: 780px) { .now__grid { grid-template-columns: 440px minmax(320px, 1fr); } }
+    /* The ladder takes the whole column; what reads it sits underneath (the owner's call, 15 October 2026). */
+    .now__grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; align-items: start; }
     .now { container: now / inline-size; }
     .datanote { margin: 12px 0 0; font-size: var(--fs-sm); color: var(--text-faint); max-width: 80ch; }
     .datanote b { color: var(--text-dim); font-weight: 600; font-variant-numeric: tabular-nums; }

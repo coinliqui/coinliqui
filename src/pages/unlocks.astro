@@ -549,7 +549,7 @@ const lede = top
         const p = paperDebt(e);
         return (
         <>
-          <div class="panel" style="max-width:900px">
+          <div class="panel">
             <table class="tbl">
               <thead><tr><th>Token</th><th>What the contract publishes</th><th class="num">Rate</th><th class="num">Owed on paper</th><th class="num">Balance</th></tr></thead>
               <tbody>
@@ -684,7 +684,7 @@ const lede = top
   </More>
 
   <More label="How to read the provenance badges">
-  <div class="panel" style="max-width:860px">
+  <div class="panel">
     <table class="tbl">
       <thead><tr><th>Provenance</th><th>What it means</th><th class="num">Rows</th></tr></thead>
       <tbody>
@@ -744,7 +744,7 @@ const lede = top
         })}
       </p>
       {!f.lapsed && (
-      <div class="panel" style="max-width:640px">
+      <div class="panel">
         <table class="tbl">
           <thead><tr><th class="num">Next</th><th class="num">{f.fundedUntil !== null ? `${e.symbol} the read allowance covers` : `${e.symbol} emitted`}</th><th class="num">Share of total supply</th></tr></thead>
           <tbody>
@@ -816,7 +816,7 @@ const lede = top
       it is not claimed.
     </div>
   </div>
-  <div class="panel" style="max-width:900px">
+  <div class="panel">
     <table class="tbl">
       <thead><tr><th>Route</th><th>Cost</th><th>What it yields</th><th class="num">Provenance it earns</th></tr></thead>
       <tbody>

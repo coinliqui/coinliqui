@@ -325,7 +325,7 @@ const utc = (ms: number) => new Date(ms).toISOString().slice(0, 16).replace("T",
   <p class="section-note">
     {bindingsIntro}
   </p>
-  <div class="panel" style="max-width:760px">
+  <div class="panel">
     <table class="tbl">
       <thead><tr><th>Check</th><th>State</th><th>What a wrong value means</th></tr></thead>
       <tbody>
@@ -386,7 +386,7 @@ const utc = (ms: number) => new Date(ms).toISOString().slice(0, 16).replace("T",
     about itself. It is published only while this says <b>published</b>: a link that does not
     resolve is worse corroboration than none, and nothing here has to be edited either way.
   </p>
-  <div class="panel" style="max-width:860px">
+  <div class="panel">
     <table class="tbl">
       <thead><tr><th>URL</th><th>State</th><th>Last anonymous GET</th></tr></thead>
       <tbody>
@@ -407,7 +407,7 @@ const utc = (ms: number) => new Date(ms).toISOString().slice(0, 16).replace("T",
     simply absent, every other figure is fine, and nothing above this line would notice. The
     counts are against the {covered.length} contracts currently published.
   </p>
-  <div class="panel" style="max-width:860px">
+  <div class="panel">
     <table class="tbl">
       <thead><tr><th>Series</th><th class="num">Covered</th><th>Refresh interval</th><th>Missing or stale</th></tr></thead>
       <tbody>
@@ -454,7 +454,7 @@ const utc = (ms: number) => new Date(ms).toISOString().slice(0, 16).replace("T",
     A venue silently dropping out of the upstream response looks like success: the run still writes
     rows, just fewer. A count at zero here is that failure.{venueNote ? ` ${venueNote}` : ""}
   </p>
-  <div class="panel" style="max-width:520px">
+  <div class="panel">
     <table class="tbl">
       <thead><tr><th>Venue</th><th class="num">Rows last run</th></tr></thead>
       <tbody>
@@ -539,7 +539,7 @@ const utc = (ms: number) => new Date(ms).toISOString().slice(0, 16).replace("T",
   </p>
   {announce ? (
     <>
-      <div class="panel" style="max-width:760px">
+      <div class="panel">
         <table class="tbl">
           <thead><tr><th>Endpoint</th><th class="num">URLs owed</th><th class="num">Consecutive refusals</th><th>Next attempt</th></tr></thead>
           <tbody>

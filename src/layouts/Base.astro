@@ -549,10 +549,13 @@ const schema = {
       /* The one surface on the page: a single large rounded card holding all content.
          The topbar keeps a fill matching the page background so scrolled content cannot
          run under it — visually no fill, functionally still an occluder. */
+      /* NO MAX-WIDTH (15 October 2026): capped at 1320px the card stopped short of the right edge on
+         a wide screen and left a dead band beside it. Prose keeps its own measure in ch; tables and
+         charts take the column. */
       .page {
         background: var(--surface-1); border: 1px solid var(--border-soft);
         border-radius: var(--r-md); margin: 0 24px 24px; padding: 24px;
-        max-width: 1320px; min-height: calc(100vh - var(--topbar-h) - 24px);
+        min-height: calc(100vh - var(--topbar-h) - 24px);
       }
 
       /* --- page header: spacious chrome --- */
@@ -913,8 +916,10 @@ const schema = {
          renders 236px tall — a mostly empty well with twenty small bars adrift in it, and every
          geometry inside it scaled to twice the size it was drawn at. 720px keeps the scale range
          between 0.53 on a phone and 1.2 on a desktop, which is the band these were drawn for. */
-      .viz { display: block; margin: 0 0 var(--gap-block); max-width: 720px; }
+      .viz { display: block; margin: 0 0 var(--gap-block); }
       .viz > svg { display: block; width: 100%; height: auto; }
+      .fig svg.dist, .viz svg.dist { display: block; width: 100%; height: 140px; }
+      svg.dist * { vector-effect: non-scaling-stroke; }
       .viz__axis { position: relative; display: flex; justify-content: space-between; font: 500 var(--fs-xs)/1 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--text-faint); margin-top: 6px; }
       .viz__counts { display: grid; text-align: center; font: 500 var(--fs-xs)/1 var(--mono); color: var(--text-dim); margin-top: 4px; }
       .viz__zero { position: absolute; transform: translateX(-50%); color: var(--text-dim); }

@@ -66,15 +66,25 @@ const afmt = (v: number) => usd(v, axisDp(view.mark));
    labels to seven pixels (15 October 2026); a second, phone-width copy would have pushed
    /liquidations past its weight budget, so the one ladder is narrower: about nine pixels on a phone,
    true size beside the reads. The title, the leverage key and the side label each have a row. */
-const W = 440, padT = 80, padB = 34, rowH = 13;
-const labelW = 84, plotL = labelW, plotR = W - 12, plotW = plotR - plotL;
+/* FULL WIDTH, AND THE TEXT STAYS TWELVE PIXELS (15 October 2026, the owner's call: the ladder is
+   the page's picture and deserves the column). One ladder, not a wide and a phone copy — a second
+   copy is 8 KB the /liquidations budget does not have. So the drawing is split by what may stretch:
+   the bars, ghosts, guides and lines are one svg in a 1000-unit box drawn preserveAspectRatio=none,
+   which stretches across the column and only across it; the price labels, the mark pill and the
+   guide labels are fixed-size layers on its left and right edges, on the same pixel rows. Rows are
+   13px at every width, and the header keeps its 440-unit drawing. */
+const W = 440, padT = 80, rowH = 13;
+const labelW = 84, plotL = labelW, X = 1000;
 const bins = view.bins;
-const H = padT + bins.length * rowH + padB;
+/* The plot box: 12px above the top row and below the bottom one, for the pills that sit on an edge. */
+const top0 = 12;
+const plotH = bins.length * rowH;
+const PH = plotH + 2 * top0;
 const lo = bins[0].lo, hi = bins[bins.length - 1].hi;
-const y = (p: number) => padT + ((hi - p) / (hi - lo)) * (bins.length * rowH);
+const y = (p: number) => Math.round((top0 + ((hi - p) / (hi - lo)) * plotH) * 10) / 10;
 /* One scale for both runs, so a ghost longer than its bar means the level was heavier a day ago. */
 const peak = Math.max(view.peakBin, then ? then.levels.peakBin : 0);
-const xLen = (n: number) => (n / peak) * plotW;
+const xLen = (n: number) => (n / peak) * X;
 const sideSum = (b: LevelBin, mark: number) => (b.mid < mark ? b.longSum : b.shortSum);
 /* Lower leverage darker, higher brighter: the rungs that liquidate soonest catch the eye first. */
 const levColor = (li: number) => RAMP[Math.round(11 + (10 * li) / Math.max(1, view.levs.length - 1))];
@@ -83,10 +93,9 @@ const markY = y(view.mark);
 const labelEvery = Math.max(1, Math.round(bins.length / 12));
 const guides = view.moves.filter((m) => m.price > lo && m.price < hi);
 const fromMark = (p: number) => signedPct((p - view.mark) / view.mark);
-const plotH = bins.length * rowH;
 /* The reader's line, clamped to the picture: a price past the edge sits on the edge, and the
    sentence says it is past it. */
-const atY = at === null ? null : Math.min(padT + plotH, Math.max(padT, y(at)));
+const atY = at === null ? null : Math.min(top0 + plotH, Math.max(top0, y(at)));
 const atCum = at === null ? null : view.cumAt(at);
 const atLabel = (price: number, c: { side: string; notional: number }) =>
   `${fmt(price)} → ${compact(c.notional)} ${c.side === "long" ? "longs" : "shorts"}`;
@@ -94,7 +103,7 @@ const reading = at === null ? null : atReading(view.curve, view.mark, at, view.l
 const example = fmt(view.mark * 0.95);
 const curveJson = JSON.stringify({
   curve: view.curve, mark: view.mark, lo: view.lo, hi: view.hi, dp,
-  y0: padT, h: plotH, top: hi, bottom: lo, plotL, plotR,
+  y0: top0, h: plotH, top: hi, bottom: lo,
   then: then ? then.levels.curve : null,
 });
 /* THE DAY'S CHANGE IN WORDS, within 5% each side of the mark — the band a trader reads first — from
@@ -124,12 +133,12 @@ const tip = (i: number) => {
 const rowsOut = bins.map((b, i) => {
   const yt = y(b.hi);
   const parts = b.mid < view.mark ? b.long : b.short;
-  let x = plotL;
+  let x = 0;
   const segs: { x: number; w: number; fill: string }[] = [];
   parts.forEach((n, li) => {
     if (!(n > 0)) return;
     const w = xLen(n);
-    segs.push({ x, w: Math.max(0.6, w), fill: levColor(li) });
+    segs.push({ x, w: Math.max(1.5, w), fill: levColor(li) });
     x += w;
   });
   const showLabel = i % labelEvery === 0 && Math.abs(y(b.mid) - markY) > 14;
@@ -141,9 +150,7 @@ const rowsOut = bins.map((b, i) => {
 });
 ---
 <figure class="levels" data-levels={curveJson}>
-  <svg viewBox={`0 0 ${W} ${H}`} role="img" data-tips class="levels__svg"
-       aria-label={`Modelled liquidation levels for ${symbol} by price, longs below the mark and shorts above. The figures are in the table beside it.`}>
-    <rect x="0" y="0" width={W} height={H} rx="12" fill={INK.well} />
+  <svg viewBox={`0 0 ${W} ${padT}`} class="levels__head">
     <text x="12" y="22" fill={INK.dim} font-size="12" font-family={MONO} letter-spacing="1">MODELLED · STANDING NOW</text>
     {/* the leverage key, on the picture rather than under it */}
     {view.levs.map((L, li) => (
@@ -157,43 +164,49 @@ const rowsOut = bins.map((b, i) => {
       <g>
         {/* A flat outlined bar, the ghost's own shape: a 14×11 square beside words read as an
             unticked checkbox (seen on /liquidations/eth, 15 October 2026). */}
-        <rect x={plotR - 108} y="60.5" width="24" height="7" fill="none" stroke={INK.neutral} stroke-width="1" opacity="0.55" />
-        <text x={plotR - 78} y="68" fill={INK.dim} font-size="12.5" font-family={SANS}>a day earlier</text>
+        <rect x={W - 120} y="60.5" width="24" height="7" fill="none" stroke={INK.neutral} stroke-width="1" opacity="0.55" />
+        <text x={W - 90} y="68" fill={INK.dim} font-size="12.5" font-family={SANS}>a day earlier</text>
       </g>
     )}
-
-    {rowsOut.map((r) => (
-      <g>
-        {r.segs.map((g) => <rect x={g.x} y={r.yt} width={g.w} height={r.h} fill={g.fill} />)}
-        {r.ghost > 0.5 && <rect x={plotL + 0.5} y={r.yt + 0.5} width={Math.max(0, r.ghost - 1)} height={Math.max(0, r.h - 1)} fill="none" stroke={INK.neutral} stroke-width="1" opacity="0.55" />}
-        {r.label && <text x={labelW - 10} y={r.ly} fill={INK.faint} font-size="12" font-family={MONO} text-anchor="end">{r.label}</text>}
-        <rect x={plotL} y={r.yt} width={plotW} height={r.hit} fill="transparent" data-tip={r.tip} />
-      </g>
-    ))}
-
-    {guides.map((g) => (
-      <g pointer-events="none">
-        <line x1={plotL} x2={plotR} y1={y(g.price)} y2={y(g.price)} stroke={INK.dim} stroke-width="1" stroke-dasharray="3 4" opacity="0.55" />
-        <rect x={plotR - 172} y={y(g.price) - 11} width="170" height="20" rx="5" fill="#0f1215" opacity="0.92" />
-        <text x={plotR - 10} y={y(g.price) + 4} fill={INK.neutral} font-size="12.5" font-family={MONO} text-anchor="end">
-          {signedPct(g.pct, 0)} → {compact(g.notional)} {g.side === "long" ? "longs" : "shorts"}
-        </text>
-      </g>
-    ))}
-
-    <line x1="8" x2={plotR} y1={markY} y2={markY} stroke={INK.acc} stroke-width="1.5" stroke-dasharray="2 4" />
-    <rect x="8" y={markY - 11} width={labelW - 10} height="22" rx="5" fill={INK.acc} />
-    <text x={8 + (labelW - 10) / 2} y={markY + 4.5} fill={INK.accInk} font-size="12.5" font-weight="600" font-family={MONO} text-anchor="middle">{afmt(view.mark)}</text>
-    <text x={plotL} y={H - 12} fill={INK.faint} font-size="12.5" font-family={SANS}>longs closed below ↓</text>
-
-    {/* THE READER'S PRICE. Drawn by the server when ?at= is set; the script moves it, and keeps it
-        hidden until the first press when there is none. */}
-    <g data-at-line pointer-events="none" display={atY === null ? "none" : undefined} transform={`translate(0 ${atY ?? padT})`}>
-      <line x1={plotL} x2={plotR} y1="0" y2="0" stroke={INK.neutral} stroke-width="1.5" />
-      <rect x={plotL + 4} y="-12" width={plotR - plotL - 8} height="22" rx="5" fill={INK.neutral} />
-      <text data-at-label x={plotL + 12} y="4" fill={INK.well} font-size="12.5" font-weight="600" font-family={MONO}>{at !== null && atCum ? atLabel(at, atCum) : ""}</text>
-    </g>
   </svg>
+  <div class="levels__plot" style={`height:${PH}px`}>
+    <svg viewBox={`0 0 ${X} ${PH}`} preserveAspectRatio="none" role="img" data-tips class="levels__svg" style={`height:${PH}px`}
+         aria-label={`Modelled liquidation levels for ${symbol} by price, longs below the mark and shorts above. The figures are in the table below it.`}>
+      {rowsOut.map((r) => (
+        <g>
+          {r.segs.map((g) => <rect x={g.x} y={r.yt} width={g.w} height={r.h} fill={g.fill} />)}
+          {r.ghost > 0.5 && <rect x="0" y={r.yt + 0.5} width={r.ghost} height={Math.max(0, r.h - 1)} fill="none" stroke={INK.neutral} stroke-width="1" opacity="0.55" vector-effect="non-scaling-stroke" />}
+          <rect x="0" y={r.yt} width={X} height={r.hit} fill="transparent" data-tip={r.tip} />
+        </g>
+      ))}
+      {guides.map((g) => (
+        <line x1="0" x2={X} y1={y(g.price)} y2={y(g.price)} stroke={INK.dim} stroke-width="1" stroke-dasharray="3 4" opacity="0.55" vector-effect="non-scaling-stroke" pointer-events="none" />
+      ))}
+      <line x1="0" x2={X} y1={markY} y2={markY} stroke={INK.acc} stroke-width="1.5" stroke-dasharray="2 4" vector-effect="non-scaling-stroke" pointer-events="none" />
+      {/* THE READER'S PRICE. Drawn by the server when ?at= is set; the script moves it, and keeps it
+          hidden until the first press when there is none. Its label is the HTML pill below. */}
+      <g data-at-line pointer-events="none" display={atY === null ? "none" : undefined} transform={`translate(0 ${atY ?? top0})`}>
+        <line x1="0" x2={X} y1="0" y2="0" stroke={INK.neutral} stroke-width="1.5" vector-effect="non-scaling-stroke" />
+      </g>
+    </svg>
+    <svg viewBox={`0 0 ${labelW} ${PH}`} class="levels__axis" style={`height:${PH}px`}>
+      {rowsOut.map((r) => r.label && <text x={labelW - 10} y={r.ly} fill={INK.faint} font-size="12" font-family={MONO} text-anchor="end">{r.label}</text>)}
+      <rect x="2" y={markY - 11} width={labelW - 6} height="22" rx="5" fill={INK.acc} />
+      <text x={2 + (labelW - 6) / 2} y={markY + 4.5} fill={INK.accInk} font-size="12.5" font-weight="600" font-family={MONO} text-anchor="middle">{afmt(view.mark)}</text>
+    </svg>
+    <svg viewBox={`0 0 180 ${PH}`} class="levels__guides" style={`height:${PH}px`}>
+      {guides.map((g) => (
+        <g>
+          <rect x="8" y={y(g.price) - 11} width="170" height="20" rx="5" fill="#0f1215" opacity="0.92" />
+          <text x="168" y={y(g.price) + 4} fill={INK.neutral} font-size="12.5" font-family={MONO} text-anchor="end">
+            {signedPct(g.pct, 0)} → {compact(g.notional)} {g.side === "long" ? "longs" : "shorts"}
+          </text>
+        </g>
+      ))}
+    </svg>
+    <span class="levels__atpill" data-at-pill hidden={atY === null} style={`top:${atY ?? top0}px`}><span data-at-label>{at !== null && atCum ? atLabel(at, atCum) : ""}</span></span>
+  </div>
+  <figcaption class="levels__foot">longs closed below ↓</figcaption>
 </figure>
 
 <div class="levels__reads">
@@ -210,6 +223,7 @@ const rowsOut = bins.map((b, i) => {
       reading ?? (atRaw ? `“${atRaw}” is not a price this page can read. Enter one like ${example}.` : "Type a price, or press anywhere on the ladder. The address keeps your reading, so the link shows it to whoever opens it.")
     }</p>
   </form>
+  <div class="levels__figures">
   <table class="tbl levels__tbl">
     <caption>If {symbol} moves from {fmt(view.mark)} — modelled notional closed on the way, shorts going up and longs going down</caption>
     <thead><tr><th class="num">Move</th><th class="num">To</th><th class="num">Closed</th>{then && <th class="num">A day earlier</th>}</tr></thead>
@@ -235,12 +249,23 @@ const rowsOut = bins.map((b, i) => {
     ({fmt(view.lo)} – {fmt(view.hi)}): the figure is every level of its side inside the range, and
     whatever stands beyond the edge is not in it.</>}
   </p>
+  </div>
 </div>
 
 <style>
-  .levels { margin: 0; max-width: 440px; }
-  .levels__svg { display: block; width: 100%; height: auto; }
-  .levels__reads { max-width: 420px; }
+  .levels { margin: 0; background: #0f1215; border-radius: 12px; padding: 0 0 10px; }
+  .levels__head { display: block; width: 100%; max-width: 440px; height: auto; }
+  .levels__plot { position: relative; }
+  .levels__plot > svg { position: absolute; top: 0; display: block; }
+  .levels__svg { left: 84px; width: calc(100% - 96px); }
+  .levels__axis { left: 0; width: 84px; pointer-events: none; }
+  .levels__guides { right: 12px; width: 180px; pointer-events: none; }
+  .levels__atpill { position: absolute; left: 88px; transform: translateY(-50%); padding: 3px 8px; border-radius: 5px; font: 600 12.5px var(--mono); color: #0f1215; background: var(--text-dim); pointer-events: none; white-space: nowrap; }
+  .levels__foot { font-size: 12.5px; color: var(--text-faint); padding: 2px 0 0 84px; }
+  /* Underneath the ladder: the reader's price beside the moves table where there is room for both. */
+  .levels__reads { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; align-items: start; }
+  .levels__figures { min-width: 0; }
+  @media (min-width: 1100px) { .levels__reads { grid-template-columns: minmax(300px, 420px) minmax(0, 1fr); } }
   .levels__svg { touch-action: pan-y; cursor: crosshair; }
   .levels__at { margin: 0 0 18px; padding: 14px 16px; border: 1px solid var(--border-soft); border-radius: 12px; background: var(--surface-1); }
   .levels__atlabel { display: block; font-weight: 600; margin-bottom: 8px; }
