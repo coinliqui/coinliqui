@@ -1,7 +1,8 @@
 // public/shared.js
 function pct(x, decimals = 2) {
   if (!Number.isFinite(x)) return "\u2014";
-  return `${(x * 100).toFixed(decimals)}%`;
+  const printed = (Math.abs(x) * 100).toFixed(decimals);
+  return `${x < 0 && Number(printed) !== 0 ? "\u2212" : ""}${printed}%`;
 }
 var plural = (n2, one, many) => `${n2} ${n2 === 1 ? one : many}`;
 
@@ -1449,7 +1450,7 @@ async function stepGscExport(env, now = Date.now()) {
 }
 
 // worker/build-stamp.ts
-var WORKER_BUILD = "0781f12ce45c";
+var WORKER_BUILD = "9a66c3b51f70";
 
 // worker/ingest.ts
 var RETAIN_HOURS = 720;

@@ -54,7 +54,10 @@ export function spreadOf(aprs) {
  *  what every table cell shows for an absent figure, on both sides. */
 export function pct(x, decimals = 2) {
   if (!Number.isFinite(x)) return "—";
-  return `${(x * 100).toFixed(decimals)}%`;
+  /* A negative rate takes U+2212, the minus signedPct prints, and a value that rounds to zero takes
+     none — pct printed "-1.23%" and "-0.00%" with an ASCII hyphen beside signedPct's "−1.23%". */
+  const printed = (Math.abs(x) * 100).toFixed(decimals);
+  return `${x < 0 && Number(printed) !== 0 ? "\u2212" : ""}${printed}%`;
 }
 
 /* THE FUNDING-COST CALCULATOR'S MONEY, once for its server render and its script. Both carried their
@@ -79,10 +82,10 @@ export function printedMoney(s) {
 }
 /** Whether x rounds to the printed text (money, or a percentage when pctText). */
 export function nearPrinted(x, text, pctText = false) {
-  const m = pctText ? /(-?\d*)(?:\.(\d+))?%/.exec(text) : /\$([\d,]*)(?:\.(\d+))?([MB]?)/.exec(text);
+  const m = pctText ? /([-\u2212]?\d*)(?:\.(\d+))?%/.exec(text) : /\$([\d,]*)(?:\.(\d+))?([MB]?)/.exec(text);
   if (!m) return false;
   const half = 0.5 * 10 ** -(m[2] ?? "").length * (m[3] === "B" ? 1e9 : m[3] === "M" ? 1e6 : 1);
-  return Math.abs(x - (pctText ? Number(text.slice(0, -1)) : printedMoney(text))) <= half * (1 + 1e-9);
+  return Math.abs(x - (pctText ? Number(text.slice(0, -1).replace("\u2212", "-")) : printedMoney(text))) <= half * (1 + 1e-9);
 }
 /** The fewest extra decimals at which a check on the printed figures holds; 12 if none does. */
 export function fitDecimals(ok) {
@@ -200,7 +203,9 @@ export function changeWords(fraction) {
   /* No arrow on a change whose printed digits are zero — the signedPct rule. "▲ 0.00%" claimed a
      direction for a flat candle that signedPct, on the next table, printed as "0.00%". */
   const printed = (Math.abs(fraction) * 100).toFixed(2);
-  return Number(printed) === 0 ? `${printed}%` : `${paysArrow(fraction)} ${printed}%`;
+  /* ▲▼ here are PRICE direction, drawn by their own rule: they went through paysArrow, the funding
+     helper, so one glyph's two meanings were one function away from being changed together. */
+  return Number(printed) === 0 ? `${printed}%` : `${fraction >= 0 ? "\u25b2" : "\u25bc"} ${printed}%`;
 }
 
 /**

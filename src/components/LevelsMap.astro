@@ -38,7 +38,7 @@
 import type { LevelsView, LevelBin } from "../lib/liqmap.ts";
 import { utcStamp } from "../lib/freshness.ts";
 import { RAMP, INK, MONO, SANS, compact } from "../lib/chart.ts";
-import { pct, usd } from "../lib/funding.ts";
+import { pct, usd, axisDp } from "../lib/funding.ts";
 import { signedPct, atReading, cumulativeAt } from "../../public/shared.js";
 
 interface Props {
@@ -59,6 +59,8 @@ interface Props {
 }
 const { view, symbol, dp, clipped, at, atRaw, action, carry, then } = Astro.props;
 const fmt = (v: number) => usd(v, dp);
+/* The ladder's own price labels and the mark pill are an axis, and keep the shorter axis precision. */
+const afmt = (v: number) => usd(v, axisDp(view.mark));
 
 const W = 640, padT = 58, padB = 34, rowH = 13;
 const labelW = 116, plotL = labelW, plotR = W - 16, plotW = plotR - plotL;
@@ -130,7 +132,7 @@ const rowsOut = bins.map((b, i) => {
   const ghost = then ? xLen(sideSum(then.levels.bins[i], view.mark)) : 0;
   return {
     yt, h: Math.max(1, y(b.lo) - y(b.hi) - 1), hit: Math.max(1, y(b.lo) - y(b.hi)),
-    segs, tip: tip(i), label: showLabel ? fmt(b.mid) : "", ly: y(b.mid) + 4, ghost,
+    segs, tip: tip(i), label: showLabel ? afmt(b.mid) : "", ly: y(b.mid) + 4, ghost,
   };
 });
 ---
@@ -175,7 +177,7 @@ const rowsOut = bins.map((b, i) => {
 
     <line x1="8" x2={plotR} y1={markY} y2={markY} stroke={INK.acc} stroke-width="1.5" stroke-dasharray="2 4" />
     <rect x="8" y={markY - 11} width={labelW - 10} height="22" rx="5" fill={INK.acc} />
-    <text x={8 + (labelW - 10) / 2} y={markY + 4.5} fill={INK.accInk} font-size="12.5" font-weight="600" font-family={MONO} text-anchor="middle">{fmt(view.mark)}</text>
+    <text x={8 + (labelW - 10) / 2} y={markY + 4.5} fill={INK.accInk} font-size="12.5" font-weight="600" font-family={MONO} text-anchor="middle">{afmt(view.mark)}</text>
     <text x={plotL} y={H - 12} fill={INK.faint} font-size="12.5" font-family={SANS}>longs closed below ↓</text>
 
     {/* THE READER'S PRICE. Drawn by the server when ?at= is set; the script moves it, and keeps it

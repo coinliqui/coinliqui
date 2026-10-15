@@ -2,7 +2,7 @@
 import More from "../../components/More.astro";
 import Base from "../../layouts/Base.astro";
 import { getSnapshot, coldStart, getLive } from "../../lib/hyperliquid.ts";
-import { VENUE_LABEL, pct, usd, rawRate, paysClass, paysLabel, LEGEND_FUNDING, settlementWords, venueReachWords, HL_BASE_APR, isHlBaseApr, type Venue } from "../../lib/funding.ts";
+import { VENUE_LABEL, pct, usd, rawRate, paysClass, paysLabel, LEGEND_PAYS, settlementWords, venueReachWords, HL_BASE_APR, isHlBaseApr, type Venue } from "../../lib/funding.ts";
 
 import { freshness, ageWords, minutesSince } from "../../lib/freshness.ts";
 import Figure from "../../components/Figure.astro";
@@ -291,7 +291,7 @@ const description =
       </div>
     </div>
     <Fragment slot="note">
-    <p>{LEGEND_FUNDING}.</p>
+    <p>{LEGEND_PAYS}.</p>
     <More label="How to read these bars, and the contracts not drawn">
     <p>
       Each bar runs from zero to its own rate, so which side of the line it

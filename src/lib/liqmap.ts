@@ -1,6 +1,6 @@
 import type { Candle } from "./candles.ts";
 import { slotBars } from "./series.ts";
-import { cumulativeAt, parsePrice, atReading, axisDp } from "../../public/shared.js";
+import { cumulativeAt, parsePrice, atReading, priceDp } from "../../public/shared.js";
 
 /** The narrowest drawn span, as a fraction of the last price: ±8% either side. */
 export const MIN_SPAN = 0.16;
@@ -597,7 +597,9 @@ export function mapModel(o: {
      value is kept as typed so the page can say it could not read it, rather than show nothing. */
   const atRaw = o.q.get("at");
   const at = atRaw === null ? null : parsePrice(atRaw);
-  const dp = axisDp(o.mark);
+  /* Prices in words and tables at price precision (priceDp), as the index row and the funding page
+     print them; axis precision is for axis labels only. */
+  const dp = priceDp(o.mark);
   /* THE SAME MAP A DAY AGO, ON TODAY'S AXIS. The same model, the same profile and window, run on the
      candles that had closed 24 hours earlier and on the open interest recorded then — and drawn on
      today's price rows, so a row is the same prices in both and the difference is the change. What it

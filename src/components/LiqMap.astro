@@ -354,15 +354,15 @@ const formNote: string | null = (() => {
         know that a level above the mark is where shorts get closed. The cluster carries its own
         side and the table below already prints it; saying it here costs three words. */}
     <Overview modelled={true}>
-      <b>{perp.symbol} trades at {axisPx(mark)}</b> against {usd(perp.oiNotional)} of open
+      <b>{perp.symbol} trades at {px(mark)}</b> against {usd(perp.oiNotional)} of open
       interest on Hyperliquid.
       {map && heaviest.kind === "unique" && <>{" "}The heaviest modelled cluster still standing sits <b>{pct(Math.abs(fromMark(heaviest.item.price)))}{" "}
-          {heaviest.item.price < mark ? "below" : "above"}</b> it, at <b>{axisPx(heaviest.item.price)}</b>,
+          {heaviest.item.price < mark ? "below" : "above"}</b> it, at <b>{px(heaviest.item.price)}</b>,
           holding {compact(heaviest.item.notional)} &mdash; the level where{" "}
           <b>{heaviest.item.side === "long" ? "longs" : "shorts"} get closed</b>.</>}
       {map && heaviest.kind === "tied" && <>{" "}The heaviest modelled clusters still standing, {heaviest.items.length} of them at
-          {" "}{compact(heaviest.value)} each, sit at {heaviest.items.map((c) => axisPx(c.price)).join(", ")}.</>}
-      {map && <>{" "}Over {win.label} price traded {axisPx(map.tradedLo)}&ndash;{axisPx(map.tradedHi)} and
+          {" "}{compact(heaviest.value)} each, sit at {heaviest.items.map((c) => px(c.price)).join(", ")}.</>}
+      {map && <>{" "}Over {win.label} price traded {px(map.tradedLo)}&ndash;{px(map.tradedHi)} and
           cleared {compact(sweptTotal)} of modelled notional on the way.</>}
       {!map && !hourly && <>{" "}This page could read no hourly price history for the contract, so it draws no map.</>}
       {!map && hourly && !drawableWins.length && <>{" "}This contract has not accumulated enough price history for a map to be drawn from it yet.</>}
@@ -422,7 +422,7 @@ const formNote: string | null = (() => {
       <More label="The dashed line, and why the map carries two ages">
         <p class="datanote">
           The dashed line is the
-          <b>{markNow.live ? "live mark" : "snapshot mark"}, {axisPx(mark)}</b>, read
+          <b>{markNow.live ? "live mark" : "snapshot mark"}, {px(mark)}</b>, read
           {" "}<time datetime={new Date(markNow.at).toISOString()} data-fresh={markNow.at}>{ageWords(minutesSince(markNow.at))}</time>. Two
           different ages, so neither is allowed to stand for the other.
         </p>
@@ -431,7 +431,7 @@ const formNote: string | null = (() => {
       <div class="reads">
         <div><b>{compact(sweptTotal)}</b><span>modelled notional price traded through inside this window</span></div>
         <div><b>{pct(map.clipped)}</b><span>of modelled notional sits outside the drawn price range</span></div>
-        <div><b>{axisPx(map.tradedLo)} – {axisPx(map.tradedHi)}</b><span>the range that actually traded in this window</span></div>
+        <div><b>{px(map.tradedLo)} – {px(map.tradedHi)}</b><span>the range that actually traded in this window</span></div>
       </div>
 
       <More label="How this is modelled — every assumption">
@@ -471,7 +471,7 @@ const formNote: string | null = (() => {
             <tr><td class="num">7</td><td>Positions before the window opens</td><td>{warmBars} bars before the chart starts are modelled off-screen{warmBars >= ageBars
                 ? <>, so the first drawn column already holds a full position-life window of positions</>
                 : <>. That is short of the {ageBars} bars a full set needs, so the left of the picture is still filling up</>}</td><td class="num">assumed</td></tr>
-            <tr><td class="num">8</td><td>Drawn price range</td><td>{spanWords(map, axisPx)}
+            <tr><td class="num">8</td><td>Drawn price range</td><td>{spanWords(map, px)}
               {" "}{pct(map.clipped)} of modelled notional liquidates further away than this and is not drawn.</td><td class="num">observed</td></tr>
           </tbody>
         </table>
@@ -524,12 +524,12 @@ const formNote: string | null = (() => {
             {oneBar
               ? <>{" "}Only one bar of this window traded through anything the model had standing, so everything
                 cleared in {win.label} went in 1 bar out of {map!.cols}: <b>{barWhen(sweptBars[0])}</b>, a {win.factor}-hour
-                bar that ranged {axisPx(sweptBars[0].c[L])} to {axisPx(sweptBars[0].c[H])}.</>
+                bar that ranged {px(sweptBars[0].c[L])} to {px(sweptBars[0].c[H])}.</>
               : <>{" "}These are the {barWord(sweptBars.length)} of this window in which the model says {allClearingShown ? "any" : "the most"}
                 {" "}notional was traded through — {allClearingShown ? "everything" : `${pct(barShare(shownCleared))} of everything`}
                 {" "}cleared in {win.label}, in {barWord(sweptBars.length)} out of {map!.cols}.
                 {largestBar.kind === "unique" && <>{" "}The largest was <b>{barWhen(largestBar.item)}</b>, a {win.factor}-hour bar
-                  that ranged {axisPx(largestBar.item.c[L])} to {axisPx(largestBar.item.c[H])}.</>}
+                  that ranged {px(largestBar.item.c[L])} to {px(largestBar.item.c[H])}.</>}
                 {largestBar.kind === "tied" && <>{" "}{largestBar.items.length} of them tie for the largest share,
                   {" "}{pct(largestBar.value / 10000)} each: {joinWith(largestBar.items.map(barWhen), "and")}.</>}</>}
             {" "}The bar and its range are traded candles; what it cleared is the model's,
@@ -551,8 +551,8 @@ const formNote: string | null = (() => {
                 {sweptBars.map((b) => (
                   <tr class={isLargestBar(b) ? "is-active" : undefined}>
                     <td>{barWhen(b)}</td>
-                    <td class="num">{axisPx(b.c[L])}</td>
-                    <td class="num">{axisPx(b.c[H])}</td>
+                    <td class="num">{px(b.c[L])}</td>
+                    <td class="num">{px(b.c[H])}</td>
                     {/* NO COLOUR ON A PRICE MOVE, which is a rule this site already keeps and it
                         would have been easy to break here. Red and green mean the direction of a
                         funding payment everywhere on this site; /coins/{coin} prints its 24-hour
@@ -588,7 +588,7 @@ const formNote: string | null = (() => {
           <tbody>
             {map.clusters.map((c) => (
               <tr>
-                <td class="num">{axisPx(c.price)}</td>
+                <td class="num">{px(c.price)}</td>
                 <td class="num">{signedFromMark(c.price)}</td>
                 <td>{c.side === "long" ? "longs" : "shorts"}</td>
                 <td class="num">{usd(c.notional)}</td>

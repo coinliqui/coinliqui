@@ -131,6 +131,8 @@ t("a flat change carries no arrow", changeWords(0), "0.00%");
 t("a real change keeps its arrow", changeWords(-0.0123), "\u25bc 1.23%");
 t("counts follow the printed arrow", JSON.stringify(moveCounts([0.01, -0.02, 0.00001, NaN])), JSON.stringify({ up: 1, down: 1, n: 3 }));
 t("September is Sep, never Sept", shortDate(Date.UTC(2026, 8, 16)), "16 Sep 2026");
+t("pct's minus is U+2212, like signedPct's", pct(-0.0123), "\u22121.23%");
+t("pct's zero carries no sign", pct(-0.00001), "0.00%");
 t("a bar's time says its zone", dateTimeUtc(Date.UTC(2026, 8, 16, 15, 0)), "16 Sep 2026, 15:00 UTC");
 
 
