@@ -247,13 +247,9 @@ const schema = {
         not persist visually. That is a cosmetic preference, and the alternative was a document
         that no shared cache can reuse across visitors. Nothing about the DATA depends on this
         script; every number is already in the HTML. */}
-    <script is:inline>
-      try {
-        if (document.cookie.split(";").some(function (c) { return c.trim() === "rail=0"; })) {
-          document.documentElement.classList.add("is-collapsed");
-        }
-      } catch (e) { /* a rail that will not collapse is not a reason to break a page */ }
-    </script>
+    {/* Written compact because is:inline ships it verbatim on every page. The try: a rail that will
+        not collapse is not a reason to break a page. */}
+    <script is:inline>try{if(document.cookie.split(";").some(function(c){return c.trim()=="rail=0"}))document.documentElement.classList.add("is-collapsed")}catch(e){}</script>
     <title>{fullTitle}</title>
     <meta name="description" content={description} />
     {noindex && <meta name="robots" content="noindex, follow" />}
@@ -1474,41 +1470,14 @@ const schema = {
         whether it is. And the load waits for the page's own load event, not parse: the point is to
         be behind everything the page needs to become useful — requestIdleCallback where it exists,
         a timeout where it does not (Safari), and a 3s backstop so a perfectly still reader is
-        still counted. */}
-    {GA_ENABLED && (
-      <script is:inline define:vars={{ GA_ID: GA_MEASUREMENT_ID, DEFER: GA_DEFER, CFG: GA_CONFIG }}>
-        window.dataLayer = window.dataLayer || [];
-        function gtag() { window.dataLayer.push(arguments); }
-        gtag("js", new Date());
-        CFG.page_location = location.origin + location.pathname;
-        gtag("config", GA_ID, CFG);
+        still counted.
 
-        if (DEFER) {
-          var armed = false;
-          var events = ["pointerdown", "keydown", "scroll", "touchstart"];
-          function load() {
-            if (armed) return;
-            armed = true;
-            for (var i = 0; i < events.length; i++) {
-              window.removeEventListener(events[i], load, { passive: true });
-            }
-            var s = document.createElement("script");
-            s.async = true;
-            s.src = "https://www.googletagmanager.com/gtag/js?id=" + GA_ID;
-            document.head.appendChild(s);
-          }
-          for (var j = 0; j < events.length; j++) {
-            window.addEventListener(events[j], load, { passive: true, once: true });
-          }
-          function schedule() {
-            if (window.requestIdleCallback) window.requestIdleCallback(load, { timeout: 3000 });
-            else setTimeout(load, 1200);
-            setTimeout(load, 3000);
-          }
-          if (document.readyState === "complete") schedule();
-          else window.addEventListener("load", schedule, { once: true });
-        }
-      </script>
+        THE BODY IS WRITTEN COMPACT for the same reason (15 October 2026): its indentation alone was
+        about a third of its bytes, on every page. In words: queue the js and config calls; if
+        DEFER, load gtag.js once — on the first pointerdown, keydown, scroll or touchstart, or when
+        the page has loaded and is idle (1.2s without requestIdleCallback), or at 3s at the latest. */}
+    {GA_ENABLED && (
+      <script is:inline define:vars={{ GA_ID: GA_MEASUREMENT_ID, DEFER: GA_DEFER, CFG: GA_CONFIG }}>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag("js",new Date());CFG.page_location=location.origin+location.pathname;gtag("config",GA_ID,CFG);if(DEFER){var armed=!1,ev=["pointerdown","keydown","scroll","touchstart"];function load(){if(armed)return;armed=!0;ev.forEach(function(e){removeEventListener(e,load,{passive:!0})});var s=document.createElement("script");s.async=!0;s.src="https://www.googletagmanager.com/gtag/js?id="+GA_ID;document.head.appendChild(s)}ev.forEach(function(e){addEventListener(e,load,{passive:!0,once:!0})});function schedule(){window.requestIdleCallback?requestIdleCallback(load,{timeout:3e3}):setTimeout(load,1200);setTimeout(load,3e3)}document.readyState=="complete"?schedule():addEventListener("load",schedule,{once:!0})}</script>
     )}
   </head>
   <body>
