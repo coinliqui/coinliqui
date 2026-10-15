@@ -669,3 +669,31 @@ export function dailyCloseBy(candles: Candle[] | null | undefined, at: number): 
   }
   return null;
 }
+
+/**
+ * ONE CONTRACT'S MOVE AGAINST ANOTHER'S, over 24 hours, 7 and 30 days — the rows coin pages and
+ * contract pages both print (src/components/Versus.astro). Both "now" figures are marks from one
+ * snapshot; 7 and 30 days run from the same daily close in both series (dailyCloseBy), and a
+ * window whose two closes differ is left out rather than compared across different starts.
+ */
+export interface VersusRow { label: string; own: number; ref: number; from: number | null }
+export function versusRows(
+  own: { markPx: number; change24h: number } | null | undefined,
+  ref: { markPx: number; change24h: number } | null | undefined,
+  ownDaily: Candle[] | null | undefined,
+  refDaily: Candle[] | null | undefined,
+  at: number,
+): VersusRow[] {
+  if (!own || !ref) return [];
+  const rows: (VersusRow | null)[] = [
+    { label: "24 hours", own: own.change24h, ref: ref.change24h, from: null },
+    ...[7, 30].map((days) => {
+      const a = dailyCloseBy(ownDaily, at - days * 86_400_000);
+      const b = dailyCloseBy(refDaily, at - days * 86_400_000);
+      return a && b && a.at === b.at
+        ? { label: `${days} days`, own: own.markPx / a.close - 1, ref: ref.markPx / b.close - 1, from: a.at }
+        : null;
+    }),
+  ];
+  return rows.filter((r): r is VersusRow => r != null && Number.isFinite(r.own) && Number.isFinite(r.ref));
+}

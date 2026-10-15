@@ -12,7 +12,8 @@ import { getCandles, getHourly, getM15, type Candle } from "../../lib/candles.ts
 import { freshness, ageWords, minutesSince, utcStamp } from "../../lib/freshness.ts";
 import Overview from "../../components/Overview.astro";
 import PricePanel from "../../components/PricePanel.astro";
-import { narrowChart, TIMEFRAMES, DEFAULT_TF, MIN_CHART_BARS, drawnBars, barSpan, buildPriceChart, candleStyleNote, timeframeGapNote, CHART_H, dailyCloseBy, type ChartMode } from "../../lib/series.ts";
+import Versus from "../../components/Versus.astro";
+import { narrowChart, TIMEFRAMES, DEFAULT_TF, MIN_CHART_BARS, drawnBars, barSpan, buildPriceChart, candleStyleNote, timeframeGapNote, CHART_H, versusRows, type ChartMode } from "../../lib/series.ts";
 import { CH } from "../../lib/chart.ts";
 
 import { priceDp, changeWords, signedPct, weekCarry } from "../../lib/funding.ts";
@@ -88,20 +89,7 @@ const refSymbol = coin.symbol === "BTC" ? "ETH" : "BTC";
 const refPerp = findPerp(snap.perps, refSymbol);
 const refDay = refPerp ? await getCandles(env?.SNAPSHOT, refSymbol, import.meta.env.DEV) : null;
 const refCoin = coinPageFor(refSymbol);
-const vsRows = !perp || !refPerp ? [] : [
-  { label: "24 hours", own: perp.change24h, ref: refPerp.change24h, from: null as number | null },
-  ...[7, 30].map((days) => {
-    const a = dailyCloseBy(dayset?.d, snap.fetchedAt - days * 86_400_000);
-    const b = dailyCloseBy(refDay?.d, snap.fetchedAt - days * 86_400_000);
-    return a && b && a.at === b.at
-      ? { label: `${days} days`, own: perp.markPx / a.close - 1, ref: refPerp.markPx / b.close - 1, from: a.at as number | null }
-      : null;
-  }),
-].filter((r): r is NonNullable<typeof r> => r != null && Number.isFinite(r.own) && Number.isFinite(r.ref));
-const vsPoints = (d: number) => {
-  const p = (d * 100).toFixed(2);
-  return Number(p) === 0 ? "level" : `${d > 0 ? "+" : "−"}${Math.abs(Number(p)).toFixed(2)} pts`;
-};
+const vsRows = versusRows(perp, refPerp, dayset?.d, refDay?.d, snap.fetchedAt);
 const price = markNow;
 const dp = priceDp(price);
 const px = (v: number) => usd(v, dp);
@@ -477,22 +465,7 @@ const description = `Live ${coin.name} (${coin.symbol}) perpetual price from Hyp
     </div>
   )}
 
-  {vsRows.length > 0 && (
-    <>
-      <h2 class="section">Against {refCoin ? <a class="link" href={`/coins/${refCoin.slug}`}>{refSymbol}</a> : refSymbol}</h2>
-      <p class="section-note">
-        {coin.symbol} and {refSymbol} perpetual marks read together at {utcStamp(snap.fetchedAt, 0)}{vsRows.some((r) => r.from) && <>; the longer windows run from the same daily close in both, {vsRows.filter((r) => r.from).map((r) => utcStamp(r.from!, 0)).join(" and ")}</>}.
-      </p>
-      <div class="panel" style="max-width:560px"><table class="tbl">
-        <thead><tr><th>Over</th><th class="num">{coin.symbol}</th><th class="num">{refSymbol}</th><th class="num">Difference</th></tr></thead>
-        <tbody>
-          {vsRows.map((r) => (
-            <tr><td>{r.label}</td><td class="num">{signedPct(r.own)}</td><td class="num">{signedPct(r.ref)}</td><td class="num">{vsPoints(r.own - r.ref)}</td></tr>
-          ))}
-        </tbody>
-      </table></div>
-    </>
-  )}
+  <Versus symbol={coin.symbol} refSymbol={refSymbol} refHref={refCoin ? `/coins/${refCoin.slug}` : null} rows={vsRows} at={snap.fetchedAt} />
 
   {/* THIS HEADING SAID "Spot against the perpetual" AND THE SECTION HAD NO SPOT IN IT. The cards
       beneath were re-based when Coinbase was removed and the heading above them was not — a

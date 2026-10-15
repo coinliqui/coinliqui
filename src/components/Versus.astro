@@ -1,0 +1,42 @@
+---
+/* =========================================================================================
+   ONE CONTRACT AGAINST ANOTHER, the comparison a price page leaves to the reader and a chat
+   answer cannot give without two lookups and a subtraction. Written once for /coins/{coin} and
+   /funding/{symbol}; the rows come from versusRows in src/lib/series.ts.
+   ========================================================================================= */
+import { signedPct } from "../lib/funding.ts";
+import { utcStamp } from "../lib/freshness.ts";
+import type { VersusRow } from "../lib/series.ts";
+
+interface Props {
+  symbol: string;
+  refSymbol: string;
+  /** where the reference contract's own page is, or null */
+  refHref: string | null;
+  rows: VersusRow[];
+  /** when both marks were read */
+  at: number;
+}
+const { symbol, refSymbol, refHref, rows, at } = Astro.props;
+const points = (d: number) => {
+  const p = (d * 100).toFixed(2);
+  return Number(p) === 0 ? "level" : `${d > 0 ? "+" : "−"}${Math.abs(Number(p)).toFixed(2)} pts`;
+};
+const froms = rows.filter((r) => r.from != null).map((r) => utcStamp(r.from!, 0));
+---
+{rows.length > 0 && (
+  <>
+    <h2 class="section">Against {refHref ? <a class="link" href={refHref}>{refSymbol}</a> : refSymbol}</h2>
+    <p class="section-note">
+      {symbol} and {refSymbol} perpetual marks read together at {utcStamp(at, 0)}{froms.length > 0 && <>; the longer windows run from the same daily close in both, {froms.join(" and ")}</>}.
+    </p>
+    <div class="panel" style="max-width:560px"><table class="tbl">
+      <thead><tr><th>Over</th><th class="num">{symbol}</th><th class="num">{refSymbol}</th><th class="num">Difference</th></tr></thead>
+      <tbody>
+        {rows.map((r) => (
+          <tr><td>{r.label}</td><td class="num">{signedPct(r.own)}</td><td class="num">{signedPct(r.ref)}</td><td class="num">{points(r.own - r.ref)}</td></tr>
+        ))}
+      </tbody>
+    </table></div>
+  </>
+)}

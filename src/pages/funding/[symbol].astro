@@ -7,7 +7,8 @@ import { liquidationPrice, type MarginTable, roomVerdict, tableFor, sortedTiers,
 import { oiMoves } from "../../lib/oi-history.ts";
 import { getCandles, getM15, getHourly, getFunding } from "../../lib/candles.ts";
 import PricePanel from "../../components/PricePanel.astro";
-import { narrowChart, NARROW_W, fundingRegime, TIMEFRAMES, DEFAULT_TF, MIN_CHART_BARS, drawnBars, barSpan, buildPriceChart, buildFundingChart, candleStyleNote, timeframeGapNote, shortDate, CHART_H } from "../../lib/series.ts";
+import Versus from "../../components/Versus.astro";
+import { narrowChart, NARROW_W, fundingRegime, TIMEFRAMES, DEFAULT_TF, MIN_CHART_BARS, drawnBars, barSpan, buildPriceChart, buildFundingChart, candleStyleNote, timeframeGapNote, shortDate, CHART_H, versusRows } from "../../lib/series.ts";
 import { CH } from "../../lib/chart.ts";
 import { coinPageFor } from "../../lib/coins.ts";
 import { liqMapHref, canonicalRedirect } from "../../lib/routes.ts";
@@ -162,6 +163,12 @@ const [dayset, hourset, m15set, funding] = await Promise.all([
   getM15(env?.SNAPSHOT, p.symbol, import.meta.env.DEV),
   getFunding(env?.SNAPSHOT, p.symbol, import.meta.env.DEV),
 ]);
+/* Against Bitcoin (Ether on BTC's own page), from the same snapshot and the same daily close in
+   both series — src/components/Versus.astro, shared with /coins/{coin}. */
+const refSymbol = p.symbol === "BTC" ? "ETH" : "BTC";
+const refPerp = findPerp(snap.perps, refSymbol);
+const refDay = refPerp ? await getCandles(env?.SNAPSHOT, refSymbol, import.meta.env.DEV) : null;
+const vsRows = versusRows(p, refPerp, dayset?.d, refDay?.d, snap.fetchedAt);
 /* HOW FAR THE STORED FUNDING SERIES ACTUALLY GOES, read from the series rather than from
    whichever bar of the current panel happens to carry the first funding value. */
 const fundingSeriesFrom = funding && funding.length ? Math.min(...funding.map((f) => f[0])) : null;
@@ -679,6 +686,8 @@ const description = `What a ${p.symbol} perpetual costs to hold, against ${usd(p
       </div>
     </div>
   )}
+
+  <Versus symbol={p.symbol} refSymbol={refSymbol} refHref={`/funding/${refSymbol.toLowerCase()}`} rows={vsRows} at={snap.fetchedAt} />
 
   <h2 class="section">Funding</h2>
   <div class="cards">
