@@ -1,5 +1,6 @@
 ---
 import { PRODUCER, INTERESTS } from "../lib/site.ts";
+import More from "./More.astro";
 
 /**
  * WHO PRODUCED THIS, AND WHAT THEY STAND TO GAIN. Two sentences, at the foot of every page
@@ -17,6 +18,8 @@ import { PRODUCER, INTERESTS } from "../lib/site.ts";
  */
 ---
 <div class="interests">
+  <More label="Who makes this, and what it is paid by">
   <h2 class="section">Who produced this, and what they hold</h2>
   <p class="prose">{PRODUCER} {INTERESTS}</p>
+  </More>
 </div>

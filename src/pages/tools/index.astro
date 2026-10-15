@@ -1,5 +1,6 @@
 ---
 import Base from "../../layouts/Base.astro";
+import More from "../../components/More.astro";
 import { getSnapshot, coldStart, requestedPerp } from "../../lib/hyperliquid.ts";
 import { pct, usd, priceDp, VENUE_LABEL } from "../../lib/funding.ts";
 import { liquidationPrice, maintenanceMarginFraction, type MarginTable } from "../../lib/margin.ts";
@@ -240,11 +241,13 @@ const liqNote = liq && picked
       </tbody>
     </table>
   </div>
+  <More label="Why the common formulas fall short">
   <p class="section-note">
     None of this is a claim that other calculators are careless. {fundingNote} The liquidation
     shortcut is not exact in any tier: it leaves out maintenance margin, which every tier
     charges. {liqNote}
   </p>
+  </More>
 
   <p class="section-note" style="margin-top:20px">
     <a class="link" href="/methodology">How every number here is produced →</a>

@@ -292,8 +292,11 @@ const description =
         ))}
       </div>
     </div>
-    <p slot="note">
-      {LEGEND_FUNDING}. Each bar runs from zero to its own rate, so which side of the line it
+    <Fragment slot="note">
+    <p>{LEGEND_FUNDING}.</p>
+    <More label="How to read these bars, and the contracts not drawn">
+    <p>
+      Each bar runs from zero to its own rate, so which side of the line it
       falls on is the side that is paying; the dotted rule is Hyperliquid&rsquo;s
       {modalIsBase ? " base rate" : " most common rate"} at {pct(modalApr)}, which is what
       &ldquo;priced away from&rdquo; is measured against.
@@ -313,6 +316,8 @@ const description =
       any of them</>}. A contract only leaves it when the premium between mark and oracle is wide
       enough to move it.
     </p>
+    </More>
+    </Fragment>
   </Figure>
 
   {/* THE METHOD, DEMOTED RATHER THAN DELETED. This used to be the first thing on the page; it is
@@ -389,6 +394,7 @@ const description =
     </table>
   </div>
 
+  <More label="How the shape column is drawn, and which coins are covered">
   {sparkScaleAll && (
     <p class="section-note" style="margin-top:12px">
       {/* THE AXIS, STATED. A column of sparklines whose scale is not written down is a column a
@@ -412,6 +418,7 @@ const description =
         "N of 234" counted 56 delisted markets as listed (audit, 16 September 2026). */}
     {coverageToday(snap)} {coverageRule()} A coin below the floor is left out rather than published with sparse data, and the retained band means a published URL does not appear and vanish on ordinary noise.
   </p>
+  </More>
 
   <style>
     .raw { display: block; font-size: 11px; color: var(--text-faint); font-weight: 400; }

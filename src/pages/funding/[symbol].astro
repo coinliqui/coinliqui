@@ -452,9 +452,14 @@ const description = `What a ${p.symbol} perpetual costs to hold, against ${usd(p
         : `${fundDays} drawn`}
       fetchedAt={snap.fetchedAt}>
       <Fragment set:html={fundChart.svg} />
-      <p slot="note">
+      <Fragment slot="note">
+      <p>
         Amber above the line is <b>longs paying shorts</b>, cyan below is <b>shorts paying longs</b>;
-        the line itself is zero, where neither side pays. Each point is the mean of one day, from
+        the line itself is zero, where neither side pays.
+      </p>
+      <More label="How the funding chart is drawn">
+      <p>
+        Each point is the mean of one day, from
         Hyperliquid's own hourly settlements.{fundChart.bars === 1
           ? <>{" "}On the 1 day drawn the rate was <b>{pct(fundChart.hi)}</b> a year.</>
           : <>{" "}Over these {fundChart.bars} days the rate ran from <b>{pct(fundChart.lo)}</b> to <b>{pct(fundChart.hi)}</b> a year.</>}
@@ -468,6 +473,8 @@ const description = `What a ${p.symbol} perpetual costs to hold, against ${usd(p
             {" "}<b>{fundChart.clipped}</b>{fundChart.clipped === 1 ? " day sits beyond it and is" : " days sit beyond it and are"} drawn at the edge.</>
           : <>{" "}The axis is drawn to &plusmn;{pct(fundChart.max)}, which reaches every day shown.</>}
       </p>
+      </More>
+      </Fragment>
     </Figure>
   )}
 
@@ -698,6 +705,7 @@ const description = `What a ${p.symbol} perpetual costs to hold, against ${usd(p
       one period, and the calculator is where a reader changes both. It carries ?symbol= for the
       same reason /liquidations?symbol= does — arriving on the contract you were already reading
       is the difference between a link and a detour. */}
+  <More label="Quoted versus annualised rates, and the calculators for them">
   <p class="section-note">
     The quoted column is what each venue publishes. Those numbers are not comparable to each other; the annualised column is.
     {/* THE PAGE ASSUMES THE READER KNOWS WHAT THE COLUMN IS. Fifty pages carry this sentence and
@@ -715,6 +723,7 @@ const description = `What a ${p.symbol} perpetual costs to hold, against ${usd(p
         link offered to trade "the spread between them" (/funding/purr, 16 September 2026). */}
     {venueRates.length > 1 && <> · <a class="link" href={`/tools/funding-arbitrage?symbol=${p.symbol}`}>Whether the spread between them is worth trading →</a></>}
   </p>
+  </More>
   <div class="panel">
     <table class="tbl">
       <thead><tr><th>Venue</th><th class="num">Quoted rate</th><th class="num">Interval</th><th class="num">Settlements / yr</th><th class="num">Annualised</th></tr></thead>
@@ -759,6 +768,7 @@ const description = `What a ${p.symbol} perpetual costs to hold, against ${usd(p
       quantify the error in the common formula, quantifying it as nothing, on fourteen pages.
       Worst case was 8.9% of the price displayed as zero. Both now use px(), and the relative
       figure leads, because a percentage survives every price magnitude. */}
+  <More label={`A worked liquidation example, and ${p.symbol}'s margin tiers in full`}>
   <p class="section-note">
     {/* THE ENTRY IS PRINTED, WITH THE MINUTE IT WAS READ — see the note at `liq`. */}
     Maintenance margin is half the initial margin at the tier's max leverage. At {liq.effectiveLeverage}× long
@@ -793,7 +803,6 @@ const description = `What a ${p.symbol} perpetual costs to hold, against ${usd(p
         contract's map had no address of its own. */}
     {" "}<a class="link" href={liqMapHref(p.symbol)}>Every {p.symbol} liquidation level, mapped →</a>
   </p>
-  <More label={`${p.symbol}'s margin tiers, in full`}>
   <div class="panel" style="max-width:620px">
     <table class="tbl">
       <thead><tr><th>Tier</th><th class="num">Notional from</th><th class="num">Max leverage</th><th class="num">Maintenance margin</th></tr></thead>
