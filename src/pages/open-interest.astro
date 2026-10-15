@@ -448,7 +448,10 @@ const noChangeReason = oiHist.status === "no-store"
       ))}
     </tbody>
   </table></div>
-  <style>
+  {/* GLOBAL, NOT SCOPED: scoping stamped a data-astro-cid on 549 elements, 13 KB raw, which is where
+      the book line's bytes were found instead of in a raised budget. Every class here is prefixed
+      oiwin/oibook and used nowhere else. */}
+  <style is:global>
     .oiwin { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 0 0 16px; }
   .oiwin__label { font-size: var(--fs-sm); color: var(--text-dim); margin-right: 4px; }
   .oiwin__opt { padding: 6px 12px; border-radius: 999px; font-size: var(--fs-sm); color: var(--text-dim); text-decoration: none; border: 1px solid var(--border-soft); }

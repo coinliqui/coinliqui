@@ -977,12 +977,10 @@ console.log("\n11. page weight on the wire");
        and 511b over the wire buys the one thing a sorted table cannot say — that the top ten are
        most of the book. The new ceiling is the observed size plus the usual quarter of headroom,
        not a round number picked to stop the alarm. */
-    /* RAISED 9,000 -> 11,400 ON 15 OCTOBER, after making it smaller first. The page gained the 30-day
-       book line and the reader's change window (24 hours, 7 days, 14 days) — the first things on it a
-       chat answer cannot quote — and came in 851b over. Whole-unit coordinates, no repeated area path
-       and eight-hour steps took back 765b; the remaining 86b are the feature itself. 11,400 is the
-       observed 9,086 plus the usual quarter. */
-    ["/open-interest", 11_400], ["/liquidations", 60_000], ["/liquidations/survival", 30_000],
+    /* NOT RAISED (15 October 2026). The book line and change window came in 851b over; the bytes were
+       found on the page — whole-unit coordinates, no repeated area path, eight-hour steps, and the
+       scope attributes on 549 table elements — not in the ceiling. */
+    ["/open-interest", 9_000], ["/liquidations", 60_000], ["/liquidations/survival", 30_000],
     /* NOT RAISED FOR THE FOLDS (15 October 2026). /unlocks and /tools/leverage went 318b and 239b
        over when their explanations moved under "see more", and both budgets were raised the same
        day. Reversed: this measures what a reader downloads, folded text included, so the growth was
