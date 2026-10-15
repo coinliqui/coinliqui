@@ -376,7 +376,7 @@ const formNote: string | null = (() => {
       <div class="now__grid">
         <LevelsMap view={levels} symbol={perp.symbol} dp={levelsDp} clipped={map.clipped}
                    at={atPx} atRaw={atPx === null && atRaw ? atRaw.slice(0, 40) : null}
-                   action={Astro.url.pathname} carry={carry} />
+                   action={Astro.url.pathname} carry={carry} then={model.then} />
       </div>
     </section>
   )}

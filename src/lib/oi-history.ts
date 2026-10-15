@@ -93,3 +93,22 @@ export function oiChange(history: OiHistory, symbol: string, nowOi: number): num
   if (!Number.isFinite(before) || !(before! > 0) || !Number.isFinite(nowOi)) return null;
   return nowOi / before! - 1;
 }
+
+/**
+ * ONE CONTRACT'S OPEN INTEREST AT A MOMENT: the nearest hourly reading at or before `at`, no older
+ * than `bandHours` before it, with the time it was actually read. The liquidation map's day-ago run
+ * sizes its positions with it and prints that time, so a reading taken three hours off is said to be.
+ * Null on any absence — the caller shows no change rather than an invented one.
+ */
+export async function readOiAt(db: D1Like | undefined, symbol: string, at: number, bandHours = 3): Promise<{ oi: number; at: number } | null> {
+  if (!db) return null;
+  try {
+    const r = await db
+      .prepare("SELECT oi, at FROM oi_snapshot WHERE symbol = ?1 AND at <= ?2 AND at >= ?3 ORDER BY at DESC LIMIT 1")
+      .bind(symbol, at, at - bandHours * 3_600_000)
+      .first<{ oi: number; at: number }>();
+    return r && Number.isFinite(r.oi) && r.oi > 0 ? { oi: r.oi, at: r.at } : null;
+  } catch {
+    return null;
+  }
+}

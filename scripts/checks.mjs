@@ -1780,6 +1780,15 @@ export function levelsAgree(html) {
        (LADDER_REACH in src/lib/liqmap.ts). A † is honest, but it is not an answer — ETH's −5% and
        −10% once both read $206.3M, every long in the range. */
     else if (past) out.push(`${move} lands past the drawn range (${d.lo}–${d.hi}) — the axis must reach every move the table prints`);
+    /* The day-earlier column, when the page has one, is the published day-earlier rows summed the
+       same way. */
+    if (d.then) {
+      if (cells.length < 5) out.push(`${move}: the page publishes a day-earlier run and the row has no column for it`);
+      else {
+        const was = compact(cumulativeAt(d.then, d.mark, price).notional);
+        if (strip(cells[3]) !== was) out.push(`${move}: a day earlier the table prints ${strip(cells[3])}, the published day-earlier rows give ${was}`);
+      }
+    }
   }
   const field = html.match(/<input\b[^>]*\bdata-at-input\b[^>]*>/)?.[0] ?? "";
   const value = field.match(/\bvalue="([^"]*)"/)?.[1] ?? "";

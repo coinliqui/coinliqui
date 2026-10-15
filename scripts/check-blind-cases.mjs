@@ -56,11 +56,13 @@ const PALETTE = {
 
 const doc = (body, head = "") => `<!doctype html><html><head>${head}</head><body>${body}</body></html>`;
 /* A liquidation-map fixture for levelsAgree: twenty $1 rows from 110 down, mark 100. */
-const levels = (rows, value = "", said = "") => {
+const levels = (rows, value = "", said = "", withThen = false) => {
   const curve = { hi: 110, band: 1, short: Array.from({ length: 20 }, (_, r) => (r < 10 ? 5 : 0)), long: Array.from({ length: 20 }, (_, r) => (r >= 10 ? 10 : 0)) };
-  const json = JSON.stringify({ curve, mark: 100, lo: 90, hi: 110, dp: 0 }).replace(/"/g, "&quot;");
+  /* a day earlier: half the longs */
+  const then = withThen ? { ...curve, long: curve.long.map((v) => v / 2) } : null;
+  const json = JSON.stringify({ curve, mark: 100, lo: 90, hi: 110, dp: 0, then }).replace(/"/g, "&quot;");
   return doc(`<figure data-levels="${json}"></figure><form><input data-at-input value="${value}"><p data-at-out>${said}</p></form>` +
-    `<table class="tbl levels__tbl" data-astro-cid-x><tbody data-astro-cid-x>${rows.map(([mv, n]) => `<tr data-astro-cid-x><td class="num">${mv}</td><td class="num">x</td><td class="num">${n}</td><td>s</td></tr>`).join("")}</tbody></table>`);
+    `<table class="tbl levels__tbl" data-astro-cid-x><tbody data-astro-cid-x>${rows.map(([mv, n, was]) => `<tr data-astro-cid-x><td class="num">${mv}</td><td class="num">x</td><td class="num">${n}</td>${was ? `<td class="num">${was}</td>` : ""}<td>s</td></tr>`).join("")}</tbody></table>`);
 };
 
 let bad0 = 0;
@@ -117,6 +119,9 @@ const cases = [
       levelsAgree(doc(`<figure data-levels="{oops"></figure>`)).length > 0,
       /* a page without the map is not this check's business */
       levelsAgree(doc(`<p>No map here.</p>`)).length === 0,
+      /* the day-earlier column read from somewhere other than the published day-earlier rows */
+      levelsAgree(levels([["\u22125%", "$50", "$70"]], "", "", true)).length > 0,
+      levelsAgree(levels([["\u22125%", "$50", "$25"]], "", "", true)).length === 0,
     ],
   },
   {

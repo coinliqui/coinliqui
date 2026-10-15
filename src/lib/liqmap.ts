@@ -252,6 +252,9 @@ export function buildLiqMap(opts: {
   minSpan?: number;
   /** a live price the axis must reach LADDER_REACH either side of — see the note at the range */
   reach?: number;
+  /** draw on exactly this axis instead of fitting one: the 24-hours-ago map uses today's, so the
+   *  two are compared row for row at the same prices */
+  axis?: { lo: number; hi: number };
 }): LiqMap {
   const rows = opts.rows ?? 150;
   const ageBars = opts.ageBars ?? 84;
@@ -302,6 +305,7 @@ export function buildLiqMap(opts: {
     hiPrice = Math.max(hiPrice, opts.reach * (1 + LADDER_REACH));
     loPrice = Math.max(0, Math.min(loPrice, opts.reach * (1 - LADDER_REACH)));
   }
+  if (opts.axis) { hiPrice = opts.axis.hi; loPrice = opts.axis.lo; }
   const band = (hiPrice - loPrice) / rows;
 
   /* For each price row, the first future bar that trades through it. Quantising the level to
@@ -562,6 +566,9 @@ export function mapModel(o: {
   hourly: { d: Candle[] } | null | undefined;
   q: URLSearchParams;
   mark: number; oiNotional: number; maxLeverage: number; mmf: number;
+  /** this contract's open interest about a day ago, from the hourly oi_snapshot; null when the
+   *  store has none — then the page shows no change rather than an invented one */
+  oiThen?: { oi: number; at: number } | null;
 }) {
   const win = resolveWindow(o.q);
   const profile = PROFILES.find((p) => p.key === o.q.get("profile")) ?? DEFAULT_PROFILE;
@@ -582,6 +589,28 @@ export function mapModel(o: {
   const at = atRaw === null ? null : parsePrice(atRaw);
   const dp = axisDp(o.mark);
   const reading = levels && at !== null ? atReading(levels.curve, o.mark, at, levels.lo, levels.hi, dp) as string : null;
-  return { win, profile, ageBars, map, levels, at, atRaw, dp, reading };
+  /* THE SAME MAP A DAY AGO, ON TODAY'S AXIS. The same model, the same profile and window, run on the
+     candles that had closed 24 hours earlier and on the open interest recorded then — and drawn on
+     today's price rows, so a row is the same prices in both and the difference is the change. What it
+     is not: a record of what stood yesterday. It is what this model said yesterday, which is the
+     only thing a comparison of two model runs can honestly be. */
+  const shift = Math.round(24 / win.factor);
+  const prior = series.slice(0, Math.max(0, series.length - shift));
+  const then = map && o.oiThen && o.oiThen.oi > 0 && canDrawMap(prior, win)
+    ? (() => {
+        const m = buildLiqMap({
+          candles: prior, start: prior.length - win.cols, cols: win.cols, mmf: o.mmf, maxLeverage: o.maxLeverage,
+          oiNotional: o.oiThen!.oi, profile, rows: 150, ageBars, axis: { lo: map.loPrice, hi: map.hiPrice },
+        });
+        return {
+          levels: levelsView(m, o.mark, 3),
+          /** when the earlier run's last candle closed, and when its open interest was read */
+          candlesTo: series[series.length - shift][0], oiAt: o.oiThen!.at,
+          /** modelled notional price traded through in the day between the two runs */
+          cleared: map.swept.slice(-shift).reduce((a, b) => a + b, 0),
+        };
+      })()
+    : null;
+  return { win, profile, ageBars, map, levels, at, atRaw, dp, reading, then };
 }
 export type MapModel = ReturnType<typeof mapModel>;

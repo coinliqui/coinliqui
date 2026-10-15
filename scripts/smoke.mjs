@@ -439,6 +439,9 @@ for (const path of ROUTES) {
     }
     /* The liquidation map's figures are its published rows summed by the shared function. */
     for (const d of levelsAgree(body)) content.push(`liquidation map: ${d}`);
+    /* The seeded store carries 26 hours of open interest, so the hub's map must render its
+       day-earlier run; a page that silently drops it would otherwise pass. */
+    if (path === "/liquidations" && status === 200 && !body.includes('class="levels__day')) content.push("liquidation map: the seeded store holds a day of open interest and the map shows no day-earlier run");
     for (const d of dateModifiedAgreement(body)) content.push(`the stated age disagrees with itself: ${d}`);
     /* Recorded, not asserted here: the counterpart claim lives in a sitemap this loop has not
        fetched yet. Query strings are stripped because a sitemap lists the bare URL. */
