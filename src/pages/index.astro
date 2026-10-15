@@ -235,6 +235,9 @@ const description =
         leadNote={`median ${pct(medianChg)} \u00b7 Hyperliquid marks`}
         fetchedAt={snap.fetchedAt}>
         <Fragment set:html={breadth.svg} />
+        <div class="viz__counts" style={`grid-template-columns:repeat(${breadth.counts.length},1fr)`}>
+          {breadth.counts.map((c) => <span>{c || ""}</span>)}
+        </div>
         <div class="viz__axis">
           <span>{pct(breadth.lo)}</span>
           {breadth.zeroAt !== null && <span class="viz__zero" style={`left:${breadth.zeroAt}%`}>0%</span>}
@@ -250,7 +253,7 @@ const description =
           <More label="How to read the bars">
             <p>
               Each bar counts the
-              contracts whose 24-hour move landed in that band, so the tall part is where the market
+              contracts whose 24-hour move landed in that band, and the figure under it is that count, so the tall part is where the market
               actually is rather than where its extremes are. The centre band straddles
               zero and stays neutral because its sign is an artefact of where the bucket edges fall.
             </p>

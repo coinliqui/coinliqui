@@ -139,6 +139,9 @@ export interface DistributionResult {
   step: number;
   /** Zero's position as a percentage of the width, or null when zero is an end of the axis. */
   zeroAt: number | null;
+  /** How many values each bar holds, left to right, so the page can print them as HTML under the
+   *  bars: a height can be compared with its neighbour, a count can be quoted. */
+  counts: number[];
 }
 
 /**
@@ -257,7 +260,7 @@ export function distribution(values: number[], opts: DistributionOpts): Distribu
   /* Where zero falls as a share of the width, so a caller can put the label at the mark rather
      than in the middle of a row that is only sometimes symmetric. Null when zero is an end. */
   const zeroAt = signed && lo < 0 && hiZ > 0 ? ((0 - lo) / (hiZ - lo)) * 100 : null;
-  return { svg: svgOpen(w, h, title) + body + "</svg>", lo, hi: hiZ, over, step, zeroAt };
+  return { svg: svgOpen(w, h, title) + body + "</svg>", lo, hi: hiZ, over, step, zeroAt, counts };
 }
 
 /* THE OTHER THREE FIGURES ARE NOT HERE, AND THAT IS THE POINT OF WHAT THIS FILE LEARNED.
