@@ -89,7 +89,7 @@ export interface LiquidationResult {
 
 /** The tier that applies to a given notional: the last tier whose lowerBound <= notional. */
 export function tierFor(table: MarginTable, notional: number): { tier: MarginTier; index: number } {
-  const tiers = [...table.marginTiers].sort((a, b) => a.lowerBound - b.lowerBound);
+  const tiers = sortedTiers(table);
   let index = 0;
   for (let i = 0; i < tiers.length; i++) {
     if (notional >= tiers[i].lowerBound) index = i;
@@ -99,8 +99,8 @@ export function tierFor(table: MarginTable, notional: number): { tier: MarginTie
 
 /* Hyperliquid: maintenance margin is half the initial margin at max leverage. Implemented in
    public/shared.js so the calculators' browser scripts read the same rule. */
-export { maintenanceMarginFraction } from "../../public/shared.js";
-import { maintenanceMarginFraction } from "../../public/shared.js";
+export { maintenanceMarginFraction, sortedTiers } from "../../public/shared.js";
+import { maintenanceMarginFraction, sortedTiers } from "../../public/shared.js";
 import COMMITTED_TABLES from "../data/margin-tables.json" with { type: "json" };
 
 /**
@@ -112,6 +112,14 @@ import COMMITTED_TABLES from "../data/margin-tables.json" with { type: "json" };
  * Coverage itself now requires a table (src/lib/hyperliquid.ts), so nothing can link to such a page.
  */
 const TABLES = COMMITTED_TABLES as unknown as Record<string, MarginTable>;
+/** A contract's maximum leverage, from its committed tier table — the figure the liquidation map,
+ *  the index and the coin pages already used; the funding page, /open-interest and the funding-cost
+ *  tool read the venue's own field instead. They matched on 15 October 2026; one source means a stale
+ *  committed table cannot make two pages disagree about one contract. */
+export function capOf(p: { marginTableId: number; maxLeverage: number }): number {
+  const t = tableFor(p);
+  return t ? sortedTiers(t)[0].maxLeverage : p.maxLeverage;
+}
 export function tableFor(p: { marginTableId: number }): MarginTable | undefined {
   const k = String(p.marginTableId);
   return Object.prototype.hasOwnProperty.call(TABLES, k) ? TABLES[k] : undefined;
@@ -173,7 +181,7 @@ export function liquidationPrice(input: LiquidationInput): LiquidationResult {
  * Used on the page to show where the answer changes.
  */
 export function nextTierBoundary(table: MarginTable, notional: number): MarginTier | null {
-  const tiers = [...table.marginTiers].sort((a, b) => a.lowerBound - b.lowerBound);
+  const tiers = sortedTiers(table);
   return tiers.find((t) => t.lowerBound > notional) ?? null;
 }
 

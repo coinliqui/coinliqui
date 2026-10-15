@@ -602,7 +602,7 @@ const SHARED_RULES = ["paysClass", "paysLabel", "carryCost", "aprSpread", "pct",
                          month tables, two staleness limits, the map's sum on two sides of hydration. */
                       "signedPct", "moveCounts", "shortDate", "dateTimeUtc", "isStale",
                       "cumulativeAt", "atReading", "parsePrice", "spanWords", "mapModel", "maintenanceMarginFraction",
-                      "moneyAt", "printedMoney", "nearPrinted", "fitDecimals", "exactUsd", "fineNum", "dayEarlierCut", "readOiAt", "numberWord", "sparkDaysOf", "plural", "coinPageFor", "currentMark", "tableFor", "xhairAttrs", "narrowChart", "weekCarry", "oiMoves", "fundingRegime"];
+                      "moneyAt", "printedMoney", "nearPrinted", "fitDecimals", "exactUsd", "fineNum", "dayEarlierCut", "readOiAt", "numberWord", "sparkDaysOf", "plural", "coinPageFor", "currentMark", "tableFor", "xhairAttrs", "narrowChart", "weekCarry", "oiMoves", "fundingRegime", "sortedTiers", "capOf"];
 
 /* THE SHAPE OF A RULE WRITTEN INLINE, which a definition count cannot see because it has no name.
    Each is a shape that shipped as a copy and disagreed with the shared rule; `only` names the one
@@ -610,6 +610,8 @@ const SHARED_RULES = ["paysClass", "paysLabel", "carryCost", "aprSpread", "pct",
 const INLINE_SHAPES = [
   { what: "a month table", re: /["']Jan["'],\s*["']Feb["'],\s*["']Mar["']/, only: "public/shared.js", use: "MONTHS / shortDate" },
   { what: "a direct read of the live mark", re: /live\??\.mark\??\.\[/, only: "src/lib/hyperliquid.ts", use: "currentMark from src/lib/hyperliquid.ts" },
+  { what: "a tier table sorted by hand", re: /marginTiers\]\.sort\(/, only: "public/shared.js", use: "sortedTiers" },
+  { what: "maintenance margin written out", re: /1 \/ \(2 \* /, only: "public/shared.js", use: "maintenanceMarginFraction" },
   { what: "a table of number words", re: /["'](no|zero)["'],\s*["']one["'],\s*["']two["']/, only: "public/shared.js", use: "numberWord" },
   { what: "toLocaleDateString with a short month (prints \"Sept\")", re: /month:\s*["']short["']/, only: null, use: "shortDate" },
   /* a sign ternary with a percent sign after it on the same line — a signed COUNT ("+3 indexed")

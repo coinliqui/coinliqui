@@ -24,7 +24,7 @@
    ========================================================================================= */
 import { usd, pct } from "../lib/funding.ts";
 import { ageWords, minutesSince, utcStamp } from "../lib/freshness.ts";
-import { maintenanceMarginFraction, nextTierBoundary, corridorAt, type MarginTable, tableFor } from "../lib/margin.ts";
+import { maintenanceMarginFraction, nextTierBoundary, corridorAt, type MarginTable, tableFor, sortedTiers } from "../lib/margin.ts";
 import { T, O, H, L, C, type Candle, type getHourly } from "../lib/candles.ts";
 import { spanWords, MIN_SPAN, MOVE_STEPS, POSITION_LIFE_DAYS, DEFAULT_PROFILE, type MapModel, PROFILES, mixUsed, profilesCoincide, MAP_WINDOWS, DEFAULT_WINDOW, mapDrawable, type MapWindow } from "../lib/liqmap.ts";
 import { paintHeatMap } from "../lib/heatmap.ts";
@@ -105,7 +105,7 @@ const coinPage = coinPageFor(perp.symbol);
 const mapSiblings = snap.perps.filter(
   (x) => x.symbol !== perp.symbol && tableFor(x) !== undefined,
 );
-const tiers = [...table.marginTiers].sort((a, b) => a.lowerBound - b.lowerBound);
+const tiers = sortedTiers(table);
 const tier1 = tiers[0];
 const mark = markNow.px;
 /* DISTANCE FROM THE MARK THIS PAGE NAMES, computed here and nowhere else. The map's clusters carry

@@ -579,7 +579,7 @@ const description = `Risk-based position sizing for ${perp.symbol} perpetuals th
       BEFORE their figures are written, because a template's contents are unreachable to
       getElementById. The script carries no comments: is:inline ships them to every reader. */}
   <script is:inline type="module" define:vars={{ table, symbol: perp.symbol, sharedV: ASSETS["/shared.js"], scaleCfg: SCALE }}>
-    const { stopVerdict, usd, pct, priceDp, maintenanceMarginFraction } = await import("/shared.js" + (sharedV ? `?v=${sharedV}` : ""));
+    const { stopVerdict, usd, pct, priceDp, maintenanceMarginFraction, sortedTiers } = await import("/shared.js" + (sharedV ? `?v=${sharedV}` : ""));
     const form = document.querySelector(".calc");
     if (form) {
       const money = (x) => usd(x, 2);
@@ -587,7 +587,7 @@ const description = `Risk-based position sizing for ${perp.symbol} perpetuals th
       const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
       const setAll = (ids, v) => ids.forEach((i) => set(i, v));
       const fig = (s) => document.querySelector("#ps-fig " + s);
-      const tiers = [...table.marginTiers].sort((a, b) => a.lowerBound - b.lowerBound);
+      const tiers = sortedTiers(table);
       const recalc = () => {
         const A = Number(form.account.value), R = Number(form.risk.value);
         const E = Number(form.entry.value), S = Number(form.stop.value), L = Number(form.leverage.value);

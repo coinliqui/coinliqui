@@ -1576,7 +1576,7 @@ async function stepGscExport(env, now = Date.now()) {
 }
 
 // worker/build-stamp.ts
-var WORKER_BUILD = "04bee6e84705";
+var WORKER_BUILD = "fa644610567d";
 
 // worker/ingest.ts
 var RETAIN_HOURS = 720;

@@ -3,7 +3,7 @@ import Base from "../../layouts/Base.astro";
 import More from "../../components/More.astro";
 import { getSnapshot, coldStart, findPerp, getLive, currentMark } from "../../lib/hyperliquid.ts";
 import { VENUE_LABEL, pct, usd, rawRate, carryCost, settlementsPerYear, nextSettlement, paysClass, paysLabel, type Venue } from "../../lib/funding.ts";
-import { liquidationPrice, type MarginTable, roomVerdict, tableFor } from "../../lib/margin.ts";
+import { liquidationPrice, type MarginTable, roomVerdict, tableFor, sortedTiers, maintenanceMarginFraction, capOf } from "../../lib/margin.ts";
 import { oiMoves } from "../../lib/oi-history.ts";
 import { getCandles, getM15, getHourly, getFunding } from "../../lib/candles.ts";
 import PricePanel from "../../components/PricePanel.astro";
@@ -529,7 +529,7 @@ const description = `What a ${p.symbol} perpetual costs to hold, against ${usd(p
     <div>Period volume<b data-tfstat="volume" data-group="px" {...stat((c) => qty(c.chart!.volume) + " " + p.symbol)}>{active ? qty(active.chart.volume) + " " + p.symbol : "—"}</b></div>
     <div>Oracle index <span class="scope">Hyperliquid</span><b>{p.oraclePx > 0 ? px(p.oraclePx) : "—"}</b></div>
     <div>Open interest <span class="scope">Hyperliquid</span><b>{usd(p.oiNotional)}</b>{oiMvWords && <span class="scope"><a class="link" href="/open-interest?w=7d">{oiMvWords}</a></span>}</div>
-    <div>Max leverage<b>{p.maxLeverage}×</b></div>
+    <div>Max leverage<b>{capOf(p)}×</b></div>
   </div>
   {/* THREE CLOCKS, NOT TWO. This sentence put "open interest, volume and the period figures"
       on one clock — the five-minute snapshot. Open interest and 24-hour volume do come from
@@ -818,12 +818,12 @@ const description = `What a ${p.symbol} perpetual costs to hold, against ${usd(p
     <table class="tbl">
       <thead><tr><th>Tier</th><th class="num">Notional from</th><th class="num">Max leverage</th><th class="num">Maintenance margin</th></tr></thead>
       <tbody>
-        {table.marginTiers.map((t, i) => (
+        {sortedTiers(table).map((t, i) => (
           <tr>
             <td>{i + 1}</td>
             <td class="num">{usd(t.lowerBound)}</td>
             <td class="num">{t.maxLeverage}×</td>
-            <td class="num">{pct(1 / (2 * t.maxLeverage), 3)}</td>
+            <td class="num">{pct(maintenanceMarginFraction(t.maxLeverage), 3)}</td>
           </tr>
         ))}
       </tbody>

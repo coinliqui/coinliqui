@@ -22,7 +22,7 @@ import Base from "../layouts/Base.astro";
 import LiqMap from "../components/LiqMap.astro";
 import { getSnapshot, coldStart, requestedPerp, getLive, currentMark } from "../lib/hyperliquid.ts";
 import { usd, pct, priceDp } from "../lib/funding.ts";
-import { maintenanceMarginFraction, corridorAt, type MarginTable, tableFor } from "../lib/margin.ts";
+import { maintenanceMarginFraction, corridorAt, type MarginTable, tableFor, sortedTiers } from "../lib/margin.ts";
 import { utcStamp } from "../lib/freshness.ts";
 import { readOiAt } from "../lib/oi-history.ts";
 import { mapTitle, mapDescription, mapState, resolveWindow, mapModel, dayEarlierCut } from "../lib/liqmap.ts";
@@ -82,7 +82,7 @@ if (wanted !== null) {
 const rows = snap.perps
   .filter((p) => tableFor(p) !== undefined)
   .map((p) => {
-    const t = [...tableFor(p)!.marginTiers].sort((a, b) => a.lowerBound - b.lowerBound)[0];
+    const t = sortedTiers(tableFor(p)!)[0];
     const L = t.maxLeverage;
     const { corridor } = corridorAt(p.markPx, L, maintenanceMarginFraction(L));
     return { p, L, corridor, href: liqMapHref(p.symbol), here: p.symbol === perp.symbol };
@@ -92,7 +92,7 @@ const rows = snap.perps
    mapState in src/lib/liqmap.ts — and handed to the component rather than read again. */
 const hourly = await getHourly(env?.SNAPSHOT, perp.symbol, import.meta.env.DEV);
 const win = resolveWindow(q);
-const cap = [...table.marginTiers].sort((a, b) => a.lowerBound - b.lowerBound)[0].maxLeverage;
+const cap = sortedTiers(table)[0].maxLeverage;
 const state = mapState(hourly?.d, win);
 const title = mapTitle(perp.symbol, state);
 /* The model runs here, once, so the description can carry a ?at= reading — see mapModel. */

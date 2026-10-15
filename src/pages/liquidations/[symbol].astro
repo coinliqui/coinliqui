@@ -35,7 +35,7 @@
 import Base from "../../layouts/Base.astro";
 import LiqMap from "../../components/LiqMap.astro";
 import { getSnapshot, coldStart, findPerp, requestedPerp, getLive, currentMark } from "../../lib/hyperliquid.ts";
-import { maintenanceMarginFraction, type MarginTable, tableFor } from "../../lib/margin.ts";
+import { maintenanceMarginFraction, type MarginTable, tableFor, sortedTiers } from "../../lib/margin.ts";
 import { getHourly } from "../../lib/candles.ts";
 import { utcStamp } from "../../lib/freshness.ts";
 import { readOiAt } from "../../lib/oi-history.ts";
@@ -109,7 +109,7 @@ if (!table) return Astro.rewrite(`/404?symbol=${encodeURIComponent(wanted)}`);
    redirect and 404 above, so none of those pays for it. */
 const hourly = await getHourly(env?.SNAPSHOT, p.symbol, import.meta.env.DEV);
 const win = resolveWindow(Astro.url.searchParams);
-const cap = [...table.marginTiers].sort((a, b) => a.lowerBound - b.lowerBound)[0].maxLeverage;
+const cap = sortedTiers(table)[0].maxLeverage;
 const state = mapState(hourly?.d, win);
 const title = mapTitle(p.symbol, state);
 /* The model runs here, once, so the description can carry a ?at= reading — see mapModel. */

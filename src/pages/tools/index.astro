@@ -3,7 +3,7 @@ import Base from "../../layouts/Base.astro";
 import More from "../../components/More.astro";
 import { getSnapshot, coldStart, requestedPerp, getLive, currentMark } from "../../lib/hyperliquid.ts";
 import { pct, usd, priceDp, carryCost, toApr, VENUE_LABEL } from "../../lib/funding.ts";
-import { liquidationPrice, maintenanceMarginFraction, type MarginTable } from "../../lib/margin.ts";
+import { liquidationPrice, maintenanceMarginFraction, type MarginTable, sortedTiers } from "../../lib/margin.ts";
 import tables from "../../data/margin-tables.json";
 import { widestSpread } from "../../lib/extreme.ts";
 const snap = await getSnapshot((Astro.locals as any)?.runtime?.env?.SNAPSHOT, import.meta.env.DEV);
@@ -156,7 +156,7 @@ const naiveHold = hl ? SIZE_USD * hl.rate * HOLD_DAYS : null;
    name the tier the position is actually in, and says nothing about room from entry when the
    leverage was clamped, because then the gap is not maintenance margin alone. */
 const fundingNote = `Reading a quoted funding rate as a daily number is exact only on a venue that settles once a day${hl ? `, and ${VENUE_LABEL[hl.venue]} settles every ${hl.intervalHours}h` : ""}.`;
-const topTier = picked ? [...picked.table.marginTiers].sort((a, b) => b.lowerBound - a.lowerBound)[0] : undefined;
+const topTier = picked ? sortedTiers(picked.table).at(-1) : undefined;
 const topMmf = topTier && liq && maintenanceMarginFraction(topTier.maxLeverage) > liq.maintenanceMarginFraction
   ? maintenanceMarginFraction(topTier.maxLeverage)
   : null;

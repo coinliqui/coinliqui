@@ -2,7 +2,7 @@
 import Base from "../../layouts/Base.astro";
 import { getSnapshot, coldStart, requestedPerp, getLive, currentMark } from "../../lib/hyperliquid.ts";
 import { usd, pct, compact, queryNum } from "../../lib/funding.ts";
-import { corridorAt, tierFor, maintenanceMarginFraction, type MarginTable, type Side } from "../../lib/margin.ts";
+import { corridorAt, tierFor, maintenanceMarginFraction, type MarginTable, type Side, sortedTiers } from "../../lib/margin.ts";
 import { extremeBy } from "../../lib/extreme.ts";
 import tables from "../../data/margin-tables.json";
 
@@ -33,7 +33,7 @@ const side = (q.get("side") === "short" ? "short" : "long") as Side;
 
 // A notional large enough to land past the first tier boundary by default, so the page opens
 // on the case the headline number gets wrong rather than on the case where it happens to hold.
-const boundary = [...table.marginTiers].sort((a, b) => a.lowerBound - b.lowerBound)[1]?.lowerBound;
+const boundary = sortedTiers(table)[1]?.lowerBound;
 const defaultNotional = boundary ? Math.round(boundary * 1.2) : 250_000;
 /* ONE SET OF BOUNDS FOR THE PARSER, THE FORM AND THE SENTENCE THAT OWNS UP TO A REPLACEMENT.
    Measured 16 September 2026: /tools/leverage?symbol=BTC&side=long&notional=0&leverage=10 answered
@@ -458,10 +458,10 @@ const description = capCount > 1
       Paid for by the local `pc` (pct replaces it), the null checks on ids and on the form that
       this page always renders, the per-branch className string and the forEach tier search. */}
   <script is:inline type="module" define:vars={{ table, markPx: markNow.px, sharedV: ASSETS["/shared.js"] }}>
-    const { usd, pct, priceDp, maintenanceMarginFraction } = await import("/shared.js" + (sharedV ? `?v=${sharedV}` : ""));
+    const { usd, pct, priceDp, maintenanceMarginFraction, sortedTiers } = await import("/shared.js" + (sharedV ? `?v=${sharedV}` : ""));
     const form = document.querySelector(".calc");
     const set = (id, v) => document.getElementById(id).textContent = v;
-    const tiers = [...table.marginTiers].sort((a, b) => a.lowerBound - b.lowerBound);
+    const tiers = sortedTiers(table);
     const top = Math.max(...tiers.map((t) => t.maxLeverage));
     const ix = (v) => tiers.reduce((a, t, i) => v >= t.lowerBound ? i : a, 0);
     const nu = (v) => { const s = usd(v), m = /([\d,.]+)([MB]?)$/.exec(s); return m && ix(m[1].replace(/,/g, "") * (m[2] ? m[2] == "M" ? 1e6 : 1e9 : 1)) != ix(v) ? "$" + Math.floor(v).toLocaleString("en-US") : s; };

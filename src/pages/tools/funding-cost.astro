@@ -1,5 +1,6 @@
 ---
 import { moneyAt, printedMoney as printed, nearPrinted as near, fitDecimals as fit, exactUsd, fineNum as num, numberWord } from "../../../public/shared.js";
+import { capOf } from "../../lib/margin.ts";
 import ASSETS from "../../data/assets.json";
 import Base from "../../layouts/Base.astro";
 import { getSnapshot, coldStart, findPerp, getLive, currentMark } from "../../lib/hyperliquid.ts";
@@ -64,8 +65,8 @@ const DAYS_MAX = 3650;
    at "5× · margin $2,000". perp.maxLeverage is Hyperliquid's meta field, so it caps the calculator only
    when Hyperliquid is the venue priced; Binance and Bybit limits are not in these figures, so for them
    the bound is the calculator's own and the notice says so rather than naming a venue. */
-const hlCap = f.venue === "HlPerp" && Number.isFinite(perp.maxLeverage) && perp.maxLeverage >= 1;
-const LEV_MAX = hlCap ? perp.maxLeverage : 1000;
+const hlCap = f.venue === "HlPerp" && Number.isFinite(capOf(perp)) && capOf(perp) >= 1;
+const LEV_MAX = hlCap ? capOf(perp) : 1000;
 const levWhy = hlCap ? ` Hyperliquid lists for ${perp.symbol}` : " this calculator takes";
 const read = (key: string, label: string, fallback: number, min: number, max: number, show: (n: number) => string, maxWhy = "", bound = show) => {
   const raw = q.get(key);

@@ -108,6 +108,9 @@ export const numberWord = (n, zero = "no") => (n === 0 ? zero : NUMBER_WORDS[n] 
 /** Hyperliquid's maintenance margin: half the initial margin at the tier's max leverage. Here so
  *  the calculators' scripts read the server's rule instead of writing 1 / (2 * L) again. */
 export const maintenanceMarginFraction = (maxLeverage) => 1 / (2 * maxLeverage);
+/** A tier table's tiers, lowest notional first — the order every reader of one assumes. Twelve
+ *  places sorted it themselves and /funding/{symbol} printed it in file order (15 October 2026). */
+export const sortedTiers = (table) => [...table.marginTiers].sort((a, b) => a.lowerBound - b.lowerBound);
 
 /** MONTHS AND THE SHORT DATE, once. Five files carried their own month table, and two pages used
  *  toLocaleDateString("en-GB", {month: "short"}) instead — which prints "Sept" for September, so a

@@ -8,6 +8,7 @@ import Overview from "../components/Overview.astro";
 import { extremeBy } from "../lib/extreme.ts";
 import { readOiHistory, oiChange, readOiSeries } from "../lib/oi-history.ts";
 import { shortDate, plural } from "../../public/shared.js";
+import { capOf } from "../lib/margin.ts";
 import { compact } from "../lib/chart.ts";
 const snap = await getSnapshot((Astro.locals as any)?.runtime?.env?.SNAPSHOT, import.meta.env.DEV);
 // Cold store: 503 + Retry-After rather than a page rendered from nothing.
@@ -443,7 +444,7 @@ const noChangeReason = oiHist.status === "no-store"
           })()}
           <td>{usd(p.dayNtlVlm)}</td>
           <td>{p.oiNotional > 0 ? (p.dayNtlVlm / p.oiNotional).toFixed(2) + "×" : "—"}</td>
-          <td>{p.maxLeverage}×</td>
+          <td>{capOf(p)}×</td>
         </tr>
       ))}
     </tbody>

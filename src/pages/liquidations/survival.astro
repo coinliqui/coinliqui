@@ -2,7 +2,7 @@
 import Base from "../../layouts/Base.astro";
 import { getSnapshot, coldStart, requestedPerp } from "../../lib/hyperliquid.ts";
 import { usd, pct, nf, axisDp } from "../../lib/funding.ts";
-import { maintenanceMarginFraction, type MarginTable } from "../../lib/margin.ts";
+import { maintenanceMarginFraction, type MarginTable, sortedTiers } from "../../lib/margin.ts";
 import { getCandles, survivalGrid, gridLevels } from "../../lib/candles.ts";
 import { CH, INK, RAMP, text, rect, timeTicks, xTick, niceTicks, fint, SANS, FS_AXIS, FS_MICRO } from "../../lib/chart.ts";
 import tables from "../../data/margin-tables.json";
@@ -25,7 +25,7 @@ const picked = requestedPerp(snap.perps, wantedSymbol, tables as Record<string, 
 if (picked === null) return coldStart();
 if (picked === "unknown") return Astro.rewrite(`/404?symbol=${encodeURIComponent(wantedSymbol!)}`);
 const { perp, table } = picked;
-const tier1 = [...table.marginTiers].sort((a, b) => a.lowerBound - b.lowerBound)[0];
+const tier1 = sortedTiers(table)[0];
 const mark = perp.markPx;
 const mmf = maintenanceMarginFraction(tier1.maxLeverage);
 const dp = priceDp(mark);
