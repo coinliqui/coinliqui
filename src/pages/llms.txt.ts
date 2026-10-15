@@ -58,7 +58,7 @@ ${base} is the only domain this project publishes. Any other site using this nam
 - Perpetual futures prices for ${liveCoins().length} major coins, with funding, 24h turnover and
   open interest: ${base}/coins
 - A register of on-chain token vesting and lock contracts read directly from Ethereum, including
-  contracts whose schedule has finished but whose tokens were never withdrawn: ${base}/unlocks
+  contracts whose schedule has finished but which still hold tokens, and how much left between reads: ${base}/unlocks
 
 ### Readings this site computes that most others do not
 
@@ -82,7 +82,7 @@ produce them.
 - Whether a stop is reached before liquidation at a given leverage, stated as an ordered triple
   of entry, stop and liquidation rather than three separate figures: ${base}/tools/position-size
 - What share of a token's supply sits in a vesting contract whose schedule has finished and
-  whose tokens were never withdrawn: ${base}/unlocks
+  which still holds tokens: ${base}/unlocks
 
 ### Where the per-contract pages are
 
