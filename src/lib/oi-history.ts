@@ -112,3 +112,33 @@ export async function readOiAt(db: D1Like | undefined, symbol: string, at: numbe
     return null;
   }
 }
+
+/**
+ * OPEN INTEREST OVER TIME, per contract, in fixed buckets — one aggregating query, so a page reads a
+ * few thousand rows rather than every hourly reading of thirty days. A bucket a contract has no
+ * reading in is NaN, never zero: an absent reading is not a book that emptied.
+ */
+export interface OiSeries { buckets: number[]; bySymbol: Map<string, number[]> }
+export async function readOiSeries(db: D1Like | undefined, now: number, days = 30, bucketHours = 4): Promise<OiSeries | null> {
+  if (!db) return null;
+  const step = bucketHours * 3_600_000;
+  const first = Math.floor((now - days * 86_400_000) / step) + 1;
+  const last = Math.floor(now / step);
+  try {
+    const { results } = await db
+      .prepare("SELECT symbol, CAST(at / ?1 AS INTEGER) AS b, AVG(oi) AS oi FROM oi_snapshot WHERE at >= ?2 GROUP BY symbol, b")
+      .bind(step, first * step)
+      .all<{ symbol: string; b: number; oi: number }>();
+    const buckets = Array.from({ length: last - first + 1 }, (_, i) => (first + i) * step);
+    const bySymbol = new Map<string, number[]>();
+    for (const r of results ?? []) {
+      const i = r.b - first;
+      if (i < 0 || i >= buckets.length || !(r.oi > 0)) continue;
+      if (!bySymbol.has(r.symbol)) bySymbol.set(r.symbol, buckets.map(() => NaN));
+      bySymbol.get(r.symbol)![i] = r.oi;
+    }
+    return bySymbol.size ? { buckets, bySymbol } : null;
+  } catch {
+    return null;
+  }
+}

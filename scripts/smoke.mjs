@@ -87,7 +87,7 @@ const PAGE_STAMPS = new Map();
 
 const ROUTES = [
   "/", "/coins", "/coins/bitcoin", "/funding", "/funding/btc", "/funding/kpepe",
-  "/open-interest", "/liquidations", "/liquidations/survival", "/liquidations/sweep",
+  "/open-interest", "/open-interest?w=7d", "/open-interest?w=14d", "/liquidations", "/liquidations/survival", "/liquidations/sweep",
   /* THE PER-CONTRACT MAPS, both branches. /liquidations/eth is the template; /liquidations/btc
      is the pinned default's alias and must answer 301 to /liquidations, because the default
      keeps the URL Google already indexed. A template covered only by its happy path is how the
@@ -442,6 +442,8 @@ for (const path of ROUTES) {
     /* The seeded store carries 26 hours of open interest, so the hub's map must render its
        day-earlier run; a page that silently drops it would otherwise pass. */
     if (path === "/liquidations" && status === 200 && !body.includes('class="levels__day')) content.push("liquidation map: the seeded store holds a day of open interest and the map shows no day-earlier run");
+    /* And thirty days of BTC and ETH, so /open-interest must draw its book line. */
+    if (path === "/open-interest" && status === 200 && !body.includes('class="oibook')) content.push("open interest: the seeded store holds 30 days for two contracts and the page draws no book line");
     for (const d of dateModifiedAgreement(body)) content.push(`the stated age disagrees with itself: ${d}`);
     /* Recorded, not asserted here: the counterpart claim lives in a sitemap this loop has not
        fetched yet. Query strings are stripped because a sitemap lists the bare URL. */

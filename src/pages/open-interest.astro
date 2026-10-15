@@ -6,7 +6,9 @@ import Figure from "../components/Figure.astro";
 import More from "../components/More.astro";
 import Overview from "../components/Overview.astro";
 import { extremeBy } from "../lib/extreme.ts";
-import { readOiHistory, oiChange } from "../lib/oi-history.ts";
+import { readOiHistory, oiChange, readOiSeries } from "../lib/oi-history.ts";
+import { shortDate } from "../../public/shared.js";
+import { compact } from "../lib/chart.ts";
 const snap = await getSnapshot((Astro.locals as any)?.runtime?.env?.SNAPSHOT, import.meta.env.DEV);
 // Cold store: 503 + Retry-After rather than a page rendered from nothing.
 if (!snap.available) return coldStart();
@@ -38,7 +40,16 @@ const total = rows.reduce((s, p) => s + p.oiNotional, 0);
    So the hours, the band and the instant are constants HERE, passed to the reader rather than
    left to its defaults, and every window below is arithmetic on those three and on `since`, the
    reading actually used. Nothing on this page prints a duration it did not subtract. */
-const OI_HOURS = 24;
+/* THE WINDOW IS THE READER'S. A change over 24 hours is the one figure every aggregator prints; over a
+   week or two it is the build-up a chat answer cannot quote, because nobody published it. The store
+   keeps 720 hours, so 14 days is the longest window whose baseline band is always inside it. */
+const OI_WINDOWS = [
+  { key: "24h", hours: 24, label: "24 hours" },
+  { key: "7d", hours: 168, label: "7 days" },
+  { key: "14d", hours: 336, label: "14 days" },
+] as const;
+const oiWin = OI_WINDOWS.find((w) => w.key === Astro.url.searchParams.get("w")) ?? OI_WINDOWS[0];
+const OI_HOURS = oiWin.hours;
 const OI_BAND_HOURS = 3;
 const HOUR_MS = 3_600_000;
 const oiNow = Date.now();
@@ -59,6 +70,33 @@ const oiReady = oiHist.status === "ready" ? oiHist : null;
    there: one time is printed. Any missing: the span they were all drawn from is printed instead,
    which is true whichever contracts took the older rows. */
 const oiAtSince = oiReady ? await readOiHistory(oiDb, oiReady.since + OI_HOURS * HOUR_MS, OI_HOURS, 0) : null;
+/* THE BOOK OVER 30 DAYS, from today's covered contracts only, so the line moves with open interest and
+   not with contracts entering or leaving coverage. A contract without a reading in every bucket is left
+   out and the share of today's book the line covers is printed, rather than summing a set that changes
+   along the line. The chart carries levels and dates, not a change figure: the change is the table's,
+   from hourly readings, and a second change from bucket averages would disagree with it. */
+const oiSeries = await readOiSeries(oiDb, oiNow, 30, 4);
+const book = (() => {
+  if (!oiSeries) return null;
+  const full = rows.filter((p) => { const v = oiSeries.bySymbol.get(p.symbol); return v && v.every((x) => Number.isFinite(x)); });
+  if (full.length < 2) return null;
+  const pts = oiSeries.buckets.map((t, i) => [t, full.reduce((a, p) => a + oiSeries.bySymbol.get(p.symbol)![i], 0)] as const);
+  const vals = pts.map(([, v]) => v);
+  const lo = Math.min(...vals), hi = Math.max(...vals);
+  const pad = (hi - lo) * 0.08 || hi * 0.02;
+  const y0 = lo - pad, y1 = hi + pad;
+  const t0 = pts[0][0], t1 = pts[pts.length - 1][0];
+  const X = (t: number) => ((t - t0) / Math.max(1, t1 - t0)) * 1000;
+  const Y = (v: number) => 200 - ((v - y0) / (y1 - y0)) * 200;
+  const line = pts.map(([t, v], i) => `${i ? "L" : "M"}${X(t).toFixed(1)},${Y(v).toFixed(1)}`).join("");
+  const winX = X(Math.max(t0, oiNow - OI_HOURS * HOUR_MS));
+  return {
+    line, area: `${line}L1000,200L0,200Z`, winX,
+    hi, lo, hiPct: (Y(hi) / 200) * 100, loPct: (Y(lo) / 200) * 100,
+    from: t0, to: t1, count: full.length,
+    share: full.reduce((a, p) => a + p.oiNotional, 0) / Math.max(1, total),
+  };
+})();
 const bandTo = oiNow - OI_HOURS * HOUR_MS;
 const bandFrom = bandTo - OI_BAND_HOURS * HOUR_MS;
 
@@ -184,7 +222,7 @@ const oiSpanHours = oneTick && oiReady && snap.fetchedAt > oiReady.since ? (snap
 const oiWindowLead = !oiReady || !sinceAt
   ? ""
   : oneTick
-    ? `${oiSpanHours != null ? `Over the ${oiSpanHours.toFixed(1)} hours since` : "Since"} the stored reading at ${hm(sinceAt)} UTC on ${dayOf(sinceAt)},`
+    ? `${oiSpanHours != null ? `Over the ${oiSpanHours >= 48 ? `${(oiSpanHours / 24).toFixed(1)} days` : `${oiSpanHours.toFixed(1)} hours`} since` : "Since"} the stored reading at ${hm(sinceAt)} UTC on ${dayOf(sinceAt)},`
     : `Against stored readings taken ${utcSpan(bandFrom, oiReady.since, true)},`;
 /* The column's scope in the same shapes, short: one reading time; the span the measured contracts
    were drawn from; or, when no contract on the page was measured, the band searched — "since" a
@@ -286,6 +324,34 @@ const noChangeReason = oiHist.status === "no-store"
     </p>
     </More>
   </div>
+
+  {/* THE WINDOW SWITCH: links, so each window is a URL a reader can send, under the same canonical. */}
+  <nav class="oiwin" aria-label="Change window">
+    <span class="oiwin__label">Change over</span>
+    {OI_WINDOWS.map((w) => (
+      <a class:list={["oiwin__opt", w === oiWin && "is-on"]} href={w.key === "24h" ? "/open-interest" : `/open-interest?w=${w.key}`} aria-current={w === oiWin ? "true" : undefined}>{w.label}</a>
+    ))}
+  </nav>
+
+  {book && (
+    <figure class="oibook">
+      <figcaption class="oibook__cap">
+        <b>The book over 30 days</b> — {book.count} of today's {rows.length} contracts, those with a reading in
+        every 4-hour step ({pct(book.share)} of today's open interest). Shaded: the {oiWin.label} the change below is taken over.
+      </figcaption>
+      <div class="oibook__plot">
+        <svg viewBox="0 0 1000 200" preserveAspectRatio="none" role="img" aria-label={`Open interest of ${book.count} contracts from ${shortDate(book.from)} to ${shortDate(book.to)}, between ${compact(book.lo)} and ${compact(book.hi)}`}>
+          <rect x={book.winX} y="0" width={1000 - book.winX} height="200" fill="currentColor" opacity="0.07" />
+          <path d={book.area} fill="currentColor" opacity="0.12" />
+          <path d={book.line} fill="none" stroke="currentColor" stroke-width="2" vector-effect="non-scaling-stroke" />
+        </svg>
+        <span class="oibook__y" style={`top:${book.hiPct.toFixed(1)}%`}>{compact(book.hi)}</span>
+        <span class="oibook__y" style={`top:${book.loPct.toFixed(1)}%`}>{compact(book.lo)}</span>
+      </div>
+      <div class="oibook__x"><span>{shortDate(book.from)}</span><span>{shortDate(book.to)}</span></div>
+    </figure>
+  )}
+
   <p class="section-note" style="margin:0 0 20px;max-width:74ch">Across the book, 24-hour volume of {usd(stripVol)} is {Number.isFinite(stripTurn) ? `${stripTurn.toFixed(2)}\u00d7` : "\u2014"} the open interest.</p>
   <More label="What the turnover column means">
     <p class="section-note" style="margin:0;max-width:74ch">The turnover column is that ratio per contract: a high number means the position base is churning rather than accumulating. <a class="link" href="/learn/open-interest">What open interest does and does not tell you →</a></p>
@@ -360,5 +426,15 @@ const noChangeReason = oiHist.status === "no-store"
     </tbody>
   </table></div>
   <style>
-  </style>
+    .oiwin { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 0 0 16px; }
+  .oiwin__label { font-size: var(--fs-sm); color: var(--text-dim); margin-right: 4px; }
+  .oiwin__opt { padding: 6px 12px; border-radius: 999px; font-size: var(--fs-sm); color: var(--text-dim); text-decoration: none; border: 1px solid var(--border-soft); }
+  .oiwin__opt.is-on { color: var(--text); background: var(--surface-3); border-color: var(--border); }
+  .oibook { margin: 0 0 20px; }
+  .oibook__cap { font-size: var(--fs-sm); color: var(--text-dim); margin: 0 0 8px; max-width: 74ch; line-height: 1.5; }
+  .oibook__plot { position: relative; height: 180px; color: var(--text-dim); background: var(--surface-1); border-radius: 12px; overflow: hidden; }
+  .oibook__plot svg { display: block; width: 100%; height: 100%; }
+  .oibook__y { position: absolute; left: 10px; transform: translateY(-50%); font: 11.5px var(--mono); color: var(--text-dim); background: var(--surface-1); padding: 0 4px; }
+  .oibook__x { display: flex; justify-content: space-between; font: 11.5px var(--mono); color: var(--text-faint); margin-top: 4px; }
+</style>
 </Base>
