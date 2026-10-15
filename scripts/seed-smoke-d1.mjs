@@ -120,10 +120,13 @@ const oiRows = [];
    interest at the moment its candles end (dayEarlierCut), and the warm store's candles are a fixture
    from mid-September, so the reading has to exist at that date for the gate to render the run. If
    the fixture ever ages past this span, the smoke check that requires the run fails and says so. */
-for (let h = 120 * 24; h > 26; h -= 3) oiRows.push(["BTC", 2_550_000_000 * (1 + Math.sin(h / 40) * 0.05), oiAgo(h)]);
+/* WITH A HOLE, as production has one (28–29 September 2026, eight hours without a reading): the book
+   line on /open-interest must draw through a gap, and the first version drew nothing at all. */
+const outage = (h) => h > 300 && h <= 309;
+for (let h = 120 * 24; h > 26; h -= 3) if (!outage(h)) oiRows.push(["BTC", 2_550_000_000 * (1 + Math.sin(h / 40) * 0.05), oiAgo(h)]);
 /* ETH too, so /open-interest has two contracts with a reading in every 4-hour step and draws its
    30-day book line in the gate. */
-for (let h = 120 * 24; h > 26; h -= 3) oiRows.push(["ETH", 1_080_000_000 * (1 + Math.cos(h / 55) * 0.04), oiAgo(h)]);
+for (let h = 120 * 24; h > 26; h -= 3) if (!outage(h)) oiRows.push(["ETH", 1_080_000_000 * (1 + Math.cos(h / 55) * 0.04), oiAgo(h)]);
 for (let h = 26; h >= 1; h--) {
   oiRows.push(["BTC", 2_600_000_000 * (1 + (26 - h) * 0.002), oiAgo(h)]);
   oiRows.push(["ETH", 1_100_000_000 * (1 - (26 - h) * 0.001), oiAgo(h)]);
