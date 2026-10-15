@@ -568,7 +568,7 @@ console.log("\n5. sitemap");
     ] },
     { path: "/unlocks", want: [
       { label: "the largest lock's share of supply", re: /\d+(\.\d+)?% of supply/ },
-      { label: "the token it belongs to", re: /[A-Z]{2,6} lock holds/ },
+      { label: "the token it belongs to", re: /[A-Z]{2,6} lock (holds|held)/ },
     ] },
   ]) {
     const lead = await fetchAs(t.path, "GPTBot/1.1");
