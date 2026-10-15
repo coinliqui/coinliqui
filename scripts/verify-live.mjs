@@ -819,9 +819,13 @@ for (const p of ["/funding/btc", "/funding/eth", "/funding/sol", "/funding/kpepe
   const stamp = new Date(stampStr);
   const cand = new Date(renderedAt); cand.setUTCHours(Number(m[1]), Number(m[2]), 0, 0);
   if (cand <= renderedAt) cand.setUTCDate(cand.getUTCDate() + 1);
-  const aheadMin = Math.round((cand - renderedAt) / 60000);
+  /* IN MILLISECONDS, NOT ROUNDED MINUTES. A page rendered at 10:59:50 that said "Next settlement
+     11:00" was right and failed as "0 min from render time" (15 October 2026, four pages on a deploy
+     that finished at the top of the hour): rounding made ten seconds ahead read as not ahead. */
+  const aheadMs = cand - renderedAt;
+  const aheadMin = Math.round(aheadMs / 60000);
   const lagMin = Math.round((renderedAt - stamp) / 60000);
-  aheadMin > 0 && aheadMin <= 60
+  aheadMs > 0 && aheadMs <= 3_600_000
     ? ok(`${p.padEnd(16)} ${card} UTC, ${aheadMin} min ahead of render (snapshot ${lagMin} min behind)`)
     : bad(`${p} "Next settlement ${card}" is ${aheadMin} min from render time — an hourly contract settles within 60, so this time is in the past or too far out`);
 }
