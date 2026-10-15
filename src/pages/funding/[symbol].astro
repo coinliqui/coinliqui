@@ -395,7 +395,14 @@ const tfGapNote = timeframeGapNote(TIMEFRAMES.filter((tf) => !offered.some((o) =
 const stat = (_fn: (c: { tf: (typeof TIMEFRAMES)[number]; chart: NonNullable<typeof activeChart> }) => string) => ({});
 
 const rows = active ? active.chart.points.slice(-200) : [];
-const title = `${p.symbol} funding rate, perpetual price and margin tiers`;
+/* THE NAME PEOPLE SEARCH, where the registry holds one. Search Console, 17.09–14.10.2026: "bitcoin
+   funding rate perpetual", "bitcoin perpetual funding rate current", "bitcoin perpetual futures
+   funding rate" all reached /funding/btc, whose title and heading said only "BTC" — the word
+   "Bitcoin" was on the page once, inside a link. Names come from src/lib/coins.ts alone, the ten
+   coins whose identity was checked when their /coins page shipped; a ticker with no entry there
+   keeps its ticker, because guessing a name from a ticker is how a page says the wrong thing. */
+const named = coin && coin.name !== p.symbol ? `${coin.name} (${p.symbol})` : p.symbol;
+const title = `${named} funding rate, perpetual price and margin tiers`;
 /* THE DESCRIPTION NAMED THREE VENUES ON PAGES THAT RENDER ONE. HYPE and PURR trade on
    Hyperliquid alone, PUMP and CASHCAT on two — and all four told a search result they compared
    "Hyperliquid, Binance and Bybit annualised side by side". A meta description is the one piece
@@ -419,7 +426,7 @@ const description = `What the ${p.symbol} perpetual costs to hold, against ${usd
 <Base title={title} description={description} fetchedAt={snap.fetchedAt} crumb={{ href: "/funding", label: "Funding", current: p.symbol }}>
   <div class="page-head">
     <p class="crumb"><a href="/funding">Funding</a> › {p.symbol}</p>
-    <h1>{p.symbol} perpetual</h1>
+    <h1>{named} perpetual</h1>
     {/* DIRECTION, MAGNITUDE, CONTEXT, COST — then the price. The extractor gate at
         scripts/verify-live.mjs asks this URL's first 700 characters for the word funding, a rate
         as a percentage, the venue it belongs to and a UTC timestamp; all four are below. */}

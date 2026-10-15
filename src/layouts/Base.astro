@@ -56,7 +56,9 @@ const { title, description, fetchedAt, noindex, frozen, crumb, namesFounder, mod
    reach — so the link comes back on its own when the block on it lifts, and goes away on its own
    if it breaks again, neither of which should wait on somebody remembering. */
 const sameAs = await publishedSameAs((Astro.locals as any)?.runtime?.env?.SNAPSHOT);
-const fullTitle = titleMode === "exact" ? title : `${title} | ${SITE.name}`;
+/* The brand once, not twice: "About Coinliqui — … | Coinliqui" spent ten characters of a title link
+   on a name it had already given. Google's title guidance asks for concise branding. */
+const fullTitle = titleMode === "exact" || title.includes(SITE.name) ? title : `${title} | ${SITE.name}`;
 const path = Astro.url.pathname;
 // Canonical origin comes from the build-time SITE_URL via Astro.site — never a literal,
 // and never the request host, which may be a *.pages.dev preview.
@@ -253,7 +255,9 @@ const schema = {
     <title>{fullTitle}</title>
     <meta name="description" content={description} />
     {noindex && <meta name="robots" content="noindex, follow" />}
-    <link rel="canonical" href={new URL(path, base).href} />
+    {/* Only on a page that answers 200. A 404 or 410 naming itself, or naming /retired, as the
+        canonical is a preference stated for a URL that does not exist. */}
+    {Astro.response.status === 200 && <link rel="canonical" href={new URL(path, base).href} />}
     {/* There was no favicon and no social card at all, and then the card was an SVG, which is
         the same thing with extra steps: no social platform renders SVG — not Facebook, X,
         LinkedIn, Slack, Discord or iMessage — so under twitter:card="summary_large_image" every
