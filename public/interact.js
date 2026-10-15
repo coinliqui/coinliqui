@@ -355,7 +355,7 @@ const { paysClass, paysLabel, carryCost, spreadOf, pct, changeWords, ageWords, n
       line.removeAttribute("display");
       const c = cumulativeAt(d.curve, d.mark, price);
       label.textContent = `${usd(price, d.dp)} → ${compactUsd(c.notional)} ${c.side === "long" ? "longs" : "shorts"}`;
-      out.textContent = atReading(d.curve, d.mark, price, d.lo, d.hi, d.dp);
+      out.textContent = atReading(d.curve, d.mark, price, d.lo, d.hi, d.dp, d.then);
       if (!typed) input.value = String(price);
       const u = new URL(location.href);
       u.searchParams.set("at", String(price));

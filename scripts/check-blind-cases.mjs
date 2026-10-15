@@ -122,6 +122,9 @@ const cases = [
       /* the day-earlier column read from somewhere other than the published day-earlier rows */
       levelsAgree(levels([["\u22125%", "$50", "$70"]], "", "", true)).length > 0,
       levelsAgree(levels([["\u22125%", "$50", "$25"]], "", "", true)).length === 0,
+      /* with day-earlier rows, the reader's reading carries the same move a day earlier */
+      levelsAgree(levels([], "95", "A move to $95 (\u22125.00%) closes $50 of modelled longs on the way. A day earlier the same move would have closed $25.", true)).length === 0,
+      levelsAgree(levels([], "95", "A move to $95 (\u22125.00%) closes $50 of modelled longs on the way.", true)).length > 0,
     ],
   },
   {

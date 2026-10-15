@@ -5,4 +5,4 @@
  * on the page instead of showing up later as a chart that never fills.
  *
  * Regenerate with `npm run build:worker`, then deploy the worker. */
-export const EXPECTED_WORKER_BUILD = "ec94839323d0";
+export const EXPECTED_WORKER_BUILD = "e1db6c5d2896";

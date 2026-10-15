@@ -84,7 +84,7 @@ const atY = at === null ? null : Math.min(padT + plotH, Math.max(padT, y(at)));
 const atCum = at === null ? null : view.cumAt(at);
 const atLabel = (price: number, c: { side: string; notional: number }) =>
   `${fmt(price)} → ${compact(c.notional)} ${c.side === "long" ? "longs" : "shorts"}`;
-const reading = at === null ? null : atReading(view.curve, view.mark, at, view.lo, view.hi, dp);
+const reading = at === null ? null : atReading(view.curve, view.mark, at, view.lo, view.hi, dp, then ? then.levels.curve : null);
 const example = fmt(view.mark * 0.95);
 const curveJson = JSON.stringify({
   curve: view.curve, mark: view.mark, lo: view.lo, hi: view.hi, dp,

@@ -1797,7 +1797,7 @@ export function levelsAgree(html) {
   const said = strip(html.match(/<p\b[^>]*\bdata-at-out\b[^>]*>([\s\S]*?)<\/p>/)?.[1] ?? "");
   const price = parsePrice(value.replace(/&amp;/g, "&"));
   if (price !== null) {
-    const want = atReading(d.curve, d.mark, price, d.lo, d.hi, d.dp);
+    const want = atReading(d.curve, d.mark, price, d.lo, d.hi, d.dp, d.then ?? null);
     if (said !== want) out.push(`the reading for ${value} says "${said}" where the shared sentence on the published rows is "${want}"`);
   }
   return out;

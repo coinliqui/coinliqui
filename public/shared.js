@@ -171,15 +171,18 @@ export function parsePrice(s) {
  * Beyond the drawn range it does not pretend to know what stands past the edge: it gives the whole
  * of that side inside the range and says the rest is not counted.
  */
-export function atReading(curve, mark, price, lo, hi, dp) {
+export function atReading(curve, mark, price, lo, hi, dp, then = null) {
   const { side, notional } = cumulativeAt(curve, mark, price);
   const who = side === "long" ? "longs" : "shorts";
   const where = `${usd(price, dp)} (${signedPct((price - mark) / mark)})`;
+  /* With the day-earlier rows, the same move a day earlier: how the reader's own price has changed
+     since yesterday is the one reading no published figure can carry. */
+  const was = then ? ` A day earlier the same move would have closed ${compact(cumulativeAt(then, mark, price).notional)}.` : "";
   if (price < lo || price > hi) {
     return `${where} is ${price < lo ? "below" : "above"} the drawn range, which ends at ${usd(price < lo ? lo : hi, dp)}. ` +
-      `A move there would close all ${compact(notional)} of modelled ${who} inside the range; what stands past its edge is not counted.`;
+      `A move there would close all ${compact(notional)} of modelled ${who} inside the range; what stands past its edge is not counted.${was}`;
   }
-  return `A move to ${where} closes ${compact(notional)} of modelled ${who} on the way.`;
+  return `A move to ${where} closes ${compact(notional)} of modelled ${who} on the way.${was}`;
 }
 
 /** How many changes are up and down, BY THE ARROW changeWords() PRINTS — so "31 up, 22 down" counts

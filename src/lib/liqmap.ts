@@ -598,7 +598,6 @@ export function mapModel(o: {
   const atRaw = o.q.get("at");
   const at = atRaw === null ? null : parsePrice(atRaw);
   const dp = axisDp(o.mark);
-  const reading = levels && at !== null ? atReading(levels.curve, o.mark, at, levels.lo, levels.hi, dp) as string : null;
   /* THE SAME MAP A DAY AGO, ON TODAY'S AXIS. The same model, the same profile and window, run on the
      candles that had closed 24 hours earlier and on the open interest recorded then — and drawn on
      today's price rows, so a row is the same prices in both and the difference is the change. What it
@@ -621,6 +620,7 @@ export function mapModel(o: {
         };
       })()
     : null;
+  const reading = levels && at !== null ? atReading(levels.curve, o.mark, at, levels.lo, levels.hi, dp, then ? then.levels.curve : null) as string : null;
   return { win, profile, ageBars, map, levels, at, atRaw, dp, reading, then };
 }
 export type MapModel = ReturnType<typeof mapModel>;
