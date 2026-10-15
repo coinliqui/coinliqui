@@ -638,7 +638,9 @@ export function buildFundingChart(candles: Candle[], funding: FundingPoint[] | n
   }
   s.push(line(plotX, zeroY, axisX, zeroY, INK.zero));
   s.push(text(axisX + PILL_GAP, top + 11, `${signedPct(up, 0)} APR`, INK.faint, FS_MICRO));
-  s.push(text(axisX + PILL_GAP, zeroY + 4, "0%", INK.dim, FS_MICRO));
+  /* Zero's label sits above its line when the band below is too thin to hold it and the bottom
+     label apart — on BTC the two read as one "0% −2%" (15 October 2026). */
+  s.push(text(axisX + PILL_GAP, top + h - zeroY < 24 ? zeroY - 3 : zeroY + 4, "0%", INK.dim, FS_MICRO));
   s.push(text(axisX + PILL_GAP, top + h - 2, signedPct(-down, 0), INK.faint, FS_MICRO));
   s.push(`<g data-ax="x">${timeTicks(candles.map((c) => c[T]), W < 800 ? 4 : 8)
     .map(({ i, label }) => xTick(xOf(i), FUND_H - 9, label)).join("")}</g>`);
