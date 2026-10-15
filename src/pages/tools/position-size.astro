@@ -499,14 +499,17 @@ const description = `Risk-based position sizing for ${perp.symbol} perpetuals th
     </div>
   </div>
 
-  <More label="Why sizing alone is not enough, and what is not deducted">
   <h2 class="section">Why sizing alone is not enough</h2>
+  {/* The live tier paragraph below stays open: it is the calculator's own answer, and it carries
+      a <template> for its other state, which a fold must not hide (collapsedTextShipped). */}
+  <More label="What the standard formula misses">
   <p class="prose">
     The standard formula — <code>risk budget ÷ distance to stop</code> — sizes the position so that
     <em>if the stop fills</em>, you lose exactly what you budgeted. It says nothing about whether
     the stop is reachable. Leverage sets the liquidation price independently, and when liquidation
     falls between entry and stop the exchange closes the position first. The stop is then decoration.
   </p>
+  </More>
   <p class="prose">
     {/* "SEE THAT GAP ON A LIVE CONTRACT" WENT TO BTC FROM EVERY CONTRACT. The href was the literal
         /funding/btc, so on /tools/position-size?symbol=CASHCAT (16 September 2026) "that gap" —
@@ -541,7 +544,6 @@ const description = `Risk-based position sizing for ${perp.symbol} perpetuals th
     budgeted loss regardless of sizing. Maintenance margin is read at the tier your notional falls
     in; a size large enough to cross a boundary moves it further.
   </p>
-  </More>
 
   <p style="margin-top:24px">
     <a class="link" href="/tools/leverage">What leverage this contract actually allows →</a>

@@ -1710,6 +1710,9 @@ export function hiddenFromEveryone(html) {
 export const MORE_ROUTES = [
   /^\/liquidations$/, /^\/liquidations\/(?!sweep$|survival$)[a-z0-9]+$/i,
   /^\/funding$/, /^\/funding\/[a-z0-9]+$/i, /^\/coins\/[a-z0-9-]+$/i, /^\/unlocks$/,
+  /* 15 October 2026, second pass: every page with explanation gets its fold */
+  /^\/$/, /^\/coins$/, /^\/open-interest$/, /^\/watchlist$/, /^\/liquidations\/(sweep|survival)$/,
+  /^\/tools(\/(leverage|funding-cost|funding-arbitrage|position-size))?$/,
 ];
 const LAZY = /\b(data-src|hx-get|hx-post|hx-trigger|data-fetch|data-load|data-lazy)\s*=|<template\b/i;
 export function collapsedTextShipped(html, { expect = false } = {}) {

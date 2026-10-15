@@ -28,6 +28,7 @@ import { mapTitle, mapDescription, mapState, resolveWindow, mapModel } from "../
 import { getHourly } from "../lib/candles.ts";
 import { liqMapHref } from "../lib/routes.ts";
 import tables from "../data/margin-tables.json";
+import More from "../components/More.astro";
 
 const env = (Astro.locals as any)?.runtime?.env;
 const snap = await getSnapshot(env?.SNAPSHOT, import.meta.env.DEV);
@@ -120,11 +121,16 @@ const description = mapDescription(perp.symbol, { state, maxLeverage: cap, days:
       once, there, because this page does not read fifty candle series to count the exceptions. */}
   <p class="section-note" style="max-width:88ch">
     {rows.length} contracts have a published margin table, and each one has its own page at its own
-    address. The corridor column is not modelled: it is the distance price has to travel before a
+    address.
+  </p>
+  <More label="What the corridor column is">
+  <p class="section-note" style="max-width:88ch">
+    The corridor column is not modelled: it is the distance price has to travel before a
     position at that contract's maximum leverage is closed by the maintenance margin in the
     published table — the widest of them is the safest place to be wrong, and the narrowest is
     where a normal hour is enough.
   </p>
+  </More>
   <div class="panel">
     <table class="tbl" data-sortable>
       {/* ONE LINK PER ROW, AND THE ANCHOR TEXT IS THE QUERY. The first version put the bare
@@ -162,9 +168,11 @@ const description = mapDescription(perp.symbol, { state, maxLeverage: cap, days:
       https://coinliqui.com/liquidations/pons?profile=balanced&win=30 — and this page does not load
       fifty candle series to find out which (see THE INDEX above), so the sentence states the
       condition instead of a count. */}
+  <More label="Where the tiers and each contract's assumptions are">
   <p class="section-note">
     Maintenance margin at tier 1 sets every corridor above; the tiers themselves are on each
     contract's own page, together with its map and the assumptions behind it wherever its hourly
     history can be read and is long enough to draw one.
   </p>
+  </More>
 </Base>
