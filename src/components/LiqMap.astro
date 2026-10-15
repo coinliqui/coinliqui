@@ -27,6 +27,7 @@ import { ageWords, minutesSince, utcStamp } from "../lib/freshness.ts";
 import { maintenanceMarginFraction, nextTierBoundary, corridorAt, type MarginTable, tableFor, sortedTiers } from "../lib/margin.ts";
 import { T, O, H, L, C, type Candle, type getHourly } from "../lib/candles.ts";
 import { spanWords, MIN_SPAN, MOVE_STEPS, POSITION_LIFE_DAYS, DEFAULT_PROFILE, type MapModel, PROFILES, mixUsed, profilesCoincide, MAP_WINDOWS, DEFAULT_WINDOW, mapDrawable, type MapWindow } from "../lib/liqmap.ts";
+import { LADDER_PARAMS } from "../lib/liqmap.ts";
 import { paintHeatMap } from "../lib/heatmap.ts";
 import { RAMP, CH, INK, MONO, FS_AXIS, compact, niceTicks } from "../lib/chart.ts";
 import { dateTimeUtc } from "../../public/shared.js";
@@ -68,10 +69,13 @@ interface Props {
   /* THE MODEL, computed by the route so its <head> can carry the reader's reading — see mapModel
      in src/lib/liqmap.ts. */
   model: MapModel;
+  /** the ladder's own model — ?lmix= and ?lwin= (ladderQuery in src/lib/liqmap.ts); the same object
+   *  as `model` when the two views agree */
+  ladder: MapModel;
   /** the mark every figure here is computed from, and when it was read — currentMark() */
   markNow: { px: number; at: number; live: boolean };
 }
-const { perp, table, snap, params: q, crumb, siblings = true, hourly, model, markNow } = Astro.props;
+const { perp, table, snap, params: q, crumb, siblings = true, hourly, model, ladder, markNow } = Astro.props;
 
 /* =========================================================================================
    EVERY OTHER CONTRACT'S MAP, AS CHIPS, AND THE MEASUREMENT BEHIND IT.
@@ -131,7 +135,8 @@ const axisPx = (v: number) => usd(v, axisDp);
    them too — see MAP_WINDOWS there. */
 const WINDOWS = MAP_WINDOWS;
 const DEFAULT_WIN = DEFAULT_WINDOW;
-const { win, profile, ageBars, map, levels, at: atPx, atRaw, dp: levelsDp } = model;
+const { win, profile, ageBars, map } = model;
+const { levels, at: atPx, atRaw, dp: levelsDp } = ladder;
 /* THE VIEW AS A QUERY STRING, built from the RESOLVED inputs rather than copied from the URL, so
    an unknown ?win=99 — which the two lines above replace with the default — is not carried onward
    as though it had been honoured. Defaults are left out, so the default view links bare. */
@@ -139,6 +144,7 @@ const viewHref = (path: string, w: MapWindow) => {
   const v = new URLSearchParams();
   if (profile !== DEFAULT_PROFILE) v.set("profile", profile.key);
   if (w !== DEFAULT_WIN) v.set("win", String(w.days));
+  for (const [k, val] of ladderCarry) v.set(k, val);
   const s = v.toString();
   return s ? `${path}?${s}` : path;
 };
@@ -151,10 +157,18 @@ const viewHref = (path: string, w: MapWindow) => {
    Copies of the threshold would let those sentences drift from it, so there is one, canDrawMap. */
 const drawableWins = WINDOWS.filter((w) => mapDrawable(hourly?.d, w));
 /* The view the form must keep when it submits: the same resolved, non-default inputs viewHref links. */
-const carry: [string, string][] = [
+const heatCarry: [string, string][] = [
   ...(profile !== DEFAULT_PROFILE ? [["profile", profile.key] as [string, string]] : []),
   ...(win !== DEFAULT_WIN ? [["win", String(win.days)] as [string, string]] : []),
 ];
+/* The ladder's own inputs, under their own names, so each chart's form keeps the other's view. */
+const ladderCarry: [string, string][] = [
+  ...(ladder.profile !== DEFAULT_PROFILE ? [[LADDER_PARAMS.profile, ladder.profile.key] as [string, string]] : []),
+  ...(ladder.win !== DEFAULT_WIN ? [[LADDER_PARAMS.win, String(ladder.win.days)] as [string, string]] : []),
+];
+const carry: [string, string][] = [...heatCarry, ...ladderCarry];
+const atCarry: [string, string][] = atRaw !== null ? [["at", atRaw.slice(0, 40)]] : [];
+const hidden = (xs: [string, string][]) => xs.map(([k, v]) => `<input type="hidden" name="${k}" value="${v.replace(/"/g, "&quot;")}">`).join("");
 const paint = map ? paintHeatMap(map, { live: { px: mark, at: markNow.at } }) : null;
 const warmBars = map ? map.warmBars : 0;
 const stepMs = win.factor * 3_600_000;
@@ -369,23 +383,64 @@ const formNote: string | null = (() => {
     <Advisory modelled={Boolean(map)} />
   </div>
 
+  {/* THE CONTROLS ARE BACK ABOVE THE MAP, as one row that redraws on change (15 October 2026, the
+      owner's call). They had moved below it because two dropdowns and a button pushed the map under
+      a phone's fold; without the button, and with the sentence at the top already read, the row is
+      the switch a reader reaches for first. The button stays for a browser without JavaScript
+      (<noscript>); public/interact.js submits any form[data-autosubmit] when a select changes. */}
+  {/* ACTION IS PINNED TO /liquidations ON EVERY RENDERING, INCLUDING THE PER-COIN ONES.
+      A GET form submits to its own URL by default, so on /liquidations/eth changing the coin
+      to BTC would have produced /liquidations/eth?symbol=BTC — a page whose address says one
+      contract and whose content says another, which is the defect this whole split exists to
+      remove. /liquidations reads ?symbol= and answers 301 to the clean per-coin URL, so the
+      parameter form is a mechanism the reader passes through rather than a place they land.
+      No JavaScript is involved: one extra hop, always correct, works with scripting off. */}
+  <form method="GET" action="/liquidations" class="calc calc--chart" data-autosubmit>
+    <label>Coin
+      <select name="symbol">{snap.perps.map((p) => <option value={p.symbol} selected={p.symbol === perp.symbol}>{p.symbol}</option>)}</select>
+    </label>
+    <Fragment set:html={hidden(carry)} />
+    <noscript><button class="btn btn--primary" type="submit">Show</button></noscript>
+  </form>
+  {formNote && <p class="section-note">{formNote}</p>}
+
   {/* THE LIQUIDATION MAP COMES FIRST, because it answers the question the page is searched for —
       "if price goes there, how much gets closed" — and the heatmap below is the history behind it.
       See src/components/LevelsMap.astro. */}
-  {map && levels && levels.bins.length > 0 && (
-    <section class="now">
+  {ladder.map && levels && levels.bins.length > 0 && (
+    <section class="now" id="now">
       <h2 class="section">If {perp.symbol} moves from here: what gets closed</h2>
+      <form method="GET" action={`${Astro.url.pathname}#now`} class="calc calc--chart" data-autosubmit>
+        <label>Leverage mix
+          <select name={LADDER_PARAMS.profile}>{PROFILES.map((p) => <option value={p.key} selected={p.key === ladder.profile.key}>{p.label}</option>)}</select>
+        </label>
+        <label>Built over
+          <select name={LADDER_PARAMS.win}>{WINDOWS.map((w) => <option value={w.days} selected={w.days === ladder.win.days}>{w.label}</option>)}</select>
+        </label>
+        <Fragment set:html={hidden([...heatCarry, ...atCarry])} />
+        <noscript><button class="btn btn--primary" type="submit">Redraw</button></noscript>
+      </form>
       <div class="now__grid">
-        <LevelsMap view={levels} symbol={perp.symbol} dp={levelsDp} clipped={map.clipped}
+        <LevelsMap view={levels} symbol={perp.symbol} dp={levelsDp} clipped={ladder.map.clipped}
                    at={atPx} atRaw={atPx === null && atRaw ? atRaw.slice(0, 40) : null}
-                   action={Astro.url.pathname} carry={carry} then={model.then} />
+                   action={Astro.url.pathname} carry={carry} then={ladder.then} />
       </div>
     </section>
   )}
 
   {map && paint ? (
     <>
-      <h2 class="section">Over {win.label}: where levels sat, and what price cleared</h2>
+      <h2 class="section" id="history">Over {win.label}: where levels sat, and what price cleared</h2>
+      <form method="GET" action={`${Astro.url.pathname}#history`} class="calc calc--chart" data-autosubmit>
+        <label>Leverage mix
+          <select name="profile">{PROFILES.map((p) => <option value={p.key} selected={p.key === profile.key}>{p.label}</option>)}</select>
+        </label>
+        <label>Window
+          <select name="win">{WINDOWS.map((w) => <option value={w.days} selected={w.days === win.days}>{w.label}</option>)}</select>
+        </label>
+        <Fragment set:html={hidden([...ladderCarry, ...atCarry])} />
+        <noscript><button class="btn btn--primary" type="submit">Redraw</button></noscript>
+      </form>
       <div class="chart" style={`--mapRatio: ${CH.w} / 576`}>
         <Fragment set:html={paint.svg.replace("<svg ",
           `<svg data-heat="1" data-ramp="${RAMP.join(",")}" data-scale="${paint.scale}" data-gamma="${paint.gamma}" ` +
@@ -666,32 +721,6 @@ const formNote: string | null = (() => {
   </p>
   </More>
 
-  {/* THE CONTROLS COME AFTER THE PICTURE, because a reader who has not seen the map yet has
-          no basis for changing it. They sat above it and, at 375px, put two dropdowns and a
-          button between the reader and the only thing this page exists to show — the map was
-          entirely below the fold on a phone. Seen first, adjusted second, which is also the
-          order the sentence at the top of the page reads in. */}
-  {/* ACTION IS PINNED TO /liquidations ON EVERY RENDERING, INCLUDING THE PER-COIN ONES.
-      A GET form submits to its own URL by default, so on /liquidations/eth changing the coin
-      to BTC would have produced /liquidations/eth?symbol=BTC — a page whose address says one
-      contract and whose content says another, which is the defect this whole split exists to
-      remove. /liquidations reads ?symbol= and answers 301 to the clean per-coin URL, so the
-      parameter form is a mechanism the reader passes through rather than a place they land.
-      No JavaScript is involved: one extra hop, always correct, works with scripting off. */}
-  <form method="GET" action="/liquidations" class="calc" style="margin:20px 0 16px">
-    <label>Coin
-      <select name="symbol">{snap.perps.map((p) => <option value={p.symbol} selected={p.symbol === perp.symbol}>{p.symbol}</option>)}</select>
-    </label>
-    <label>Assumed leverage mix
-      <select name="profile">{PROFILES.map((p) => <option value={p.key} selected={p.key === profile.key}>{p.label}</option>)}</select>
-    </label>
-    <label>Window
-      <select name="win">{WINDOWS.map((w) => <option value={w.days} selected={w.days === win.days}>{w.label}</option>)}</select>
-    </label>
-    {/* "Redraw" presumes a map; a page that drew none offers to draw one. */}
-    <button class="btn btn--primary" type="submit">{map ? "Redraw the map" : "Draw the map"}</button>
-  </form>
-  {formNote && <p class="section-note">{formNote}</p>}
 
   <h2 class="section">How far price can move before each leverage liquidates — derived, not modelled</h2>
   <p class="section-note">

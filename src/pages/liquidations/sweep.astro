@@ -309,11 +309,11 @@ const description =
     </table>
   </div>
 
-  <form method="GET" class="calc" style="margin-top:16px">
+  <form method="GET" class="calc" style="margin-top:16px" data-autosubmit>
     <label>Assumed leverage mix
       <select name="profile">{PROFILES.map((p) => <option value={p.key} selected={p.key === profile.key}>{p.label}</option>)}</select>
     </label>
-    <button class="btn btn--primary" type="submit">Redraw the map</button>
+    <noscript><button class="btn btn--primary" type="submit">Redraw the map</button></noscript>
   </form>
   <p class="section-note">
     Change it and the bands move. That is the point of printing the assumption rather than hiding

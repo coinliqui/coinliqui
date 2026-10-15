@@ -581,7 +581,7 @@ export function mapModel(o: {
   oiThen?: { oi: number; at: number } | null;
 }) {
   const win = resolveWindow(o.q);
-  const profile = PROFILES.find((p) => p.key === o.q.get("profile")) ?? DEFAULT_PROFILE;
+  const profile = resolveProfile(o.q);
   const ageBars = Math.round((POSITION_LIFE_DAYS * 24) / win.factor);
   /* Columns sit on fixed 2- and 4-hour slots (slotBars), so they do not move with the render hour. */
   const series: Candle[] = slotBars(o.hourly?.d, 60, win.factor);
@@ -626,3 +626,23 @@ export function mapModel(o: {
   return { win, profile, ageBars, map, levels, at, atRaw, dp, reading, then };
 }
 export type MapModel = ReturnType<typeof mapModel>;
+
+/* =========================================================================================
+   THE LADDER AND THE HEATMAP ARE SWITCHED SEPARATELY (15 October 2026, the owner's call): each
+   chart has its own leverage mix and window. The heatmap keeps ?profile= and ?win=, so every link
+   already published still draws the same history; the ladder reads ?lmix= and ?lwin=, with its own
+   defaults. ladderQuery() turns the page's query into the one mapModel() reads for the ladder, and
+   sameView() says when the two are one model, so the work is done once.
+   ========================================================================================= */
+export const LADDER_PARAMS = { profile: "lmix", win: "lwin" } as const;
+export function ladderQuery(q: URLSearchParams): URLSearchParams {
+  const l = new URLSearchParams();
+  const mix = q.get(LADDER_PARAMS.profile), win = q.get(LADDER_PARAMS.win), at = q.get("at");
+  if (mix !== null) l.set("profile", mix);
+  if (win !== null) l.set("win", win);
+  if (at !== null) l.set("at", at);
+  return l;
+}
+export const resolveProfile = (q: URLSearchParams) => PROFILES.find((p) => p.key === q.get("profile")) ?? DEFAULT_PROFILE;
+export const sameView = (a: URLSearchParams, b: URLSearchParams) =>
+  resolveWindow(a) === resolveWindow(b) && resolveProfile(a) === resolveProfile(b);

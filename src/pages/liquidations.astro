@@ -25,7 +25,7 @@ import { usd, pct, priceDp } from "../lib/funding.ts";
 import { maintenanceMarginFraction, corridorAt, type MarginTable, tableFor, sortedTiers } from "../lib/margin.ts";
 import { utcStamp } from "../lib/freshness.ts";
 import { readOiAt } from "../lib/oi-history.ts";
-import { mapTitle, mapDescription, mapState, resolveWindow, mapModel, dayEarlierCut } from "../lib/liqmap.ts";
+import { mapTitle, mapDescription, mapState, resolveWindow, mapModel, dayEarlierCut, ladderQuery, sameView } from "../lib/liqmap.ts";
 import { getHourly } from "../lib/candles.ts";
 import { liqMapHref } from "../lib/routes.ts";
 import tables from "../data/margin-tables.json";
@@ -97,16 +97,18 @@ const state = mapState(hourly?.d, win);
 const title = mapTitle(perp.symbol, state);
 /* The model runs here, once, so the description can carry a ?at= reading — see mapModel. */
 /* Open interest at the moment the day-earlier run's candles end (dayEarlierCut), for mapModel. */
-const cut = dayEarlierCut(hourly, q);
+const lq = ladderQuery(q);
+const cut = dayEarlierCut(hourly, lq);
 const oiThen = cut === null ? null : await readOiAt((Astro.locals as any)?.runtime?.env?.DB, perp.symbol, cut);
 /* One mark for the model and every figure on the page, with its time — see currentMark. */
 const markNow = currentMark(snap, await getLive(env?.SNAPSHOT), perp);
-const model = mapModel({ hourly, q: q, mark: markNow.px, oiNotional: perp.oiNotional, maxLeverage: cap, mmf: maintenanceMarginFraction(cap), oiThen });
-const description = mapDescription(perp.symbol, { state, maxLeverage: cap, days: win.days, reading: model.reading, asOf: utcStamp(snap.fetchedAt, 0) });
+const ladder = mapModel({ hourly, q: lq, mark: markNow.px, oiNotional: perp.oiNotional, maxLeverage: cap, mmf: maintenanceMarginFraction(cap), oiThen });
+const model = sameView(q, lq) ? ladder : mapModel({ hourly, q: q, mark: markNow.px, oiNotional: perp.oiNotional, maxLeverage: cap, mmf: maintenanceMarginFraction(cap), oiThen: null });
+const description = mapDescription(perp.symbol, { state, maxLeverage: cap, days: win.days, reading: ladder.reading, asOf: utcStamp(snap.fetchedAt, 0) });
 ---
 
 <Base title={title} description={description} fetchedAt={snap.fetchedAt}>
-  <LiqMap perp={perp} table={table} snap={snap} hourly={hourly} model={model} markNow={markNow} params={q} siblings={false} />
+  <LiqMap perp={perp} table={table} snap={snap} hourly={hourly} model={model} ladder={ladder} markNow={markNow} params={q} siblings={false} />
 
   <h2 class="section">A page for every covered contract</h2>
   {/* THE COUNT AND THE TABLE ARE ONE ARRAY, and for one morning they were two. This note said

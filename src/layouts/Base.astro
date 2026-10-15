@@ -681,6 +681,8 @@ const schema = {
         border-radius: var(--r-md); padding: var(--inset-panel);
       }
       .calc label { display: grid; gap: var(--gap-tight); font-size: var(--fs-sm); color: var(--text-dim); }
+      /* A chart's own switches: the same controls without the panel, sitting on the chart's heading. */
+      .calc--chart { background: none; border: 0; padding: 0; margin: 0 0 12px; }
       /* .field is the same control outside a .calc row — the liquidation map's own-price box —
          so a form that cannot take .calc's layout still takes its field, not a second one. */
       /* --- heatmap intensity scale (src/lib/heatmap.ts legendSvg, injected markup) ------ */

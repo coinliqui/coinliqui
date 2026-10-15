@@ -39,7 +39,7 @@ import { maintenanceMarginFraction, type MarginTable, tableFor, sortedTiers } fr
 import { getHourly } from "../../lib/candles.ts";
 import { utcStamp } from "../../lib/freshness.ts";
 import { readOiAt } from "../../lib/oi-history.ts";
-import { mapTitle, mapDescription, mapState, resolveWindow, mapModel, dayEarlierCut } from "../../lib/liqmap.ts";
+import { mapTitle, mapDescription, mapState, resolveWindow, mapModel, dayEarlierCut, ladderQuery, sameView } from "../../lib/liqmap.ts";
 import tables from "../../data/margin-tables.json";
 import { canonicalRedirect } from "../../lib/routes.ts";
 
@@ -114,12 +114,14 @@ const state = mapState(hourly?.d, win);
 const title = mapTitle(p.symbol, state);
 /* The model runs here, once, so the description can carry a ?at= reading — see mapModel. */
 /* Open interest at the moment the day-earlier run's candles end (dayEarlierCut), for mapModel. */
-const cut = dayEarlierCut(hourly, Astro.url.searchParams);
+const lq = ladderQuery(Astro.url.searchParams);
+const cut = dayEarlierCut(hourly, lq);
 const oiThen = cut === null ? null : await readOiAt((Astro.locals as any)?.runtime?.env?.DB, p.symbol, cut);
 /* One mark for the model and every figure on the page, with its time — see currentMark. */
 const markNow = currentMark(snap, await getLive(env?.SNAPSHOT), p);
-const model = mapModel({ hourly, q: Astro.url.searchParams, mark: markNow.px, oiNotional: p.oiNotional, maxLeverage: cap, mmf: maintenanceMarginFraction(cap), oiThen });
-const description = mapDescription(p.symbol, { state, maxLeverage: cap, days: win.days, reading: model.reading, asOf: utcStamp(snap.fetchedAt, 0) });
+const ladder = mapModel({ hourly, q: lq, mark: markNow.px, oiNotional: p.oiNotional, maxLeverage: cap, mmf: maintenanceMarginFraction(cap), oiThen });
+const model = sameView(Astro.url.searchParams, lq) ? ladder : mapModel({ hourly, q: Astro.url.searchParams, mark: markNow.px, oiNotional: p.oiNotional, maxLeverage: cap, mmf: maintenanceMarginFraction(cap), oiThen: null });
+const description = mapDescription(p.symbol, { state, maxLeverage: cap, days: win.days, reading: ladder.reading, asOf: utcStamp(snap.fetchedAt, 0) });
 ---
 
 <Base
@@ -128,7 +130,7 @@ const description = mapDescription(p.symbol, { state, maxLeverage: cap, days: wi
   fetchedAt={snap.fetchedAt}
   crumb={{ href: "/liquidations", label: "Liquidation maps", current: p.symbol }}
 >
-  <LiqMap perp={p} table={table} snap={snap} hourly={hourly} model={model} markNow={markNow} params={Astro.url.searchParams} crumb={{ href: "/liquidations", label: "Liquidation maps", current: p.symbol }} />
+  <LiqMap perp={p} table={table} snap={snap} hourly={hourly} model={model} ladder={ladder} markNow={markNow} params={Astro.url.searchParams} crumb={{ href: "/liquidations", label: "Liquidation maps", current: p.symbol }} />
 
   <p style="margin-top:24px">
     {/* Not "every covered contract's map": a contract with too little history has none. */}

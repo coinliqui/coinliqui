@@ -975,3 +975,10 @@ const liveEls = [...document.querySelectorAll("[data-repaint]")];
     });
   }
 }
+
+/* A form of selects only redraws as soon as one changes (form[data-autosubmit]); its submit button
+   is in <noscript>, for a browser that will not run this. */
+document.addEventListener("change", (e) => {
+  const f = e.target instanceof HTMLSelectElement ? e.target.closest("form[data-autosubmit]") : null;
+  if (f) f.requestSubmit ? f.requestSubmit() : f.submit();
+});

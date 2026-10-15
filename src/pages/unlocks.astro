@@ -587,11 +587,11 @@ const lede = top
   <p class="prose">
     Contracts paying out now, at a rate each publishes on-chain — the only part with a horizon.
   </p>
-  <form method="GET" class="calc" style="margin-bottom:16px">
+  <form method="GET" class="calc" style="margin-bottom:16px" data-autosubmit>
     <label>Horizon
       <select name="days">{HORIZONS.map((h) => <option value={h} selected={h === horizon}>{h} days</option>)}</select>
     </label>
-    <button class="btn btn--primary" type="submit">Recalculate</button>
+    <noscript><button class="btn btn--primary" type="submit">Recalculate</button></noscript>
   </form>
   <div class="panel">
     <table class="tbl">
