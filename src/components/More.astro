@@ -22,6 +22,6 @@ interface Props {
 const { label, open = false, id } = Astro.props;
 ---
 <details class="more" open={open} id={id}>
-  <summary class="more__sum"><span class="more__label">{label}</span><span class="more__hint" aria-hidden="true"></span></summary>
+  <summary class="more__sum"><span class="more__label">{label}</span></summary>
   <div class="more__body"><slot /></div>
 </details>
