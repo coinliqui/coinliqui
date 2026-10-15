@@ -116,6 +116,11 @@ for (let i = 1; i <= 24; i++) {
    rather than a change of zero — is rendered too. */
 const oiAgo = (h) => now - h * 3_600_000;
 const oiRows = [];
+/* AND BTC FOR 120 DAYS BACK, every three hours. The liquidation map's day-earlier run reads open
+   interest at the moment its candles end (dayEarlierCut), and the warm store's candles are a fixture
+   from mid-September, so the reading has to exist at that date for the gate to render the run. If
+   the fixture ever ages past this span, the smoke check that requires the run fails and says so. */
+for (let h = 120 * 24; h > 26; h -= 3) oiRows.push(["BTC", 2_550_000_000, oiAgo(h)]);
 for (let h = 26; h >= 1; h--) {
   oiRows.push(["BTC", 2_600_000_000 * (1 + (26 - h) * 0.002), oiAgo(h)]);
   oiRows.push(["ETH", 1_100_000_000 * (1 - (26 - h) * 0.001), oiAgo(h)]);

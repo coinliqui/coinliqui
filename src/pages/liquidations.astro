@@ -25,7 +25,7 @@ import { usd, pct, priceDp } from "../lib/funding.ts";
 import { maintenanceMarginFraction, corridorAt, type MarginTable } from "../lib/margin.ts";
 import { utcStamp } from "../lib/freshness.ts";
 import { readOiAt } from "../lib/oi-history.ts";
-import { mapTitle, mapDescription, mapState, resolveWindow, mapModel } from "../lib/liqmap.ts";
+import { mapTitle, mapDescription, mapState, resolveWindow, mapModel, dayEarlierCut } from "../lib/liqmap.ts";
 import { getHourly } from "../lib/candles.ts";
 import { liqMapHref } from "../lib/routes.ts";
 import tables from "../data/margin-tables.json";
@@ -96,8 +96,9 @@ const cap = [...table.marginTiers].sort((a, b) => a.lowerBound - b.lowerBound)[0
 const state = mapState(hourly?.d, win);
 const title = mapTitle(perp.symbol, state);
 /* The model runs here, once, so the description can carry a ?at= reading — see mapModel. */
-/* Open interest a day before now — the reference /open-interest uses — for the map's day-ago run (mapModel). */
-const oiThen = await readOiAt((Astro.locals as any)?.runtime?.env?.DB, perp.symbol, Date.now() - 86_400_000);
+/* Open interest at the moment the day-earlier run's candles end (dayEarlierCut), for mapModel. */
+const cut = dayEarlierCut(hourly, q);
+const oiThen = cut === null ? null : await readOiAt((Astro.locals as any)?.runtime?.env?.DB, perp.symbol, cut);
 const model = mapModel({ hourly, q: q, mark: perp.markPx, oiNotional: perp.oiNotional, maxLeverage: cap, mmf: maintenanceMarginFraction(cap), oiThen });
 const description = mapDescription(perp.symbol, { state, maxLeverage: cap, days: win.days, reading: model.reading, asOf: utcStamp(snap.fetchedAt, 0) });
 ---

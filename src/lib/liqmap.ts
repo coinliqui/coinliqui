@@ -562,6 +562,16 @@ export const mapDescription = (symbol: string, at: { state: MapState; maxLeverag
 export const POSITION_LIFE_DAYS = 14;
 export const DEFAULT_PROFILE = PROFILES[1];
 
+/** When the day-earlier run's candles end, for a view: the route reads that contract's open interest
+ *  at this moment, so the earlier run's positions and its price path are of one time (they were two
+ *  hours apart on the first deploy, 15 October 2026). Null when there is no such cut. */
+export function dayEarlierCut(hourly: { d: Candle[] } | null | undefined, q: URLSearchParams): number | null {
+  const win = resolveWindow(q);
+  const series = slotBars(hourly?.d, 60, win.factor);
+  const shift = Math.round(24 / win.factor);
+  return series.length > shift ? series[series.length - shift][0] : null;
+}
+
 export function mapModel(o: {
   hourly: { d: Candle[] } | null | undefined;
   q: URLSearchParams;
@@ -605,7 +615,7 @@ export function mapModel(o: {
         return {
           levels: levelsView(m, o.mark, 3),
           /** when the earlier run's last candle closed, and when its open interest was read */
-          candlesTo: series[series.length - shift][0], oiAt: o.oiThen!.at,
+          candlesTo: dayEarlierCut(o.hourly, o.q)!, oiAt: o.oiThen!.at,
           /** modelled notional price traded through in the day between the two runs */
           cleared: map.swept.slice(-shift).reduce((a, b) => a + b, 0),
         };
