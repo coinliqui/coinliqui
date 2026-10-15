@@ -260,7 +260,8 @@ const liqNote = liq && picked
     /* Defined here because it is defined per page — /status carries its own copy and this page
        had none, so `class="reason"` styled nothing and the undefined-class check said so. */
 
-    .cards { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
+    /* min(), so a 320px phone gets one full-width column instead of a 300px card overflowing it. */
+    .cards { grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr)); }
     .tool { padding: var(--inset-panel); }
     .tool__name { font-weight: 600; letter-spacing: -.01em; margin-bottom: var(--gap-pair); }
     .tool__blurb { color: var(--text-dim); font-size: 13px; margin-bottom: 12px; }

@@ -9,6 +9,10 @@
  * of them lays a page out. This one does: a real browser at 375×812, every URL in the sitemap plus
  * the reader-set states, and the page's scroll width against its viewport.
  *
+ * 320px BY DEFAULT, the narrowest phone still in use: the first run at 375 was clean after the fix,
+ * and the same pages at 320 found /tools's 300px cards and a long name in /data-sources's code
+ * wider than the screen. 768 and 1024 were clean. `--width=N` measures another width.
+ *
  * THE BROWSER IS THE ONE ON THIS MACHINE, driven over the DevTools protocol with Node's own
  * WebSocket: no dependency is added. Analytics hosts are blocked for the run, so a self-check
  * never becomes a pageview — the 22 October measurement of /liquidations* reads those counts.
@@ -27,7 +31,7 @@ const CHROME = [
   "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
   "/usr/bin/google-chrome", "/usr/bin/chromium", "/usr/bin/chromium-browser",
 ].find(existsSync);
-const W = 375, H = 812;
+const W = Number(process.argv.find((a) => a.startsWith("--width="))?.slice(8) ?? 320), H = 812;
 const BLOCK = ["*googletagmanager.com*", "*google-analytics.com*", "*cloudflareinsights.com*", "*analytics.google.com*"];
 /* States a reader sets, which render different markup from the bare URL. */
 const STATES = ["/liquidations?at=70000", "/open-interest?w=7d", "/open-interest?w=14d", "/funding/btc?tf=15m", "/coins/bitcoin?view=line"];
