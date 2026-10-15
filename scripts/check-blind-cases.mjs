@@ -43,6 +43,7 @@ import {
   handRolledLegends,
   collapsedStateEscapesMobile,
   llmsHostsAgree,
+  registerAge,
 } from "./checks.mjs";
 
 /* Enough page for a check to have something to read. Deliberately minimal: a fixture that is
@@ -681,6 +682,17 @@ const cases = [
       leadsWithItsSubject('<div data-kind="funding"><script>var funding=1</script><p>price only</p></div>',
         [{ label: "the funding rate", re: /funding/i }]).length === 1,
       leadsWithItsSubject("", [{ label: "anything", re: /x/ }]).length === 1,
+    ],
+  },
+  {
+    check: "registerAge",
+    why: "the vesting register is read by hand, and a read two months old had called a lock untouched after 100,001 ENS left it",
+    fire: () => registerAge("2026-08-15T06:07Z", Date.parse("2026-10-15T17:00Z")),
+    quiet: () => registerAge("2026-10-15T17:47Z", Date.parse("2026-10-20T00:00Z")),
+    also: () => [
+      registerAge("not a date", Date.parse("2026-10-20T00:00Z")).length === 1,
+      registerAge("2026-09-01T00:00Z", Date.parse("2026-10-15T00:00Z")).length === 0,
+      registerAge("2026-09-01T00:00Z", Date.parse("2026-10-17T00:00Z")).length === 1,
     ],
   },
   {

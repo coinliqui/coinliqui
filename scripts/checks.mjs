@@ -2751,3 +2751,22 @@ export function typographyFaults(html, selectorClass = "overview") {
   }
   return faults;
 }
+
+/**
+ * THE VESTING REGISTER IS READ BY HAND, SO ITS AGE IS A FINDING. /unlocks dates every claim to the
+ * block it was read at, and on 15 October 2026 that block was two months old: the ENS lock the page
+ * called untouched had released 100,001 ENS since, and nothing said the read was due. The page
+ * stays honest at any age — it prints the date — but a register nobody re-reads stops being a
+ * register. Past `maxDays` this fires, and the fix is `node scripts/probe-vesting.mjs --json`.
+ *
+ *   verifiedAt  the register's verifiedAt (ISO)
+ *   now         epoch ms
+ */
+export function registerAge(verifiedAt, now, maxDays = 45) {
+  const at = Date.parse(verifiedAt);
+  if (!Number.isFinite(at)) return [`the vesting register's verifiedAt "${verifiedAt}" is not a date`];
+  const days = (now - at) / 86_400_000;
+  return days > maxDays
+    ? [`the vesting register was last read ${Math.floor(days)} days ago (${verifiedAt}), past the ${maxDays}-day limit — re-read it with scripts/probe-vesting.mjs`]
+    : [];
+}

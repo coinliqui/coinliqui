@@ -12,7 +12,8 @@
    — this runs against production and its whole claim is that it asserts what a client on the
    open internet receives. underLinked() decides nothing about the site; it turns a count into
    a sentence, and it lives in checks.mjs so it is covered by the gate's own fixture suite. */
-import { underLinked, duplicateHeadMetadata, leadsWithItsSubject, llmsHostsAgree, openingFigure, PROSE_ROUTES, advertisedReadingsExist, typographyFaults } from "./checks.mjs";
+import { underLinked, duplicateHeadMetadata, leadsWithItsSubject, llmsHostsAgree, registerAge, openingFigure, PROSE_ROUTES, advertisedReadingsExist, typographyFaults } from "./checks.mjs";
+import { readFileSync as readFile } from "node:fs";
 
 const ORIGIN = process.argv[2] || "https://coinliqui.com";
 const CRAWLERS = [
@@ -587,6 +588,12 @@ console.log("\n5. sitemap");
     const drift = llmsHostsAgree(llms.body, scriptSrc);
     drift.length ? bad(`llms.txt and the live Content-Security-Policy disagree:\n          ${drift.join("\n          ")}`)
       : ok("llms.txt names exactly the script hosts the live header permits — the file's claim about the site is the site");
+  }
+
+  {
+    const reg = JSON.parse(readFile(new URL("../src/data/vesting-contracts.json", import.meta.url), "utf8"));
+    const old = registerAge(reg.verifiedAt, Date.now());
+    old.length ? bad(old.join("; ")) : ok(`the vesting register was read ${reg.verifiedAt}, inside its 45-day limit`);
   }
 
   const dupHeads = duplicateHeadMetadata(heads);
