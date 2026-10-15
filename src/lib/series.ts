@@ -654,3 +654,18 @@ export function buildFundingChart(candles: Candle[], funding: FundingPoint[] | n
     bars: cov.length,
   };
 }
+
+/**
+ * THE DAILY CLOSE A "SINCE N DAYS AGO" IS MEASURED FROM: the last daily bar that had closed by `at`.
+ * Its close time is returned with it, so a page prints the instant it measured from and two coins are
+ * compared only when both series hold that same close.
+ */
+export function dailyCloseBy(candles: Candle[] | null | undefined, at: number): { close: number; at: number } | null {
+  if (!candles?.length) return null;
+  const DAY = 86_400_000;
+  for (let i = candles.length - 1; i >= 0; i--) {
+    const end = candles[i][T] + DAY;
+    if (end <= at) return Number.isFinite(candles[i][C]) && candles[i][C] > 0 ? { close: candles[i][C], at: end } : null;
+  }
+  return null;
+}
