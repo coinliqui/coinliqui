@@ -9,6 +9,7 @@ import { detectFlips, mergeEvents, feedFromEvents, carryForward, LAST_KEY, EVENT
 import type { Flip } from "../src/lib/flips.ts";
 import { stepReport, stepProbe } from "./report.ts";
 import { stepCorroborate } from "./corroborate.ts";
+import { stepGscExport } from "./gsc-export.ts";
 import { COINS } from "../src/lib/coins.ts";
 
 /**
@@ -285,6 +286,8 @@ interface RunResult {
   report?: string;
   /** The daily check of whether the site's published external link still resolves. */
   corroborate?: string;
+  /** The daily Search Console export into KV, read locally by scripts/gsc.mjs. */
+  gscExport?: string;
 }
 
 /** The shape every sweep keeps in KV: last full cycle, cursor, frozen list, symbols with data,
@@ -688,6 +691,14 @@ async function run(env: Env): Promise<RunResult> {
          subrequest that must never compete with the sweeps. See worker/corroborate.ts. */
       const reach = await stepCorroborate(env);
       if (reach) result.corroborate = reach;
+
+      /* SEARCH CONSOLE FOR THE OPERATOR, WITHOUT THE KEY LEAVING THIS WORKER. Five subrequests
+         once a day, the cadence stamped in the record. It TAKES THE TICK when it runs, as the
+         report does: a sweep chunk is sized at 32 of the 50 allowed, and five more on top of
+         the probes is margin this file has refused to spend. One tick a day, and the sweep
+         cursor simply continues on the next. See worker/gsc-export.ts. */
+      const gsc = await stepGscExport(env);
+      if (gsc) { result.gscExport = gsc; throw SKIP_SWEEPS; }
 
       const step = await stepReport(env);
       if (step) { result.report = step; throw SKIP_SWEEPS; }

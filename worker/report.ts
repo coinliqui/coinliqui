@@ -59,6 +59,37 @@ export function searchWindow(at: number): { start: string; end: string } {
 }
 /** Search Analytics rows per call. A response that fills it is a floor, not a count. */
 const QUERY_ROW_LIMIT = 500;
+/** The day-by-day table under Search performance. */
+const DAILY_DAYS = 28;
+/** A day at or below this share of the day before it, from at least this many impressions,
+ *  is called out as a step — the reading that a weekly total cannot give. */
+const STEP_SHARE = 0.5;
+const STEP_FLOOR = 20;
+
+/**
+ * One markdown row per day, oldest first, with a bar scaled to the largest day and a marker
+ * on any day that fell to half of the one before it or less. Pure, for scripts/report-cases.mjs.
+ */
+export function dailyLines(rows: { keys: string[]; clicks: number; impressions: number; position: number }[]): string[] {
+  if (!rows.length) return ["No daily rows in this window."];
+  const days = [...rows].sort((a, b) => a.keys[0].localeCompare(b.keys[0]));
+  const max = Math.max(...days.map((d) => d.impressions), 1);
+  const out = ["| Day | Impressions | Clicks | Avg position | |", "|---|---:|---:|---:|---|"];
+  const steps: string[] = [];
+  days.forEach((d, i) => {
+    const prev = i ? days[i - 1] : null;
+    const step = !!prev && prev.impressions >= STEP_FLOOR && d.impressions <= prev.impressions * STEP_SHARE;
+    if (step) steps.push(`${d.keys[0]} (${prev!.impressions} → ${d.impressions})`);
+    const bar = "█".repeat(Math.max(d.impressions ? 1 : 0, Math.round((d.impressions / max) * 20)));
+    out.push(`| ${d.keys[0]} | ${d.impressions} | ${d.clicks} | ${d.position.toFixed(1)} | ${bar}${step ? " **← step**" : ""} |`);
+  });
+  if (steps.length) {
+    out.push("");
+    out.push(`**A one-day step:** ${steps.join(", ")}. Read which pages and queries it took (scripts/gsc.mjs) before reading the weekly totals above as a trend.`);
+  }
+  return out;
+}
+
 /** Readings kept in index:history — twenty-six weekly runs is six months. */
 export const HISTORY_KEEP = 26;
 
@@ -190,7 +221,7 @@ const share = (a: number, b: number) => (b ? `${((a / b) * 100).toFixed(0)}%` : 
  * WebCrypto: the PEM is unwrapped to DER, imported as PKCS#8, and signed with
  * RSASSA-PKCS1-v1_5. Same JWT, same exchange, no dependency.
  */
-async function gscToken(rawKey: string): Promise<string> {
+export async function gscToken(rawKey: string): Promise<string> {
   const key = JSON.parse(rawKey) as { client_email: string; private_key: string };
   const pem = key.private_key.replace(/-----[^-]+-----/g, "").replace(/\s+/g, "");
   const der = Uint8Array.from(atob(pem), (c) => c.charCodeAt(0));
@@ -706,6 +737,16 @@ export async function stepReport(env: ReportEnv, force = false): Promise<string 
             say(`> The band table below counts queries rather than weighting them, and is the`);
             say(`> half of this section that survives a change in the covered set.`);
           }
+
+          /* DAY BY DAY, BECAUSE AN EIGHT-DAY WINDOW SMEARS A ONE-NIGHT STEP. Measured 15 October
+             2026: impressions fell from 70 to 26 between 31 August and 1 September, at every
+             template at once, and the weekly windows printed it as "550 → 290" across two
+             readings — a slow decay that pointed at the rank-55 churn, which turned out to hold
+             under 5% of the loss. One call, 28 rows, and the shape of a change is on the page. */
+          const fromDay = new Date(Date.parse(end) - (DAILY_DAYS - 1) * 86_400_000).toISOString().slice(0, 10);
+          const daily = await api(base, { startDate: fromDay, endDate: end, dimensions: ["date"], rowLimit: DAILY_DAYS });
+          say(`\n### Impressions by day, ${fromDay} to ${end}\n`);
+          for (const l of dailyLines(daily.rows || [])) say(l);
 
           const q = await api(base, { startDate: start, endDate: end, dimensions: ["query"], rowLimit: QUERY_ROW_LIMIT });
           if (q.rows?.length) {
