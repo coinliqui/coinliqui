@@ -35,7 +35,7 @@
 import Base from "../../layouts/Base.astro";
 import LiqMap from "../../components/LiqMap.astro";
 import { getSnapshot, coldStart, findPerp, requestedPerp, getLive, currentMark } from "../../lib/hyperliquid.ts";
-import { maintenanceMarginFraction, type MarginTable } from "../../lib/margin.ts";
+import { maintenanceMarginFraction, type MarginTable, tableFor } from "../../lib/margin.ts";
 import { getHourly } from "../../lib/candles.ts";
 import { utcStamp } from "../../lib/freshness.ts";
 import { readOiAt } from "../../lib/oi-history.ts";
@@ -101,7 +101,7 @@ if (def.perp.symbol === p.symbol) {
 
 /* THE COVERAGE-FLOOR RULE AGAIN. Without a tier table there is no maintenance margin, no
    corridor and no liquidation price, which is most of this page — see pickPerp. */
-const table = TABLES[String(p.marginTableId)];
+const table = tableFor(p);
 if (!table) return Astro.rewrite(`/404?symbol=${encodeURIComponent(wanted)}`);
 
 /* THE HOURLY SERIES IS READ HERE, NOT IN THE COMPONENT, because the description below has to know

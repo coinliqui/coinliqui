@@ -175,6 +175,21 @@ for (const [name, meta, pred, want] of shapes) {
   if (!ok) sbad++;
   console.log(`  ${ok ? "ok   " : "MISS "}  ${got.padEnd(20)} ${name.padEnd(42)} ${detail}`);
 }
+/* A CONTRACT ABOVE THE FLOOR WITH A TABLE THIS REPOSITORY HAS NOT COMMITTED is not covered, and is
+   named. Covered, every list on the site would link /funding/{symbol}, which answers 404 without a
+   table, and the sitemap would list it (15 October 2026, found before it happened). */
+{
+  const meta = [{ universe: [...U, { name: "NEWCO", maxLeverage: 10, szDecimals: 2, marginTableId: 999999 }] }, [C[0], { ...C[0] }]];
+  const pred = [["BTC", P[0][1]], ["NEWCO", P[0][1]]];
+  globalThis.fetch = async (_u, o) =>
+    new Response(JSON.stringify(JSON.parse(o.body).type === "metaAndAssetCtxs" ? meta : pred),
+      { status: 200, headers: { "content-type": "application/json" } });
+  const snap = await fetchSnapshot(["BTC"]);
+  const covered = snap.perps.map((p) => p.symbol);
+  const ok = !covered.includes("NEWCO") && covered.includes("BTC") && (snap.heldBack ?? []).includes("NEWCO");
+  if (!ok) sbad++;
+  console.log(`  ${ok ? "ok   " : "MISS "}  ${"held back".padEnd(20)} ${"a table not committed: not covered, and named".padEnd(42)} covered=${covered.join(",")} heldBack=${(snap.heldBack ?? []).join(",")}`);
+}
 globalThis.fetch = realFetch;
 if (sbad) { console.error(`\n  ${sbad} shape(s) behaved unexpectedly`); process.exit(1); }
 console.log("\n  every unseen shape either yields a contract that survives its pages, or is refused outright");

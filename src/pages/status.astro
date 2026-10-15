@@ -362,6 +362,20 @@ const utc = (ms: number) => new Date(ms).toISOString().slice(0, 16).replace("T",
     </div>
   )}
 
+  {/* HELD BACK, SAID ALOUD. A contract above the floor whose tier table is not committed is not
+      covered (src/lib/hyperliquid.ts) — otherwise every list would link it to a 404. Coverage that
+      shrinks silently is the next defect, so the names are printed here until a deploy commits them. */}
+  {(snap.heldBack?.length ?? 0) > 0 && (
+    <div class="verdict verdict--warn">
+      <div>
+        <b>{plural(snap.heldBack!.length, "contract is", "contracts are")} held back</b>: {snap.heldBack!.join(", ")}
+        {" "}clear{snap.heldBack!.length === 1 ? "s" : ""} the open-interest floor, but no margin tier table is committed for
+        {snap.heldBack!.length === 1 ? " it" : " them"}, so the site cannot compute a liquidation price and does not publish
+        {snap.heldBack!.length === 1 ? " its page" : " their pages"}. The next deploy stops until <code>npm run gen:margin</code> commits the table.
+      </div>
+    </div>
+  )}
+
   {/* THE ONE CLAIM ON THIS SITE THAT POINTS SOMEWHERE WE DO NOT CONTROL, and the only one whose
       failure is invisible from here. It published a 404 on every page for days. The worker checks
       it daily; this row is where a probe that has stopped, or is being refused, becomes visible —

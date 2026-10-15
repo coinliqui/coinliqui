@@ -801,6 +801,7 @@ const cases = [
       ["src/lib/oi-history.ts", "export async function readOiAt(db, s, at) {}"],
       ["src/lib/sparks.ts", "export const sparkDaysOf = (s) => 0;"],
       ["src/lib/coins.ts", "export const coinPageFor = (s) => null;"],
+      ["src/lib/margin.ts", "export function tableFor(p) {}"],
       ["src/lib/hyperliquid.ts", "export function currentMark(snap, live, perp) { return live?.mark?.[perp.symbol]; }"],
       /* a comment quoting the shape it replaced is not the shape */
       ["src/pages/x.astro", "/* was: [\"Jan\", \"Feb\", \"Mar\"] and d > 0 ? \"+\" : \"−\" */"],

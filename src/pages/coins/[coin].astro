@@ -3,8 +3,7 @@ import More from "../../components/More.astro";
 import Base from "../../layouts/Base.astro";
 import { getSnapshot, coldStart, findPerp, getLive, oldestStamp, currentMark } from "../../lib/hyperliquid.ts";
 import { usd, pct, VENUE_LABEL, paysClass, paysLabel, carryCost, type Venue } from "../../lib/funding.ts";
-import { maintenanceMarginFraction, corridorAt, type MarginTable } from "../../lib/margin.ts";
-import tables from "../../data/margin-tables.json";
+import { maintenanceMarginFraction, corridorAt, type MarginTable, tableFor } from "../../lib/margin.ts";
 import { findCoin, isLive, liveCoins } from "../../lib/coins.ts";
 import { liqMapHref, canonicalRedirect } from "../../lib/routes.ts";
 import { countWords } from "../../lib/site.ts";
@@ -191,7 +190,7 @@ const fundingReach = rated.length > 1
    over the published tier and the live mark. Nothing on this page assumes a position
    distribution — that is the map, and it is linked rather than imitated.
    ========================================================================================= */
-const marginTable = perp ? (tables as Record<string, MarginTable>)[String(perp.marginTableId)] : undefined;
+const marginTable = perp ? tableFor(perp) : undefined;
 const tier1 = marginTable ? [...marginTable.marginTiers].sort((a, b) => a.lowerBound - b.lowerBound)[0] : undefined;
 /* The cap, then three rungs beneath it. A general-audience page does not need the seven the
    liquidation map draws; it needs the shape, and the shape is legible in four rows. */

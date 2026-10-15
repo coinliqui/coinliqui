@@ -24,7 +24,7 @@
    ========================================================================================= */
 import { usd, pct } from "../lib/funding.ts";
 import { ageWords, minutesSince, utcStamp } from "../lib/freshness.ts";
-import { maintenanceMarginFraction, nextTierBoundary, corridorAt, type MarginTable } from "../lib/margin.ts";
+import { maintenanceMarginFraction, nextTierBoundary, corridorAt, type MarginTable, tableFor } from "../lib/margin.ts";
 import { T, O, H, L, C, type Candle, type getHourly } from "../lib/candles.ts";
 import { spanWords, MIN_SPAN, MOVE_STEPS, POSITION_LIFE_DAYS, DEFAULT_PROFILE, type MapModel, PROFILES, mixUsed, profilesCoincide, MAP_WINDOWS, DEFAULT_WINDOW, mapDrawable, type MapWindow } from "../lib/liqmap.ts";
 import { paintHeatMap } from "../lib/heatmap.ts";
@@ -34,7 +34,6 @@ import type { Perp, Snapshot } from "../lib/hyperliquid.ts";
 import { liqMapHref } from "../lib/routes.ts";
 import { coinPageFor } from "../lib/coins.ts";
 import { signedPct } from "../lib/funding.ts";
-import tables from "../data/margin-tables.json";
 
 import Advisory from "./Advisory.astro";
 import More from "./More.astro";
@@ -102,10 +101,9 @@ const { perp, table, snap, params: q, crumb, siblings = true, hourly, model, mar
    margin table has no maintenance margin, no corridor and no liquidation price, so its map
    answers 404 — and a chip strip is exactly where fifty links to a 404 would go unnoticed.
    ========================================================================================= */
-const TABLES = tables as Record<string, unknown>;
 const coinPage = coinPageFor(perp.symbol);
 const mapSiblings = snap.perps.filter(
-  (x) => x.symbol !== perp.symbol && Object.prototype.hasOwnProperty.call(TABLES, String(x.marginTableId)),
+  (x) => x.symbol !== perp.symbol && tableFor(x) !== undefined,
 );
 const tiers = [...table.marginTiers].sort((a, b) => a.lowerBound - b.lowerBound);
 const tier1 = tiers[0];

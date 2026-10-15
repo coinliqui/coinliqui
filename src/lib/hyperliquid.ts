@@ -1,5 +1,5 @@
 import { toApr, type Venue, type VenueFunding } from "./funding.ts";
-import type { MarginTable } from "./margin.ts";
+import { tableFor, type MarginTable } from "./margin.ts";
 import { MAP_DEFAULT } from "./routes.ts";
 
 const INFO = "https://api.hyperliquid.xyz/info";
@@ -76,6 +76,8 @@ export interface Snapshot {
   universeCount: number;
   /** Published contracts kept although outranked past SYMBOL_CAP (see SYMBOL_RETAIN_EXTRA). */
   keptPastCap?: number;
+  /** Contracts above the floor held back because no tier table is committed for them. */
+  heldBack?: string[];
   /**
    * False only before the ingest worker has ever written to KV. Pages must check this
    * and return a 503 rather than render with an empty perps array — see coldStart().
@@ -230,12 +232,17 @@ export async function fetchSnapshot(published: string[] = []): Promise<Snapshot>
   });
 
   const live = new Set(published);
+  const aboveFloor = (p: Perp) =>
+    Number.isFinite(p.oiNotional) &&
+    (p.oiNotional >= OI_NOTIONAL_FLOOR || (live.has(p.symbol) && p.oiNotional >= OI_RETIRE_FLOOR));
+  /* A CONTRACT IS COVERED ONLY IF THIS SITE CAN BUILD ITS PAGES. Without a committed tier table there
+     is no maintenance margin, corridor or liquidation price, and /funding/{symbol} answers 404 — so a
+     contract above the floor with an uncommitted table is held back, named in `heldBack` for /status,
+     until a deploy commits its table (gen-margin-tables --check reads the full universe and stops the
+     deploy until it does). See tableFor in src/lib/margin.ts. */
+  const heldBack = all.filter((p) => aboveFloor(p) && !tableFor(p)).map((p) => p.symbol);
   const eligible = all
-    .filter(
-      (p) =>
-        Number.isFinite(p.oiNotional) &&
-        (p.oiNotional >= OI_NOTIONAL_FLOOR || (live.has(p.symbol) && p.oiNotional >= OI_RETIRE_FLOOR)),
-    )
+    .filter((p) => aboveFloor(p) && tableFor(p) !== undefined)
     .sort((a, b) => b.oiNotional - a.oiNotional);
   /* The largest SYMBOL_CAP, then incumbents the rank alone would have evicted — see
      SYMBOL_RETAIN_EXTRA. Largest first within the retained band too, so the bound cuts the
@@ -258,6 +265,7 @@ export async function fetchSnapshot(published: string[] = []): Promise<Snapshot>
     eligibleCount: all.filter((p) => Number.isFinite(p.oiNotional) && p.oiNotional >= OI_NOTIONAL_FLOOR).length,
     universeCount: listed,
     keptPastCap: kept.length,
+    heldBack,
   };
 }
 

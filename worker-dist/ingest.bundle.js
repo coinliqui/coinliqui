@@ -16,6 +16,131 @@ function toApr(ratePerInterval, intervalHours) {
   return ratePerInterval * (HOURS_PER_YEAR / intervalHours);
 }
 
+// src/data/margin-tables.json
+var margin_tables_default = {
+  "3": {
+    description: "",
+    marginTiers: [
+      {
+        lowerBound: 0,
+        maxLeverage: 3
+      }
+    ]
+  },
+  "5": {
+    description: "",
+    marginTiers: [
+      {
+        lowerBound: 0,
+        maxLeverage: 5
+      }
+    ]
+  },
+  "10": {
+    description: "",
+    marginTiers: [
+      {
+        lowerBound: 0,
+        maxLeverage: 10
+      }
+    ]
+  },
+  "20": {
+    description: "",
+    marginTiers: [
+      {
+        lowerBound: 0,
+        maxLeverage: 20
+      }
+    ]
+  },
+  "51": {
+    description: "tiered 10x",
+    marginTiers: [
+      {
+        lowerBound: 0,
+        maxLeverage: 10
+      },
+      {
+        lowerBound: 3e6,
+        maxLeverage: 5
+      }
+    ]
+  },
+  "52": {
+    description: "tiered 10x (2)",
+    marginTiers: [
+      {
+        lowerBound: 0,
+        maxLeverage: 10
+      },
+      {
+        lowerBound: 2e7,
+        maxLeverage: 5
+      }
+    ]
+  },
+  "53": {
+    description: "tiered 20x",
+    marginTiers: [
+      {
+        lowerBound: 0,
+        maxLeverage: 20
+      },
+      {
+        lowerBound: 4e7,
+        maxLeverage: 10
+      }
+    ]
+  },
+  "54": {
+    description: "tiered 20x (2)",
+    marginTiers: [
+      {
+        lowerBound: 0,
+        maxLeverage: 20
+      },
+      {
+        lowerBound: 7e7,
+        maxLeverage: 10
+      }
+    ]
+  },
+  "55": {
+    description: "tiered 25x",
+    marginTiers: [
+      {
+        lowerBound: 0,
+        maxLeverage: 25
+      },
+      {
+        lowerBound: 1e8,
+        maxLeverage: 15
+      }
+    ]
+  },
+  "56": {
+    description: "tiered 40x",
+    marginTiers: [
+      {
+        lowerBound: 0,
+        maxLeverage: 40
+      },
+      {
+        lowerBound: 15e7,
+        maxLeverage: 20
+      }
+    ]
+  }
+};
+
+// src/lib/margin.ts
+var TABLES = margin_tables_default;
+function tableFor(p) {
+  const k = String(p.marginTableId);
+  return Object.prototype.hasOwnProperty.call(TABLES, k) ? TABLES[k] : void 0;
+}
+
 // src/lib/routes.ts
 var PAGES_DATA = ["/", "/methodology", "/about"];
 var PAGES_CODE = ["/methodology/liquidations", "/data-sources", "/privacy", "/terms"];
@@ -138,9 +263,9 @@ async function fetchSnapshot(published = []) {
     };
   });
   const live = new Set(published);
-  const eligible = all.filter(
-    (p) => Number.isFinite(p.oiNotional) && (p.oiNotional >= OI_NOTIONAL_FLOOR || live.has(p.symbol) && p.oiNotional >= OI_RETIRE_FLOOR)
-  ).sort((a, b) => b.oiNotional - a.oiNotional);
+  const aboveFloor = (p) => Number.isFinite(p.oiNotional) && (p.oiNotional >= OI_NOTIONAL_FLOOR || live.has(p.symbol) && p.oiNotional >= OI_RETIRE_FLOOR);
+  const heldBack = all.filter((p) => aboveFloor(p) && !tableFor(p)).map((p) => p.symbol);
+  const eligible = all.filter((p) => aboveFloor(p) && tableFor(p) !== void 0).sort((a, b) => b.oiNotional - a.oiNotional);
   const inCap = eligible.slice(0, SYMBOL_CAP);
   const kept = eligible.slice(SYMBOL_CAP).filter((p) => live.has(p.symbol)).slice(0, SYMBOL_RETAIN_EXTRA);
   const perps = [...inCap, ...kept].sort((a, b) => b.oiNotional - a.oiNotional);
@@ -153,7 +278,8 @@ async function fetchSnapshot(published = []) {
     // a number inflated by contracts kept alive on hysteresis would not match its own label.
     eligibleCount: all.filter((p) => Number.isFinite(p.oiNotional) && p.oiNotional >= OI_NOTIONAL_FLOOR).length,
     universeCount: listed,
-    keptPastCap: kept.length
+    keptPastCap: kept.length,
+    heldBack
   };
 }
 async function fetchLive(symbols) {
@@ -1450,7 +1576,7 @@ async function stepGscExport(env, now = Date.now()) {
 }
 
 // worker/build-stamp.ts
-var WORKER_BUILD = "8df438f18dc4";
+var WORKER_BUILD = "a49e44d45ba9";
 
 // worker/ingest.ts
 var RETAIN_HOURS = 720;

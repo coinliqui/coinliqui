@@ -101,6 +101,21 @@ export function tierFor(table: MarginTable, notional: number): { tier: MarginTie
    public/shared.js so the calculators' browser scripts read the same rule. */
 export { maintenanceMarginFraction } from "../../public/shared.js";
 import { maintenanceMarginFraction } from "../../public/shared.js";
+import COMMITTED_TABLES from "../data/margin-tables.json" with { type: "json" };
+
+/**
+ * THE COMMITTED TIER TABLE FOR A CONTRACT, OR NONE — the one lookup. Nine places did
+ * `tables[String(p.marginTableId)]` themselves, and the lists that link to /funding/{symbol} did
+ * not do it at all: /funding/{symbol} answers 404 without a table, so the first contract to clear
+ * the open-interest floor with a table this repository has not committed would have been linked to a
+ * 404 from about sixty places and listed in the sitemap (found 15 October 2026, before it happened).
+ * Coverage itself now requires a table (src/lib/hyperliquid.ts), so nothing can link to such a page.
+ */
+const TABLES = COMMITTED_TABLES as unknown as Record<string, MarginTable>;
+export function tableFor(p: { marginTableId: number }): MarginTable | undefined {
+  const k = String(p.marginTableId);
+  return Object.prototype.hasOwnProperty.call(TABLES, k) ? TABLES[k] : undefined;
+}
 
 export function naiveLiquidationPrice(entryPrice: number, leverage: number, side: Side): number {
   return side === "long" ? entryPrice * (1 - 1 / leverage) : entryPrice * (1 + 1 / leverage);

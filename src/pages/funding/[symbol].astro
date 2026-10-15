@@ -3,11 +3,10 @@ import Base from "../../layouts/Base.astro";
 import More from "../../components/More.astro";
 import { getSnapshot, coldStart, findPerp, getLive, currentMark } from "../../lib/hyperliquid.ts";
 import { VENUE_LABEL, pct, usd, rawRate, carryCost, settlementsPerYear, nextSettlement, paysClass, paysLabel, type Venue } from "../../lib/funding.ts";
-import { liquidationPrice, type MarginTable, roomVerdict } from "../../lib/margin.ts";
+import { liquidationPrice, type MarginTable, roomVerdict, tableFor } from "../../lib/margin.ts";
 import { getCandles, getM15, getHourly, getFunding } from "../../lib/candles.ts";
 import { TIMEFRAMES, DEFAULT_TF, MIN_CHART_BARS, drawnBars, barSpan, buildPriceChart, buildFundingChart, candleStyleNote, timeframeGapNote, shortDate, CHART_H } from "../../lib/series.ts";
 import { CH } from "../../lib/chart.ts";
-import tables from "../../data/margin-tables.json";
 import { coinPageFor } from "../../lib/coins.ts";
 import { liqMapHref, canonicalRedirect } from "../../lib/routes.ts";
 import { qty } from "../../lib/funding.ts";
@@ -60,7 +59,7 @@ if (!p) {
    answering 500 on an indexed URL. Not the sibling pages' fallback either: this page is ABOUT
    this symbol, so quietly rendering a different contract under its heading would be the kBONK
    defect again. See pickPerp in src/lib/hyperliquid.ts. */
-const table = (tables as Record<string, MarginTable>)[String(p.marginTableId)];
+const table = tableFor(p);
 if (!table) return Astro.rewrite(`/404?symbol=${encodeURIComponent(wanted)}`);
 /* If this contract also has a published coin page, the two should know about each other. */
 const coin = coinPageFor(p.symbol);

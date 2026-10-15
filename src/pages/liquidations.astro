@@ -22,7 +22,7 @@ import Base from "../layouts/Base.astro";
 import LiqMap from "../components/LiqMap.astro";
 import { getSnapshot, coldStart, requestedPerp, getLive, currentMark } from "../lib/hyperliquid.ts";
 import { usd, pct, priceDp } from "../lib/funding.ts";
-import { maintenanceMarginFraction, corridorAt, type MarginTable } from "../lib/margin.ts";
+import { maintenanceMarginFraction, corridorAt, type MarginTable, tableFor } from "../lib/margin.ts";
 import { utcStamp } from "../lib/freshness.ts";
 import { readOiAt } from "../lib/oi-history.ts";
 import { mapTitle, mapDescription, mapState, resolveWindow, mapModel, dayEarlierCut } from "../lib/liqmap.ts";
@@ -80,9 +80,9 @@ if (wanted !== null) {
    nothing else. Fifty calls to buildLiqMap would have made this page the slowest on the
    site to serve the least important part of it. */
 const rows = snap.perps
-  .filter((p) => Object.prototype.hasOwnProperty.call(TABLES, String(p.marginTableId)))
+  .filter((p) => tableFor(p) !== undefined)
   .map((p) => {
-    const t = [...TABLES[String(p.marginTableId)].marginTiers].sort((a, b) => a.lowerBound - b.lowerBound)[0];
+    const t = [...tableFor(p)!.marginTiers].sort((a, b) => a.lowerBound - b.lowerBound)[0];
     const L = t.maxLeverage;
     const { corridor } = corridorAt(p.markPx, L, maintenanceMarginFraction(L));
     return { p, L, corridor, href: liqMapHref(p.symbol), here: p.symbol === perp.symbol };
