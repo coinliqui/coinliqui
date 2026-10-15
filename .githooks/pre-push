@@ -25,6 +25,13 @@
 
 set -e
 
+printf '\n── pre-push guard: secrets, identity, personal mailboxes ──\n'
+
+if ! scripts/push-guard.sh; then
+  printf '\n  PUSH BLOCKED. Something in these commits must not be public.\n\n'
+  exit 1
+fi
+
 printf '\n── pre-push gate: npm run check ──\n'
 
 if ! npm run check; then

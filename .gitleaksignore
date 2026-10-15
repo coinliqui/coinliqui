@@ -1,0 +1,11 @@
+# Reviewed 2026-10-15: none of these is a secret.
+# - vesting-contracts.json: public ERC-20 token contract addresses (CRV, UNI, ...)
+# - indexnow.ts / ingest.bundle.js: the IndexNow key, public by protocol (served at /<key>.txt)
+# - trigger-auth-cases.mjs: a made-up key that only feeds the sameSecret() cases
+3aa0ea265159b60f0e760606c987fa096c6086b8:scripts/trigger-auth-cases.mjs:generic-api-key:13
+2a29faf85b6708d464506c8ccc1bc3c2fff84c8a:worker-dist/ingest.bundle.js:generic-api-key:215
+2a29faf85b6708d464506c8ccc1bc3c2fff84c8a:worker/indexnow.ts:generic-api-key:31
+3c4c541a0de322bd0a1cadf67957c3581eb7b289:src/data/vesting-contracts.json:generic-api-key:58
+f935d9532063d12a0e0311b841105cd8ec6f34c1:src/data/vesting-contracts.json:generic-api-key:11
+dc48009e88b47489fac4f76156094b9d1b317c2a:src/data/vesting-contracts.json:generic-api-key:11
+dc48009e88b47489fac4f76156094b9d1b317c2a:src/data/vesting-contracts.json:generic-api-key:27
