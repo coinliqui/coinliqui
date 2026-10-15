@@ -1409,7 +1409,12 @@ const schema = {
            minimum. Only the mobile geometry changes — the desktop pills stay compact,
            because a pointer does not need the padding and the row would look inflated. */
         .tf button { padding: 0 16px; min-height: 44px; }
+        /* Eight 44px pills do not fit a phone's row, and wrapped inside one pill they read as five
+           and a stray three (seen at 375px on /funding/btc, 15 October 2026). Four even columns
+           make the two rows deliberate; the well's corners stop being a pill to hold them. Only a
+           group long enough to wrap: the two-button chart style switch stays a pill. */
         .tf { padding: 2px; }
+        .tf:has(> :nth-child(5)) { display: grid; grid-template-columns: repeat(4, 1fr); border-radius: var(--r-md); }
         .chip-link { padding: 12px 16px; }
         .btn { height: 44px; }
         /* A stacked form is a column, so its controls should share one edge rather than
