@@ -692,14 +692,6 @@ async function run(env: Env): Promise<RunResult> {
       const reach = await stepCorroborate(env);
       if (reach) result.corroborate = reach;
 
-      /* SEARCH CONSOLE FOR THE OPERATOR, WITHOUT THE KEY LEAVING THIS WORKER. Five subrequests
-         once a day, the cadence stamped in the record. It TAKES THE TICK when it runs, as the
-         report does: a sweep chunk is sized at 32 of the 50 allowed, and five more on top of
-         the probes is margin this file has refused to spend. One tick a day, and the sweep
-         cursor simply continues on the next. See worker/gsc-export.ts. */
-      const gsc = await stepGscExport(env);
-      if (gsc) { result.gscExport = gsc; throw SKIP_SWEEPS; }
-
       const step = await stepReport(env);
       if (step) { result.report = step; throw SKIP_SWEEPS; }
 
@@ -787,6 +779,22 @@ async function run(env: Env): Promise<RunResult> {
       } catch (e) {
         result.indexnow = `indexnow: threw (${e instanceof Error ? e.message : String(e)})`;
       }
+
+      /* SEARCH CONSOLE FOR THE OPERATOR, WITHOUT THE KEY LEAVING THIS WORKER. Five subrequests
+         once a day, the cadence stamped in the record. See worker/gsc-export.ts.
+
+         IT TAKES THE SWEEPS, AND ONLY THE SWEEPS. A sweep chunk is sized at 32 of the 50
+         subrequests allowed, and five more on top of the probes is margin this file has refused
+         to spend, so on the one tick a day this runs the sweep cursor waits for the next tick.
+
+         IT SITS AFTER THE FLIP FEED, AND THAT IS NOT TIDINESS. Its first placement was next to
+         the report, before the flips, and the first live run (15.10.2026 07:22 UTC) wrote that
+         tick's funding rows to D1 and then skipped the feed: flips-parity found the stored feed
+         at 07:17 against D1 rows from 07:22, and an incremental detector that misses a pass can
+         never see a flip that happened inside it and reverted by the next. Funding rows and the
+         feed that reads them are one step; nothing may run between them that can end the tick. */
+      const gsc = await stepGscExport(env);
+      if (gsc) { result.gscExport = gsc; throw SKIP_SWEEPS; }
 
       const syms = published;
 

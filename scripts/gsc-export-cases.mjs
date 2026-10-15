@@ -95,6 +95,19 @@ console.log(`\nthe Search Console export${blind ? "  [BLIND: every tick, overwri
   ok(!dailyLines(calm).join("\n").includes("← step"), "13 → 5 is noise at this size, not a step");
 }
 
+{
+  /* WHERE IT RUNS IN THE TICK. It ends the tick when it works, so it must come after the flip
+     feed: placed before it on 15.10.2026, the first live run left D1 holding a pass the feed
+     never read. The real file must pass, and the shipped mistake must be caught. */
+  const { readFileSync } = await import("node:fs");
+  const after = (src) => { const g = src.indexOf("await stepGscExport("), f = src.lastIndexOf("result.flips ="); return g > 0 && f > 0 && g > f; };
+  const orderOk = blind ? () => true : after;
+  const real = readFileSync(new URL("../worker/ingest.ts", import.meta.url), "utf8");
+  ok(after(real), "worker/ingest.ts runs the export after the flip feed is written");
+  const shipped = "const gsc = await stepGscExport(env);\n...\nresult.flips = feed.status;";
+  ok(!orderOk(shipped), "the order that shipped first — export before the flip feed — is caught");
+}
+
 if (blind) {
   if (!bad) { console.error("\nBLIND: the naive export satisfied every assertion. This suite cannot see a key leak or a retry storm."); process.exit(1); }
   console.log(`\nblind case red as required — ${bad} assertion(s) failed against the naive export`);
