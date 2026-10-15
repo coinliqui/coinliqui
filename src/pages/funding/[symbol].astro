@@ -6,7 +6,7 @@ import { VENUE_LABEL, pct, usd, rawRate, carryCost, settlementsPerYear, nextSett
 import { liquidationPrice, type MarginTable, roomVerdict, tableFor } from "../../lib/margin.ts";
 import { getCandles, getM15, getHourly, getFunding } from "../../lib/candles.ts";
 import PricePanel from "../../components/PricePanel.astro";
-import { narrowChart, TIMEFRAMES, DEFAULT_TF, MIN_CHART_BARS, drawnBars, barSpan, buildPriceChart, buildFundingChart, candleStyleNote, timeframeGapNote, shortDate, CHART_H } from "../../lib/series.ts";
+import { narrowChart, NARROW_W, TIMEFRAMES, DEFAULT_TF, MIN_CHART_BARS, drawnBars, barSpan, buildPriceChart, buildFundingChart, candleStyleNote, timeframeGapNote, shortDate, CHART_H } from "../../lib/series.ts";
 import { CH } from "../../lib/chart.ts";
 import { coinPageFor } from "../../lib/coins.ts";
 import { liqMapHref, canonicalRedirect } from "../../lib/routes.ts";
@@ -353,6 +353,8 @@ const dayTf = TIMEFRAMES.find((t) => t.key === "1d")!;
 const fundChart = dayset?.d && dayset.d.length >= MIN_CHART_BARS
   ? buildFundingChart(dayset.d.slice(-FUND_DAYS), funding, dayTf)
   : null;
+/* The same bars in a phone-width box; CSS shows one (Base.astro, .fxw / .fxn). */
+const fundChartN = fundChart && dayset?.d ? buildFundingChart(dayset.d.slice(-FUND_DAYS), funding, dayTf, NARROW_W) : null;
 /* THE DAY COUNT TAKES ITS NOUN FROM THE COUNT, as the band note below learned to. fundChart.bars is
    the number of days CARRYING funding, not the window: buildFundingChart keeps a figure whose
    coverage clears 6% of at least MIN_CHART_BARS days, so a contract with 6–16 daily bars and one day
@@ -449,7 +451,8 @@ const description = `What a ${p.symbol} perpetual costs to hold, against ${usd(p
         ? `${paysLabel(hl.apr)} right now \u00b7 ${fundDays} drawn`
         : `${fundDays} drawn`}
       fetchedAt={snap.fetchedAt}>
-      <Fragment set:html={fundChart.svg} />
+      <Fragment set:html={fundChart.svg.replace("<svg ", '<svg class="fxw" ')} />
+      {fundChartN && <Fragment set:html={fundChartN.svg.replace("<svg ", '<svg class="fxn" ')} />}
       <Fragment slot="note">
       <p>
         Amber above the line is <b>longs paying shorts</b>, cyan below is <b>shorts paying longs</b>;

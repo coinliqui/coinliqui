@@ -1122,6 +1122,10 @@ const schema = {
          (narrowChart, src/components/PricePanel.astro), whose axis fits the bars it shows, so the
          panel stops scrolling sideways and loses its edge fade. */
       .chart--price > svg.pxn { display: none; }
+      /* The funding figure the same way: wide from 760px, its phone-width draw below. */
+      /* Qualified by .fig__plot so they outrank Figure's own `.fig__plot > svg { display: block }`. */
+      .fig__plot > svg.fxn { display: none; }
+      @media (max-width: 760px) { .fig__plot > svg.fxw { display: none; } .fig__plot > svg.fxn { display: block; } }
       @media (max-width: 760px) {
         .chart.chart--price { overflow-x: visible; -webkit-mask-image: none; mask-image: none; }
         .chart--price > svg.pxw { display: none; }

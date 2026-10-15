@@ -540,7 +540,11 @@ export interface FundingChart {
  *  much that a page about a rate becomes a page about a picture. */
 const FUND_H = 200;
 
-export function buildFundingChart(candles: Candle[], funding: FundingPoint[] | null, tf: Timeframe): FundingChart | null {
+export function buildFundingChart(candles: Candle[], funding: FundingPoint[] | null, tf: Timeframe, width: number = CH.w): FundingChart | null {
+  /* `width` is the viewBox width. At 1260 a 375px phone drew this — the page's own subject — as a
+     strip 283×45 with five-pixel labels (15 October 2026); the page also renders it at NARROW_W for
+     phones, every bar kept, so "90 days drawn" stays true at both widths. */
+  const W = width;
   if (candles.length < MIN_CHART_BARS || !funding || funding.length < 5) return null;
   const barMs = tf.hours * 3_600_000;
   const aprAt = fundingByBar(candles, funding, barMs);
@@ -550,7 +554,7 @@ export function buildFundingChart(candles: Candle[], funding: FundingPoint[] | n
      right edge that reads as a rendering fault rather than as data. */
   if (cov.length / candles.length < 0.06) return null;
 
-  const plotX = CH.padL, plotW = CH.w - CH.padL - CH.padR;
+  const plotX = CH.padL, plotW = W - CH.padL - CH.padR;
   const axisX = plotX + plotW;
   const top = CH.padT, h = FUND_H - CH.padT - CH.padB;
   const zeroY = top + h / 2;
@@ -591,11 +595,11 @@ export function buildFundingChart(candles: Candle[], funding: FundingPoint[] | n
   s.push(text(axisX + PILL_GAP, top + 11, `${signedPct(max, 0)} APR`, INK.faint, FS_MICRO));
   s.push(text(axisX + PILL_GAP, zeroY + 4, "0%", INK.dim, FS_MICRO));
   s.push(text(axisX + PILL_GAP, top + h - 2, signedPct(-max, 0), INK.faint, FS_MICRO));
-  s.push(`<g data-ax="x">${timeTicks(candles.map((c) => c[T]), 8)
+  s.push(`<g data-ax="x">${timeTicks(candles.map((c) => c[T]), W < 800 ? 4 : 8)
     .map(({ i, label }) => xTick(xOf(i), FUND_H - 9, label)).join("")}</g>`);
 
   return {
-    svg: `<svg viewBox="0 0 ${CH.w} ${FUND_H}" width="100%" role="img" aria-label="Funding rate history, annualised, with the side paying shown by colour">${s.join("")}</svg>`,
+    svg: `<svg viewBox="0 0 ${W} ${FUND_H}" width="100%" role="img" aria-label="Funding rate history, annualised, with the side paying shown by colour">${s.join("")}</svg>`,
     coverage: cov.length / candles.length,
     from: candles[cov[0]][T],
     max, clipped,
