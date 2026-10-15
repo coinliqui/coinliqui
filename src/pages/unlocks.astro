@@ -848,7 +848,11 @@ const lede = top
     { href: "/data-sources", label: "Data sources", note: "Where each figure comes from, and its provenance." },
   ]} />
 
-  <style>
+  {/* GLOBAL, NOT SCOPED, because scoping put a data-astro-cid attribute on 413 elements of this page
+      and kept it 197 bytes over its wire budget after the fold styles had already moved out (15
+      October 2026). These rules ship only with this page, and none of its class names is used by
+      a component rendered here; h2.section also gives the Related block the page's own spacing. */}
+  <style is:global>
     .prov { display: inline-block; font-size: var(--fs-xs); font-weight: 500; padding: 2px 8px; border-radius: var(--r-pill); white-space: nowrap; }
     .prov--contract { background: var(--accent-fill); color: var(--accent); }
     .prov--project { background: var(--surface-3); color: var(--text-dim); }
