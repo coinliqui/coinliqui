@@ -1,7 +1,7 @@
 ---
 import Base from "../../layouts/Base.astro";
 import Overview from "../../components/Overview.astro";
-import { getSnapshot, coldStart, findPerp, getLive, oldestStamp } from "../../lib/hyperliquid.ts";
+import { getSnapshot, coldStart, findPerp, getLive, oldestStamp, currentMark } from "../../lib/hyperliquid.ts";
 import { usd, pct, paysClass, paysLabel, carryCost, LEGEND_PAYS, isHlBaseApr } from "../../lib/funding.ts";
 import { extremeBy } from "../../lib/extreme.ts";
 import Spark from "../../components/Spark.astro";
@@ -38,7 +38,6 @@ if (!snap.available) return coldStart();
    overlay freezes the mark alongside it rather than moving one half of a subtraction whose
    other half is pinned. */
 const live = await getLive(env?.SNAPSHOT);
-const markOf = (sym: string, fallback: number) => live?.mark?.[sym] ?? fallback;
 
 const rows = COINS.map((c) => {
   const perp = findPerp(snap.perps, c.symbol);
@@ -50,8 +49,8 @@ const rows = COINS.map((c) => {
     ...c,
     live: isLive(c),
     perp,
-    mark: perp ? markOf(c.symbol, perp.markPx) : NaN,
-    chg: perp && perp.prevDayPx > 0 ? markOf(c.symbol, perp.markPx) / perp.prevDayPx - 1 : NaN,
+    mark: perp ? currentMark(snap, live, perp).px : NaN,
+    chg: perp && perp.prevDayPx > 0 ? currentMark(snap, live, perp).px / perp.prevDayPx - 1 : NaN,
     ntl,
     apr: perp?.venues.find((v) => v.venue === "HlPerp")?.apr ?? NaN,
   };

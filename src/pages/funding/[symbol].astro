@@ -1,7 +1,7 @@
 ---
 import Base from "../../layouts/Base.astro";
 import More from "../../components/More.astro";
-import { getSnapshot, coldStart, findPerp, getLive } from "../../lib/hyperliquid.ts";
+import { getSnapshot, coldStart, findPerp, getLive, currentMark } from "../../lib/hyperliquid.ts";
 import { VENUE_LABEL, pct, usd, rawRate, carryCost, settlementsPerYear, nextSettlement, paysClass, paysLabel, type Venue } from "../../lib/funding.ts";
 import { liquidationPrice, type MarginTable, roomVerdict } from "../../lib/margin.ts";
 import { getCandles, getM15, getHourly, getFunding } from "../../lib/candles.ts";
@@ -78,9 +78,7 @@ const carry7d = hl ? carryCost(10_000, hl.apr, 7) : NaN;
    the time it was read. The hero keeps moving after load; the sentence names its own inputs, so a
    repaint cannot make it wrong — it stays a statement about the minute it names. */
 const live = await getLive(env?.SNAPSHOT);
-const liveMark = live?.mark?.[p.symbol];
-const markNow = typeof liveMark === "number" && Number.isFinite(liveMark) ? liveMark : p.markPx;
-const markAt = markNow === liveMark && live && Number.isFinite(live.at) ? live.at : snap.fetchedAt;
+const { px: markNow, at: markAt } = currentMark(snap, live, p);
 /* A STAMP NAMES ITS DAY WHEN IT IS NOT TODAY'S. "the Hyperliquid mark at 15:16 UTC" is exact on a
    live key written a minute ago and ambiguous on one the worker last wrote yesterday — the fallback
    to the snapshot, or a candle store two sweeps behind. The date is added only when it differs from

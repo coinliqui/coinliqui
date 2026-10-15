@@ -1,7 +1,7 @@
 ---
 import More from "../../components/More.astro";
 import Base from "../../layouts/Base.astro";
-import { getSnapshot, coldStart, findPerp, getLive, oldestStamp } from "../../lib/hyperliquid.ts";
+import { getSnapshot, coldStart, findPerp, getLive, oldestStamp, currentMark } from "../../lib/hyperliquid.ts";
 import { usd, pct, VENUE_LABEL, paysClass, paysLabel, carryCost, type Venue } from "../../lib/funding.ts";
 import { maintenanceMarginFraction, corridorAt, type MarginTable } from "../../lib/margin.ts";
 import tables from "../../data/margin-tables.json";
@@ -72,7 +72,8 @@ const perp = findPerp(snap.perps, coin.symbol);
 /* THE ONE CLOCK THAT MATTERS HERE. `live` is written by the one-minute cron; the snapshot is
    five-minutely. Preferring live.mark puts the headline price and the funding beside it on the
    same tick, and the fallback keeps a just-deployed page working one clock slower. */
-const markNow = live?.mark?.[coin.symbol] ?? perp?.markPx ?? NaN;
+const cur = perp ? currentMark(snap, live, perp) : null;
+const markNow = cur ? cur.px : NaN;
 const price = markNow;
 const dp = priceDp(price);
 const px = (v: number) => usd(v, dp);
@@ -204,7 +205,7 @@ const tier1 = marginTable ? [...marginTable.marginTiers].sort((a, b) => a.lowerB
    the top is repainted every 30 seconds by public/interact.js, and these are server arithmetic —
    so the sentence names the mark and its UTC time instead of calling it "a mark", and says that
    the price above moves on without it. `markAt` is the clock `markNow` actually came from. */
-const markAt = live?.mark?.[coin.symbol] != null ? live!.at : snap.fetchedAt;
+const markAt = cur ? cur.at : snap.fetchedAt;
 const markClock = Number.isFinite(markAt) && markAt > 0 ? utcStamp(markAt) : null;
 const rungs = tier1 && perp && Number.isFinite(markNow) && markNow > 0
   ? [...new Set([1, 0.6, 0.4, 0.25].map((f) => Math.max(2, Math.round(tier1.maxLeverage * f))))]

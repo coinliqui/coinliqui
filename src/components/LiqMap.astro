@@ -69,8 +69,10 @@ interface Props {
   /* THE MODEL, computed by the route so its <head> can carry the reader's reading — see mapModel
      in src/lib/liqmap.ts. */
   model: MapModel;
+  /** the mark every figure here is computed from, and when it was read — currentMark() */
+  markNow: { px: number; at: number; live: boolean };
 }
-const { perp, table, snap, params: q, crumb, siblings = true, hourly, model } = Astro.props;
+const { perp, table, snap, params: q, crumb, siblings = true, hourly, model, markNow } = Astro.props;
 
 /* =========================================================================================
    EVERY OTHER CONTRACT'S MAP, AS CHIPS, AND THE MEASUREMENT BEHIND IT.
@@ -107,7 +109,7 @@ const mapSiblings = snap.perps.filter(
 );
 const tiers = [...table.marginTiers].sort((a, b) => a.lowerBound - b.lowerBound);
 const tier1 = tiers[0];
-const mark = perp.markPx;
+const mark = markNow.px;
 /* DISTANCE FROM THE MARK THIS PAGE NAMES, computed here and nowhere else. The map's clusters carry
    `fromClose` — measured from the last drawn candle, the only price buildLiqMap is given — and every
    place on this page that says "from the mark" means the live mark printed beside it. See the note
@@ -155,7 +157,7 @@ const carry: [string, string][] = [
   ...(profile !== DEFAULT_PROFILE ? [["profile", profile.key] as [string, string]] : []),
   ...(win !== DEFAULT_WIN ? [["win", String(win.days)] as [string, string]] : []),
 ];
-const paint = map ? paintHeatMap(map, { live: { px: mark, at: snap.fetchedAt } }) : null;
+const paint = map ? paintHeatMap(map, { live: { px: mark, at: markNow.at } }) : null;
 const warmBars = map ? map.warmBars : 0;
 const stepMs = win.factor * 3_600_000;
 const totalClustered = map ? map.clusters.reduce((s, c) => s + c.notional, 0) : 0;
@@ -420,8 +422,8 @@ const formNote: string | null = (() => {
       <More label="The dashed line, and why the map carries two ages">
         <p class="datanote">
           The dashed line is the
-          <b>live mark, {axisPx(mark)}</b>, from the snapshot taken
-          {" "}<time datetime={new Date(snap.fetchedAt).toISOString()} data-fresh={snap.fetchedAt}>{ageWords(minutesSince(snap.fetchedAt))}</time>. Two
+          <b>{markNow.live ? "live mark" : "snapshot mark"}, {axisPx(mark)}</b>, read
+          {" "}<time datetime={new Date(markNow.at).toISOString()} data-fresh={markNow.at}>{ageWords(minutesSince(markNow.at))}</time>. Two
           different ages, so neither is allowed to stand for the other.
         </p>
       </More>

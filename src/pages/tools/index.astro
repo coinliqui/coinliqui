@@ -1,12 +1,15 @@
 ---
 import Base from "../../layouts/Base.astro";
 import More from "../../components/More.astro";
-import { getSnapshot, coldStart, requestedPerp } from "../../lib/hyperliquid.ts";
+import { getSnapshot, coldStart, requestedPerp, getLive, currentMark } from "../../lib/hyperliquid.ts";
 import { pct, usd, priceDp, carryCost, toApr, VENUE_LABEL } from "../../lib/funding.ts";
 import { liquidationPrice, maintenanceMarginFraction, type MarginTable } from "../../lib/margin.ts";
 import tables from "../../data/margin-tables.json";
 import { widestSpread } from "../../lib/extreme.ts";
 const snap = await getSnapshot((Astro.locals as any)?.runtime?.env?.SNAPSHOT, import.meta.env.DEV);
+const live = await getLive((Astro.locals as any)?.runtime?.env?.SNAPSHOT);
+/* Each contract's mark as the funding page and the tools print it (currentMark). */
+const mk = (p: (typeof snap.perps)[number]) => currentMark(snap, live, p).px;
 // Cold store: 503 + Retry-After rather than a page rendered from nothing.
 if (!snap.available) return coldStart();
 
@@ -48,7 +51,7 @@ const tools = [
     blurb: "Risk-based sizing that checks the stop against the tier-correct liquidation price. A stop beyond liquidation is not a stop.",
     opens: pinnedPerp,
     live: pinnedPerp ? `${pinnedPerp.symbol} · tier-checked` : "—",
-    alone: pinnedPerp ? `${pinnedPerp.symbol} at ${usd(pinnedPerp.markPx, priceDp(pinnedPerp.markPx))}` : "",
+    alone: pinnedPerp ? `${pinnedPerp.symbol} at ${usd(mk(pinnedPerp), priceDp(mk(pinnedPerp)))}` : "",
   },
   {
     href: "/tools/leverage",
@@ -56,7 +59,7 @@ const tools = [
     blurb: "The advertised maximum applies to the smallest tier only. Shows what your notional actually allows, and where the next step falls.",
     opens: pinnedPerp,
     live: pinnedPerp ? `${pinnedPerp.symbol} advertised ${pinnedPerp.maxLeverage}×` : "—",
-    alone: pinnedPerp ? `${pinnedPerp.symbol} at ${usd(pinnedPerp.markPx, priceDp(pinnedPerp.markPx))}` : "",
+    alone: pinnedPerp ? `${pinnedPerp.symbol} at ${usd(mk(pinnedPerp), priceDp(mk(pinnedPerp)))}` : "",
   },
   {
     href: "/tools/funding-cost",
@@ -64,7 +67,7 @@ const tools = [
     blurb: "What a position costs to hold, counting real settlements rather than reading the quoted rate as a daily number.",
     opens: costPerp,
     live: `${costPerp.symbol} ${pct(costVenue.apr)} APR`,
-    alone: `${costPerp.symbol} at ${usd(costPerp.markPx, priceDp(costPerp.markPx))}, funding ${pct(costVenue.apr)} a year on ${VENUE_LABEL[costVenue.venue]}`,
+    alone: `${costPerp.symbol} at ${usd(mk(costPerp), priceDp(mk(costPerp)))}, funding ${pct(costVenue.apr)} a year on ${VENUE_LABEL[costVenue.venue]}`,
   },
   {
     href: "/tools/funding-arbitrage",
@@ -97,7 +100,7 @@ const names = (ts: typeof tools) => {
   const n = ts.map((t, i) => (i === 0 ? t.name : t.name.toLowerCase()));
   return n.length < 2 ? (n[0] ?? "") : `${n.slice(0, -1).join(", ")} and ${n[n.length - 1]}`;
 };
-const leadOpens = `${leadPerp.symbol} at ${usd(leadPerp.markPx, priceDp(leadPerp.markPx))}, funding ${pct(leadVenue.apr)} a year on ${VENUE_LABEL[leadVenue.venue]}`;
+const leadOpens = `${leadPerp.symbol} at ${usd(mk(leadPerp), priceDp(mk(leadPerp)))}, funding ${pct(leadVenue.apr)} a year on ${VENUE_LABEL[leadVenue.venue]}`;
 const lede = others.length === 0 && leadGroup.length === tools.length
   ? `Every calculator here opens on ${leadOpens}`
   : [
@@ -124,10 +127,10 @@ const hl = picked ? venueOf(picked.perp) : null;
 const SIZE_USD = 10_000;
 const LEV = 10;
 const HOLD_DAYS = 30;
-const liq = picked && picked.perp.markPx > 0
+const liq = picked && mk(picked.perp) > 0
   ? liquidationPrice({
-      entryPrice: picked.perp.markPx,
-      positionSize: SIZE_USD / picked.perp.markPx,
+      entryPrice: mk(picked.perp),
+      positionSize: SIZE_USD / mk(picked.perp),
       leverage: LEV,
       side: "long",
       table: picked.table,

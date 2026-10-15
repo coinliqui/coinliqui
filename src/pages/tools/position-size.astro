@@ -1,6 +1,6 @@
 ---
 import Base from "../../layouts/Base.astro";
-import { getSnapshot, coldStart, requestedPerp } from "../../lib/hyperliquid.ts";
+import { getSnapshot, coldStart, requestedPerp, getLive, currentMark } from "../../lib/hyperliquid.ts";
 import { usd, pct, queryNum, stopVerdict } from "../../lib/funding.ts";
 import ASSETS from "../../data/assets.json";
 import { liquidationPrice, tierFor, maintenanceMarginFraction, type MarginTable, type Side, roomVerdict } from "../../lib/margin.ts";
@@ -25,6 +25,9 @@ const picked = requestedPerp(snap.perps, wantedSymbol, tables as Record<string, 
 if (picked === null) return coldStart();
 if (picked === "unknown") return Astro.rewrite(`/404?symbol=${encodeURIComponent(wantedSymbol!)}`);
 const { perp, table } = picked;
+/* The mark the page computes from: the live one when there is one, as on the funding page that
+   links here (currentMark). */
+const markNow = currentMark(snap, await getLive((Astro.locals as any)?.runtime?.env?.SNAPSHOT), perp);
 const side = (q.get("side") === "short" ? "short" : "long") as Side;
 
 /* THE BOUNDS THE SERVER ENFORCES ARE THE BOUNDS THE FORM OFFERS, from one object.
@@ -44,7 +47,7 @@ const BOUNDS = {
 };
 const account = queryNum(q.get("account"), 25_000, BOUNDS.account);
 const riskPct = queryNum(q.get("risk"), 1, BOUNDS.risk);
-const entry = queryNum(q.get("entry"), perp.markPx, BOUNDS.price);
+const entry = queryNum(q.get("entry"), markNow.px, BOUNDS.price);
 /* PRICE PRECISION IS A FUNCTION OF MAGNITUDE, not a constant. Same rule as the contract
    pages: src/pages/funding/[symbol].astro:48. */
 const dp = priceDp(entry);
@@ -316,7 +319,7 @@ const description = `Risk-based position sizing for ${perp.symbol} perpetuals th
       Risk-based sizing, checked against the price at which the position is actually closed.
       <LedeSized data-when="liq stop tie wrongside">At <span id="l-lev">{slot.lev}</span><span id="l-clamp">{slot.clamp}</span> the liquidation sits <strong id="l-move">{slot.move}</strong> from the entry
         and the stop <span id="l-stopmove">{slot.stopMove}</span> away, so <span id="l-phrase">{slot.phrase}</span>.</LedeSized><LedeFlat data-when="flat">Your stop is the entry price, so there is no distance to size a position from.</LedeFlat>
-      Entry defaults to {perp.symbol}&rsquo;s mark price, {usd(perp.markPx, priceDp(perp.markPx))}.
+      Entry defaults to {perp.symbol}&rsquo;s mark price, {usd(markNow.px, priceDp(markNow.px))}.
     </p>
     <Advisory />
   </div>

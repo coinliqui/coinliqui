@@ -1,6 +1,6 @@
 ---
 import Base from "../../layouts/Base.astro";
-import { getSnapshot, coldStart, requestedPerp } from "../../lib/hyperliquid.ts";
+import { getSnapshot, coldStart, requestedPerp, getLive, currentMark } from "../../lib/hyperliquid.ts";
 import { usd, pct, compact, queryNum } from "../../lib/funding.ts";
 import { corridorAt, tierFor, maintenanceMarginFraction, type MarginTable, type Side } from "../../lib/margin.ts";
 import { extremeBy } from "../../lib/extreme.ts";
@@ -26,6 +26,9 @@ const picked = requestedPerp(snap.perps, wantedSymbol, tables as Record<string, 
 if (picked === null) return coldStart();
 if (picked === "unknown") return Astro.rewrite(`/404?symbol=${encodeURIComponent(wantedSymbol!)}`);
 const { perp, table } = picked;
+/* The mark the page computes from: the live one when there is one, as on the funding page that
+   links here (currentMark). */
+const markNow = currentMark(snap, await getLive((Astro.locals as any)?.runtime?.env?.SNAPSHOT), perp);
 const side = (q.get("side") === "short" ? "short" : "long") as Side;
 
 // A notional large enough to land past the first tier boundary by default, so the page opens
@@ -55,7 +58,7 @@ const ignoredLine = (what: string, raw: string, range: string, used: string) =>
    (src/pages/funding/[symbol].astro). usd(x, 2) annihilates anything under half a cent, so
    /tools/leverage?symbol=PUMP rendered "Liquidation falls at $0.00, 5.26% from the mark" —
    two statements that cannot both be true, server-side, at first byte. */
-const pdp = priceDp(perp.markPx);
+const pdp = priceDp(markNow.px);
 const px = (v: number) => usd(v, pdp);
 const { tier, index } = tierFor(table, notional);
 const permitted = tier.maxLeverage;
@@ -73,7 +76,7 @@ const maintenanceMargin = notional * mmf;
    where the cap is 5×" and price liquidation at tier 1's maintenance margin. corridorAt takes the
    maintenance fraction directly — the same one the cards print — and is the formula the script
    below repeats, so the server and a keystroke cannot differ on it either. */
-const corridor = corridorAt(perp.markPx, effective, mmf);
+const corridor = corridorAt(markNow.px, effective, mmf);
 const liq = side === "long" ? corridor.longLiq : corridor.shortLiq;
 const liqDist = side === "long" ? corridor.longDist : corridor.shortDist;
 
@@ -234,7 +237,7 @@ const description = capCount > 1
     <p class="crumb"><a href="/tools">Tools</a> › Leverage</p>
     <h1>Leverage calculator</h1>
     <p>
-      {reachLine} Opens on {perp.symbol} at {px(perp.markPx)}; this shows what the tier table really
+      {reachLine} Opens on {perp.symbol} at {px(markNow.px)}; this shows what the tier table really
       allows at <strong>your</strong> notional, and what it costs in margin.
     </p>
     <Advisory />
@@ -454,7 +457,7 @@ const description = capCount > 1
         previews exactly what Calculate would send. It is also shorter than the four comparisons.
       Paid for by the local `pc` (pct replaces it), the null checks on ids and on the form that
       this page always renders, the per-branch className string and the forEach tier search. */}
-  <script is:inline type="module" define:vars={{ table, markPx: perp.markPx, sharedV: ASSETS["/shared.js"] }}>
+  <script is:inline type="module" define:vars={{ table, markPx: markNow.px, sharedV: ASSETS["/shared.js"] }}>
     const { usd, pct, priceDp, maintenanceMarginFraction } = await import("/shared.js" + (sharedV ? `?v=${sharedV}` : ""));
     const form = document.querySelector(".calc");
     const set = (id, v) => document.getElementById(id).textContent = v;

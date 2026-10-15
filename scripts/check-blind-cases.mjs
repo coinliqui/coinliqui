@@ -801,6 +801,7 @@ const cases = [
       ["src/lib/oi-history.ts", "export async function readOiAt(db, s, at) {}"],
       ["src/lib/sparks.ts", "export const sparkDaysOf = (s) => 0;"],
       ["src/lib/coins.ts", "export const coinPageFor = (s) => null;"],
+      ["src/lib/hyperliquid.ts", "export function currentMark(snap, live, perp) { return live?.mark?.[perp.symbol]; }"],
       /* a comment quoting the shape it replaced is not the shape */
       ["src/pages/x.astro", "/* was: [\"Jan\", \"Feb\", \"Mar\"] and d > 0 ? \"+\" : \"−\" */"],
     ]),
@@ -811,6 +812,7 @@ const cases = [
       duplicateRuleImplementations([["src/pages/x.astro", '{d > 0 ? "+" : "−"}{x}%']]).some((d) => d.includes("hand-made sign")),
       duplicateRuleImplementations([["src/pages/x.astro", '<td>{(r.corridor * 100).toFixed(2)}%</td>']]).some((d) => d.includes("formatted by hand")),
       duplicateRuleImplementations([["src/pages/status.astro", 'const WORDS = ["no", "one", "two", "three"];']]).some((d) => d.includes("number words")),
+      duplicateRuleImplementations([["src/pages/coins/index.astro", 'const m = live?.mark?.[sym] ?? perp.markPx;']]).some((d) => d.includes("live mark")),
     ],
   },
   {

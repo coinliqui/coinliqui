@@ -34,7 +34,7 @@
    ========================================================================================= */
 import Base from "../../layouts/Base.astro";
 import LiqMap from "../../components/LiqMap.astro";
-import { getSnapshot, coldStart, findPerp, requestedPerp } from "../../lib/hyperliquid.ts";
+import { getSnapshot, coldStart, findPerp, requestedPerp, getLive, currentMark } from "../../lib/hyperliquid.ts";
 import { maintenanceMarginFraction, type MarginTable } from "../../lib/margin.ts";
 import { getHourly } from "../../lib/candles.ts";
 import { utcStamp } from "../../lib/freshness.ts";
@@ -116,7 +116,9 @@ const title = mapTitle(p.symbol, state);
 /* Open interest at the moment the day-earlier run's candles end (dayEarlierCut), for mapModel. */
 const cut = dayEarlierCut(hourly, Astro.url.searchParams);
 const oiThen = cut === null ? null : await readOiAt((Astro.locals as any)?.runtime?.env?.DB, p.symbol, cut);
-const model = mapModel({ hourly, q: Astro.url.searchParams, mark: p.markPx, oiNotional: p.oiNotional, maxLeverage: cap, mmf: maintenanceMarginFraction(cap), oiThen });
+/* One mark for the model and every figure on the page, with its time — see currentMark. */
+const markNow = currentMark(snap, await getLive(env?.SNAPSHOT), p);
+const model = mapModel({ hourly, q: Astro.url.searchParams, mark: markNow.px, oiNotional: p.oiNotional, maxLeverage: cap, mmf: maintenanceMarginFraction(cap), oiThen });
 const description = mapDescription(p.symbol, { state, maxLeverage: cap, days: win.days, reading: model.reading, asOf: utcStamp(snap.fetchedAt, 0) });
 ---
 
@@ -126,7 +128,7 @@ const description = mapDescription(p.symbol, { state, maxLeverage: cap, days: wi
   fetchedAt={snap.fetchedAt}
   crumb={{ href: "/liquidations", label: "Liquidation maps", current: p.symbol }}
 >
-  <LiqMap perp={p} table={table} snap={snap} hourly={hourly} model={model} params={Astro.url.searchParams} crumb={{ href: "/liquidations", label: "Liquidation maps", current: p.symbol }} />
+  <LiqMap perp={p} table={table} snap={snap} hourly={hourly} model={model} markNow={markNow} params={Astro.url.searchParams} crumb={{ href: "/liquidations", label: "Liquidation maps", current: p.symbol }} />
 
   <p style="margin-top:24px">
     {/* Not "every covered contract's map": a contract with too little history has none. */}

@@ -20,7 +20,7 @@
    ========================================================================================= */
 import Base from "../layouts/Base.astro";
 import LiqMap from "../components/LiqMap.astro";
-import { getSnapshot, coldStart, requestedPerp } from "../lib/hyperliquid.ts";
+import { getSnapshot, coldStart, requestedPerp, getLive, currentMark } from "../lib/hyperliquid.ts";
 import { usd, pct, priceDp } from "../lib/funding.ts";
 import { maintenanceMarginFraction, corridorAt, type MarginTable } from "../lib/margin.ts";
 import { utcStamp } from "../lib/freshness.ts";
@@ -99,12 +99,14 @@ const title = mapTitle(perp.symbol, state);
 /* Open interest at the moment the day-earlier run's candles end (dayEarlierCut), for mapModel. */
 const cut = dayEarlierCut(hourly, q);
 const oiThen = cut === null ? null : await readOiAt((Astro.locals as any)?.runtime?.env?.DB, perp.symbol, cut);
-const model = mapModel({ hourly, q: q, mark: perp.markPx, oiNotional: perp.oiNotional, maxLeverage: cap, mmf: maintenanceMarginFraction(cap), oiThen });
+/* One mark for the model and every figure on the page, with its time — see currentMark. */
+const markNow = currentMark(snap, await getLive(env?.SNAPSHOT), perp);
+const model = mapModel({ hourly, q: q, mark: markNow.px, oiNotional: perp.oiNotional, maxLeverage: cap, mmf: maintenanceMarginFraction(cap), oiThen });
 const description = mapDescription(perp.symbol, { state, maxLeverage: cap, days: win.days, reading: model.reading, asOf: utcStamp(snap.fetchedAt, 0) });
 ---
 
 <Base title={title} description={description} fetchedAt={snap.fetchedAt}>
-  <LiqMap perp={perp} table={table} snap={snap} hourly={hourly} model={model} params={q} siblings={false} />
+  <LiqMap perp={perp} table={table} snap={snap} hourly={hourly} model={model} markNow={markNow} params={q} siblings={false} />
 
   <h2 class="section">A page for every covered contract</h2>
   {/* THE COUNT AND THE TABLE ARE ONE ARRAY, and for one morning they were two. This note said

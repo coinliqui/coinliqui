@@ -2,7 +2,7 @@
 import { moneyAt, printedMoney as printed, nearPrinted as near, fitDecimals as fit, exactUsd, fineNum as num, numberWord } from "../../../public/shared.js";
 import ASSETS from "../../data/assets.json";
 import Base from "../../layouts/Base.astro";
-import { getSnapshot, coldStart, findPerp } from "../../lib/hyperliquid.ts";
+import { getSnapshot, coldStart, findPerp, getLive, currentMark } from "../../lib/hyperliquid.ts";
 import { usd, pct, rawRate, toApr, VENUE_LABEL, paysClass, type Venue, type VenueFunding, paymentDirection, LEGEND_PAYS, priceDp } from "../../lib/funding.ts";
 import { extremeBy, type Extreme } from "../../lib/extreme.ts";
 
@@ -36,6 +36,9 @@ const clip = (s: string) => (s.length > 24 ? s.slice(0, 24) + "…" : s);
 const askedSymbol = (q.get("symbol") ?? "").trim();
 const foundPerp = findPerp(snap.perps, askedSymbol);
 const perp = foundPerp ?? snap.perps[0];
+/* The mark the page computes from: the live one when there is one, as on the funding page that
+   links here (currentMark). */
+const markNow = currentMark(snap, await getLive((Astro.locals as any)?.runtime?.env?.SNAPSHOT), perp);
 if (askedSymbol && !foundPerp) notices.push(`There is no “${clip(askedSymbol)}” perpetual in these figures, so the page shows ${perp.symbol}.`);
 
 const askedVenue = (q.get("venue") ?? "").trim();
@@ -447,7 +450,7 @@ const verdictTail =
    republishes. markPx comes from Hyperliquid's context for every venue choice, so the venue in the
    price clause is a constant and the chosen venue is named separately. Decimals follow priceDp, as
    on every other price, so TRX is not "$0.33". */
-const markText = usd(perp.markPx, priceDp(perp.markPx));
+const markText = usd(markNow.px, priceDp(markNow.px));
 
 const title = `Funding cost calculator — what it costs to hold ${perp.symbol}`;
 const description = `What holding a ${perp.symbol} perpetual actually costs in funding, using each venue's real settlement interval rather than treating the quoted rate as a daily number.`;

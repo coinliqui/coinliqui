@@ -340,6 +340,21 @@ export async function getLive(kv: KVNamespace | undefined): Promise<LiveSet | nu
   return null;
 }
 
+/**
+ * THE MARK A PAGE COMPUTES FROM, AND WHEN IT WAS READ — one rule for every page. The one-minute live
+ * mark when the live key holds a finite one for the symbol, else the five-minute snapshot's. On
+ * 15 October 2026 /funding/btc and /coins/bitcoin used the live mark while /liquidations and the
+ * calculators used the snapshot's and called it live: a 10× long liquidated at $73,807.29 on one and
+ * $73,767.19 on the other, the funding page linking "size a position against this liquidation price"
+ * to a tool that showed the second. `live` says which clock it came from.
+ */
+export function currentMark(snap: Snapshot, live: LiveSet | null, perp: Perp): { px: number; at: number; live: boolean } {
+  const m = live?.mark?.[perp.symbol];
+  return typeof m === "number" && Number.isFinite(m) && m > 0 && live && Number.isFinite(live.at)
+    ? { px: m, at: live.at, live: true }
+    : { px: perp.markPx, at: snap.fetchedAt, live: false };
+}
+
 /** Margin tables change rarely; fetched at build time and committed. */
 export async function fetchMarginTable(id: number): Promise<MarginTable> {
   const raw = await info<{ description: string; marginTiers: { lowerBound: string; maxLeverage: number }[] }>({
