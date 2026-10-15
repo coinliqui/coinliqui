@@ -419,31 +419,31 @@ const noChangeReason = oiHist.status === "no-store"
       A dash in the Change column is a contract with no usable stored reading {oiBandSpan}, the window each change is taken from &mdash; {dashWho} here. That is an absence, not a change of zero{bookChange != null ? `, so ${unmeasured.length === 1 ? "it is" : "they are"} left out of the book's change above` : ""}.
     </p>
   )}
-  <div class="panel"><table class="tbl" data-sortable>
+  <div class="panel"><table class="tbl oitbl" data-sortable>
     <thead><tr><th>Coin</th><th class="num">Open interest <span class="thscope">Hyperliquid</span></th>{oiReady && <th class="num">Change <span class="thscope">{oiColScope}</span></th>}<th class="num">24h volume <span class="thscope">Hyperliquid</span></th><th class="num">Turnover (24h volume ÷ OI)</th><th class="num">Max leverage</th></tr></thead>
     <tbody>
       {rows.map((p) => (
         <tr>
           <td><a href={`/funding/${p.symbol.toLowerCase()}`}>{p.symbol}</a></td>
-          <td class="num">{usd(p.oiNotional)}</td>
+          <td>{usd(p.oiNotional)}</td>
           {oiReady && (() => {
             const d = changeOf(p);
             /* AN ABSENCE, NOT A ZERO. A contract listed since the stored reading has no history,
                and printing 0.00% for it would claim it had not moved. The legend above the table
                says so in words; the title repeats it where a sorted table has put the dash. */
             return d === null
-              ? <td class="num"><span class="faint" title={`No usable stored reading ${oiBandSpan}`}>—</span></td>
+              ? <td><span class="faint" title={`No usable stored reading ${oiBandSpan}`}>—</span></td>
               /* NEUTRAL, AND THE GATE WAS RIGHT TO REFUSE THE FIRST VERSION. It used the funding
                  pair, and colourLegend pointed out that this page never says what amber and cyan
                  encode — because they encode who PAYS whom, and a book growing is not a payment.
                  This site keeps exactly two colour languages and both are spoken for: amber and
                  cyan are the funding direction, green and red are the candles'. A third quantity
                  does not get to borrow one; the sign carries the sign. */
-              : <td class="num">{signedPct(d)}</td>;
+              : <td>{signedPct(d)}</td>;
           })()}
-          <td class="num">{usd(p.dayNtlVlm)}</td>
-          <td class="num">{p.oiNotional > 0 ? (p.dayNtlVlm / p.oiNotional).toFixed(2) + "×" : "—"}</td>
-          <td class="num">{p.maxLeverage}×</td>
+          <td>{usd(p.dayNtlVlm)}</td>
+          <td>{p.oiNotional > 0 ? (p.dayNtlVlm / p.oiNotional).toFixed(2) + "×" : "—"}</td>
+          <td>{p.maxLeverage}×</td>
         </tr>
       ))}
     </tbody>
@@ -452,6 +452,8 @@ const noChangeReason = oiHist.status === "no-store"
       the book line's bytes were found instead of in a raised budget. Every class here is prefixed
       oiwin/oibook and used nowhere else. */}
   <style is:global>
+    /* Every column after the coin is a figure: one rule here instead of class="num" on 280 cells. */
+    .oitbl td + td { font-family: var(--mono); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
     .oiwin { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 0 0 16px; }
   .oiwin__label { font-size: var(--fs-sm); color: var(--text-dim); margin-right: 4px; }
   .oiwin__opt { padding: 6px 12px; border-radius: 999px; font-size: var(--fs-sm); color: var(--text-dim); text-decoration: none; border: 1px solid var(--border-soft); }
