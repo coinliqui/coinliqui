@@ -173,34 +173,13 @@ const stripTurn = total > 0 ? stripVol / total : NaN;
 const topOi = rows.slice(0, 10);
 const topShare = total > 0 ? topOi.reduce((s, p) => s + p.oiNotional, 0) / total : 0;
 const maxOi = topOi.length ? topOi[0].oiNotional : 1;
-/* THE WEEK BESIDE EACH BAR. A bar is a level; whether that level is being built or unwound is the
-   question a reader brings, and the answer for one coin was a click into ?w=7d and a scan for its
-   row. Each of the ten gets its last 7 days of 8-hour steps from the same series the book line
-   draws, scaled to its own range — the line is shape, not size, and the caption says so. The figure
-   beside it is the hub's 7-day change, from hourly readings by the table's rule (oiMoves reads the
-   same way), never a second change taken off bucket averages. A step with no reading breaks the
-   line. Drawn in whole units with a 3-unit step and relative moves: the ten cost about 300 bytes on
-   the wire, found in the layout's inline scripts rather than in a raised budget. */
-const SPK_H = 12;
-const wkHist = oiWin.hours === 168 ? oiHist : await readOiHistory(oiDb, oiNow, 168, OI_BAND_HOURS);
-const wkFrom = oiNow - 168 * HOUR_MS;
-const spark = (symbol: string) => {
-  const v = oiSeries?.bySymbol.get(symbol);
-  if (!v) return null;
-  const pts = oiSeries!.buckets.map((t, i) => [t, v[i]] as const).filter(([t]) => t >= wkFrom).map(([, x]) => x);
-  const ok = pts.filter(Number.isFinite);
-  if (ok.length < 2) return null;
-  const lo = Math.min(...ok), hi = Math.max(...ok);
-  const Y = (x: number) => Math.round(((hi - x) / (hi - lo || 1)) * SPK_H) + 1;
-  let d = "", prev: number | null = null, gap = 0;
-  pts.forEach((x, i) => {
-    if (!Number.isFinite(x)) { prev = null; gap++; return; }
-    const y = Y(x);
-    d += prev == null ? `M${i * 3} ${y}` : `l3${y - prev < 0 ? "" : " "}${y - prev}`;
-    prev = y;
-  });
-  return { d, w: (pts.length - 1) * 3, lo, hi, gap };
-};
+/* NO WEEK LINE BESIDE EACH BAR, MEASURED (15 October 2026). Ten 7-day lines from the book series,
+   with the hub's 7-day change beside each, shipped as f3ef4f9 and put this page 481 bytes over its
+   9,000 wire budget on the deploy's own check. Re-encoded at the cheapest that still reads as a
+   line — daily points, relative moves, no per-line label — they still cost 215 bytes against a
+   page that sits at 8,650–8,900 on data alone. The budget is not raised (verify-live.mjs), so the
+   lines would have to displace something on the page, and nothing here is worth less. The weekly
+   change per contract is one click away at ?w=7d. */
 
 /* ========================================================================================
    IS THE BOOK GROWING — the half of this page's question that was only ever in a column.
@@ -424,27 +403,20 @@ const noChangeReason = oiHist.status === "no-store"
       lead={pct(topShare)}
       leadNote={`of the ${usd(total)} book sits in the ten largest contracts`}
       fetchedAt={snap.fetchedAt}>
-      <div class="bars oispk">
-        {topOi.map((p) => {
-          const s = spark(p.symbol);
-          const d7 = oiChange(wkHist, p.symbol, p.oiNotional);
-          return (
+      <div class="bars">
+        {topOi.map((p) => (
           <>
             <span class="bars__label"><a href={`/funding/${p.symbol.toLowerCase()}`}>{p.symbol}</a></span>
             <span class="bars__track"><span class="bars__fill" style={`width:${Math.max(2, (p.oiNotional / maxOi) * 100)}%`}></span></span>
             <span class="bars__value">{usd(p.oiNotional)} <span class="faint">{pct(p.oiNotional / total)}</span></span>
-            <span class="oispk__wk">{s && <svg viewBox={`0 0 ${s.w} ${SPK_H + 2}`} preserveAspectRatio="none" role="img" aria-label={`${p.symbol} open interest over 7 days, between ${compact(s.lo)} and ${compact(s.hi)}`}><path d={s.d} /></svg>}{d7 == null ? <span class="faint">—</span> : signedPct(d7)} <span class="faint">7d</span></span>
           </>
-          );
-        })}
+        ))}
       </div>
       <More slot="note" label="How the bars are scaled">
         <p>
           Open interest is one venue&rsquo;s book, not the market&rsquo;s: these are Hyperliquid&rsquo;s
           positions only. Bars are scaled to the largest, {usd(maxOi)}, and the percentage beside each
-          is its share of the whole book. The line after it is that contract&rsquo;s last 7 days in
-          {" "}{BOOK_STEP_H}-hour steps, each scaled to its own range, so it shows shape and not size; the
-          figure is its 7-day change from hourly readings, as in the table at <a class="link" href="/open-interest?w=7d">7 days</a>.
+          is its share of the whole book.
         </p>
       </More>
     </Figure>
@@ -499,11 +471,6 @@ const noChangeReason = oiHist.status === "no-store"
   .oibook__plot { position: relative; height: 180px; color: var(--text-dim); background: var(--surface-1); border-radius: 12px; overflow: hidden; }
   .oibook__plot svg { display: block; width: 100%; height: 100%; }
   .oibook__y { position: absolute; left: 10px; transform: translateY(-50%); font: 11.5px var(--mono); color: var(--text-dim); background: var(--surface-1); padding: 0 4px; }
-  .oispk { grid-template-columns: auto 1fr auto auto; }
-  .oispk__wk { display: flex; align-items: center; gap: 8px; font: 12.5px var(--mono); white-space: nowrap; }
-  .oispk__wk svg { width: 60px; height: 16px; fill: none; stroke: var(--text-dim); stroke-width: 1.5; stroke-linejoin: round; }
-  .oispk__wk path { vector-effect: non-scaling-stroke; }
-  @media (max-width: 560px) { .oispk__wk { grid-column: 2 / -1; margin-top: -2px; } }
   .oibook__x { display: flex; justify-content: space-between; font: 11.5px var(--mono); color: var(--text-faint); margin-top: 4px; }
 </style>
 </Base>
