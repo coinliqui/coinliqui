@@ -87,11 +87,18 @@ export function parsePage(html) {
      to the fifty contract pages it reported "0 chart panels rendered" on every one of them —
      1,208 failures in eight seconds, uniform across every page and timeframe. A defect that
      uniform is the instrument, not the site: the charts were fine and the parser was blind. */
-  const svgs = [...html.matchAll(/data-xhair="c?pts-([^"]+)"/g)].map((m) => m[1]);
+  /* THE PHONE-WIDTH CHART IS A SECOND SVG IN THE SAME PANEL (src/components/PricePanel.astro), its
+     ids suffixed "-n". It is counted on its own rather than as a second panel: exactly one wide chart
+     and at most one narrow one, each with its own payload. */
+  const allSvgs = [...html.matchAll(/data-xhair="c?pts-([^"]+)"/g)].map((m) => m[1]);
+  const svgs = allSvgs.filter((k) => !k.endsWith("-n"));
+  const narrowSvgs = allSvgs.filter((k) => k.endsWith("-n")).map((k) => k.slice(0, -2));
   const rangeM = html.match(/data-prange="([-\d.eE]+),([-\d.eE]+)"/);
   const plotM = html.match(/data-plot="([\d,]+)"/);
   const axxM = html.match(/data-axx="([\d.]+)"/);
-  const jsonM = [...html.matchAll(/<script type="application\/json" id="c?pts-([^"]+)"[^>]*>([\s\S]*?)<\/script>/g)];
+  const jsonAll = [...html.matchAll(/<script type="application\/json" id="c?pts-([^"]+)"[^>]*>([\s\S]*?)<\/script>/g)];
+  const jsonM = jsonAll.filter((m) => !m[1].endsWith("-n"));
+  const narrowJson = jsonAll.filter((m) => m[1].endsWith("-n")).map((m) => m[1].slice(0, -2));
   /* THE BAR COUNT IS RENDERED TWO WAYS. Coin pages put the word "over" outside the element —
      `over <b data-tfstat>220 daily bars</b>` — and contract pages put it inside:
      `<b data-tfstat> over 220 daily bars </b>`. A regex anchored on the coin shape reported
@@ -160,6 +167,8 @@ export function parsePage(html) {
     payloadInPanel,
     active: buttons.find((b) => b.pressed)?.tf ?? null,
     svgTfs: svgs,
+    narrowTfs: narrowSvgs,
+    narrowJsonTfs: narrowJson,
     prange: rangeM ? [Number(rangeM[1]), Number(rangeM[2])] : null,
     plot: plotM ? plotM[1].split(",").map(Number) : null,
     axx: axxM ? Number(axxM[1]) : null,
@@ -219,6 +228,11 @@ export function chartFaults(p, wantTf, now = Date.now(), expected = EXPECTED_TFS
   if (p.svgTfs.length !== 1) f.push(`${p.svgTfs.length} chart panels rendered — exactly one must be`);
   else if (p.svgTfs[0] !== p.active) f.push(`panel is ${p.svgTfs[0]} while the active timeframe is ${p.active}`);
   if (p.jsonTfs.length !== 1) f.push(`${p.jsonTfs.length} crosshair payloads — exactly one must be`);
+  /* The phone-width chart, when present: one, of the active timeframe, with its own payload. */
+  const nT = p.narrowTfs ?? [], nJ = p.narrowJsonTfs ?? [];
+  if (nT.length > 1) f.push(`${nT.length} phone-width charts — at most one may be`);
+  if (nT.length === 1 && nT[0] !== p.active) f.push(`phone-width chart is ${nT[0]} while the active timeframe is ${p.active}`);
+  if (nT.length !== nJ.length || nT.some((k, i) => nJ[i] !== k)) f.push(`phone-width chart and its payload disagree (${nT.join(",") || "none"} vs ${nJ.join(",") || "none"})`);
   else if (p.jsonTfs[0] !== p.active) f.push(`payload is ${p.jsonTfs[0]} while the active timeframe is ${p.active}`);
 
   if (p.points === "unparseable") { f.push("crosshair payload is not valid JSON"); return f; }
@@ -341,6 +355,8 @@ if (BLIND) {
     ["the switch did not switch", (() => { const c = clone(clean); c.active = "4h"; c.svgTfs = ["4h"]; c.jsonTfs = ["4h"]; return c; })(), /did not switch/],
     ["panel and payload disagree", (() => { const c = clone(clean); c.svgTfs = ["4h"]; return c; })(), /panel is 4h/],
     ["two panels rendered", (() => { const c = clone(clean); c.svgTfs = ["1h", "4h"]; return c; })(), /chart panels rendered/],
+    ["a phone-width chart of another timeframe", (() => { const c = clone(clean); c.narrowTfs = ["4h"]; c.narrowJsonTfs = ["4h"]; return c; })(), /phone-width chart is 4h/],
+    ["a phone-width chart without its payload", (() => { const c = clone(clean); c.narrowTfs = ["1h"]; c.narrowJsonTfs = []; return c; })(), /disagree/],
     ["no payload at all", (() => { const c = clone(clean); c.points = null; return c; })(), /no crosshair payload/],
     ["payload is not JSON", (() => { const c = clone(clean); c.points = "unparseable"; return c; })(), /not valid JSON/],
     ["a single point", (() => { const c = clone(clean); c.points = c.points.slice(0, 1); return c; })(), /not a chart/],
