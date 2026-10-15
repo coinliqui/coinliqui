@@ -1433,6 +1433,9 @@ const schema = {
         .calc label { width: 100%; }
         .calc input, .calc select { width: 100%; }
         .calc .btn, .calc button { width: 100%; }
+        /* A chart's switches stay one row on a phone: three narrow selects, not a stack of three. */
+        .calc--chart { display: grid; grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); gap: 8px; }
+        .calc--chart select { min-width: 0; padding-left: 10px; padding-right: 28px; }
       }
     </style>
 
