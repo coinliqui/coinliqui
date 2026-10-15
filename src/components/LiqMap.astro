@@ -813,8 +813,14 @@ const formNote: string | null = (() => {
     .reads b { display: block; font-size: 21px; font-weight: 650; letter-spacing: -.012em; font-variant-numeric: tabular-nums; }
     .reads span { font-size: 12.5px; color: var(--text-faint); }
     .now { margin-top: var(--gap-block); }
-    .now__grid { display: grid; grid-template-columns: minmax(0, 640px) minmax(260px, 420px); gap: 24px; align-items: start; }
-    @media (max-width: 900px) { .now__grid { grid-template-columns: minmax(0, 1fr); } }
+    /* TWO COLUMNS ONLY WHEN THE CONTENT IS WIDE ENOUGH FOR BOTH, measured on the content, not the
+       window. A viewport media query let a 945px window with the rail open — about 620px of content —
+       take two columns, and the ladder's track (minimum 0) was squeezed to ~150px beside the form's
+       260px minimum: a picture the width of a thumbnail (15 October 2026). The ladder now never
+       goes below 420px beside the reads; under 864px of content it takes the full width. */
+    .now__grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; align-items: start; }
+    @container now (min-width: 864px) { .now__grid { grid-template-columns: minmax(420px, 640px) minmax(320px, 1fr); } }
+    .now { container: now / inline-size; }
     .datanote { margin: 12px 0 0; font-size: var(--fs-sm); color: var(--text-faint); max-width: 80ch; }
     .datanote b { color: var(--text-dim); font-weight: 600; font-variant-numeric: tabular-nums; }
   </style>
