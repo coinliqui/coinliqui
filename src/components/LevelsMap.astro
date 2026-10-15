@@ -260,7 +260,7 @@ const rowsOut = bins.map((b, i) => {
   .levels__svg { left: 84px; width: calc(100% - 96px); }
   .levels__axis { left: 0; width: 84px; pointer-events: none; }
   .levels__guides { right: 12px; width: 180px; pointer-events: none; }
-  .levels__atpill { position: absolute; left: 88px; transform: translateY(-50%); padding: 3px 8px; border-radius: 5px; font: 600 12.5px var(--mono); color: #0f1215; background: var(--text-dim); pointer-events: none; white-space: nowrap; }
+  .levels__atpill { position: absolute; left: 88px; transform: translateY(-50%); padding: 3px 8px; border-radius: 5px; font: 600 12.5px var(--mono); color: #0f1215; background: var(--text-dim); pointer-events: none; white-space: nowrap; max-width: calc(100% - 100px); overflow: hidden; text-overflow: ellipsis; }
   .levels__foot { font-size: 12.5px; color: var(--text-faint); padding: 2px 0 0 84px; }
   /* Underneath the ladder: the reader's price beside the moves table where there is room for both. */
   .levels__reads { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; align-items: start; }
