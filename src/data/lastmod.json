@@ -1,5 +1,5 @@
 {
-  "/terms": "2026-09-17T03:16:03.000Z",
+  "/terms": "2026-10-15T10:52:59.000Z",
   "/methodology": "2026-09-17T09:41:00.000Z",
   "/methodology/liquidations": "2026-09-17T03:16:03.000Z",
   "/data-sources": "2026-09-17T03:16:03.000Z",
@@ -7,9 +7,9 @@
   "/tools": "2026-10-15T10:15:28.000Z",
   "/tools/position-size": "2026-10-15T10:15:28.000Z",
   "/tools/leverage": "2026-10-15T10:15:28.000Z",
-  "/tools/funding-cost": "2026-10-15T10:04:09.000Z",
-  "/tools/funding-arbitrage": "2026-10-15T10:15:28.000Z",
-  "/unlocks": "2026-10-15T10:32:28.000Z",
+  "/tools/funding-cost": "2026-10-15T10:52:59.000Z",
+  "/tools/funding-arbitrage": "2026-10-15T10:52:59.000Z",
+  "/unlocks": "2026-10-15T10:52:59.000Z",
   "/liquidations/sweep": "2026-10-15T10:15:28.000Z",
   "/learn/liquidation-heatmap": "2026-10-15T10:44:01.000Z",
   "/learn/liquidation-price": "2026-10-15T10:15:28.000Z"
