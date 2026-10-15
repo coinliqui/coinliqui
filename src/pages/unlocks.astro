@@ -455,7 +455,7 @@ const lede = top
   </div>
   {overhang.length > 0 && (
   <More label="How each finished lock is read, and why it matters">
-  <p class="section-note">Nothing is scheduled and nothing will be announced: every token still in these contracts can be claimed today, at a moment chosen by whoever it is owed to. The amounts change only when the register is re-read, not every minute.</p>
+  <p class="section-note">Nothing is scheduled and nothing will be announced: every token still in these contracts can be claimed today, at a moment chosen by whoever it is owed to. The amounts change only when the register is re-read, not every minute.{rawVsShare && <>{" "}{rawVsShare}</>}</p>
   {overhang.map((r) => (<p class="section-note">{fill(r.note, scheduleFacts(r))}{r.addressNote && <>{" "}{r.addressNote}</>}</p>))}
 
   {/* THE SAME FACT, SAID A THIRD TIME BEFORE ANY DATA. The lede states the ENS lock, the
@@ -497,7 +497,7 @@ const lede = top
         ))}
       </div>
       <p slot="note">
-        Each bar is one contract&rsquo;s balance at the last read as a share of its token&rsquo;s supply; the amounts are in the table above.{rawVsShare && <>{" "}{rawVsShare}</>}
+        Each bar is one contract&rsquo;s balance at the last read as a share of its token&rsquo;s supply; the amounts are in the table above.
       </p>
     </Figure>
   )}
@@ -545,9 +545,6 @@ const lede = top
   {unfunded.length > 0 && (
     <>
       <h2 class="section" id="unfunded">{state("unfunded").label}</h2>
-      <p class="prose">
-        A published rate with nothing behind it.
-      </p>
       {unfunded.map((e: any) => {
         const p = paperDebt(e);
         return (
