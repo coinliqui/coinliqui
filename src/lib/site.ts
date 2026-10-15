@@ -31,6 +31,7 @@
  * externally. Every profile name, byline, directory entry and external description pairs it with
  * a disambiguator, because unaccompanied it resolves to somebody else's site. That is the price
  * of this decision and it is paid on every external surface, not here. */
+import { numberWord } from "../../public/shared.js";
 export const SITE = {
   name: "Coinliqui",
   tagline: "Perpetual funding, normalised.",
@@ -296,10 +297,9 @@ export const STORED_ON_DEVICE: readonly StoredItem[] = [
     expires: "2 years" },
 ];
 
-const NUM_WORDS = ["no", "one", "two", "three", "four", "five", "six", "seven", "eight"];
 /** "three cookies", "one local-storage key" — counted from the list, never typed. */
 export const countWords = (n: number, one: string, many: string) =>
-  `${NUM_WORDS[n] ?? String(n)} ${n === 1 ? one : many}`;
+  `${numberWord(n)} ${n === 1 ? one : many}`;
 export const storedCounts = () => {
   const cookies = STORED_ON_DEVICE.filter((s) => s.kind === "cookie").length;
   const storage = STORED_ON_DEVICE.length - cookies;

@@ -10,7 +10,7 @@ import Overview from "../../components/Overview.astro";
 import { heatScale, heatStep as heatStepOf, signedBar, type HeatScale } from "../../lib/viz.ts";
 import { extremeBy, widestSpread } from "../../lib/extreme.ts";
 import Spark from "../../components/Spark.astro";
-import { readSparks, sparkScale, SPARK_POINTS, SPARK_STEP_MS } from "../../lib/sparks.ts";
+import { readSparks, sparkScale, sparkDaysOf } from "../../lib/sparks.ts";
 import { coverageRule, coverageToday } from "../../lib/coverage.ts";
 const env = (Astro.locals as any)?.runtime?.env;
 const snap = await getSnapshot(env?.SNAPSHOT, import.meta.env.DEV);
@@ -203,9 +203,7 @@ const sparkOf = (sym: string) => (sparks.status === "ready" ? sparks.map.series[
 const sparkScaleAll = sparks.status === "ready"
   ? sparkScale(rows.map(({ p }) => sparkOf(p.symbol)).filter((v): v is number[] => Array.isArray(v) && v.length > 1))
   : null;
-const sparkDays = sparks.status === "ready"
-  ? Math.max(1, Math.round((Math.min(sparks.covered, SPARK_POINTS) * SPARK_STEP_MS) / 86_400_000))
-  : 0;
+const sparkDays = sparkDaysOf(sparks);
 /* THE EXTREME THE CLIP EXISTS FOR, NAMED FROM THE DATA. The note under the table said "one
    contract at −60% would otherwise flatten the other forty-nine" — a number and a count typed in on
    the day the column was built. The audit on 16 September found 49 contracts drawn and no −60%

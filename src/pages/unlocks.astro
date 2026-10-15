@@ -1,6 +1,7 @@
 ---
 import More from "../components/More.astro";
 import { shortDate } from "../../public/shared.js";
+import { numberWord } from "../../public/shared.js";
 import { utcStamp } from "../lib/freshness.ts";
 import Base from "../layouts/Base.astro";
 import Figure from "../components/Figure.astro";
@@ -61,8 +62,7 @@ const readAt = Date.parse(reg.verifiedAt);
    the held amounts, and the UNI note with "four" and "430,000,000". Notes now name a slot —
    {span}, {end}, {heldNow}, {amount}, {count} — and the slot is filled from the row's own fields,
    so a re-read changes the prose with the table. An unknown slot is left visible, not guessed. */
-const WORDS = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"];
-const inWords = (n: number) => WORDS[n] ?? String(n);
+const inWords = (n: number) => numberWord(n, "zero");
 const fill = (text: string, v: Record<string, string>) => text.replace(/\{(\w+)\}/g, (m, k) => v[k] ?? m);
 const scheduleFacts = (s: any) => ({
   span: `${inWords(Math.round((d(s.end) - d(s.begin)) / (365.25 * DAY)))}-year`,

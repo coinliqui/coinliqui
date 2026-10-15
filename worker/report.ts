@@ -26,7 +26,7 @@
 
 import TERMS from "../src/data/terms-baseline.json" with { type: "json" };
 import { extremeBy } from "../src/lib/extreme.ts";
-import { pct } from "../public/shared.js";
+import { pct, plural } from "../public/shared.js";
 
 /* THE SHAPE OF THE STORED DOC, SO A PAGE CAN TELL WHICH WORDING IT IS READING.
    The report is written once a week and read for the seven days after, so a correction to its
@@ -689,7 +689,6 @@ export async function stepReport(env: ReportEnv, force = false): Promise<string 
         const base = `https://www.googleapis.com/webmasters/v3/sites/${encodeURIComponent(site)}/searchAnalytics/query`;
         const sa = await api(base, { startDate: start, endDate: end, dimensions: ["page"], rowLimit: QUERY_ROW_LIMIT });
         const rows: any[] = sa.rows || [];
-        const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
         say(`\n### Search performance, ${start} to ${end}\n`);
         if (!rows.length) {
           say("No impressions yet. Expected before roughly week 4 — a new domain has no history to weigh.");

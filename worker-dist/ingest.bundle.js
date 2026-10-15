@@ -3,6 +3,7 @@ function pct(x, decimals = 2) {
   if (!Number.isFinite(x)) return "\u2014";
   return `${(x * 100).toFixed(decimals)}%`;
 }
+var plural = (n2, one, many) => `${n2} ${n2 === 1 ? one : many}`;
 
 // src/lib/funding.ts
 var HOURS_PER_YEAR = 24 * 365;
@@ -1002,7 +1003,6 @@ Inspection stopped: ${e instanceof Error ? e.message : String(e)}`);
         const base = `https://www.googleapis.com/webmasters/v3/sites/${encodeURIComponent(site)}/searchAnalytics/query`;
         const sa = await api(base, { startDate: start, endDate: end, dimensions: ["page"], rowLimit: QUERY_ROW_LIMIT });
         const rows = sa.rows || [];
-        const plural = (n2, one, many) => `${n2} ${n2 === 1 ? one : many}`;
         say(`
 ### Search performance, ${start} to ${end}
 `);
@@ -1449,7 +1449,7 @@ async function stepGscExport(env, now = Date.now()) {
 }
 
 // worker/build-stamp.ts
-var WORKER_BUILD = "1c231f8fa350";
+var WORKER_BUILD = "5e4e445049a2";
 
 // worker/ingest.ts
 var RETAIN_HOURS = 720;

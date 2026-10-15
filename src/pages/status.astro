@@ -5,7 +5,8 @@ import { getSnapshot } from "../lib/hyperliquid.ts";
 import { reachRows } from "../lib/corroboration.ts";
 import { EXPECTED_WORKER_BUILD } from "../lib/version.ts";
 import { VENUE_LABEL, ageWords, type Venue } from "../lib/funding.ts";
-import { isStale, minutesSince, SNAP_STALE_MIN } from "../lib/freshness.ts";
+import { isStale, minutesSince, SNAP_STALE_MIN, plural } from "../lib/freshness.ts";
+import { numberWord } from "../../public/shared.js";
 /* The Worker owns the endpoint list, the key name and the label rule. This page reads them
    rather than restating them — src/pages/[key].txt.ts already imports from the same module. */
 import { ENDPOINTS, STATE_KEY, endpointLabel } from "../../worker/indexnow.ts";
@@ -171,7 +172,6 @@ const CARD = { last: "Last ingest", minute: "Minute tick, last hour", fails: "Fa
 const VENUE_HEAD = "Per-venue coverage, last run";
 const RUNS_HEAD = "Recent runs";
 const NO_COUNT = "—";
-const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
 /* THE INTRO AND ROW 1 CONTRADICTED EACH OTHER, AND ROW 2 POINTED AT THE WRONG TABLE.
    Measured 16 September 2026 on https://coinliqui.com/status: the intro said these were "the
@@ -201,8 +201,7 @@ const bindings = [
 const checkRows = bindings.length + 1;
 const loudChecks = bindings.filter((b) => b.loud);
 const quietChecks = checkRows - loudChecks.length;
-const WORDS = ["no", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"];
-const word = (n: number) => WORDS[n] ?? String(n);
+const word = (n: number) => numberWord(n);
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 /* "SO THEY ARE CHECKED HERE" READ AS IF ONLY THE QUIET ONES WERE. The first version of this
    intro (16 September 2026) said the other two fail quietly "so they are checked here", directly

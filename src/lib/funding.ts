@@ -23,6 +23,7 @@ export { paysClass, paysLabel, paysArrow, carryCost, pct, signedPct, parsePrice,
 /* Re-exporting a name does not bind it in this module's scope, which is why rawRate() threw
    ReferenceError on pct the moment it needed it. Imported as well as re-exported. */
 import { spreadOf, pct } from "../../public/shared.js";
+import { numberWord } from "../../public/shared.js";
 
 export const HOURS_PER_YEAR = 24 * 365; // 8760
 
@@ -52,7 +53,6 @@ export const VENUE_LABEL: Record<Venue, string> = {
    One page knew each fact; its siblings typed a version of it.
    ========================================================================================= */
 const VENUE_ORDER: Venue[] = ["HlPerp", "BinPerp", "BybitPerp"];
-const NUM_WORD = ["no", "one", "two", "three"];
 const everyWords = (hours: number[]) =>
   hours.length === 1 && hours[0] === 1 ? "hourly"
     : `every ${hours.length === 1 ? hours[0] : `${hours.slice(0, -1).join(", ")} or ${hours[hours.length - 1]}`} hours` +
@@ -77,11 +77,11 @@ export function venueReachWords(perps: readonly { venues: readonly VenueFunding[
   const count = new Map<number, number>();
   for (const p of perps) count.set(p.venues.length, (count.get(p.venues.length) ?? 0) + 1);
   const most = VENUE_ORDER.length;
-  if ((count.get(most) ?? 0) === perps.length) return perps.length === 1 ? `it is quoted on all ${NUM_WORD[most]} venues` : `all ${perps.length} are quoted on all ${NUM_WORD[most]} venues`;
+  if ((count.get(most) ?? 0) === perps.length) return perps.length === 1 ? `it is quoted on all ${numberWord(most)} venues` : `all ${perps.length} are quoted on all ${numberWord(most)} venues`;
   const parts = [...count.entries()].sort((a, b) => b[0] - a[0]).map(([n, k]) =>
-    n === most ? `${k} ${k === 1 ? "is" : "are"} quoted on all ${NUM_WORD[most]} venues`
+    n === most ? `${k} ${k === 1 ? "is" : "are"} quoted on all ${numberWord(most)} venues`
       : n === 1 ? `${k} on ${VENUE_LABEL.HlPerp} alone`
-        : `${k} on ${NUM_WORD[n] ?? n}`);
+        : `${k} on ${numberWord(n)}`);
   return parts.length > 1 ? `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}` : parts[0];
 }
 

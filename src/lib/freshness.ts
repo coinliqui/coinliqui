@@ -79,7 +79,7 @@ export function isStale(at: number, limitMin: number, now = Date.now()): boolean
    minutes — and the split only showed when the data was old, which is the failure mode this
    single-sourced site is most exposed to. One file now, imported by all of them. */
 export { ageWords, minutesSince } from "../../public/shared.js";
-import { shortDate } from "../../public/shared.js";
+import { shortDate, plural } from "../../public/shared.js";
 
 /**
  * A MOMENT, IN UTC, THAT NAMES ITS DAY WHEN IT IS NOT TODAY'S. "15:16 UTC" is exact on a key written a
@@ -102,7 +102,7 @@ export interface Freshness {
   note: string;
 }
 
-const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+export { plural } from "../../public/shared.js";
 
 /** PROSE form of the same ladder — "5 days", not "5 d ago" — for use mid-sentence. Deliberately
  *  a separate function rather than a second ladder: the thresholds below must match ageWords in

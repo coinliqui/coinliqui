@@ -98,7 +98,7 @@ const band5 = then ? (["long", "short"] as const).map((side) => {
   return { side, now: cumulativeAt(view.curve, view.mark, price).notional, was: cumulativeAt(then.levels.curve, view.mark, price).notional };
 }) : [];
 const moved = (now: number, was: number) =>
-  was > 0 ? `${now >= was ? "up" : "down"} from ${compact(was)} to ${compact(now)} (${signedPct(now / was - 1, 0)})` : `${compact(now)}, from none`;
+  was > 0 ? `${now >= was ? "up" : "down"} from ${compact(was)} to ${compact(now)} (${signedPct(now / was - 1, 0)})` : now > 0 ? `up from none to ${compact(now)}` : "none, as a day earlier";
 const tip = (i: number) => {
   const b = bins[i];
   const side = b.mid < view.mark ? "long" : "short";

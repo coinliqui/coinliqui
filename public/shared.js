@@ -57,6 +57,52 @@ export function pct(x, decimals = 2) {
   return `${(x * 100).toFixed(decimals)}%`;
 }
 
+/* THE FUNDING-COST CALCULATOR'S MONEY, once for its server render and its script. Both carried their
+   own moneyAt, printed-figure parser, tolerance test and decimal search, the script's on one line
+   each, and the notional it printed three ways on one page (15 October 2026). */
+/** usd(a, 2), or two significant digits under half a cent; e extra decimals, own zeros dropped. */
+export function moneyAt(a, e = 0) {
+  const m = Math.abs(a);
+  if (!Number.isFinite(a) || m >= 1e15) return "—";
+  const sub = a > 0 && a < 0.005;
+  const u = sub || m < 1e6 ? 1 : m < 1e9 ? 1e6 : 1e9;
+  const d0 = sub ? Math.min(12, 1 - Math.floor(Math.log10(a))) : 2;
+  const d = Math.min(20, d0 + e);
+  let s = sub || u > 1 ? (a / u).toFixed(d) : a.toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d });
+  while (s.endsWith("0") && s.length - s.indexOf(".") - 1 > d0) s = s.slice(0, -1);
+  return `$${s}${u === 1e9 ? "B" : u === 1e6 ? "M" : ""}`;
+}
+/** The number a printed money figure stands for: "$1.23M" -> 1230000. */
+export function printedMoney(s) {
+  const m = /\$([\d,]*\.?\d+)([MB]?)/.exec(s);
+  return m ? Number(m[1].replace(/,/g, "")) * (m[2] === "B" ? 1e9 : m[2] === "M" ? 1e6 : 1) : NaN;
+}
+/** Whether x rounds to the printed text (money, or a percentage when pctText). */
+export function nearPrinted(x, text, pctText = false) {
+  const m = pctText ? /(-?\d*)(?:\.(\d+))?%/.exec(text) : /\$([\d,]*)(?:\.(\d+))?([MB]?)/.exec(text);
+  if (!m) return false;
+  const half = 0.5 * 10 ** -(m[2] ?? "").length * (m[3] === "B" ? 1e9 : m[3] === "M" ? 1e6 : 1);
+  return Math.abs(x - (pctText ? Number(text.slice(0, -1)) : printedMoney(text))) <= half * (1 + 1e-9);
+}
+/** The fewest extra decimals at which a check on the printed figures holds; 12 if none does. */
+export function fitDecimals(ok) {
+  for (let e = 0; e < 12; e++) if (ok(e)) return e;
+  return 12;
+}
+/** An amount exactly as typed: "$2,500,000", "$1.125". */
+export const exactUsd = (x) => `$${x.toLocaleString("en-US", { minimumFractionDigits: Number.isInteger(x) ? 0 : 2, maximumFractionDigits: 6 })}`;
+/** A count or quantity as typed, up to six decimals. */
+export const fineNum = (x) => x.toLocaleString("en-US", { maximumFractionDigits: 6 });
+
+/** "3 queries", "1 query" — the count and the right noun. */
+export const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+
+/** A small count in words — one to ten spelled out, larger as digits. `zero` is the caller's word
+ *  for nothing: "no" before a noun ("no venues"), "zero" on its own. Six tables did this with limits
+ *  of three, six, eight, ten and fourteen, so four venues read "four" on one page and "4" on the next. */
+const NUMBER_WORDS = ["", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"];
+export const numberWord = (n, zero = "no") => (n === 0 ? zero : NUMBER_WORDS[n] ?? String(n));
+
 /** Hyperliquid's maintenance margin: half the initial margin at the tier's max leverage. Here so
  *  the calculators' scripts read the server's rule instead of writing 1 / (2 * L) again. */
 export const maintenanceMarginFraction = (maxLeverage) => 1 / (2 * maxLeverage);

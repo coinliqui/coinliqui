@@ -6,7 +6,7 @@ import { usd, pct, paysClass, paysLabel, carryCost, LEGEND_PAYS, isHlBaseApr } f
 import { extremeBy } from "../../lib/extreme.ts";
 import Spark from "../../components/Spark.astro";
 import More from "../../components/More.astro";
-import { readSparks, sparkScale, SPARK_POINTS, SPARK_STEP_MS } from "../../lib/sparks.ts";
+import { readSparks, sparkScale, sparkDaysOf } from "../../lib/sparks.ts";
 import { COINS, isLive } from "../../lib/coins.ts";
 
 import { priceDp, changeWords, moveCounts } from "../../lib/funding.ts";
@@ -84,9 +84,7 @@ const sparkOf = (sym: string) => (sparks.status === "ready" ? sparks.map.series[
 const sparkScaleAll = sparks.status === "ready"
   ? sparkScale(rows.map((r) => sparkOf(r.symbol)).filter((v): v is number[] => Array.isArray(v) && v.length > 1))
   : null;
-const sparkDays = sparks.status === "ready"
-  ? Math.max(1, Math.round((Math.min(sparks.covered, SPARK_POINTS) * SPARK_STEP_MS) / 86_400_000))
-  : 0;
+const sparkDays = sparkDaysOf(sparks);
 const dp = priceDp;
 const fmtDate = (s: string) => new Date(s + "T00:00:00Z").toLocaleDateString("en-GB", { day: "numeric", month: "long", timeZone: "UTC" });
 

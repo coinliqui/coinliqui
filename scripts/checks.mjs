@@ -601,13 +601,15 @@ const SHARED_RULES = ["paysClass", "paysLabel", "paysArrow", "carryCost", "aprSp
                       /* 15 October 2026: five signed-percent copies with three rules for zero, five
                          month tables, two staleness limits, the map's sum on two sides of hydration. */
                       "signedPct", "moveCounts", "shortDate", "dateTimeUtc", "isStale",
-                      "cumulativeAt", "atReading", "parsePrice", "spanWords", "mapModel", "maintenanceMarginFraction"];
+                      "cumulativeAt", "atReading", "parsePrice", "spanWords", "mapModel", "maintenanceMarginFraction",
+                      "moneyAt", "printedMoney", "nearPrinted", "fitDecimals", "exactUsd", "fineNum", "dayEarlierCut", "readOiAt", "numberWord", "sparkDaysOf", "plural"];
 
 /* THE SHAPE OF A RULE WRITTEN INLINE, which a definition count cannot see because it has no name.
    Each is a shape that shipped as a copy and disagreed with the shared rule; `only` names the one
    file allowed to carry it. */
 const INLINE_SHAPES = [
   { what: "a month table", re: /["']Jan["'],\s*["']Feb["'],\s*["']Mar["']/, only: "public/shared.js", use: "MONTHS / shortDate" },
+  { what: "a table of number words", re: /["'](no|zero)["'],\s*["']one["'],\s*["']two["']/, only: "public/shared.js", use: "numberWord" },
   { what: "toLocaleDateString with a short month (prints \"Sept\")", re: /month:\s*["']short["']/, only: null, use: "shortDate" },
   /* a sign ternary with a percent sign after it on the same line — a signed COUNT ("+3 indexed")
      is not this rule */

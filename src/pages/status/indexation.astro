@@ -1,4 +1,5 @@
 ---
+import { numberWord } from "../../../public/shared.js";
 import Base from "../../layouts/Base.astro";
 /* The worker computes the search window; this page describes it. Both read the same two
    numbers, so the intro cannot describe a different window from the one on the tables. */
@@ -103,8 +104,7 @@ const utc = (ms: number) => new Date(ms).toISOString().slice(0, 16).replace("T",
    now built from the constants the worker computes it with, and the weekdays from running
    that same function on a Monday, so changing either constant changes this sentence.
    ========================================================================================= */
-const WORDS = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve", "thirteen", "fourteen"];
-const word = (n: number) => WORDS[n] ?? String(n);
+const word = (n: number) => numberWord(n, "zero");
 const DAYNAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const dayName = (iso: string) => DAYNAMES[new Date(`${iso}T00:00:00Z`).getUTCDay()];
 const MONDAY_RUN = Date.UTC(2026, 8, 14, 8); // any Monday after 07:00 UTC

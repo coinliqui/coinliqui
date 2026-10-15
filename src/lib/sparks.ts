@@ -24,6 +24,10 @@
 export const SPARK_STEP_MS = 4 * 3_600_000;
 /** Points kept per symbol: 42 four-hour buckets is seven days. */
 export const SPARK_POINTS = 42;
+/** How many days the sparklines cover, as /coins and /funding both state it — computed in each
+ *  until 15 October 2026. 0 when the series is not ready. */
+export const sparkDaysOf = (sparks: { status: string; covered?: number }) =>
+  sparks.status === "ready" ? Math.max(1, Math.round((Math.min(sparks.covered ?? 0, SPARK_POINTS) * SPARK_STEP_MS) / 86_400_000)) : 0;
 /** KV key the worker writes and the pages read. */
 export const SPARK_KEY = "spark:funding";
 
