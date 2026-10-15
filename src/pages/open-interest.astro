@@ -75,7 +75,10 @@ const oiAtSince = oiReady ? await readOiHistory(oiDb, oiReady.since + OI_HOURS *
    out and the share of today's book the line covers is printed, rather than summing a set that changes
    along the line. The chart carries levels and dates, not a change figure: the change is the table's,
    from hourly readings, and a second change from bucket averages would disagree with it. */
-const oiSeries = await readOiSeries(oiDb, oiNow, 30, 4);
+/* Eight-hour steps: ninety points over thirty days reads the same at 180px tall as one hundred and
+   eighty, at half the bytes — the line at four hours put the page 377 bytes over its budget. */
+const BOOK_STEP_H = 8;
+const oiSeries = await readOiSeries(oiDb, oiNow, 30, BOOK_STEP_H);
 const book = (() => {
   if (!oiSeries) return null;
   const n = oiSeries.buckets.length;
@@ -358,7 +361,7 @@ const noChangeReason = oiHist.status === "no-store"
     <figure class="oibook">
       <figcaption class="oibook__cap">
         <b>The book over 30 days</b> — {book.count} of today's {rows.length} contracts, those with a reading in at least
-        nine 4-hour steps in ten ({pct(book.share)} of today's open interest).{book.gaps > 0 && <> The line breaks where the store holds no reading for one of them ({plural(book.gaps, "step", "steps")}).</>} Shaded: the {oiWin.label} the change below is taken over.
+        nine {BOOK_STEP_H}-hour steps in ten ({pct(book.share)} of today's open interest).{book.gaps > 0 && <> The line breaks where the store holds no reading for one of them ({plural(book.gaps, "step", "steps")}).</>} Shaded: the {oiWin.label} the change below is taken over.
       </figcaption>
       <div class="oibook__plot">
         <svg viewBox="0 0 1000 200" preserveAspectRatio="none" role="img" aria-label={`Open interest of ${book.count} contracts from ${shortDate(book.from)} to ${shortDate(book.to)}, between ${compact(book.lo)} and ${compact(book.hi)}`}>
