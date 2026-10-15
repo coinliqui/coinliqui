@@ -1,6 +1,6 @@
 import type { Candle } from "./candles.ts";
 import { slotBars } from "./series.ts";
-import { cumulativeAt } from "../../public/shared.js";
+import { cumulativeAt, parsePrice, atReading, axisDp } from "../../public/shared.js";
 
 /** The narrowest drawn span, as a fraction of the last price: ±8% either side. */
 export const MIN_SPAN = 0.16;
@@ -533,7 +533,55 @@ export const mapTitle = (symbol: string, state: MapState) =>
    from mapState() and the cap from the same tier-1 row the page charts, so each clause is stated
    only in the state where it holds — and "too little history" only when a series was read and
    found short (see MapState for the PAXG render that said it about a failed read). */
-export const mapDescription = (symbol: string, at: { state: MapState; maxLeverage: number; days: number }) =>
-  at.state === "drawn"
+export const mapDescription = (symbol: string, at: { state: MapState; maxLeverage: number; days: number; reading?: string | null; asOf: string }) =>
+  /* A shared ?at= link unfurls as its own answer. The canonical is the bare path, so this text is
+     what a chat preview shows, not a second indexed description. */
+  at.state === "drawn" && at.reading
+    /* WITH ITS MOMENT, ALWAYS DATED. A chat caches an unfurl, so the figure is read hours or days
+       after it was true; without a stamp yesterday's sum reads as today's. */
+    ? `${symbol} at ${at.asOf}: ${at.reading} Modelled from Hyperliquid's price path and open interest, every assumption printed on the page.`
+    : at.state === "drawn"
     ? `Where ${symbol} liquidation levels sit on Hyperliquid and which ones price has already cleared — a modelled heatmap with every assumption printed on the page${profilesCoincide(at.maxLeverage) ? "" : " and the leverage mix switchable"}, beside the liquidation prices derived from the published margin tiers.`
     : `Liquidation prices for ${symbol} on Hyperliquid, derived from the published margin tiers and the live mark. The modelled ${at.days}-day heatmap is not drawn ${at.state === "short" ? `yet: ${symbol} has too little hourly price history for it` : `on this page: no hourly price history for ${symbol} could be read`}.`;
+
+/* =========================================================================================
+   THE MAP FOR ONE PAGE VIEW, COMPUTED ONCE, BY THE ROUTE.
+
+   It lived inside src/components/LiqMap.astro, which is rendered after the <head>. So the head
+   could not know what the page answered: a link to /liquidations?at=78000 sent to a chat unfurled
+   as the generic page description, and the one thing that link carries — what a move to 78,000
+   closes — was missing exactly where its recipient sees it. The routes now call this, put the
+   reading in the description, and hand the same object to the component, so the model still runs
+   once per request and the head and the body read one result.
+   ========================================================================================= */
+/** Position life: how long a modelled position stays open before it is assumed closed. */
+export const POSITION_LIFE_DAYS = 14;
+export const DEFAULT_PROFILE = PROFILES[1];
+
+export function mapModel(o: {
+  hourly: { d: Candle[] } | null | undefined;
+  q: URLSearchParams;
+  mark: number; oiNotional: number; maxLeverage: number; mmf: number;
+}) {
+  const win = resolveWindow(o.q);
+  const profile = PROFILES.find((p) => p.key === o.q.get("profile")) ?? DEFAULT_PROFILE;
+  const ageBars = Math.round((POSITION_LIFE_DAYS * 24) / win.factor);
+  /* Columns sit on fixed 2- and 4-hour slots (slotBars), so they do not move with the render hour. */
+  const series: Candle[] = slotBars(o.hourly?.d, 60, win.factor);
+  const start = series.length - win.cols;
+  const map = canDrawMap(series, win)
+    ? buildLiqMap({
+        candles: series, start, cols: win.cols, mmf: o.mmf, maxLeverage: o.maxLeverage,
+        oiNotional: o.oiNotional, profile, rows: 150, ageBars, reach: o.mark,
+      })
+    : null;
+  const levels = map ? levelsView(map, o.mark, 3) : null;
+  /* THE READER'S OWN PRICE (?at=), parsed by the one parser the script also uses. An unreadable
+     value is kept as typed so the page can say it could not read it, rather than show nothing. */
+  const atRaw = o.q.get("at");
+  const at = atRaw === null ? null : parsePrice(atRaw);
+  const dp = axisDp(o.mark);
+  const reading = levels && at !== null ? atReading(levels.curve, o.mark, at, levels.lo, levels.hi, dp) as string : null;
+  return { win, profile, ageBars, map, levels, at, atRaw, dp, reading };
+}
+export type MapModel = ReturnType<typeof mapModel>;

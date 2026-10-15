@@ -26,13 +26,13 @@ import { usd, pct } from "../lib/funding.ts";
 import { ageWords, minutesSince, utcStamp } from "../lib/freshness.ts";
 import { maintenanceMarginFraction, nextTierBoundary, corridorAt, type MarginTable } from "../lib/margin.ts";
 import { T, O, H, L, C, type Candle, type getHourly } from "../lib/candles.ts";
-import { buildLiqMap, levelsView, spanWords, MIN_SPAN, MOVE_STEPS, PROFILES, mixUsed, profilesCoincide, MAP_WINDOWS, DEFAULT_WINDOW, resolveWindow, canDrawMap, mapDrawable, type MapWindow } from "../lib/liqmap.ts";
+import { spanWords, MIN_SPAN, MOVE_STEPS, POSITION_LIFE_DAYS, DEFAULT_PROFILE, type MapModel, PROFILES, mixUsed, profilesCoincide, MAP_WINDOWS, DEFAULT_WINDOW, mapDrawable, type MapWindow } from "../lib/liqmap.ts";
 import { paintHeatMap } from "../lib/heatmap.ts";
 import { RAMP, CH, INK, MONO, FS_AXIS, compact, niceTicks } from "../lib/chart.ts";
-import { slotBars, shortDate } from "../lib/series.ts";
+import { shortDate } from "../lib/series.ts";
 import type { Perp, Snapshot } from "../lib/hyperliquid.ts";
 import { liqMapHref } from "../lib/routes.ts";
-import { signedPct, parsePrice } from "../lib/funding.ts";
+import { signedPct } from "../lib/funding.ts";
 import tables from "../data/margin-tables.json";
 
 import Advisory from "./Advisory.astro";
@@ -65,8 +65,11 @@ interface Props {
      description says whether there is a map — so it is passed in rather than read a second time
      from the store on the same request. */
   hourly: Awaited<ReturnType<typeof getHourly>>;
+  /* THE MODEL, computed by the route so its <head> can carry the reader's reading — see mapModel
+     in src/lib/liqmap.ts. */
+  model: MapModel;
 }
-const { perp, table, snap, params: q, crumb, siblings = true, hourly } = Astro.props;
+const { perp, table, snap, params: q, crumb, siblings = true, hourly, model } = Astro.props;
 
 /* =========================================================================================
    EVERY OTHER CONTRACT'S MAP, AS CHIPS, AND THE MEASUREMENT BEHIND IT.
@@ -126,9 +129,7 @@ const axisPx = (v: number) => usd(v, axisDp);
    them too — see MAP_WINDOWS there. */
 const WINDOWS = MAP_WINDOWS;
 const DEFAULT_WIN = DEFAULT_WINDOW;
-const DEFAULT_PROFILE = PROFILES[1];
-const win = resolveWindow(q);
-const profile = PROFILES.find((p) => p.key === q.get("profile")) ?? DEFAULT_PROFILE;
+const { win, profile, ageBars, map, levels, at: atPx, atRaw, dp: levelsDp } = model;
 /* THE VIEW AS A QUERY STRING, built from the RESOLVED inputs rather than copied from the URL, so
    an unknown ?win=99 — which the two lines above replace with the default — is not carried onward
    as though it had been honoured. Defaults are left out, so the default view links bare. */
@@ -139,9 +140,6 @@ const viewHref = (path: string, w: MapWindow) => {
   const s = v.toString();
   return s ? `${path}?${s}` : path;
 };
-/** Position life: how long a modelled position stays open before it is assumed closed. */
-const POSITION_LIFE_DAYS = 14;
-const ageBars = Math.round((POSITION_LIFE_DAYS * 24) / win.factor);
 
 /* ONE TEST FOR "THIS WINDOW CAN BE DRAWN", used for the map, for the empty state's account of
    which windows could be, and for the route's meta description. The empty state said "Hourly
@@ -150,21 +148,6 @@ const ageBars = Math.round((POSITION_LIFE_DAYS * 24) / win.factor);
    the 7-day map of the same contract rendered — the candles were there, only too few for 30 days.
    Copies of the threshold would let those sentences drift from it, so there is one, canDrawMap. */
 const drawableWins = WINDOWS.filter((w) => mapDrawable(hourly?.d, w));
-/* Columns sit on fixed 2- and 4-hour slots (slotBars), so they do not move with the render hour. */
-const series: Candle[] = slotBars(hourly?.d, 60, win.factor);
-const start = series.length - win.cols;
-const map =
-  canDrawMap(series, win)
-    ? buildLiqMap({
-        candles: series, start, cols: win.cols, mmf, maxLeverage: tier1.maxLeverage,
-        oiNotional: perp.oiNotional, profile, rows: 150, ageBars, reach: mark,
-      })
-    : null;
-const levels = map ? levelsView(map, mark, 3) : null;
-/* THE READER'S OWN PRICE (?at=), parsed by the one parser the script also uses. An unreadable value
-   is kept as typed so the page can say it could not read it, rather than silently showing none. */
-const atRaw = q.get("at");
-const atPx = atRaw === null ? null : parsePrice(atRaw);
 /* The view the form must keep when it submits: the same resolved, non-default inputs viewHref links. */
 const carry: [string, string][] = [
   ...(profile !== DEFAULT_PROFILE ? [["profile", profile.key] as [string, string]] : []),
@@ -391,7 +374,7 @@ const formNote: string | null = (() => {
     <section class="now">
       <h2 class="section">If {perp.symbol} moves from here: what gets closed</h2>
       <div class="now__grid">
-        <LevelsMap view={levels} symbol={perp.symbol} dp={axisDp} clipped={map.clipped}
+        <LevelsMap view={levels} symbol={perp.symbol} dp={levelsDp} clipped={map.clipped}
                    at={atPx} atRaw={atPx === null && atRaw ? atRaw.slice(0, 40) : null}
                    action={Astro.url.pathname} carry={carry} />
       </div>

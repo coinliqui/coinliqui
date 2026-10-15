@@ -23,7 +23,8 @@ import LiqMap from "../components/LiqMap.astro";
 import { getSnapshot, coldStart, requestedPerp } from "../lib/hyperliquid.ts";
 import { usd, pct, priceDp } from "../lib/funding.ts";
 import { maintenanceMarginFraction, corridorAt, type MarginTable } from "../lib/margin.ts";
-import { mapTitle, mapDescription, mapState, resolveWindow } from "../lib/liqmap.ts";
+import { utcStamp } from "../lib/freshness.ts";
+import { mapTitle, mapDescription, mapState, resolveWindow, mapModel } from "../lib/liqmap.ts";
 import { getHourly } from "../lib/candles.ts";
 import { liqMapHref } from "../lib/routes.ts";
 import tables from "../data/margin-tables.json";
@@ -92,11 +93,13 @@ const win = resolveWindow(q);
 const cap = [...table.marginTiers].sort((a, b) => a.lowerBound - b.lowerBound)[0].maxLeverage;
 const state = mapState(hourly?.d, win);
 const title = mapTitle(perp.symbol, state);
-const description = mapDescription(perp.symbol, { state, maxLeverage: cap, days: win.days });
+/* The model runs here, once, so the description can carry a ?at= reading — see mapModel. */
+const model = mapModel({ hourly, q: q, mark: perp.markPx, oiNotional: perp.oiNotional, maxLeverage: cap, mmf: maintenanceMarginFraction(cap) });
+const description = mapDescription(perp.symbol, { state, maxLeverage: cap, days: win.days, reading: model.reading, asOf: utcStamp(snap.fetchedAt, 0) });
 ---
 
 <Base title={title} description={description} fetchedAt={snap.fetchedAt}>
-  <LiqMap perp={perp} table={table} snap={snap} hourly={hourly} params={q} siblings={false} />
+  <LiqMap perp={perp} table={table} snap={snap} hourly={hourly} model={model} params={q} siblings={false} />
 
   <h2 class="section">A page for every covered contract</h2>
   {/* THE COUNT AND THE TABLE ARE ONE ARRAY, and for one morning they were two. This note said
