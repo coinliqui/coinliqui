@@ -549,7 +549,7 @@ const description = `Risk-based position sizing for ${perp.symbol} perpetuals th
   </p>
 
   <p style="margin-top:24px">
-    <a class="link" href="/tools/leverage">What leverage this contract actually allows →</a>
+    <a class="link" href={`/tools/leverage?symbol=${perp.symbol}`}>What leverage {perp.symbol} actually allows →</a>
     · <a class="link" href={`/funding/${perp.symbol.toLowerCase()}`}>{perp.symbol} detail →</a>
   </p>
 

@@ -593,7 +593,7 @@ const LADDER = [
  * in the naming: each entry is a rule that has already drifted or that renders on both sides of
  * hydration, and adding to the list is a decision somebody makes on purpose.
  */
-const SHARED_RULES = ["paysClass", "paysLabel", "paysArrow", "carryCost", "aprSpread", "pct",
+const SHARED_RULES = ["paysClass", "paysLabel", "carryCost", "aprSpread", "pct",
                       "changeWords", "ageWords", "minutesSince", "nf", "qty", "compact", "usd",
                       /* 17 September 2026: two templates, two stamp formats, one job. */
                       "utcStamp", "candleStyleNote", "timeframeGapNote", "slotBars", "drawnBars", "barSpan",

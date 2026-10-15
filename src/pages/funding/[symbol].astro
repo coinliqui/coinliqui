@@ -672,8 +672,9 @@ const description = `What a ${p.symbol} perpetual costs to hold, against ${usd(p
   <div class="cards">
     <div class="card">
       <div class="card__label">Hyperliquid funding</div>
-      <div class:list={["card__value", hl && paysClass(hl.apr)]}>{hl ? pct(hl.apr) : "—"}</div>
-      <div class="card__meta">{hl ? paysLabel(hl.apr) : "—"}</div>
+      {/* Repainted with the venue table beside it, so a live pull cannot leave the card on the old rate. */}
+      <div class:list={["card__value", hl && paysClass(hl.apr)]} data-repaint={hl ? "apr" : undefined} data-sym={p.symbol} data-venue="HlPerp">{hl ? pct(hl.apr) : "—"}</div>
+      <div class="card__meta" data-repaint={hl ? "dir" : undefined} data-sym={p.symbol} data-venue="HlPerp" data-pay="longs pay shorts" data-recv="shorts pay longs">{hl ? paysLabel(hl.apr) : "—"}</div>
     </div>
     <div class="card">
       <div class="card__label">Spread between venues</div>
@@ -684,7 +685,7 @@ const description = `What a ${p.symbol} perpetual costs to hold, against ${usd(p
     </div>
     <div class="card">
       <div class="card__label">Cost to hold $10,000 long</div>
-      <div class="card__value">{Number.isFinite(carry7d) ? usd(Math.abs(carry7d), 2) : "—"}</div>
+      <div class="card__value" data-repaint={hl ? "carry" : undefined} data-sym={p.symbol} data-venue="HlPerp" data-notional="10000" data-days="7">{Number.isFinite(carry7d) ? usd(Math.abs(carry7d), 2) : "—"}</div>
       <div class="card__meta">over 7 days at the current rate{hl ? ` · ${hl.apr >= 0 ? "you pay" : "you receive"}` : ""}</div>
     </div>
     <div class="card">

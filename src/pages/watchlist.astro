@@ -371,7 +371,7 @@ const visitNote = GA_ENABLED
     .wl-off[hidden] { display: none; }
     .wl-clear { margin-left: auto; height: 32px; padding: 0 12px; font-size: 13px; }
     /* The direction mark follows the class the overlay flips with the sign — see the note above
-       the clock line. Same threshold as paysArrow(): pays-l is apr >= 0. */
+       the clock line. Same threshold as paysClass(): pays-l is apr >= 0. */
     #wl td.pays-l[data-repaint="apr"]::before { content: "\25B2\00A0"; }
     #wl td.pays-s[data-repaint="apr"]::before { content: "\25BC\00A0"; }
     .pin {

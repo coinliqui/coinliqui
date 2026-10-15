@@ -817,7 +817,7 @@ const formNote: string | null = (() => {
 
   <p style="margin-top:24px">
     <a class="link" href="/liquidations/sweep">The 5 February sweep, on real candles →</a>
-    · <a class="link" href="/liquidations/survival">Leverage survival — real candles, one stated rule →</a>
+    · <a class="link" href={`/liquidations/survival?symbol=${perp.symbol}`}>Leverage survival on {perp.symbol} — real candles, one stated rule →</a>
     · <a class="link" href={`/funding/${perp.symbol.toLowerCase()}`}>{perp.symbol} funding and margin tiers →</a>
   </p>
 

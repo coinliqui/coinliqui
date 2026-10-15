@@ -19,7 +19,7 @@
    that has produced five separate defects on this project, each found by accident. The copies
    were the defect, so there is now one file and both sides import it. Callers keep importing
    these names from this module; only the implementation moved. See public/shared.js. */
-export { paysClass, paysLabel, paysArrow, carryCost, pct, signedPct, parsePrice, changeWords, moveCounts, ageWords, minutesSince, usd, nf, qty, compact, spreadOf, priceDp, axisDp, stopVerdict } from "../../public/shared.js";
+export { paysClass, paysLabel, carryCost, pct, signedPct, parsePrice, changeWords, moveCounts, ageWords, minutesSince, usd, nf, qty, compact, spreadOf, priceDp, axisDp, stopVerdict } from "../../public/shared.js";
 /* Re-exporting a name does not bind it in this module's scope, which is why rawRate() threw
    ReferenceError on pct the moment it needed it. Imported as well as re-exported. */
 import { spreadOf, pct } from "../../public/shared.js";

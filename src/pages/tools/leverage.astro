@@ -412,7 +412,7 @@ const description = capCount > 1
   </div>
 
   <p style="margin-top:24px">
-    <a class="link" href="/tools/position-size">Size it against a stop →</a>
+    <a class="link" href={`/tools/position-size?symbol=${perp.symbol}`}>Size it against a stop →</a> · <a class="link" href={`/funding/${perp.symbol.toLowerCase()}`}>{perp.symbol} funding and liquidation price →</a>
     · <a class="link" href="/methodology">How these numbers are produced →</a>
   </p>
 

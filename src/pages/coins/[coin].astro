@@ -491,8 +491,9 @@ const description = `Live ${coin.name} (${coin.symbol}) perpetual price from Hyp
     </div>
     <div class="card">
       <div class="card__label">Hyperliquid funding</div>
-      <div class:list={["card__value", hl && paysClass(hl.apr)]}>{hl ? pct(hl.apr) : "—"}</div>
-      <div class="card__meta">{hl ? paysLabel(hl.apr) : "—"}</div>
+      {/* Repainted with the venue table beside it, so a live pull cannot leave the card on the old rate. */}
+      <div class:list={["card__value", hl && paysClass(hl.apr)]} data-repaint={hl ? "apr" : undefined} data-sym={coin.symbol} data-venue="HlPerp">{hl ? pct(hl.apr) : "—"}</div>
+      <div class="card__meta" data-repaint={hl ? "dir" : undefined} data-sym={coin.symbol} data-venue="HlPerp" data-pay="longs pay shorts" data-recv="shorts pay longs">{hl ? paysLabel(hl.apr) : "—"}</div>
     </div>
     <div class="card">
       <div class="card__label">Cost to hold $10,000 long</div>

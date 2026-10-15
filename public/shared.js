@@ -36,7 +36,6 @@
    repeated five times is a sign convention waiting to be inverted in one of them. */
 export const paysClass = (apr) => (apr >= 0 ? "pays-l" : "pays-s");
 export const paysLabel = (apr) => (apr >= 0 ? "longs pay shorts" : "shorts pay longs");
-export const paysArrow = (apr) => (apr >= 0 ? "▲" : "▼");
 
 /** Cost of holding a notional position for N days at a given APR. Sign follows the APR. */
 export const carryCost = (notionalUsd, apr, days) => notionalUsd * apr * (days / 365);

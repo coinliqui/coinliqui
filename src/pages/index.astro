@@ -2,7 +2,7 @@
 import Base from "../layouts/Base.astro";
 import { SITE } from "../lib/site.ts";
 import { getSnapshot, coldStart } from "../lib/hyperliquid.ts";
-import { pct, usd, moveCounts, paysClass, paysArrow, paysLabel, LEGEND_FUNDING, VENUE_LABEL, isHlBaseApr, type Venue } from "../lib/funding.ts";
+import { pct, usd, moveCounts, paysClass, paysLabel, LEGEND_FUNDING, VENUE_LABEL, isHlBaseApr, type Venue } from "../lib/funding.ts";
 import { readCachedFlips, describeCoverage } from "../lib/flips.ts";
 import { utcStamp, readableAge } from "../lib/freshness.ts";
 import { distribution } from "../lib/viz.ts";
@@ -426,8 +426,12 @@ const description =
           {top.map((p) => (
             <tr>
               <td class="sym"><a href={`/funding/${p.symbol.toLowerCase()}`}>{p.symbol}</a></td>
-              <td class:list={["num", paysClass(p.hlApr)]}>{paysArrow(p.hlApr)} {pct(p.hlApr)}</td>
-              <td class="num">{p.aprSpread != null ? pct(p.aprSpread) : <span class="faint">—</span>}</td>
+              {/* LIVE, WITH ITS ARROW DRAWN FROM THE CLASS. The cell was static while /coins and the
+                  contract pages repaint the same rate, and a repaint that rewrote the text would have
+                  left a hard-coded ▲ beside a rate that had turned negative. The arrow is the pays-l /
+                  pays-s class the overlay already flips, as on /watchlist. */}
+              <td class:list={["num", "fund", paysClass(p.hlApr)]} data-repaint="apr" data-sym={p.symbol} data-venue="HlPerp">{pct(p.hlApr)}</td>
+              <td class="num" data-repaint={p.aprSpread != null ? "spread" : undefined} data-sym={p.symbol}>{p.aprSpread != null ? pct(p.aprSpread) : <span class="faint">—</span>}</td>
               <td class="num">
                 <span class="magnitude">
                   <span class="magnitude__track"><span class="magnitude__fill" style={`width:${Math.max(3, Math.round((p.oiNotional / maxOi) * 100))}%`}></span></span>
@@ -449,5 +453,7 @@ const description =
     <style>
       .lede { font-size: 21px; line-height: 1.5; font-weight: 400; letter-spacing: -.012em; color: var(--text-dim); margin: 0 0 var(--gap-block); max-width: 90ch; }
       .lede b { font-weight: 550; color: var(--text); font-variant-numeric: tabular-nums; }
-    </style>
+      td.fund.pays-l::before { content: "\25b2  "; }
+  td.fund.pays-s::before { content: "\25bc  "; }
+</style>
 </Base>

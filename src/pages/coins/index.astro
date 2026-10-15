@@ -145,7 +145,7 @@ const description = "Perpetual futures prices for the major coins on Hyperliquid
             <td class="num" data-repaint="mark" data-sym={r.symbol} data-dp={Number.isFinite(r.mark) ? dp(r.mark) : 2}>
               {Number.isFinite(r.mark) ? usd(r.mark, dp(r.mark)) : "—"}
             </td>
-            <td class:list={["num", Number.isFinite(r.apr) && paysClass(r.apr)]} style="font-weight:600">
+            <td class:list={["num", Number.isFinite(r.apr) && paysClass(r.apr)]} style="font-weight:600" data-repaint={Number.isFinite(r.apr) ? "apr" : undefined} data-sym={r.symbol} data-venue="HlPerp">
               {Number.isFinite(r.apr) ? pct(r.apr) : "—"}
             </td>
             {sparkScaleAll && (
