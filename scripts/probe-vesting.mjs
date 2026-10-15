@@ -157,8 +157,32 @@ for (const t of TARGETS) {
   results.push({ ...t, ...r, shareOfSupply: r.heldNow ? r.heldNow / tk.supply : 0 });
 }
 
+/* THE EMISSIONS, AT THE SAME BLOCK. The register's method says every figure on /unlocks is one
+   moment, and until 15 October 2026 this script re-read only the vesting rows: the Aave allowance
+   and Curve's rate and supply had been read once, by hand, so a refresh of the rows alone would have
+   printed August's emission figures under October's block. They are read here now, with the rows. */
+const AAVE = "0x7fc66500c84a76ad7e9c93437bfc5ac33e2ddae9";
+const STKAAVE = "0x4da27a545c0c5b758a6ba100e3a049001de870f5";
+const AAVE_VAULT = "0x25f2226b597e8f9514b3f68f00f494cf4f286491";
+const CRV = TOKENS.CRV.addr;
+const word = (hex, i) => (hex === null ? null : "0x" + hex.replace(/^0x/, "").slice(i * 64, (i + 1) * 64));
+const emissions = {
+  AAVE: {
+    fundedTokens: asNum(await call(AAVE, "allowance(address,address)", [AAVE_VAULT, STKAAVE], block), 18),
+    ratePerSecond: asNum(word(await call(STKAAVE, "assets(address)", [STKAAVE], block), 0), 18),
+    distributionEnd: asDate(await call(STKAAVE, "DISTRIBUTION_END()", [], block)),
+  },
+  CRV: {
+    ratePerSecond: asNum(await call(CRV, "rate()", [], block), 18),
+    availableSupply: asNum(await call(CRV, "available_supply()", [], block), 18),
+    totalSupply: asNum(await call(CRV, "totalSupply()", [], block), 18),
+    miningEpoch: asNum(await call(CRV, "mining_epoch()", [], block), 0),
+    epochStart: asDate(await call(CRV, "start_epoch_time()", [], block)),
+  },
+};
+
 if (JSONOUT) {
-  console.log(JSON.stringify({ block: blockNum, at: new Date().toISOString(), results }, null, 2));
+  console.log(JSON.stringify({ block: blockNum, at: new Date().toISOString(), results, emissions }, null, 2));
 } else {
   console.log(`\nEthereum mainnet, block ${blockNum.toLocaleString("en-US")}\n`);
   for (const r of results) {

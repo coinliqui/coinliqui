@@ -54,6 +54,23 @@ const oneDp = (n: number) => n.toFixed(Math.abs(n) < 10 ? 1 : 0);
    would render as zero says "less than 0.1 days" instead, the same floor as the "<0.1" absorb cell. */
 const daysLeft = (n: number) => (Number(oneDp(n)) === 0 ? "less than 0.1 days" : `${oneDp(n)} days`);
 const readAt = Date.parse(reg.verifiedAt);
+/* TWO READS, SO A CHANGE. The register is re-read by hand (scripts/probe-vesting.mjs); each re-read
+   keeps the balance the one before it saw (heldAtPreviousRead) and the date of that read. On
+   15 October 2026 the second read found 100,001 ENS gone from a lock the page had called untouched
+   for two months — the sentence was true of the block it was read at and of nothing since. What
+   left, and between which two reads, is now said from the two balances, never assumed. */
+const prevReadAt = reg.previousRead ? Date.parse(reg.previousRead.verifiedAt) : null;
+const leftSince = (r: any): number | null =>
+  prevReadAt != null && Number.isFinite(r.heldAtPreviousRead) ? r.heldAtPreviousRead - r.heldNow : null;
+const movedClause = (r: any) => {
+  const lf = leftSince(r);
+  if (lf == null) return "";
+  return Math.abs(lf) < 0.5
+    ? `nothing left it between the reads on ${fmtTs(prevReadAt!)} and ${fmtTs(readAt)}`
+    : lf > 0
+      ? `${num(lf)} ${r.symbol} left it between the reads on ${fmtTs(prevReadAt!)} and ${fmtTs(readAt)}`
+      : `it gained ${num(-lf)} ${r.symbol} between the reads on ${fmtTs(prevReadAt!)} and ${fmtTs(readAt)}`;
+};
 
 /* NOTES IN THE DATA FILE CARRY NO NUMBERS OF THEIR OWN. Audited 16 September 2026, the COMP note
    said "7,764,561 COMP should have reached the Comptroller by now" — a figure taken at the read
@@ -315,7 +332,7 @@ const curationYield = oldestOverhang
   ? `A short list, strongest where it matters. Reading balances as well as schedules is how it found ${
       overhang.length === 1 ? "the finished contract above that still holds tokens"
       : `${overhang.length === 2 ? "both" : `all ${overhang.length}`} finished contracts above that still hold tokens`
-    } — ${overhang.length === 1 ? "it" : "the oldest"} ended on ${fmt(oldestOverhang.end)} and still holds ${num(oldestOverhang.heldNow)} ${oldestOverhang.symbol}.`
+    } — ${overhang.length === 1 ? "it" : "the oldest"} ended on ${fmt(oldestOverhang.end)} and held ${num(oldestOverhang.heldNow)} ${oldestOverhang.symbol} at the last read.`
   : "A short list, strongest where it matters.";
 /* THE SAME SPLICE, IN THE HEAD. The description, and so og:description and twitter:description,
    ended "which finished years ago with the tokens never withdrawn" — the sentence fixed in
@@ -323,7 +340,7 @@ const curationYield = oldestOverhang
    finished 316 days earlier and never moved; CRV finished 1,860 days earlier and has paid out
    141,212,401 of 151,515,152. The head now claims only what every overhang row shares. */
 const description = top
-  ? `At the last on-chain read, ${fmtTs(readAt)}, one ${top.symbol} lock held ${pct(top.heldNow / top.supply)} of supply; it finished vesting on ${fmt(top.end)} and nobody had moved it. A register of token vesting, lock and emission contracts read directly from Ethereum: what each holds now, what it is still releasing, and which finished schedules still hold tokens.`
+  ? `At the last on-chain read, ${fmtTs(readAt)}, one ${top.symbol} lock held ${pct(top.heldNow / top.supply)} of supply; it finished vesting on ${fmt(top.end)}${movedClause(top) ? `, and ${movedClause(top)}` : ""}. A register of token vesting, lock and emission contracts read directly from Ethereum: what each holds now, what it is still releasing, and which finished schedules still hold tokens.`
   : "A register of token vesting, lock and emission contracts read directly from Ethereum: what each holds now, what it is still releasing, and whether each finished schedule still holds tokens.";
 
 /* THE QUOTABLE SENTENCE EXISTED AND WAS NOT ON THE PAGE. `description` above already leads
@@ -337,7 +354,7 @@ const description = top
    block read on 15 August and printed as true two months later. The chain is read by hand
    (scripts/probe-vesting.mjs), so the sentence carries the read's date and says what it saw then. */
 const lede = top
-  ? `At the last on-chain read, ${fmtTs(readAt)}, one ${top.symbol} lock held ${pct(top.heldNow / top.supply)} of supply${top.absorb ? `, ${usd(top.absorb.usd)} at today's price` : ""}. It finished vesting on ${fmt(top.end)}, and nobody had moved it.`
+  ? `At the last on-chain read, ${fmtTs(readAt)}, one ${top.symbol} lock held ${pct(top.heldNow / top.supply)} of supply${top.absorb ? `, ${usd(top.absorb.usd)} at today's price` : ""}. It finished vesting on ${fmt(top.end)}${movedClause(top) ? `, and ${movedClause(top)}` : ""}.`
   : "";
 ---
 
@@ -415,7 +432,7 @@ const lede = top
     <table class="tbl">
       <thead>
         <tr>
-          <th>Token</th><th>Contract</th><th class="num">Held now</th><th class="num">Share of supply</th>
+          <th>Token</th><th>Contract</th><th class="num">Held at last read</th><th class="num">Share of supply</th>
           <th class="num">Unlocked since</th><th class="num">Days of volume to absorb <span class="thscope">Hyperliquid volume</span></th><th>Provenance</th>
         </tr>
       </thead>
@@ -424,7 +441,7 @@ const lede = top
           <tr>
             <td class="sym">{r.symbol}</td>
             <td>{r.label}<br /><code class="addr">{r.contract}</code></td>
-            <td class="num">{num(r.heldNow)}</td>
+            <td class="num">{num(r.heldNow)}{leftSince(r) != null && <><br /><span class="sub">{Math.abs(leftSince(r)!) < 0.5 ? `unchanged since ${fmtTs(prevReadAt!)}` : `${leftSince(r)! > 0 ? "−" : "+"}${num(Math.abs(leftSince(r)!))} since ${fmtTs(prevReadAt!)}`}</span></>}</td>
             <td class="num">{pct(r.heldNow / r.supply)}</td>
             <td class="num">{fmt(r.end)}<br /><span class="sub">{num(r.sinceEnd)} days</span></td>
             {r.absorb ? (
@@ -454,9 +471,9 @@ const lede = top
   {top && (
   <div class="verdict verdict--warn">
     <div>
-      <b>Why that difference matters, in one row.</b> The {top.symbol} lock in the first row holds
+      <b>Why that difference matters, in one row.</b> The {top.symbol} lock in the first row held
       {" "}<b>{`${num(top.heldNow)} ${top.symbol}`}</b> — {pct(top.heldNow / top.supply)} of
-      total supply. Its {scheduleFacts(top).span} unlock <b>finished on {fmt(top.end)}</b>, so every
+      total supply, at the read on {fmtTs(readAt)}. Its {scheduleFacts(top).span} unlock <b>finished on {fmt(top.end)}</b>, so every
       one of those tokens has been withdrawable for {num(top.sinceEnd)} days, on no notice
       and with nothing to announce. Because there is no future date attached to it, an unlock
       calendar has nothing to show — and showing nothing is the opposite of the truth. That row is
@@ -631,7 +648,7 @@ const lede = top
   </p>
   <div class="panel">
     <table class="tbl">
-      <thead><tr><th>Token</th><th>Contract</th><th class="num">Original amount</th><th class="num">Share of supply</th><th class="num">Ended</th><th class="num">Held now</th></tr></thead>
+      <thead><tr><th>Token</th><th>Contract</th><th class="num">Original amount</th><th class="num">Share of supply</th><th class="num">Ended</th><th class="num">Held at last read</th></tr></thead>
       <tbody>
         {emptied.map((r: any) => (
           <tr>
@@ -781,7 +798,7 @@ const lede = top
   </p>
   <div class="panel">
     <table class="tbl">
-      <thead><tr><th>Address</th><th class="num">Held now</th><th>Why it has no row above</th></tr></thead>
+      <thead><tr><th>Address</th><th class="num">Held at last read</th><th>Why it has no row above</th></tr></thead>
       <tbody>
         {reg.unverified.map((u: any) => (
           <tr>
