@@ -32,6 +32,7 @@ import { RAMP, CH, INK, MONO, FS_AXIS, compact, niceTicks } from "../lib/chart.t
 import { slotBars, shortDate } from "../lib/series.ts";
 import type { Perp, Snapshot } from "../lib/hyperliquid.ts";
 import { liqMapHref } from "../lib/routes.ts";
+import { signedPct, parsePrice } from "../lib/funding.ts";
 import tables from "../data/margin-tables.json";
 
 import Advisory from "./Advisory.astro";
@@ -110,11 +111,7 @@ const fromMark = (price: number) => (price - mark) / mark;
 /* ONE MINUS SIGN ON THE PAGE. The distance column printed toFixed's ASCII hyphen ("-6.58%") beside
    columns printing U+2212 ("−2.04%"), and "+0.00%" or "-0.00%" for a cluster that rounds to the mark.
    The sign is taken from the PRINTED digits, so a figure that rounds to zero carries none. */
-const signedFromMark = (price: number) => {
-  const printed = (Math.abs(fromMark(price)) * 100).toFixed(2);
-  const sign = Number(printed) === 0 ? "" : fromMark(price) > 0 ? "+" : "−";
-  return `${sign}${printed}%`;
-};
+const signedFromMark = (price: number) => signedPct(fromMark(price));
 
 const mmf = maintenanceMarginFraction(tier1.maxLeverage);
 const nextTier = nextTierBoundary(table, tier1.lowerBound);
@@ -164,6 +161,15 @@ const map =
       })
     : null;
 const levels = map ? levelsView(map, mark, 3) : null;
+/* THE READER'S OWN PRICE (?at=), parsed by the one parser the script also uses. An unreadable value
+   is kept as typed so the page can say it could not read it, rather than silently showing none. */
+const atRaw = q.get("at");
+const atPx = atRaw === null ? null : parsePrice(atRaw);
+/* The view the form must keep when it submits: the same resolved, non-default inputs viewHref links. */
+const carry: [string, string][] = [
+  ...(profile !== DEFAULT_PROFILE ? [["profile", profile.key] as [string, string]] : []),
+  ...(win !== DEFAULT_WIN ? [["win", String(win.days)] as [string, string]] : []),
+];
 const paint = map ? paintHeatMap(map, { live: { px: mark, at: snap.fetchedAt } }) : null;
 const warmBars = map ? map.warmBars : 0;
 const stepMs = win.factor * 3_600_000;
@@ -385,7 +391,9 @@ const formNote: string | null = (() => {
     <section class="now">
       <h2 class="section">If {perp.symbol} moves from here: what gets closed</h2>
       <div class="now__grid">
-        <LevelsMap view={levels} symbol={perp.symbol} fmt={axisPx} clipped={map.clipped} />
+        <LevelsMap view={levels} symbol={perp.symbol} dp={axisDp} clipped={map.clipped}
+                   at={atPx} atRaw={atPx === null && atRaw ? atRaw.slice(0, 40) : null}
+                   action={Astro.url.pathname} carry={carry} />
       </div>
     </section>
   )}
@@ -558,7 +566,7 @@ const formNote: string | null = (() => {
                         funding payment everywhere on this site; /coins/{coin} prints its 24-hour
                         change as an arrow in plain text for exactly that reason. A third meaning
                         for the same two hues teaches the next reader the wrong rule. */}
-                    <td class="num">{b.c[C] >= b.c[O] ? "+" : "−"}{(Math.abs((b.c[C] - b.c[O]) / b.c[O]) * 100).toFixed(2)}%</td>
+                    <td class="num">{signedPct((b.c[C] - b.c[O]) / b.c[O])}</td>
                     <td class="num">{compact(b.n)}</td>
                     <td class="num">{pct(b.n / Math.max(1, sweptTotal))}</td>
                   </tr>

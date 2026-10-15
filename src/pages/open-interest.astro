@@ -1,7 +1,7 @@
 ---
 import Base from "../layouts/Base.astro";
 import { getSnapshot, coldStart } from "../lib/hyperliquid.ts";
-import { pct, usd } from "../lib/funding.ts";
+import { pct, signedPct, usd } from "../lib/funding.ts";
 import Figure from "../components/Figure.astro";
 import Overview from "../components/Overview.astro";
 import { extremeBy } from "../lib/extreme.ts";
@@ -339,7 +339,7 @@ const noChangeReason = oiHist.status === "no-store"
                  This site keeps exactly two colour languages and both are spoken for: amber and
                  cyan are the funding direction, green and red are the candles'. A third quantity
                  does not get to borrow one; the sign carries the sign. */
-              : <td class="num">{d >= 0 ? "+" : "\u2212"}{pct(Math.abs(d))}</td>;
+              : <td class="num">{signedPct(d)}</td>;
           })()}
           <td class="num">{usd(p.dayNtlVlm)}</td>
           <td class="num">{p.oiNotional > 0 ? (p.dayNtlVlm / p.oiNotional).toFixed(2) + "×" : "—"}</td>

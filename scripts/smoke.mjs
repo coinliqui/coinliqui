@@ -38,7 +38,7 @@ import { readdirSync, readFileSync } from "node:fs";
 /* Source is read as CODE by default — see scripts/lib/source.mjs. The two checks below that
    want the prose say so at their call site, with the reason. */
 import { readSource, readRaw } from "./lib/source.mjs";
-import { cssFor, undefinedClasses, undefinedVars, rawEnums, searchIndexGaps, unnamedUpstreams, duplicateRuleImplementations, uncoveredRoutes, unreadableText, chartAgreement, requestedLeverageLabels, inlineScriptSyntax, flipTableColour, colourPalettes, colourLanguageDrift, colourLegend, publishesAPerson, fixtureGaps, staleDerivedCells, basisSelfConsistent, sitemapLastmodHonesty, breadcrumbAgreement, founderAgreement, readmeCounts, botPolicyReasons, contradictoryStates, hiddenFromEveryone, pageWeight, weightFaults, dateModifiedAgreement, phantomInlineElements, malformedAttributes, uncitedPermissionClaims, unconditionalCadenceClaims, typedVenueFacts, handComputedAges, staleCalculatorFigures, controlGroupOverflow, stampSurfacesAgree, symbolAddressing, computedFigureFloor, COMPUTED_FIGURES, openingFigure, PROSE_ROUTES, handRolledLegends, collapsedStateEscapesMobile, leadReachesTheOpening, collapsedTextShipped, MORE_ROUTES} from "./checks.mjs";
+import { cssFor, undefinedClasses, undefinedVars, rawEnums, searchIndexGaps, unnamedUpstreams, duplicateRuleImplementations, uncoveredRoutes, unreadableText, chartAgreement, requestedLeverageLabels, inlineScriptSyntax, flipTableColour, colourPalettes, colourLanguageDrift, colourLegend, publishesAPerson, fixtureGaps, staleDerivedCells, basisSelfConsistent, sitemapLastmodHonesty, breadcrumbAgreement, founderAgreement, readmeCounts, botPolicyReasons, contradictoryStates, hiddenFromEveryone, pageWeight, weightFaults, dateModifiedAgreement, phantomInlineElements, malformedAttributes, uncitedPermissionClaims, unconditionalCadenceClaims, typedVenueFacts, handComputedAges, staleCalculatorFigures, controlGroupOverflow, stampSurfacesAgree, symbolAddressing, computedFigureFloor, COMPUTED_FIGURES, openingFigure, PROSE_ROUTES, handRolledLegends, collapsedStateEscapesMobile, leadReachesTheOpening, collapsedTextShipped, MORE_ROUTES, levelsAgree} from "./checks.mjs";
 
 /* The SERVER side of each duplicated formatter, transcribed from the file that owns it and
    named here so the pairing is explicit. Transcription is the honest cost of having no bundler:
@@ -93,6 +93,8 @@ const ROUTES = [
      keeps the URL Google already indexed. A template covered only by its happy path is how the
      404-vs-410 pair went unnoticed. */
   "/liquidations/eth", "/liquidations/btc", "/liquidations/notacoin",
+  /* the reader's own price: one inside the range, one far past it, one unreadable */
+  "/liquidations/sol?at=1", "/liquidations/eth?at=999999999", "/liquidations/eth?at=abc&profile=aggressive",
   "/unlocks", "/tools", "/tools/position-size", "/tools/leverage", "/tools/funding-cost",
   "/tools/funding-arbitrage", "/tools/liquidation-price", "/methodology",
   "/methodology/liquidations", "/data-sources", "/privacy", "/about", "/terms", "/llms.txt",
@@ -435,6 +437,8 @@ for (const path of ROUTES) {
       const route = path.split("?")[0];
       for (const d of collapsedTextShipped(body, { expect: status === 200 && MORE_ROUTES.some((r) => r.test(route)) })) content.push(`collapsed text: ${d}`);
     }
+    /* The liquidation map's figures are its published rows summed by the shared function. */
+    for (const d of levelsAgree(body)) content.push(`liquidation map: ${d}`);
     for (const d of dateModifiedAgreement(body)) content.push(`the stated age disagrees with itself: ${d}`);
     /* Recorded, not asserted here: the counterpart claim lives in a sitemap this loop has not
        fetched yet. Query strings are stripped because a sitemap lists the bare URL. */

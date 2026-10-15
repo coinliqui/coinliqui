@@ -1,4 +1,5 @@
 import { brotliCompressSync, constants as zlibConstants } from "node:zlib";
+import { compact, cumulativeAt, atReading, parsePrice } from "../public/shared.js";
 const brotli = (html) => {
   try {
     return brotliCompressSync(Buffer.from(html), { params: { [zlibConstants.BROTLI_PARAM_QUALITY]: 5 } }).length;
@@ -1710,6 +1711,53 @@ export function collapsedTextShipped(html, { expect = false } = {}) {
     if (text.length < 40) out.push(`"${label}" is collapsed but carries ${text.length} characters of text — an empty fold is a placeholder for something fetched later`);
   }
   if (expect && opens.length === 0) out.push("this route is registered as carrying collapsed explanation (MORE_ROUTES) and ships no details.more at all");
+  return out;
+}
+
+/**
+ * THE LIQUIDATION MAP'S FIGURES ARE THE ROWS IT PUBLISHES, SUMMED BY THE ONE SHARED FUNCTION.
+ *
+ * The map publishes its rows (data-levels) so the reader's own price can be read in the browser,
+ * and the server prints eight standard moves and any ?at= reading from the same rows. That only
+ * holds while the server's figures are exactly what cumulativeAt()/atReading() in public/shared.js
+ * give on the published curve — the moment a template sums differently (the display bins, say,
+ * which on 15 October 2026 moved BTC's −1% from $837K to $5.2M with the bin size), the figure in
+ * the table and the figure under the cursor would disagree on the same page. So each table row is
+ * recomputed from the published curve, the † past-the-range marker must sit on exactly the rows
+ * whose price lies outside it, and a printed reading must be the shared sentence for the value in
+ * the field.
+ */
+export function levelsAgree(html) {
+  const out = [];
+  const m = html.match(/\bdata-levels="([^"]*)"/);
+  if (!m) return out;
+  let d;
+  try { d = JSON.parse(m[1].replace(/&quot;/g, '"').replace(/&#34;/g, '"').replace(/&amp;/g, "&")); }
+  catch { return ["data-levels is not JSON — the page's script cannot read the rows the figures came from"]; }
+  const strip = (x) => x.replace(/<[^>]+>/g, "").replace(/&[a-z#0-9]+;/gi, " ").replace(/\s+/g, " ").trim();
+  /* Scoped styles put an attribute on every element, so no tag here is matched bare. */
+  const tbody = html.match(/class="tbl levels__tbl"[\s\S]*?<tbody\b[^>]*>([\s\S]*?)<\/tbody>/)?.[1] ?? "";
+  for (const row of tbody.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/g)) {
+    const cells = [...row[1].matchAll(/<td\b[^>]*>([\s\S]*?)<\/td>/g)].map((c) => c[1]);
+    if (cells.length < 3) continue;
+    const move = strip(cells[0]);
+    const k = Number(move.replace("\u2212", "-").replace(/[+%]/g, "")) / 100;
+    if (!Number.isFinite(k)) { out.push(`move "${move}" is not a percentage`); continue; }
+    const price = d.mark * (1 + k);
+    const want = compact(cumulativeAt(d.curve, d.mark, price).notional);
+    const got = strip(cells[2]).replace("\u2020", "").trim();
+    if (got !== want) out.push(`${move}: the table prints ${got}, the published rows give ${want}`);
+    const past = price < d.lo || price > d.hi;
+    if (past !== cells[2].includes("\u2020")) out.push(`${move}: ${past ? "lands past the drawn range and carries no †" : "is inside the drawn range and is marked † as past it"}`);
+  }
+  const field = html.match(/<input\b[^>]*\bdata-at-input\b[^>]*>/)?.[0] ?? "";
+  const value = field.match(/\bvalue="([^"]*)"/)?.[1] ?? "";
+  const said = strip(html.match(/<p\b[^>]*\bdata-at-out\b[^>]*>([\s\S]*?)<\/p>/)?.[1] ?? "");
+  const price = parsePrice(value.replace(/&amp;/g, "&"));
+  if (price !== null) {
+    const want = atReading(d.curve, d.mark, price, d.lo, d.hi, d.dp);
+    if (said !== want) out.push(`the reading for ${value} says "${said}" where the shared sentence on the published rows is "${want}"`);
+  }
   return out;
 }
 

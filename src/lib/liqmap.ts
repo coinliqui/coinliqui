@@ -1,5 +1,6 @@
 import type { Candle } from "./candles.ts";
 import { slotBars } from "./series.ts";
+import { cumulativeAt } from "../../public/shared.js";
 
 /* =========================================================================================
    MODELLED LIQUIDATION DENSITY — price on Y, time on X.
@@ -410,11 +411,18 @@ export interface LevelsView {
   mark: number;
   /** cumulative notional liquidated by a move from the mark to a price, for any price */
   cumAt: (price: number) => { side: "long" | "short"; notional: number };
+  /** the rows cumAt reads, published on the page so the reader's own price is read by the same
+   *  function in the browser — see cumulativeAt() in public/shared.js */
+  curve: LevelsCurve;
+  /** the drawn range: a price outside it is read with every row of its side, and no more */
+  lo: number; hi: number;
   /** the standard reads: a move of ±k% from the mark */
-  moves: { pct: number; price: number; side: "long" | "short"; notional: number }[];
+  moves: { pct: number; price: number; side: "long" | "short"; notional: number; beyond: boolean }[];
   totalLong: number; totalShort: number;
   peakBin: number;
 }
+
+export interface LevelsCurve { hi: number; band: number; long: number[]; short: number[] }
 
 export const MOVE_STEPS = [0.01, 0.02, 0.05, 0.1];
 
@@ -443,23 +451,23 @@ export function levelsView(m: LiqMap, mark: number, binRows = 2): LevelsView {
      A LONG level above the mark (or a short below it) can stand only between the last drawn close
      and the live mark: price has not traded through it on the hourly series yet. It is still a
      level a move from the mark reaches at once, so it is counted from the first step. */
-  const rowMid = (r: number) => m.hiPrice - (r + 0.5) * m.band;
-  const sumRow = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
-  const cumAt = (price: number) => {
-    let n = 0;
-    if (price <= mark) {
-      for (let r = 0; r < m.rows; r++) if (rowMid(r) >= price) n += sumRow(m.standing.long[r]);
-      return { side: "long" as const, notional: n };
-    }
-    for (let r = 0; r < m.rows; r++) if (rowMid(r) <= price) n += sumRow(m.standing.short[r]);
-    return { side: "short" as const, notional: n };
-  };
+  /* Whole dollars, because the curve is published in the page and the server reads the SAME
+     rounded rows it publishes: a figure printed here and a figure read from the curve by the
+     page's script are then one sum, not two that agree to within rounding. */
+  const rowSums = (side: number[][]) => side.map((xs) => Math.round(xs.reduce((a, b) => a + b, 0)));
+  const curve: LevelsCurve = { hi: m.hiPrice, band: m.band, long: rowSums(m.standing.long), short: rowSums(m.standing.short) };
+  const cumAt = (price: number) => cumulativeAt(curve, mark, price) as { side: "long" | "short"; notional: number };
+  /* A STANDARD MOVE CAN LAND PAST THE DRAWN RANGE — BTC's −10% sat at $73,149 under a range ending
+     at $73,593 (15 October 2026) — and its figure is then every level of that side INSIDE the range,
+     not the move's total. `beyond` lets the table say so, as atReading() does for a reader's price. */
+  const beyond = (p: number) => p < m.loPrice || p > m.hiPrice;
   const moves = MOVE_STEPS.flatMap((k) => [
-    { pct: -k, price: mark * (1 - k), ...cumAt(mark * (1 - k)) },
-    { pct: k, price: mark * (1 + k), ...cumAt(mark * (1 + k)) },
+    { pct: -k, price: mark * (1 - k), ...cumAt(mark * (1 - k)), beyond: beyond(mark * (1 - k)) },
+    { pct: k, price: mark * (1 + k), ...cumAt(mark * (1 + k)), beyond: beyond(mark * (1 + k)) },
   ]);
   return {
-    bins, levs, mark, cumAt, moves,
+    bins, levs, mark, cumAt, moves, curve,
+    lo: m.loPrice, hi: m.hiPrice,
     totalLong: bins.reduce((a, b) => a + b.longSum, 0),
     totalShort: bins.reduce((a, b) => a + b.shortSum, 0),
     peakBin: Math.max(1, ...bins.map((b) => b.longSum + b.shortSum)),

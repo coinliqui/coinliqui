@@ -24,7 +24,7 @@
  */
 import { readFileSync } from "node:fs";
 import {
-  hiddenFromEveryone, collapsedTextShipped, dateModifiedAgreement, breadcrumbAgreement, publishesAPerson,
+  hiddenFromEveryone, collapsedTextShipped, levelsAgree, dateModifiedAgreement, breadcrumbAgreement, publishesAPerson,
   contradictoryStates, rawEnums, founderAgreement, readmeCounts,
   basisSelfConsistent, uncoveredRoutes, staleDerivedCells, botPolicyReasons,
   undefinedClasses, undefinedVars, unreadableText, colourLegend, colourLanguageDrift,
@@ -55,6 +55,13 @@ const PALETTE = {
 };
 
 const doc = (body, head = "") => `<!doctype html><html><head>${head}</head><body>${body}</body></html>`;
+/* A liquidation-map fixture for levelsAgree: twenty $1 rows from 110 down, mark 100. */
+const levels = (rows, value = "", said = "") => {
+  const curve = { hi: 110, band: 1, short: Array.from({ length: 20 }, (_, r) => (r < 10 ? 5 : 0)), long: Array.from({ length: 20 }, (_, r) => (r >= 10 ? 10 : 0)) };
+  const json = JSON.stringify({ curve, mark: 100, lo: 90, hi: 110, dp: 0 }).replace(/"/g, "&quot;");
+  return doc(`<figure data-levels="${json}"></figure><form><input data-at-input value="${value}"><p data-at-out>${said}</p></form>` +
+    `<table class="tbl levels__tbl" data-astro-cid-x><tbody data-astro-cid-x>${rows.map(([mv, n]) => `<tr data-astro-cid-x><td class="num">${mv}</td><td class="num">x</td><td class="num">${n}</td><td>s</td></tr>`).join("")}</tbody></table>`);
+};
 
 let bad0 = 0;
 const cases = [
@@ -89,6 +96,25 @@ const cases = [
       collapsedTextShipped(doc(`<details class="more"><summary>Tables</summary><details class="src"><summary>raw</summary><p>x</p></details><p>Every figure below is arithmetic on the published margin table.</p></details>`)).length === 0,
       /* other details elements are not this check's business */
       collapsedTextShipped(doc(`<details class="src"><summary>raw</summary></details>`)).length === 0,
+    ],
+  },
+  {
+    check: "levelsAgree",
+    why: "the map's table and the reader's price must be the published rows summed by the shared function, or the figure in the table and the one under the cursor disagree",
+    /* hi 110, rows of $1: shorts $5 a row above the mark at 100, longs $10 a row below it. A move
+       to 95 reaches the five long rows centred 99.5…95.5: $50. */
+    fire: () => levelsAgree(levels([["\u22125%", "$60"]])),
+    quiet: () => levelsAgree(levels([["\u22125%", "$50"], ["+15%", "$50<sup>\u2020</sup>"]], "95",
+      "A move to $95 (\u22125.00%) closes $50 of modelled longs on the way.")),
+    also: () => [
+      /* a move past the drawn range printed as though it were inside it */
+      levelsAgree(levels([["+15%", "$50"]])).length > 0,
+      /* a reading worded apart from the shared sentence */
+      levelsAgree(levels([], "95", "A move to $95 closes $50.")).length > 0,
+      /* unparseable rows are said, not skipped silently */
+      levelsAgree(doc(`<figure data-levels="{oops"></figure>`)).length > 0,
+      /* a page without the map is not this check's business */
+      levelsAgree(doc(`<p>No map here.</p>`)).length === 0,
     ],
   },
   {

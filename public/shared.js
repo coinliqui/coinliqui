@@ -57,6 +57,65 @@ export function pct(x, decimals = 2) {
   return `${(x * 100).toFixed(decimals)}%`;
 }
 
+/** A signed percentage: U+2212 for a fall, "+" for a rise, and NO sign on a figure whose printed
+ *  digits are zero. Five copies of this existed on 15 October 2026 with three rules between them —
+ *  two printed "+0.00%" for a flat value, one printed an ASCII hyphen, two never read the digits at
+ *  all — so a candle that closed where it opened read "+0.00%" in one table and "0.00%" beside it. */
+export function signedPct(x, decimals = 2) {
+  if (!Number.isFinite(x)) return "—";
+  const printed = (Math.abs(x) * 100).toFixed(decimals);
+  return `${Number(printed) === 0 ? "" : x > 0 ? "+" : "−"}${printed}%`;
+}
+
+/**
+ * THE LIQUIDATION MAP'S "A MOVE TO HERE CLOSES", for any price, from the model's own rows.
+ *
+ * `curve` is what src/lib/liqmap.ts levelsCurve() publishes: the top of the drawn range, the row
+ * height, and the standing notional per row (row 0 is the HIGHEST price) on each side, in whole
+ * dollars. A move down from the mark reaches every long level whose row centre is at or above the
+ * target; a move up reaches every short level at or below it. The server prints its eight standard
+ * moves and a reader's own ?at= price with this function, and the page's script calls the same
+ * function on the same published curve when the reader drags, so the figure under the cursor
+ * cannot disagree with the one in the table. It counts only rows inside the drawn range — a price
+ * beyond it gets the whole of that side, and the page says what lies past the edge.
+ */
+export function cumulativeAt(curve, mark, price) {
+  let n = 0;
+  const below = price <= mark;
+  const rows = below ? curve.long : curve.short;
+  for (let r = 0; r < rows.length; r++) {
+    const mid = curve.hi - (r + 0.5) * curve.band;
+    if (below ? mid >= price : mid <= price) n += rows[r];
+  }
+  return { side: below ? "long" : "short", notional: n };
+}
+
+/** A price a reader typed: "78500", "78,500", "$78,500.5". Anything else is null, never a guess. */
+export function parsePrice(s) {
+  if (typeof s !== "string") return null;
+  const t = s.replace(/[\s,$]/g, "");
+  if (!/^\d*\.?\d+$/.test(t)) return null;
+  const v = Number(t);
+  return Number.isFinite(v) && v > 0 && v < 1e15 ? v : null;
+}
+
+/**
+ * THE READER'S OWN PRICE, AS ONE SENTENCE — printed by the server for ?at= and rewritten by the
+ * page's script while the reader drags, from this one function, so the two cannot word it apart.
+ * Beyond the drawn range it does not pretend to know what stands past the edge: it gives the whole
+ * of that side inside the range and says the rest is not counted.
+ */
+export function atReading(curve, mark, price, lo, hi, dp) {
+  const { side, notional } = cumulativeAt(curve, mark, price);
+  const who = side === "long" ? "longs" : "shorts";
+  const where = `${usd(price, dp)} (${signedPct((price - mark) / mark)})`;
+  if (price < lo || price > hi) {
+    return `${where} is ${price < lo ? "below" : "above"} the drawn range, which ends at ${usd(price < lo ? lo : hi, dp)}. ` +
+      `A move there would close all ${compact(notional)} of modelled ${who} inside the range; what stands past its edge is not counted.`;
+  }
+  return `A move to ${where} closes ${compact(notional)} of modelled ${who} on the way.`;
+}
+
 /** Signed percentage change, arrow included — the 24-hour cell, rendered identically either
  *  side of hydration. */
 export function changeWords(fraction) {

@@ -11,7 +11,7 @@
    changes whenever either does, and passing it along keeps the two halves of one deploy
    together. */
 const __v = new URL(import.meta.url).searchParams.get("v");
-const { paysClass, paysLabel, carryCost, spreadOf, pct, changeWords, ageWords, nf, qty, compact: compactUsd, usd, visiblePanel } =
+const { paysClass, paysLabel, carryCost, spreadOf, pct, changeWords, ageWords, nf, qty, compact: compactUsd, usd, visiblePanel, cumulativeAt, atReading, parsePrice } =
   await import("./shared.js" + (__v ? `?v=${__v}` : ""));
 
 /* =========================================================================================
@@ -337,6 +337,49 @@ const { paysClass, paysLabel, carryCost, spreadOf, pct, changeWords, ageWords, n
       if (e.pointerType === "touch") e.preventDefault();
     }, { passive: false });
     svg.addEventListener("pointerleave", hideTip);
+  });
+
+  /* ----------------------------------------- the reader's own price on the liquidation map
+     The server already answered ?at= in the HTML; this only lets the reader move it. Every figure
+     comes from the rows the server published in data-levels, read by the same cumulativeAt() and
+     worded by the same atReading() the server printed with (public/shared.js), and the address
+     follows the line, so what is on screen is a link. A tap places the line; a mouse can drag it.
+     Touch does not drag, because a finger on the ladder is usually a finger scrolling the page. */
+  document.querySelectorAll("[data-levels]").forEach((fig) => {
+    let d;
+    try { d = JSON.parse(fig.dataset.levels); } catch { return; }
+    const svg = fig.querySelector("svg");
+    const line = svg && svg.querySelector("[data-at-line]");
+    const label = svg && svg.querySelector("[data-at-label]");
+    const form = document.querySelector("[data-at-form]");
+    const input = form && form.querySelector("[data-at-input]");
+    const out = form && form.querySelector("[data-at-out]");
+    if (!line || !label || !input || !out) return;
+    const place = (price, typed) => {
+      const yv = Math.min(d.y0 + d.h, Math.max(d.y0, d.y0 + ((d.top - price) / (d.top - d.bottom)) * d.h));
+      line.setAttribute("transform", `translate(0 ${yv})`);
+      line.removeAttribute("display");
+      const c = cumulativeAt(d.curve, d.mark, price);
+      label.textContent = `${usd(price, d.dp)} → ${compactUsd(c.notional)} ${c.side === "long" ? "longs" : "shorts"}`;
+      out.textContent = atReading(d.curve, d.mark, price, d.lo, d.hi, d.dp);
+      if (!typed) input.value = String(price);
+      const u = new URL(location.href);
+      u.searchParams.set("at", String(price));
+      history.replaceState(null, "", u);
+    };
+    const fromPointer = (e) => {
+      const m = svg.getScreenCTM();
+      if (!m) return null;
+      const v = new DOMPoint(e.clientX, e.clientY).matrixTransform(m.inverse());
+      const price = Number((d.top - ((v.y - d.y0) / d.h) * (d.top - d.bottom)).toFixed(d.dp));
+      return price > 0 ? price : null;
+    };
+    let dragging = false;
+    svg.addEventListener("click", (e) => { const p = fromPointer(e); if (p) place(p, false); });
+    svg.addEventListener("pointerdown", (e) => { if (e.pointerType === "mouse") dragging = true; });
+    svg.addEventListener("pointermove", (e) => { if (dragging) { const p = fromPointer(e); if (p) place(p, false); } });
+    addEventListener("pointerup", () => { dragging = false; });
+    input.addEventListener("input", () => { const p = parsePrice(input.value); if (p) place(p, true); });
   });
 
   /* ------------------------------------------------------------- timeframe switcher */

@@ -246,6 +246,34 @@ function orderSweeps(states, now, backoffMs) {
   });
 }
 
+// src/lib/sweep-run.ts
+var SLICE_GROUP = 4;
+var isThrottle = (msg) => /\b429\b/.test(msg);
+async function runSlice(slice, write, group = SLICE_GROUP) {
+  const done = [];
+  let firstErr = "";
+  let throttled = false;
+  for (let i = 0; i < slice.length && !throttled; i += group) {
+    const part = slice.slice(i, i + group);
+    const oks = await Promise.all(part.map((s) => write(s).catch((e) => {
+      const msg = (e instanceof Error ? e.message : String(e)).slice(0, 90);
+      if (!firstErr) firstErr = `${s}: ${msg}`;
+      if (isThrottle(msg)) throttled = true;
+      return false;
+    })));
+    oks.forEach((ok, k) => {
+      if (ok) done.push(part[k]);
+    });
+  }
+  return { done, firstErr, throttled };
+}
+function rotateRetries(holes, stale, tick) {
+  const rest = stale.filter((s) => !holes.includes(s));
+  if (!rest.length) return [...holes];
+  const k = (tick % rest.length + rest.length) % rest.length;
+  return [...holes, ...rest.slice(k), ...rest.slice(0, k)];
+}
+
 // src/lib/coins.ts
 var COINS = [
   {
@@ -583,10 +611,32 @@ var SEARCH_WINDOW_DAYS = 8;
 function searchWindow(at) {
   const day = 864e5;
   const end = at - SEARCH_LAG_DAYS * day;
-  const iso = (ms) => new Date(ms).toISOString().slice(0, 10);
-  return { start: iso(end - (SEARCH_WINDOW_DAYS - 1) * day), end: iso(end) };
+  const iso2 = (ms) => new Date(ms).toISOString().slice(0, 10);
+  return { start: iso2(end - (SEARCH_WINDOW_DAYS - 1) * day), end: iso2(end) };
 }
 var QUERY_ROW_LIMIT = 500;
+var DAILY_DAYS = 28;
+var STEP_SHARE = 0.5;
+var STEP_FLOOR = 20;
+function dailyLines(rows) {
+  if (!rows.length) return ["No daily rows in this window."];
+  const days = [...rows].sort((a, b) => a.keys[0].localeCompare(b.keys[0]));
+  const max = Math.max(...days.map((d) => d.impressions), 1);
+  const out = ["| Day | Impressions | Clicks | Avg position | |", "|---|---:|---:|---:|---|"];
+  const steps = [];
+  days.forEach((d, i) => {
+    const prev = i ? days[i - 1] : null;
+    const step = !!prev && prev.impressions >= STEP_FLOOR && d.impressions <= prev.impressions * STEP_SHARE;
+    if (step) steps.push(`${d.keys[0]} (${prev.impressions} \u2192 ${d.impressions})`);
+    const bar = "\u2588".repeat(Math.max(d.impressions ? 1 : 0, Math.round(d.impressions / max * 20)));
+    out.push(`| ${d.keys[0]} | ${d.impressions} | ${d.clicks} | ${d.position.toFixed(1)} | ${bar}${step ? " **\u2190 step**" : ""} |`);
+  });
+  if (steps.length) {
+    out.push("");
+    out.push(`**A one-day step:** ${steps.join(", ")}. Read which pages and queries it took (scripts/gsc.mjs) before reading the weekly totals above as a trend.`);
+  }
+  return out;
+}
 var HISTORY_KEEP = 26;
 function indexHistoryRows(history, earliest) {
   const out = ["| Reading | Indexed | Change since the reading before |", "|---|---:|---|"];
@@ -984,6 +1034,12 @@ Search Console returned its ${QUERY_ROW_LIMIT}-row limit, so these totals are a 
             say(`> The band table below counts queries rather than weighting them, and is the`);
             say(`> half of this section that survives a change in the covered set.`);
           }
+          const fromDay = new Date(Date.parse(end) - (DAILY_DAYS - 1) * 864e5).toISOString().slice(0, 10);
+          const daily = await api(base, { startDate: fromDay, endDate: end, dimensions: ["date"], rowLimit: DAILY_DAYS });
+          say(`
+### Impressions by day, ${fromDay} to ${end}
+`);
+          for (const l of dailyLines(daily.rows || [])) say(l);
           const q = await api(base, { startDate: start, endDate: end, dimensions: ["query"], rowLimit: QUERY_ROW_LIMIT });
           if (q.rows?.length) {
             const named = q.rows;
@@ -1125,11 +1181,11 @@ ${pct1}% of the requests carrying a crawler's name were verified as that crawler
   }
   say("\n## D. Legal reading age\n");
   {
-    const DAY = 864e5;
+    const DAY2 = 864e5;
     const rows = terms_baseline_default.documents.map((d) => {
       const read = Date.parse(`${d.readAt}T00:00:00Z`);
       const every = Number.isInteger(d.reviewEveryDays) ? d.reviewEveryDays : terms_baseline_default.reviewEveryDaysDefault;
-      const days = Number.isFinite(read) ? Math.floor((Date.now() - read) / DAY) : null;
+      const days = Number.isFinite(read) ? Math.floor((Date.now() - read) / DAY2) : null;
       return { id: d.id, days, every, due: days === null || days > every, dated: d.lastUpdatedOnDocument };
     });
     const never = rows.filter((r) => r.days === null);
@@ -1301,8 +1357,94 @@ async function stepCorroborate(env, now = Date.now()) {
   return `corroborate: ${good}/${out.length} reachable (${out.map((r) => `${new URL(r.url).pathname.slice(1)} ${r.status ?? "no answer"}`).join(", ")})`;
 }
 
+// worker/gsc-export.ts
+var GSC_EXPORT_KEY = "gsc:export";
+var GSC_EXPORT_EVERY_MS = 20 * 36e5;
+var GSC_EXPORT_FROM_HOUR_UTC = 6;
+var GSC_DAYS_SERIES = 180;
+var GSC_DAYS_DETAIL = 56;
+var GSC_DAYS_PAIRS = 28;
+var GSC_ROW_LIMIT = 25e3;
+var DAY = 864e5;
+var iso = (ms) => new Date(ms).toISOString().slice(0, 10);
+function gscExportDue(prior, now) {
+  if (new Date(now).getUTCHours() < GSC_EXPORT_FROM_HOUR_UTC) return false;
+  const last = prior && typeof prior.attemptAt === "number" ? prior.attemptAt : 0;
+  return now - last >= GSC_EXPORT_EVERY_MS;
+}
+function compactRows(rows, origin) {
+  return rows.map((r) => [
+    ...r.keys.map((k) => k.startsWith(origin) ? k.slice(origin.length) || "/" : k),
+    r.clicks,
+    r.impressions,
+    Math.round(r.position * 10) / 10
+  ]);
+}
+async function stepGscExport(env, now = Date.now()) {
+  if (!env.GSC_SA_KEY) return null;
+  let prior = null;
+  try {
+    prior = await env.SNAPSHOT.get(GSC_EXPORT_KEY, "json");
+  } catch {
+  }
+  if (!gscExportDue(prior, now)) return null;
+  const origin = (env.SITE_ORIGIN || "https://coinliqui.com").replace(/\/$/, "");
+  const site = `sc-domain:${new URL(origin).hostname}`;
+  const end = iso(now - DAY);
+  const span = (days) => ({ start: iso(now - days * DAY), end });
+  try {
+    const token = await gscToken(env.GSC_SA_KEY);
+    const query = async (dimensions, days) => {
+      const w = span(days);
+      const r = await fetch(`https://www.googleapis.com/webmasters/v3/sites/${encodeURIComponent(site)}/searchAnalytics/query`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+        body: JSON.stringify({ startDate: w.start, endDate: w.end, dimensions, rowLimit: GSC_ROW_LIMIT, dataState: "all" })
+      });
+      const j = await r.json();
+      if (j.error) throw new Error(`${dimensions.join("\xD7")}: ${j.error.code} ${j.error.message}`);
+      const rows = j.rows ?? [];
+      return { ...w, rows: compactRows(rows, origin), truncated: rows.length >= GSC_ROW_LIMIT };
+    };
+    const series = await query(["date"], GSC_DAYS_SERIES);
+    const pageDate = await query(["page", "date"], GSC_DAYS_DETAIL);
+    const queryDate = await query(["query", "date"], GSC_DAYS_DETAIL);
+    const queryPage = await query(["query", "page"], GSC_DAYS_PAIRS);
+    const doc = {
+      v: 1,
+      at: now,
+      attemptAt: now,
+      site,
+      dataState: "all",
+      series: { start: series.start, end: series.end, rows: series.rows },
+      pageDate,
+      queryDate,
+      queryPage
+    };
+    await env.SNAPSHOT.put(GSC_EXPORT_KEY, JSON.stringify(doc));
+    const cut = [pageDate, queryDate, queryPage].some((x) => x.truncated) ? ", a detail table hit the row limit" : "";
+    return `gsc-export: ${series.rows.length} days, ${pageDate.rows.length} page-days, ${queryDate.rows.length} query-days, ${queryPage.rows.length} pairs${cut}`;
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    const keep = prior && prior.v === 1 ? { ...prior, attemptAt: now, error: msg } : {
+      v: 1,
+      at: 0,
+      attemptAt: now,
+      site,
+      dataState: "all",
+      series: { start: "", end: "", rows: [] },
+      pageDate: { start: "", end: "", rows: [], truncated: false },
+      queryDate: { start: "", end: "", rows: [], truncated: false },
+      queryPage: { start: "", end: "", rows: [], truncated: false },
+      error: msg
+    };
+    await env.SNAPSHOT.put(GSC_EXPORT_KEY, JSON.stringify(keep));
+    return `gsc-export: failed \u2014 ${msg.slice(0, 160)}`;
+  }
+}
+
 // worker/build-stamp.ts
-var WORKER_BUILD = "96f6f0bdfec0";
+var WORKER_BUILD = "f65eca07fdd9";
 
 // worker/ingest.ts
 var RETAIN_HOURS = 720;
@@ -1311,7 +1453,7 @@ var HOURLY_REFRESH_HOURS = 2;
 var M15_REFRESH_HOURS = 2;
 var FUNDING_REFRESH_HOURS = 6;
 var CANARY_RETAIN_HOURS = 168;
-var CHUNK = 24;
+var CHUNK = 12;
 var FILL_BACKOFF_MS = 10 * 6e4;
 function sameSecret(want, got) {
   if (!want || !got) return false;
@@ -1548,11 +1690,6 @@ async function run(env) {
       if (probe) result.probe = probe;
       const reach = await stepCorroborate(env);
       if (reach) result.corroborate = reach;
-      const step = await stepReport(env);
-      if (step) {
-        result.report = step;
-        throw SKIP_SWEEPS;
-      }
       try {
         const prev = await env.SNAPSHOT.get(LAST_KEY, "json");
         const fresh = detectFlips(prev, rows, at);
@@ -1582,6 +1719,16 @@ async function run(env) {
       } catch (e) {
         result.indexnow = `indexnow: threw (${e instanceof Error ? e.message : String(e)})`;
       }
+      const gsc = await stepGscExport(env);
+      if (gsc) {
+        result.gscExport = gsc;
+        throw SKIP_SWEEPS;
+      }
+      const step = await stepReport(env);
+      if (step) {
+        result.report = step;
+        throw SKIP_SWEEPS;
+      }
       const syms = published;
       const sweep = async (key, hours, write, extra = 0, over = syms, preloaded = void 0) => {
         const scope = over;
@@ -1590,15 +1737,9 @@ async function run(env) {
         const room = Math.max(1, CHUNK - extra);
         let firstErr = "";
         const run2 = async (slice2) => {
-          const done2 = [];
-          const oks = await Promise.all(slice2.map((s) => write(s).catch((e) => {
-            if (!firstErr) firstErr = `${s}: ${(e instanceof Error ? e.message : String(e)).slice(0, 90)}`;
-            return false;
-          })));
-          oks.forEach((ok, i) => {
-            if (ok) done2.push(slice2[i]);
-          });
-          return done2;
+          const r = await runSlice(slice2, write);
+          if (!firstErr) firstErr = r.firstErr;
+          return r.done;
         };
         const cursor = m?.i ?? 0;
         const inCycle = cursor > 0;
@@ -1606,7 +1747,7 @@ async function run(env) {
         const stalled = stalledSince > 0 && Date.now() - stalledSince < FILL_BACKOFF_MS;
         if (!inCycle && !stalled) {
           const stale = (m?.skip ?? []).filter((x) => scope.includes(x));
-          const missing = [.../* @__PURE__ */ new Set([...scope.filter((x) => !have.has(x)), ...stale])];
+          const missing = rotateRetries(scope.filter((x) => !have.has(x)), stale, Math.floor(Date.now() / 3e5));
           if (missing.length) {
             const done2 = await run2(missing.slice(0, room));
             for (const s of done2) have.add(s);

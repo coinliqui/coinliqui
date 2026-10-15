@@ -25,19 +25,37 @@
    COLOUR IS LEVERAGE, FROM THE DENSITY RAMP. Side needs no hue — it is above or below the mark,
    labelled on the picture — so the four reserved hues (candle up/down, funding direction) stay
    unused, which the colour-language check would otherwise refuse.
+
+   THE READER'S OWN PRICE IS THE PART A CHAT ANSWER CANNOT CARRY. The eight standard moves are
+   figures an assistant can lift and repeat; "what if it goes to 78,500" is a question about a
+   price nobody published. So the page takes one: ?at= is read on the server and answered in the
+   first response — a line on the ladder and a sentence in the reads — and the GET form beside it
+   works with scripting off. With scripting on, a press or drag on the ladder moves that line and
+   rewrites the sentence and the address, so the reading a reader arrives at is a link they can
+   send. The figure is never the script's own: the server publishes the rows it summed
+   (data-curve) and both sides read them through cumulativeAt()/atReading() in public/shared.js.
    ========================================================================================= */
 import type { LevelsView } from "../lib/liqmap.ts";
 import { RAMP, INK, MONO, SANS, compact } from "../lib/chart.ts";
-import { pct } from "../lib/funding.ts";
+import { pct, usd } from "../lib/funding.ts";
+import { signedPct, atReading } from "../../public/shared.js";
 
 interface Props {
   view: LevelsView;
   symbol: string;
-  /** price formatter at the page's axis precision */
-  fmt: (v: number) => string;
+  /** decimals for prices on this page — the axis precision, the same the script formats with */
+  dp: number;
   clipped: number;
+  /** the reader's own price from ?at=, already parsed; null when absent or unreadable */
+  at: number | null;
+  /** what the reader typed when it could not be read, so the page can say so */
+  atRaw: string | null;
+  /** where the form submits, and the view it must keep (profile, window) */
+  action: string;
+  carry: [string, string][];
 }
-const { view, symbol, fmt, clipped } = Astro.props;
+const { view, symbol, dp, clipped, at, atRaw, action, carry } = Astro.props;
+const fmt = (v: number) => usd(v, dp);
 
 const W = 640, padT = 58, padB = 34, rowH = 13;
 const labelW = 116, plotL = labelW, plotR = W - 16, plotW = plotR - plotL;
@@ -52,11 +70,20 @@ const markY = y(view.mark);
 /* Price labels every few bins, skipping the ones that would collide with the mark pill. */
 const labelEvery = Math.max(1, Math.round(bins.length / 12));
 const guides = view.moves.filter((m) => m.price > lo && m.price < hi);
-const fromMark = (p: number) => {
-  const d = (p - view.mark) / view.mark;
-  const s = (Math.abs(d) * 100).toFixed(2);
-  return `${Number(s) === 0 ? "" : d > 0 ? "+" : "−"}${s}%`;
-};
+const fromMark = (p: number) => signedPct((p - view.mark) / view.mark);
+const plotH = bins.length * rowH;
+/* The reader's line, clamped to the picture: a price past the edge sits on the edge, and the
+   sentence says it is past it. */
+const atY = at === null ? null : Math.min(padT + plotH, Math.max(padT, y(at)));
+const atCum = at === null ? null : view.cumAt(at);
+const atLabel = (price: number, c: { side: string; notional: number }) =>
+  `${fmt(price)} → ${compact(c.notional)} ${c.side === "long" ? "longs" : "shorts"}`;
+const reading = at === null ? null : atReading(view.curve, view.mark, at, view.lo, view.hi, dp);
+const example = fmt(view.mark * 0.95);
+const curveJson = JSON.stringify({
+  curve: view.curve, mark: view.mark, lo: view.lo, hi: view.hi, dp,
+  y0: padT, h: plotH, top: hi, bottom: lo, plotL, plotR,
+});
 const tip = (i: number) => {
   const b = bins[i];
   const side = b.mid < view.mark ? "long" : "short";
@@ -90,7 +117,7 @@ const rowsOut = bins.map((b, i) => {
   };
 });
 ---
-<figure class="levels">
+<figure class="levels" data-levels={curveJson}>
   <svg viewBox={`0 0 ${W} ${H}`} role="img" data-tips class="levels__svg"
        aria-label={`Modelled liquidation levels for ${symbol} by price, longs below the mark and shorts above. The figures are in the table beside it.`}>
     <rect x="0" y="0" width={W} height={H} rx="12" fill={INK.well} />
@@ -117,7 +144,7 @@ const rowsOut = bins.map((b, i) => {
         <line x1={plotL} x2={plotR} y1={y(g.price)} y2={y(g.price)} stroke={INK.dim} stroke-width="1" stroke-dasharray="3 4" opacity="0.55" />
         <rect x={plotR - 196} y={y(g.price) - 11} width="192" height="20" rx="5" fill="#0f1215" opacity="0.92" />
         <text x={plotR - 10} y={y(g.price) + 4} fill={INK.neutral} font-size="12.5" font-family={MONO} text-anchor="end">
-          {g.pct > 0 ? "+" : "−"}{Math.round(Math.abs(g.pct) * 100)}% → {compact(g.notional)} {g.side === "long" ? "longs" : "shorts"}
+          {signedPct(g.pct, 0)} → {compact(g.notional)} {g.side === "long" ? "longs" : "shorts"}
         </text>
       </g>
     ))}
@@ -126,16 +153,37 @@ const rowsOut = bins.map((b, i) => {
     <rect x="8" y={markY - 11} width={labelW - 10} height="22" rx="5" fill={INK.acc} />
     <text x={8 + (labelW - 10) / 2} y={markY + 4.5} fill={INK.accInk} font-size="12.5" font-weight="600" font-family={MONO} text-anchor="middle">{fmt(view.mark)}</text>
     <text x={plotL} y={H - 12} fill={INK.faint} font-size="12.5" font-family={SANS}>longs closed below ↓</text>
+
+    {/* THE READER'S PRICE. Drawn by the server when ?at= is set; the script moves it, and keeps it
+        hidden until the first press when there is none. */}
+    <g data-at-line pointer-events="none" display={atY === null ? "none" : undefined} transform={`translate(0 ${atY ?? padT})`}>
+      <line x1={plotL} x2={plotR} y1="0" y2="0" stroke={INK.neutral} stroke-width="1.5" />
+      <rect x={plotL + 4} y="-12" width="232" height="22" rx="5" fill={INK.neutral} />
+      <text data-at-label x={plotL + 12} y="4" fill={INK.well} font-size="12.5" font-weight="600" font-family={MONO}>{at !== null && atCum ? atLabel(at, atCum) : ""}</text>
+    </g>
   </svg>
 </figure>
 
 <div class="levels__reads">
+  {/* A GET form, so it works with scripting off; the script reads the field as it is typed. */}
+  <form method="GET" action={action} class="levels__at" data-at-form>
+    <label for="levels-at" class="levels__atlabel">Your price — what a move to it would close</label>
+    <div class="levels__atrow">
+      {carry.map(([k, v]) => <input type="hidden" name={k} value={v} />)}
+      <input id="levels-at" name="at" type="text" inputmode="decimal" autocomplete="off" spellcheck="false"
+             value={atRaw ?? (at !== null ? String(at) : "")} placeholder={`e.g. ${example}`} data-at-input />
+      <button class="btn btn--primary" type="submit">Read</button>
+    </div>
+    <p class="levels__atout" data-at-out aria-live="polite">{
+      reading ?? (atRaw ? `“${atRaw}” is not a price this page can read. Enter one like ${example}.` : "Type a price, or press anywhere on the ladder. The address keeps your reading, so the link shows it to whoever opens it.")
+    }</p>
+  </form>
   <table class="tbl levels__tbl">
     <caption>If {symbol} moves from {fmt(view.mark)} — modelled notional closed on the way</caption>
     <thead><tr><th class="num">Move</th><th class="num">To</th><th class="num">Closed</th><th>Side</th></tr></thead>
     <tbody>
       {[...view.moves].sort((a, b) => b.pct - a.pct).map((m) => (
-        <tr><td class="num">{m.pct > 0 ? "+" : "−"}{Math.round(Math.abs(m.pct) * 100)}%</td><td class="num">{fmt(m.price)}</td><td class="num">{compact(m.notional)}</td><td>{m.side === "long" ? "longs" : "shorts"}</td></tr>
+        <tr><td class="num">{signedPct(m.pct, 0)}</td><td class="num">{fmt(m.price)}</td><td class="num">{compact(m.notional)}{m.beyond && <sup class="levels__past" title="past the drawn range">†</sup>}</td><td>{m.side === "long" ? "longs" : "shorts"}</td></tr>
       ))}
     </tbody>
   </table>
@@ -143,6 +191,9 @@ const rowsOut = bins.map((b, i) => {
     Standing within the drawn range: {compact(view.totalShort)} of shorts above the mark and
     {" "}{compact(view.totalLong)} of longs below it. {pct(clipped)} of modelled notional sits beyond
     that range and is not counted. Hover a bar for its leverage split.
+    {view.moves.some((m) => m.beyond) && <>{" "}† That move lands past the edge of the drawn range
+    ({fmt(view.lo)} – {fmt(view.hi)}): the figure is every level of its side inside the range, and
+    whatever stands beyond the edge is not in it.</>}
   </p>
 </div>
 
@@ -150,6 +201,13 @@ const rowsOut = bins.map((b, i) => {
   .levels { margin: 0; max-width: 640px; }
   .levels__svg { display: block; width: 100%; height: auto; }
   .levels__reads { max-width: 420px; }
+  .levels__svg { touch-action: pan-y; cursor: crosshair; }
+  .levels__at { margin: 0 0 18px; padding: 14px 16px; border: 1px solid var(--border-soft); border-radius: 12px; background: var(--surface-1); }
+  .levels__atlabel { display: block; font-weight: 600; margin-bottom: 8px; }
+  .levels__atrow { display: flex; gap: 8px; }
+  .levels__atrow input[type="text"] { flex: 1 1 auto; min-width: 0; font-family: var(--mono); }
+  .levels__past { color: var(--text-faint); margin-left: 2px; }
+  .levels__atout { margin: 10px 0 0; font-size: var(--fs-sm); line-height: 1.5; }
   .levels__tbl caption { caption-side: top; text-align: left; font-size: var(--fs-sm); color: var(--text-dim); padding: 0 0 8px; }
   .levels__note { font-size: 12.5px; color: var(--text-faint); line-height: 1.55; margin: 10px 0 0; }
 </style>
