@@ -563,8 +563,8 @@ export interface FundingChart {
   coverage: number;
   /** First bar with a reading, or null when none has one. */
   from: number | null;
-  /** Half-height of the drawn range: the axis runs −max..+max, annualised. */
-  max: number;
+  /** The drawn range, annualised: the axis runs −down..+up, each side to its own 96th percentile. */
+  up: number; down: number;
   /** Readings beyond that range, pinned to the edge and disclosed rather than hidden. */
   clipped: number;
   /** Highest and lowest annualised readings actually present, whatever the axis shows. */
@@ -593,15 +593,24 @@ export function buildFundingChart(candles: Candle[], funding: FundingPoint[] | n
   const plotX = CH.padL, plotW = W - CH.padL - CH.padR;
   const axisX = plotX + plotW;
   const top = CH.padT, h = FUND_H - CH.padT - CH.padB;
-  const zeroY = top + h / 2;
   const n = candles.length;
   const xOf = (i: number) => plotX + (plotW / n) * (i + 0.5);
 
-  const mags = [...aprAt.values()].map(Math.abs).sort((a, b) => a - b);
-  const max = Math.max(0.01, mags.length ? mags[Math.floor(mags.length * 0.96)] : 0.01);
-  const clipped = mags.filter((m) => m > max).length;
+  /* EACH SIDE TO ITS OWN RANGE. The axis was ±(96th percentile of |APR|), so BTC — longs paying on
+     88 of 90 days — drew its whole history in the top half over an empty bottom half, at half the
+     height it could have had (seen at 375px on /funding/btc, 15 October 2026). Each side now runs to
+     its own 96th percentile, and either side keeps at least an eighth of the larger one, so zero is
+     never the edge and two short-paying days still have somewhere to show. */
   const vals = [...aprAt.values()];
-  const yOf = (a: number) => zeroY - (Math.max(-max, Math.min(max, a)) / max) * (h / 2);
+  const q96 = (xs: number[]) => (xs.length ? xs.sort((a, b) => a - b)[Math.min(xs.length - 1, Math.floor(xs.length * 0.96))] : 0);
+  const rawUp = q96(vals.filter((v) => v > 0)), rawDown = q96(vals.filter((v) => v < 0).map((v) => -v));
+  const span = Math.max(0.01, rawUp, rawDown);
+  const up = Math.max(rawUp, span / 8), down = Math.max(rawDown, span / 8);
+  const clipped = vals.filter((v) => v > up || -v > down).length;
+  const zeroY = top + (h * up) / (up + down);
+  const yOf = (a: number) => a >= 0
+    ? zeroY - (Math.min(a, up) / up) * (zeroY - top)
+    : zeroY + (Math.min(-a, down) / down) * (top + h - zeroY);
 
   const s: string[] = [];
   const gid = `fc${tf.key}`;
@@ -628,9 +637,9 @@ export function buildFundingChart(candles: Candle[], funding: FundingPoint[] | n
     s.push(`<polyline points="${pts}" fill="none" stroke="${side > 0 ? INK.paysL : INK.paysS}" stroke-width="1.4" stroke-linejoin="round" opacity=".95"/>`);
   }
   s.push(line(plotX, zeroY, axisX, zeroY, INK.zero));
-  s.push(text(axisX + PILL_GAP, top + 11, `${signedPct(max, 0)} APR`, INK.faint, FS_MICRO));
+  s.push(text(axisX + PILL_GAP, top + 11, `${signedPct(up, 0)} APR`, INK.faint, FS_MICRO));
   s.push(text(axisX + PILL_GAP, zeroY + 4, "0%", INK.dim, FS_MICRO));
-  s.push(text(axisX + PILL_GAP, top + h - 2, signedPct(-max, 0), INK.faint, FS_MICRO));
+  s.push(text(axisX + PILL_GAP, top + h - 2, signedPct(-down, 0), INK.faint, FS_MICRO));
   s.push(`<g data-ax="x">${timeTicks(candles.map((c) => c[T]), W < 800 ? 4 : 8)
     .map(({ i, label }) => xTick(xOf(i), FUND_H - 9, label)).join("")}</g>`);
 
@@ -638,7 +647,7 @@ export function buildFundingChart(candles: Candle[], funding: FundingPoint[] | n
     svg: `<svg viewBox="0 0 ${W} ${FUND_H}" width="100%" role="img" aria-label="Funding rate history, annualised, with the side paying shown by colour">${s.join("")}</svg>`,
     coverage: cov.length / candles.length,
     from: candles[cov[0]][T],
-    max, clipped,
+    up, down, clipped,
     hi: Math.max(...vals), lo: Math.min(...vals),
     bars: cov.length,
   };

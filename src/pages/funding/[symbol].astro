@@ -484,10 +484,10 @@ const description = `What a ${p.symbol} perpetual costs to hold, against ${usd(p
             than the maximum" beside "ran from … to 100.45%" — found on /funding/useless by the
             audit's completeness critic. */}
         {fundChart.clipped > 0
-          ? <>{" "}The axis is drawn to &plusmn;{pct(fundChart.max)}, the 96th percentile rather than
+          ? <>{" "}The axis runs from {signedPct(-fundChart.down, 0)} to {signedPct(fundChart.up, 0)}, each side to its own 96th percentile rather than
             the extreme, because one spike otherwise flattens the whole shape onto the line &mdash;
             {" "}<b>{fundChart.clipped}</b>{fundChart.clipped === 1 ? " day sits beyond it and is" : " days sit beyond it and are"} drawn at the edge.</>
-          : <>{" "}The axis is drawn to &plusmn;{pct(fundChart.max)}, which reaches every day shown.</>}
+          : <>{" "}The axis runs from {signedPct(-fundChart.down, 0)} to {signedPct(fundChart.up, 0)}, which reaches every day shown.</>}
       </p>
       </More>
       </Fragment>
