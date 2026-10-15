@@ -170,7 +170,7 @@ const rowsOut = bins.map((b, i) => {
     <label for="levels-at" class="levels__atlabel">Your price — what a move to it would close</label>
     <div class="levels__atrow">
       {carry.map(([k, v]) => <input type="hidden" name={k} value={v} />)}
-      <input id="levels-at" name="at" type="text" inputmode="decimal" autocomplete="off" spellcheck="false"
+      <input id="levels-at" class="field" name="at" type="text" inputmode="decimal" autocomplete="off" spellcheck="false"
              value={atRaw ?? (at !== null ? String(at) : "")} placeholder={`e.g. ${example}`} data-at-input />
       <button class="btn btn--primary" type="submit">Read</button>
     </div>
@@ -205,7 +205,7 @@ const rowsOut = bins.map((b, i) => {
   .levels__at { margin: 0 0 18px; padding: 14px 16px; border: 1px solid var(--border-soft); border-radius: 12px; background: var(--surface-1); }
   .levels__atlabel { display: block; font-weight: 600; margin-bottom: 8px; }
   .levels__atrow { display: flex; gap: 8px; }
-  .levels__atrow input[type="text"] { flex: 1 1 auto; min-width: 0; font-family: var(--mono); }
+  .levels__atrow .field { flex: 1 1 auto; min-width: 0; }
   .levels__past { color: var(--text-faint); margin-left: 2px; }
   .levels__atout { margin: 10px 0 0; font-size: var(--fs-sm); line-height: 1.5; }
   .levels__tbl caption { caption-side: top; text-align: left; font-size: var(--fs-sm); color: var(--text-dim); padding: 0 0 8px; }

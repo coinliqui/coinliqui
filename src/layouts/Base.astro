@@ -684,7 +684,9 @@ const schema = {
         border-radius: var(--r-md); padding: var(--inset-panel);
       }
       .calc label { display: grid; gap: var(--gap-tight); font-size: var(--fs-sm); color: var(--text-dim); }
-      .calc input, .calc select {
+      /* .field is the same control outside a .calc row — the liquidation map's own-price box —
+         so a form that cannot take .calc's layout still takes its field, not a second one. */
+      .calc input, .calc select, .field {
         /* appearance:none so a select matches the number inputs beside it instead of keeping
            Safari's native menulist chrome — but that also removes the disclosure arrow, and a
            select with no arrow is a text field that will not accept typing. So the arrow is
@@ -700,7 +702,7 @@ const schema = {
         background-repeat: no-repeat;
         background-position: right 12px center;
       }
-      .calc input:focus, .calc select:focus { outline: 0; border-color: var(--accent); }
+      .calc input:focus, .calc select:focus, .field:focus { outline: 0; border-color: var(--accent); }
       .card--lead { border-color: var(--accent); }
       .card--lead .card__value { color: var(--accent); }
       .tbl .is-active { background: var(--surface-3); }
