@@ -1788,7 +1788,7 @@ export function levelsAgree(html) {
     /* The day-earlier column, when the page has one, is the published day-earlier rows summed the
        same way. */
     if (d.then) {
-      if (cells.length < 5) out.push(`${move}: the page publishes a day-earlier run and the row has no column for it`);
+      if (cells.length < 4) out.push(`${move}: the page publishes a day-earlier run and the row has no column for it`);
       else {
         const was = compact(cumulativeAt(d.then, d.mark, price).notional);
         if (strip(cells[3]) !== was) out.push(`${move}: a day earlier the table prints ${strip(cells[3])}, the published day-earlier rows give ${was}`);

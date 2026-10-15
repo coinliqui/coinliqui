@@ -62,7 +62,7 @@ const levels = (rows, value = "", said = "", withThen = false) => {
   const then = withThen ? { ...curve, long: curve.long.map((v) => v / 2) } : null;
   const json = JSON.stringify({ curve, mark: 100, lo: 90, hi: 110, dp: 0, then }).replace(/"/g, "&quot;");
   return doc(`<figure data-levels="${json}"></figure><form><input data-at-input value="${value}"><p data-at-out>${said}</p></form>` +
-    `<table class="tbl levels__tbl" data-astro-cid-x><tbody data-astro-cid-x>${rows.map(([mv, n, was]) => `<tr data-astro-cid-x><td class="num">${mv}</td><td class="num">x</td><td class="num">${n}</td>${was ? `<td class="num">${was}</td>` : ""}<td>s</td></tr>`).join("")}</tbody></table>`);
+    `<table class="tbl levels__tbl" data-astro-cid-x><tbody data-astro-cid-x>${rows.map(([mv, n, was]) => `<tr data-astro-cid-x><td class="num">${mv}</td><td class="num">x</td><td class="num">${n}</td>${was ? `<td class="num">${was}</td>` : ""}</tr>`).join("")}</tbody></table>`);
 };
 
 let bad0 = 0;

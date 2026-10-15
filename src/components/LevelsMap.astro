@@ -211,11 +211,11 @@ const rowsOut = bins.map((b, i) => {
     }</p>
   </form>
   <table class="tbl levels__tbl">
-    <caption>If {symbol} moves from {fmt(view.mark)} — modelled notional closed on the way</caption>
-    <thead><tr><th class="num">Move</th><th class="num">To</th><th class="num">Closed</th>{then && <th class="num">A day earlier</th>}<th>Side</th></tr></thead>
+    <caption>If {symbol} moves from {fmt(view.mark)} — modelled notional closed on the way, shorts going up and longs going down</caption>
+    <thead><tr><th class="num">Move</th><th class="num">To</th><th class="num">Closed</th>{then && <th class="num">A day earlier</th>}</tr></thead>
     <tbody>
       {[...view.moves].sort((a, b) => b.pct - a.pct).map((m) => (
-        <tr><td class="num">{signedPct(m.pct, 0)}</td><td class="num">{fmt(m.price)}</td><td class="num">{compact(m.notional)}{m.beyond && <sup class="levels__past" title="past the drawn range">†</sup>}</td>{then && <td class="num levels__was">{compact(cumulativeAt(then.levels.curve, view.mark, m.price).notional)}</td>}<td>{m.side === "long" ? "longs" : "shorts"}</td></tr>
+        <tr><td class="num">{signedPct(m.pct, 0)}</td><td class="num">{fmt(m.price)}</td><td class="num">{compact(m.notional)}{m.beyond && <sup class="levels__past" title="past the drawn range">†</sup>}</td>{then && <td class="num levels__was">{compact(cumulativeAt(then.levels.curve, view.mark, m.price).notional)}</td>}</tr>
       ))}
     </tbody>
   </table>
@@ -250,6 +250,13 @@ const rowsOut = bins.map((b, i) => {
   .levels__was { color: var(--text-dim); }
   .levels__past { color: var(--text-faint); margin-left: 2px; }
   .levels__atout { margin: 10px 0 0; font-size: var(--fs-sm); line-height: 1.5; }
+  /* FOUR COLUMNS, SO IT FITS A PHONE. The day-earlier column put the table at 416px inside a 315px
+     column and gave every liquidation page a sideways scroll at 375px (15 October 2026,
+     scripts/phone-width.mjs). The Side column went rather than being hidden on phones: the sign of
+     the move already says it, the caption says which sign is which, and text hidden at one width
+     is text some readers never receive. */
+  .levels__tbl th, .levels__tbl td { padding-left: 6px; padding-right: 6px; }
+  .levels__tbl th { white-space: normal; }
   .levels__tbl caption { caption-side: top; text-align: left; font-size: var(--fs-sm); color: var(--text-dim); padding: 0 0 8px; }
   .levels__note { font-size: 12.5px; color: var(--text-faint); line-height: 1.55; margin: 10px 0 0; }
 </style>
