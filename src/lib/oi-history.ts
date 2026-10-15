@@ -142,3 +142,13 @@ export async function readOiSeries(db: D1Like | undefined, now: number, days = 3
     return null;
   }
 }
+
+/**
+ * ONE CONTRACT'S OPEN-INTEREST CHANGE OVER 24 HOURS AND 7 DAYS, by the hub's own rule — the same
+ * reader, band and oiChange() /open-interest prints — so a contract page cannot state a different
+ * change for the same coin than the hub's row does. Null where no stored reading exists.
+ */
+export async function oiMoves(db: D1Like | undefined, symbol: string, nowOi: number, now = Date.now()): Promise<{ d24: number | null; d7: number | null }> {
+  const [h24, h7] = await Promise.all([readOiHistory(db, now, 24, 3), readOiHistory(db, now, 168, 3)]);
+  return { d24: oiChange(h24, symbol, nowOi), d7: oiChange(h7, symbol, nowOi) };
+}

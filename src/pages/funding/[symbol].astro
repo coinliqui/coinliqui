@@ -4,6 +4,7 @@ import More from "../../components/More.astro";
 import { getSnapshot, coldStart, findPerp, getLive, currentMark } from "../../lib/hyperliquid.ts";
 import { VENUE_LABEL, pct, usd, rawRate, carryCost, settlementsPerYear, nextSettlement, paysClass, paysLabel, type Venue } from "../../lib/funding.ts";
 import { liquidationPrice, type MarginTable, roomVerdict, tableFor } from "../../lib/margin.ts";
+import { oiMoves } from "../../lib/oi-history.ts";
 import { getCandles, getM15, getHourly, getFunding } from "../../lib/candles.ts";
 import PricePanel from "../../components/PricePanel.astro";
 import { narrowChart, NARROW_W, fundingRegime, TIMEFRAMES, DEFAULT_TF, MIN_CHART_BARS, drawnBars, barSpan, buildPriceChart, buildFundingChart, candleStyleNote, timeframeGapNote, shortDate, CHART_H } from "../../lib/series.ts";
@@ -16,7 +17,7 @@ import Overview from "../../components/Overview.astro";
 import Figure from "../../components/Figure.astro";
 import { extremeBy, standing } from "../../lib/extreme.ts";
 
-import { priceDp, changeWords } from "../../lib/funding.ts";
+import { priceDp, changeWords, signedPct, weekCarry } from "../../lib/funding.ts";
 const env = (Astro.locals as any)?.runtime?.env;
 const snap = await getSnapshot(env?.SNAPSHOT, import.meta.env.DEV);
 if (!snap.available) return coldStart();
@@ -79,6 +80,9 @@ const carry7d = hl ? carryCost(10_000, hl.apr, 7) : NaN;
    repaint cannot make it wrong — it stays a statement about the minute it names. */
 const live = await getLive(env?.SNAPSHOT);
 const { px: markNow, at: markAt } = currentMark(snap, live, p);
+/* Open interest's change, by the hub's rule (oiMoves), so this page and /open-interest agree. */
+const oiMv = await oiMoves(env?.DB, p.symbol, p.oiNotional);
+const oiMvWords = [oiMv.d24 != null ? `24h ${signedPct(oiMv.d24)}` : null, oiMv.d7 != null ? `7d ${signedPct(oiMv.d7)}` : null].filter(Boolean).join(" · ");
 /* A STAMP NAMES ITS DAY WHEN IT IS NOT TODAY'S. "the Hyperliquid mark at 15:16 UTC" is exact on a
    live key written a minute ago and ambiguous on one the worker last wrote yesterday — the fallback
    to the snapshot, or a candle store two sweeps behind. The date is added only when it differs from
@@ -425,7 +429,9 @@ const description = `What a ${p.symbol} perpetual costs to hold, against ${usd(p
             drops a whitespace-only run between an expression and the next node, so these read
             "long costs$21.00" and "from 5.76%on Binance to 10.95%on Hyperliquid" (measured 16 September
             2026 on http://localhost:4322/funding/btc). A literal cannot be dropped. */}
-        {Number.isFinite(carry7d) && <>{" "}Holding $10,000 long {carry7d < 0 ? "pays you" : "costs"}{" "}<b>{usd(Math.abs(carry7d), 2)}</b> a week at this rate.</>}
+        {hl && Number.isFinite(hl.apr) && (weekCarry(hl.apr).nil
+          ? <>{" "}Holding $10,000 long costs <b>next to nothing</b> at this rate — under a cent a week.</>
+          : <>{" "}Holding $10,000 long {weekCarry(hl.apr).verb}{" "}<b>{weekCarry(hl.apr).text}</b> a week at this rate.</>)}
         {venueSpan?.kind === "range" && <>{" "}Across venues it runs from {pct(venueSpan.lo)}{" "}{venueSpan.loOn} to{" "}{pct(venueSpan.hi)}{" "}{venueSpan.hiOn}, annualised so the different settlement intervals are comparable.</>}
         {venueSpan?.kind === "same" && <>{" "}All {venueSpan.n} venues publish the same annualised rate right now.</>}
         {" "}Read at <time datetime={new Date(snap.fetchedAt).toISOString()}>{utcStamp(snap.fetchedAt)}</time>.
@@ -522,7 +528,7 @@ const description = `What a ${p.symbol} perpetual costs to hold, against ${usd(p
     <div>Period low<b data-tfstat="low" data-group="px" {...stat((c) => px(c.chart!.low))}>{active ? px(active.chart.low) : "—"}</b></div>
     <div>Period volume<b data-tfstat="volume" data-group="px" {...stat((c) => qty(c.chart!.volume) + " " + p.symbol)}>{active ? qty(active.chart.volume) + " " + p.symbol : "—"}</b></div>
     <div>Oracle index <span class="scope">Hyperliquid</span><b>{p.oraclePx > 0 ? px(p.oraclePx) : "—"}</b></div>
-    <div>Open interest <span class="scope">Hyperliquid</span><b>{usd(p.oiNotional)}</b></div>
+    <div>Open interest <span class="scope">Hyperliquid</span><b>{usd(p.oiNotional)}</b>{oiMvWords && <span class="scope"><a class="link" href="/open-interest?w=7d">{oiMvWords}</a></span>}</div>
     <div>Max leverage<b>{p.maxLeverage}×</b></div>
   </div>
   {/* THREE CLOCKS, NOT TWO. This sentence put "open interest, volume and the period figures"

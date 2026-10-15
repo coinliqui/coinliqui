@@ -22,7 +22,7 @@
 export { paysClass, paysLabel, carryCost, pct, signedPct, parsePrice, changeWords, moveCounts, ageWords, minutesSince, usd, nf, qty, compact, spreadOf, priceDp, axisDp, stopVerdict } from "../../public/shared.js";
 /* Re-exporting a name does not bind it in this module's scope, which is why rawRate() threw
    ReferenceError on pct the moment it needed it. Imported as well as re-exported. */
-import { spreadOf, pct } from "../../public/shared.js";
+import { spreadOf, pct, usd, carryCost } from "../../public/shared.js";
 import { numberWord } from "../../public/shared.js";
 
 export const HOURS_PER_YEAR = 24 * 365; // 8760
@@ -33,6 +33,15 @@ export const HOURS_PER_YEAR = 24 * 365; // 8760
     above it" (production, 17 September 2026). */
 export const HL_BASE_APR = 0.0000125 * HOURS_PER_YEAR;
 export const isHlBaseApr = (apr: number) => Number.isFinite(apr) && Math.abs(apr - HL_BASE_APR) < 1e-9;
+
+/** A WEEK'S CARRY ON A $10,000 LONG, as words and digits decided together: `nil` when the printed
+ *  figure is $0.00, so no page calls a sum a cost that its digits show as nothing. /coins/{coin}
+ *  had the rule and /funding/{symbol} printed "costs $0.00 a week" (15 October 2026). */
+export function weekCarry(apr: number): { value: number; text: string; nil: boolean; verb: "costs" | "pays you" } {
+  const value = carryCost(10_000, apr, 7);
+  const text = usd(Math.abs(value), 2);
+  return { value, text, nil: text === usd(0, 2), verb: value < 0 ? "pays you" : "costs" };
+}
 
 export type Venue = "HlPerp" | "BinPerp" | "BybitPerp";
 

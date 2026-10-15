@@ -4,6 +4,7 @@ import Base from "../../layouts/Base.astro";
 import { getSnapshot, coldStart, findPerp, getLive, oldestStamp, currentMark } from "../../lib/hyperliquid.ts";
 import { usd, pct, VENUE_LABEL, paysClass, paysLabel, carryCost, type Venue } from "../../lib/funding.ts";
 import { maintenanceMarginFraction, corridorAt, type MarginTable, tableFor } from "../../lib/margin.ts";
+import { oiMoves } from "../../lib/oi-history.ts";
 import { findCoin, isLive, liveCoins } from "../../lib/coins.ts";
 import { liqMapHref, canonicalRedirect } from "../../lib/routes.ts";
 import { countWords } from "../../lib/site.ts";
@@ -14,7 +15,7 @@ import PricePanel from "../../components/PricePanel.astro";
 import { narrowChart, TIMEFRAMES, DEFAULT_TF, MIN_CHART_BARS, drawnBars, barSpan, buildPriceChart, candleStyleNote, timeframeGapNote, CHART_H, type ChartMode } from "../../lib/series.ts";
 import { CH } from "../../lib/chart.ts";
 
-import { priceDp, changeWords, signedPct } from "../../lib/funding.ts";
+import { priceDp, changeWords, signedPct, weekCarry } from "../../lib/funding.ts";
 /* =========================================================================================
    ONE COIN.
 
@@ -74,6 +75,9 @@ const perp = findPerp(snap.perps, coin.symbol);
    same tick, and the fallback keeps a just-deployed page working one clock slower. */
 const cur = perp ? currentMark(snap, live, perp) : null;
 const markNow = cur ? cur.px : NaN;
+/* Open interest's change, by the hub's rule (oiMoves), so this page and /open-interest agree. */
+const oiMv = perp ? await oiMoves(env?.DB, perp.symbol, perp.oiNotional) : { d24: null, d7: null };
+const oiMvWords = [oiMv.d24 != null ? `24h ${signedPct(oiMv.d24)}` : null, oiMv.d7 != null ? `7d ${signedPct(oiMv.d7)}` : null].filter(Boolean).join(" · ");
 const price = markNow;
 const dp = priceDp(price);
 const px = (v: number) => usd(v, dp);
@@ -122,8 +126,8 @@ const week = (apr: number) => carryCost(10_000, apr, 7);
    no money — funding at 0.00%, or close enough that the week is under a cent — was "a cost"
    of "$0.00"; it is decided from the same formatted figure the sentence would print, so the
    words cannot call a sum a cost that the digits show as nothing. */
-const carryWeek = hl && Number.isFinite(hl.apr) ? usd(Math.abs(week(hl.apr)), 2) : "—";
-const carryNil = carryWeek === usd(0, 2);
+const carryWeek = hl && Number.isFinite(hl.apr) ? weekCarry(hl.apr).text : "—";
+const carryNil = hl && Number.isFinite(hl.apr) ? weekCarry(hl.apr).nil : false;
 /* ONE ROW PER VENUE IN ORDER, WITH WHAT IT CAN PRINT decided here, once, so the venue table and
    the sentences about it read the same two flags instead of each re-deriving them. The table
    renders every ORDER venue unconditionally; a venue with no usable interval and no usable rate
@@ -471,7 +475,7 @@ const description = `Live ${coin.name} (${coin.symbol}) perpetual price from Hyp
     <div class="card card--lead">
       <div class="card__label">Open interest <span class="card__scope">Hyperliquid</span></div>
       <div class="card__value">{perp ? usd(perp.oiNotional) : "—"}</div>
-      <div class="card__meta">notional currently open</div>
+      <div class="card__meta">notional currently open{oiMvWords && <> · <a class="link" href="/open-interest?w=7d">{oiMvWords}</a></>}</div>
     </div>
     <div class="card">
       <div class="card__label">Hyperliquid funding</div>
