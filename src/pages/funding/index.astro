@@ -1,4 +1,5 @@
 ---
+import More from "../../components/More.astro";
 import Base from "../../layouts/Base.astro";
 import { getSnapshot, coldStart, getLive } from "../../lib/hyperliquid.ts";
 import { VENUE_LABEL, pct, usd, rawRate, paysClass, paysLabel, LEGEND_FUNDING, settlementWords, venueReachWords, HL_BASE_APR, isHlBaseApr, type Venue } from "../../lib/funding.ts";
@@ -318,6 +319,7 @@ const description =
       the reason the numbers above are comparable and it still has to be here, in the body copy
       colour, after the evidence rather than in front of it. The two learn links travel with it —
       a reader who wants the definition wants it at this point, not before the answer. */}
+  <More label="How rates from different venues are made comparable">
   <p class="section-note" style="margin:0 0 12px">
     {snap.perps.length} perpetual contracts, each venue's rate annualised; {venueReachWords(snap.perps)}.
     {" "}{settlementWords(snap.perps)} &mdash; so comparing the quoted numbers
@@ -328,6 +330,7 @@ const description =
     <a class="link" href="/learn/funding-rate"> What a funding rate is &rarr;</a>
     <a class="link" href="/methodology"> How it is computed &rarr;</a>
   </p>
+  </More>
 
   <p class="clock" style="margin:0 0 12px">
     {fresh.note} Open interest and 24-hour volume come from the snapshot taken

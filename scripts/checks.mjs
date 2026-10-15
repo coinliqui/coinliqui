@@ -1630,6 +1630,11 @@ export function hiddenFromEveryone(html) {
   for (const m of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
     if (!/(^|;)\s*(display\s*:\s*none|visibility\s*:\s*hidden)\s*(;|$)/i.test(m[2])) continue;
     for (const sel of m[1].split(",")) {
+      /* A PSEUDO-ELEMENT RULE HIDES THE PSEUDO-ELEMENT, NOT THE ELEMENT'S TEXT. The first fold on
+         this site (src/components/More.astro, 15 October 2026) hides the native disclosure
+         triangle with `.more__sum::-webkit-details-marker { display: none }`, and this read it as
+         hiding every summary label on /liquidations — a heading every reader sees. */
+      if (/::/.test(sel)) continue;
       const classes = [...sel.matchAll(/\.([a-zA-Z][\w-]*)/g)].map((c) => c[1]);
       if (classes.length) hidingClasses.add(classes[classes.length - 1]);
     }
@@ -1662,6 +1667,50 @@ export function hiddenFromEveryone(html) {
     );
   }
   return [...new Set(out)];
+}
+
+/**
+ * "SEE MORE" TEXT SHIPS IN THE FIRST RESPONSE, FOLDED BY MARKUP — NEVER FETCHED ON OPEN.
+ *
+ * The product rule of 15 October 2026: a page leads with its picture, figures and conclusion, and
+ * puts method and long explanation under src/components/More.astro, a native <details> closed by
+ * default. The text has to be in the HTML at first byte. A block converted to load on click is
+ * text a crawler, an extractor and a reader without JavaScript never receive, and it would pass
+ * every other check here, because the page still renders and returns 200.
+ *
+ * So, for every details.more in the rendered page: its body carries real text, and nothing in
+ * it — or on it — waits for a request (data-src, hx-get, data-fetch, data-load, <template>).
+ * And because the easiest regression is to replace the <details> with a button and leave nothing
+ * to inspect, a route registered in MORE_ROUTES must carry at least one such block.
+ */
+export const MORE_ROUTES = [
+  /^\/liquidations$/, /^\/liquidations\/(?!sweep$|survival$)[a-z0-9]+$/i,
+  /^\/funding$/, /^\/funding\/[a-z0-9]+$/i, /^\/coins\/[a-z0-9-]+$/i, /^\/unlocks$/,
+];
+const LAZY = /\b(data-src|hx-get|hx-post|hx-trigger|data-fetch|data-load|data-lazy)\s*=|<template\b/i;
+export function collapsedTextShipped(html, { expect = false } = {}) {
+  const out = [];
+  const opens = [...html.matchAll(/<details\b([^>]*)>/gi)].filter((m) => /\bclass="[^"]*\bmore\b/.test(m[1]));
+  for (const m of opens) {
+    /* The body runs to the MATCHING </details>, counting nested ones, so a block holding a
+       <details class="src"> table toggle is read whole. */
+    let depth = 1, end = -1;
+    const start = m.index + m[0].length;
+    const re = /<(\/?)details\b[^>]*>/gi;
+    re.lastIndex = start;
+    for (let t; (t = re.exec(html)); ) {
+      depth += t[1] ? -1 : 1;
+      if (depth === 0) { end = t.index; break; }
+    }
+    const inner = end > 0 ? html.slice(start, end) : "";
+    const label = (inner.match(/<summary\b[\s\S]*?<\/summary>/i)?.[0] ?? "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() || "(no summary)";
+    if (LAZY.test(m[1]) || LAZY.test(inner)) out.push(`"${label}" waits for a request instead of shipping its text — collapsed text must be in the first response`);
+    const text = inner.replace(/<summary\b[\s\S]*?<\/summary>/i, "").replace(/<(script|style)\b[\s\S]*?<\/\1>/gi, "")
+      .replace(/<[^>]+>/g, " ").replace(/&[a-z#0-9]+;/gi, " ").replace(/\s+/g, " ").trim();
+    if (text.length < 40) out.push(`"${label}" is collapsed but carries ${text.length} characters of text — an empty fold is a placeholder for something fetched later`);
+  }
+  if (expect && opens.length === 0) out.push("this route is registered as carrying collapsed explanation (MORE_ROUTES) and ships no details.more at all");
+  return out;
 }
 
 /**

@@ -38,7 +38,7 @@ import { readdirSync, readFileSync } from "node:fs";
 /* Source is read as CODE by default — see scripts/lib/source.mjs. The two checks below that
    want the prose say so at their call site, with the reason. */
 import { readSource, readRaw } from "./lib/source.mjs";
-import { cssFor, undefinedClasses, undefinedVars, rawEnums, searchIndexGaps, unnamedUpstreams, duplicateRuleImplementations, uncoveredRoutes, unreadableText, chartAgreement, requestedLeverageLabels, inlineScriptSyntax, flipTableColour, colourPalettes, colourLanguageDrift, colourLegend, publishesAPerson, fixtureGaps, staleDerivedCells, basisSelfConsistent, sitemapLastmodHonesty, breadcrumbAgreement, founderAgreement, readmeCounts, botPolicyReasons, contradictoryStates, hiddenFromEveryone, pageWeight, weightFaults, dateModifiedAgreement, phantomInlineElements, malformedAttributes, uncitedPermissionClaims, unconditionalCadenceClaims, typedVenueFacts, handComputedAges, staleCalculatorFigures, controlGroupOverflow, stampSurfacesAgree, symbolAddressing, computedFigureFloor, COMPUTED_FIGURES, openingFigure, PROSE_ROUTES, handRolledLegends, collapsedStateEscapesMobile, leadReachesTheOpening} from "./checks.mjs";
+import { cssFor, undefinedClasses, undefinedVars, rawEnums, searchIndexGaps, unnamedUpstreams, duplicateRuleImplementations, uncoveredRoutes, unreadableText, chartAgreement, requestedLeverageLabels, inlineScriptSyntax, flipTableColour, colourPalettes, colourLanguageDrift, colourLegend, publishesAPerson, fixtureGaps, staleDerivedCells, basisSelfConsistent, sitemapLastmodHonesty, breadcrumbAgreement, founderAgreement, readmeCounts, botPolicyReasons, contradictoryStates, hiddenFromEveryone, pageWeight, weightFaults, dateModifiedAgreement, phantomInlineElements, malformedAttributes, uncitedPermissionClaims, unconditionalCadenceClaims, typedVenueFacts, handComputedAges, staleCalculatorFigures, controlGroupOverflow, stampSurfacesAgree, symbolAddressing, computedFigureFloor, COMPUTED_FIGURES, openingFigure, PROSE_ROUTES, handRolledLegends, collapsedStateEscapesMobile, leadReachesTheOpening, collapsedTextShipped, MORE_ROUTES} from "./checks.mjs";
 
 /* The SERVER side of each duplicated formatter, transcribed from the file that owns it and
    named here so the pairing is explicit. Transcription is the honest cost of having no bundler:
@@ -428,6 +428,13 @@ for (const path of ROUTES) {
     for (const d of founderAgreement(body)) content.push(`the founder claim disagrees with itself: ${d}`);
     for (const d of contradictoryStates(body)) content.push(`two states, one hidden: ${d}`);
     for (const d of hiddenFromEveryone(body)) content.push(`text nobody receives: ${d}`);
+    /* Collapsed explanation ships in the first response — see collapsedTextShipped. Asked of every
+       warm route; the registered ones must carry at least one fold, so replacing it with a
+       click-to-load button cannot pass by leaving nothing to inspect. */
+    {
+      const route = path.split("?")[0];
+      for (const d of collapsedTextShipped(body, { expect: status === 200 && MORE_ROUTES.some((r) => r.test(route)) })) content.push(`collapsed text: ${d}`);
+    }
     for (const d of dateModifiedAgreement(body)) content.push(`the stated age disagrees with itself: ${d}`);
     /* Recorded, not asserted here: the counterpart claim lives in a sitemap this loop has not
        fetched yet. Query strings are stripped because a sitemap lists the bare URL. */

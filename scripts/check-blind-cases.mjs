@@ -24,7 +24,7 @@
  */
 import { readFileSync } from "node:fs";
 import {
-  hiddenFromEveryone, dateModifiedAgreement, breadcrumbAgreement, publishesAPerson,
+  hiddenFromEveryone, collapsedTextShipped, dateModifiedAgreement, breadcrumbAgreement, publishesAPerson,
   contradictoryStates, rawEnums, founderAgreement, readmeCounts,
   basisSelfConsistent, uncoveredRoutes, staleDerivedCells, botPolicyReasons,
   undefinedClasses, undefinedVars, unreadableText, colourLegend, colourLanguageDrift,
@@ -64,6 +64,32 @@ const cases = [
     fire: () => hiddenFromEveryone(doc(
       `<style>.gone{display:none}</style><div class="gone">Not updating</div>`)),
     quiet: () => hiddenFromEveryone(doc(`<div>Updated 2 min ago</div>`)),
+    also: () => [
+      /* hiding a pseudo-element (the disclosure triangle) hides no text */
+      hiddenFromEveryone(doc(`<style>.more__sum::-webkit-details-marker{display:none}</style><summary class="more__sum">How this is modelled</summary>`)).length === 0,
+      /* and the same class hidden outright still fires */
+      hiddenFromEveryone(doc(`<style>.more__sum{display:none}</style><summary class="more__sum">How this is modelled</summary>`)).length > 0,
+    ],
+  },
+  {
+    check: "collapsedTextShipped",
+    why: "a 'see more' fold that loads its text on click ships nothing to a crawler, an extractor or a reader without JavaScript",
+    /* The regression exactly as it would be written: the fold kept, its body swapped for a
+       placeholder that fetches on open. */
+    fire: () => collapsedTextShipped(doc(
+      `<details class="more" data-more><summary>How this is modelled</summary><div data-src="/api/more/liquidations"></div></details>`)),
+    quiet: () => collapsedTextShipped(doc(
+      `<details class="more" data-more><summary>How this is modelled</summary><div><p>Total notional equals Hyperliquid open interest; leverage mix is assumed.</p></div></details>`)),
+    also: () => [
+      /* the fold removed altogether on a route that must carry one */
+      collapsedTextShipped(doc(`<button data-load-more>See more</button>`), { expect: true }).length > 0,
+      /* an empty fold is a placeholder too, even with no lazy attribute */
+      collapsedTextShipped(doc(`<details class="more"><summary>More</summary><div></div></details>`)).length > 0,
+      /* a nested toggle inside a fold does not cut the body short */
+      collapsedTextShipped(doc(`<details class="more"><summary>Tables</summary><details class="src"><summary>raw</summary><p>x</p></details><p>Every figure below is arithmetic on the published margin table.</p></details>`)).length === 0,
+      /* other details elements are not this check's business */
+      collapsedTextShipped(doc(`<details class="src"><summary>raw</summary></details>`)).length === 0,
+    ],
   },
   {
     check: "contradictoryStates",

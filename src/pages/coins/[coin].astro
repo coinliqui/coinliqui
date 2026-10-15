@@ -1,4 +1,5 @@
 ---
+import More from "../../components/More.astro";
 import Base from "../../layouts/Base.astro";
 import { getSnapshot, coldStart, findPerp, getLive, oldestStamp } from "../../lib/hyperliquid.ts";
 import { usd, pct, VENUE_LABEL, paysClass, paysLabel, carryCost, type Venue } from "../../lib/funding.ts";
@@ -365,6 +366,7 @@ const description = `Live ${coin.name} (${coin.symbol}) perpetual price from Hyp
       over a low that was set up to two hours before the last sweep and had not been collected
       yet. The figures were right; the sentence explaining where they came from was not, on a
       template whose whole argument is that it names its sources. */}
+  <More label="How fresh each figure is">
   <p class="clock">
     {fresh.note} Open interest and 24-hour volume come from the snapshot taken
     <b><time data-fresh={snap.fetchedAt} data-clock="snapAt">{ageWords(minutesSince(snap.fetchedAt))}</time></b>.
@@ -376,6 +378,7 @@ const description = `Live ${coin.name} (${coin.symbol}) perpetual price from Hyp
     — the newest of them still open when it was collected —
     collected every 2 hours{hourset?.u ? <> and last written at <b>{utcStamp(hourset.u)}</b></> : null}.
   </p>
+  </More>
 
   {hasChart ? (
     <>
@@ -573,7 +576,7 @@ const description = `Live ${coin.name} (${coin.symbol}) perpetual price from Hyp
     </>
   )}
 
-  <h2 class="section">Where the numbers come from</h2>
+  <More label="Where the numbers come from">
   <p class="prose">
     Every figure on this page is <strong>Hyperliquid</strong>{exceptRows}: the mark price, the
     24-hour figures, the candles, Hyperliquid's own funding rate and the open interest, all from
@@ -587,6 +590,7 @@ const description = `Live ${coin.name} (${coin.symbol}) perpetual price from Hyp
     the question was argued. <a class="link" href="/data-sources">Data sources</a> lists every
     endpoint behind every number here, and what is deliberately absent.
   </p>
+  </More>
 
   <p style="margin-top:24px">
     <a class="link" href={`/funding/${coin.symbol.toLowerCase()}`}>{coin.symbol} funding{fundingReach ? ` ${fundingReach}` : ""} →</a>

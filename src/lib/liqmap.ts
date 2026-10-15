@@ -114,6 +114,11 @@ export interface LiqMap {
   spanRule: "traded" | "minSpan";
   /** bars of warm-up modelled before the first drawn column; short of ageBars means partial */
   warmBars: number;
+  /** The notional STILL STANDING at the right-hand edge, per price row, split by side and by
+   *  leverage rung (indexes into `levs`). The same set the clusters are summed from — a level
+   *  that price has traded through or that has aged out is not in it — so the liquidation map
+   *  drawn from this and the cluster table cannot disagree. */
+  standing: { long: number[][]; short: number[][]; levs: number[] };
 }
 
 /**
@@ -289,13 +294,16 @@ export function buildLiqMap(opts: {
   const clearedAll: Float64Array[] = Array.from({ length: rows }, () => new Float64Array(NC));
   const swept = new Float64Array(NC);
   const clusterAcc = new Map<string, Cluster>();
+  const standLong = Array.from({ length: rows }, () => new Array<number>(lev.length).fill(0));
+  const standShort = Array.from({ length: rows }, () => new Array<number>(lev.length).fill(0));
   let clipped = 0, placed = 0;
 
   for (let i = 0; i < NC; i++) {
     const base = (opts.oiNotional * vol[i]) / Math.max(1e-9, trail[i]) / LIFE;
     if (!(base > 0)) continue;
     const close = all[i][4];
-    for (const { L: Lv, share: w } of lev) {
+    for (let li = 0; li < lev.length; li++) {
+      const { L: Lv, share: w } = lev[li];
       const longLiq = (close * (1 - 1 / Lv)) / (1 - opts.mmf);
       const shortLiq = (close * (1 + 1 / Lv)) / (1 + opts.mmf);
       for (const [price, isLong] of [[longLiq, true], [shortLiq, false]] as [number, boolean][]) {
@@ -316,6 +324,7 @@ export function buildLiqMap(opts: {
             diff[r][end] -= share;
             if (swAt < expire && swAt < NC) { swept[swAt] += share; clearedAll[r][swAt] += share; }
             if (end === NC) {
+              (isLong ? standLong : standShort)[r][li] += share;
               const key = `${r}:${isLong ? "l" : "s"}`;
               const prev = clusterAcc.get(key);
               if (prev) prev.notional += share;
@@ -373,6 +382,87 @@ export function buildLiqMap(opts: {
     tradedLo, tradedHi,
     totalNotional: opts.oiNotional,
     ageBars, spanRule, warmBars: warm,
+    standing: { long: standLong, short: standShort, levs: lev.map((x) => x.L) },
+  };
+}
+
+/* =========================================================================================
+   THE LIQUIDATION MAP: WHAT IS STANDING NOW, BY PRICE, AND WHAT A MOVE WOULD TAKE.
+
+   The heatmap answers "where did levels sit, and which did price clear" across a window. The
+   question a trader opens a liquidation map with is narrower and more urgent: if price goes to
+   X from here, how much gets closed on the way? That is a cumulative sum outward from the mark
+   over the standing set — longs below, shorts above — and it is the whole of this function.
+
+   Everything here is the model's standing set re-binned, so every figure carries the model's
+   assumptions and nothing new. A level outside the drawn price range is not in the set (it is
+   in `clipped`), so a cumulative figure is "within the drawn range" and says so where printed.
+   ========================================================================================= */
+export interface LevelBin {
+  lo: number; hi: number; mid: number;
+  /** standing notional per leverage rung (same order as `levs`) */
+  long: number[]; short: number[];
+  longSum: number; shortSum: number;
+}
+export interface LevelsView {
+  bins: LevelBin[];
+  levs: number[];
+  mark: number;
+  /** cumulative notional liquidated by a move from the mark to a price, for any price */
+  cumAt: (price: number) => { side: "long" | "short"; notional: number };
+  /** the standard reads: a move of ±k% from the mark */
+  moves: { pct: number; price: number; side: "long" | "short"; notional: number }[];
+  totalLong: number; totalShort: number;
+  peakBin: number;
+}
+
+export const MOVE_STEPS = [0.01, 0.02, 0.05, 0.1];
+
+export function levelsView(m: LiqMap, mark: number, binRows = 2): LevelsView {
+  const levs = m.standing.levs;
+  const bins: LevelBin[] = [];
+  /* Row 0 is the HIGHEST price; bins are built low to high so they read left to right. */
+  for (let r = m.rows - 1; r >= 0; r -= binRows) {
+    const rs = Array.from({ length: binRows }, (_, k) => r - k).filter((x) => x >= 0);
+    const lo = m.hiPrice - (rs[rs.length - 1] + 1) * m.band;
+    const hi = m.hiPrice - rs[0] * m.band;
+    const long = levs.map((_, li) => rs.reduce((a, x) => a + m.standing.long[x][li], 0));
+    const short = levs.map((_, li) => rs.reduce((a, x) => a + m.standing.short[x][li], 0));
+    bins.push({
+      lo: Math.min(lo, hi), hi: Math.max(lo, hi), mid: (lo + hi) / 2,
+      long, short,
+      longSum: long.reduce((a, b) => a + b, 0), shortSum: short.reduce((a, b) => a + b, 0),
+    });
+  }
+  /* THE CUMULATIVE FIGURES ARE READ FROM THE MODEL'S OWN ROWS, NOT FROM THE DRAWN BINS. The first
+     version summed the display bins, and changing the bin size from two rows to three moved the
+     "−1%" figure from $837K to $5.2M on the same data (BTC, 15 October 2026): a bin straddling the
+     line was counted whole. A row is the finest price the model resolves, so the reading no longer
+     depends on how the picture is cut.
+
+     A LONG level above the mark (or a short below it) can stand only between the last drawn close
+     and the live mark: price has not traded through it on the hourly series yet. It is still a
+     level a move from the mark reaches at once, so it is counted from the first step. */
+  const rowMid = (r: number) => m.hiPrice - (r + 0.5) * m.band;
+  const sumRow = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
+  const cumAt = (price: number) => {
+    let n = 0;
+    if (price <= mark) {
+      for (let r = 0; r < m.rows; r++) if (rowMid(r) >= price) n += sumRow(m.standing.long[r]);
+      return { side: "long" as const, notional: n };
+    }
+    for (let r = 0; r < m.rows; r++) if (rowMid(r) <= price) n += sumRow(m.standing.short[r]);
+    return { side: "short" as const, notional: n };
+  };
+  const moves = MOVE_STEPS.flatMap((k) => [
+    { pct: -k, price: mark * (1 - k), ...cumAt(mark * (1 - k)) },
+    { pct: k, price: mark * (1 + k), ...cumAt(mark * (1 + k)) },
+  ]);
+  return {
+    bins, levs, mark, cumAt, moves,
+    totalLong: bins.reduce((a, b) => a + b.longSum, 0),
+    totalShort: bins.reduce((a, b) => a + b.shortSum, 0),
+    peakBin: Math.max(1, ...bins.map((b) => b.longSum + b.shortSum)),
   };
 }
 

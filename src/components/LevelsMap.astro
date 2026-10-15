@@ -1,0 +1,155 @@
+---
+/* =========================================================================================
+   THE LIQUIDATION MAP, NOW: WHAT IS STANDING AT EACH PRICE, AND WHAT A MOVE WOULD CLOSE.
+
+   WHY A SECOND PICTURE ON A PAGE THAT HAS ONE. The heatmap answers "where did levels sit over
+   the window, and which did price take out". A trader who searches "liquidation map" is asking
+   something narrower: from here, how much gets closed if price goes to X? CoinGlass answers it
+   behind a login (checked 15 October 2026: its Liquidation Map opens a "Log in to unlock full
+   data" dialog). This answers it on the open page, from the same model as the heatmap.
+
+   PRICE RUNS UP THE PAGE, AS ON THE HEATMAP ABOVE IT, NOT ALONG IT. A price-on-X bar chart is
+   wider than a phone and would scroll sideways like every other chart here; a ladder is tall and
+   narrow, fits 375px without scrolling, and lines up with the heatmap's own price axis, so a band
+   on one is a bar on the other at the same height.
+
+   THE GUIDE LINES ARE THE READING. At one, two, five and ten percent each way the line carries the
+   cumulative notional a move to it would close — the figure the picture exists to give, printed
+   where the eye already is rather than on a second axis. The same eight figures are in the table
+   beside it as text, because a picture is not an answer an extractor or a screen reader can use.
+
+   MODELLED, AND SAID SO ON THE PICTURE ITSELF. The bars are the heatmap's right-hand column re-
+   binned (levelsView in src/lib/liqmap.ts): the same assumptions, nothing added. Levels outside the
+   drawn price range are not in it, and the share they hold is printed with the reads.
+
+   COLOUR IS LEVERAGE, FROM THE DENSITY RAMP. Side needs no hue — it is above or below the mark,
+   labelled on the picture — so the four reserved hues (candle up/down, funding direction) stay
+   unused, which the colour-language check would otherwise refuse.
+   ========================================================================================= */
+import type { LevelsView } from "../lib/liqmap.ts";
+import { RAMP, INK, MONO, SANS, compact } from "../lib/chart.ts";
+import { pct } from "../lib/funding.ts";
+
+interface Props {
+  view: LevelsView;
+  symbol: string;
+  /** price formatter at the page's axis precision */
+  fmt: (v: number) => string;
+  clipped: number;
+}
+const { view, symbol, fmt, clipped } = Astro.props;
+
+const W = 640, padT = 58, padB = 34, rowH = 13;
+const labelW = 116, plotL = labelW, plotR = W - 16, plotW = plotR - plotL;
+const bins = view.bins;
+const H = padT + bins.length * rowH + padB;
+const lo = bins[0].lo, hi = bins[bins.length - 1].hi;
+const y = (p: number) => padT + ((hi - p) / (hi - lo)) * (bins.length * rowH);
+const xLen = (n: number) => (n / view.peakBin) * plotW;
+/* Lower leverage darker, higher brighter: the rungs that liquidate soonest catch the eye first. */
+const levColor = (li: number) => RAMP[Math.round(11 + (10 * li) / Math.max(1, view.levs.length - 1))];
+const markY = y(view.mark);
+/* Price labels every few bins, skipping the ones that would collide with the mark pill. */
+const labelEvery = Math.max(1, Math.round(bins.length / 12));
+const guides = view.moves.filter((m) => m.price > lo && m.price < hi);
+const fromMark = (p: number) => {
+  const d = (p - view.mark) / view.mark;
+  const s = (Math.abs(d) * 100).toFixed(2);
+  return `${Number(s) === 0 ? "" : d > 0 ? "+" : "−"}${s}%`;
+};
+const tip = (i: number) => {
+  const b = bins[i];
+  const side = b.mid < view.mark ? "long" : "short";
+  const sideN = side === "long" ? b.longSum : b.shortSum;
+  const cum = view.cumAt(b.mid);
+  const rows = view.levs
+    .map((L, li) => [L, side === "long" ? b.long[li] : b.short[li]] as const)
+    .filter(([, n]) => n > 0)
+    .map(([L, n]) => `<span>${L}×</span><b>${compact(n)}</b>`).join("");
+  return `<div class="tip__h">${fmt(b.lo)} – ${fmt(b.hi)} · ${fromMark(b.mid)}</div>` +
+    `<div class="tip__g"><span>${side === "long" ? "Longs" : "Shorts"} closed here</span><b>${compact(sideN)}</b>${rows}` +
+    `<span>A move to here closes</span><b>${compact(cum.notional)}</b></div>`;
+};
+/* Every bar segment is computed here rather than in the markup: Astro's compiler reads a bare
+   comparison inside an expression in the template as the start of a tag. */
+const rowsOut = bins.map((b, i) => {
+  const yt = y(b.hi);
+  const parts = b.mid < view.mark ? b.long : b.short;
+  let x = plotL;
+  const segs: { x: number; w: number; fill: string }[] = [];
+  parts.forEach((n, li) => {
+    if (!(n > 0)) return;
+    const w = xLen(n);
+    segs.push({ x, w: Math.max(0.6, w), fill: levColor(li) });
+    x += w;
+  });
+  const showLabel = i % labelEvery === 0 && Math.abs(y(b.mid) - markY) > 14;
+  return {
+    yt, h: Math.max(1, y(b.lo) - y(b.hi) - 1), hit: Math.max(1, y(b.lo) - y(b.hi)),
+    segs, tip: tip(i), label: showLabel ? fmt(b.mid) : "", ly: y(b.mid) + 4,
+  };
+});
+---
+<figure class="levels">
+  <svg viewBox={`0 0 ${W} ${H}`} role="img" data-tips class="levels__svg"
+       aria-label={`Modelled liquidation levels for ${symbol} by price, longs below the mark and shorts above. The figures are in the table beside it.`}>
+    <rect x="0" y="0" width={W} height={H} rx="12" fill={INK.well} />
+    <text x="16" y="24" fill={INK.dim} font-size="12" font-family={MONO} letter-spacing="1">MODELLED · STANDING NOW</text>
+    {/* the leverage key, on the picture rather than under it */}
+    {view.levs.map((L, li) => (
+      <g>
+        <rect x={plotR - (view.levs.length - li) * 58} y="12" width="14" height="14" rx="3" fill={levColor(li)} />
+        <text x={plotR - (view.levs.length - li) * 58 + 19} y="24" fill={INK.dim} font-size="13" font-family={MONO}>{L}×</text>
+      </g>
+    ))}
+    <text x={plotL} y="46" fill={INK.faint} font-size="12.5" font-family={SANS}>shorts closed above ↑</text>
+
+    {rowsOut.map((r) => (
+      <g>
+        {r.segs.map((g) => <rect x={g.x} y={r.yt} width={g.w} height={r.h} fill={g.fill} />)}
+        {r.label && <text x={labelW - 10} y={r.ly} fill={INK.faint} font-size="12" font-family={MONO} text-anchor="end">{r.label}</text>}
+        <rect x={plotL} y={r.yt} width={plotW} height={r.hit} fill="transparent" data-tip={r.tip} />
+      </g>
+    ))}
+
+    {guides.map((g) => (
+      <g pointer-events="none">
+        <line x1={plotL} x2={plotR} y1={y(g.price)} y2={y(g.price)} stroke={INK.dim} stroke-width="1" stroke-dasharray="3 4" opacity="0.55" />
+        <rect x={plotR - 196} y={y(g.price) - 11} width="192" height="20" rx="5" fill="#0f1215" opacity="0.92" />
+        <text x={plotR - 10} y={y(g.price) + 4} fill={INK.neutral} font-size="12.5" font-family={MONO} text-anchor="end">
+          {g.pct > 0 ? "+" : "−"}{Math.round(Math.abs(g.pct) * 100)}% → {compact(g.notional)} {g.side === "long" ? "longs" : "shorts"}
+        </text>
+      </g>
+    ))}
+
+    <line x1="8" x2={plotR} y1={markY} y2={markY} stroke={INK.acc} stroke-width="1.5" stroke-dasharray="2 4" />
+    <rect x="8" y={markY - 11} width={labelW - 10} height="22" rx="5" fill={INK.acc} />
+    <text x={8 + (labelW - 10) / 2} y={markY + 4.5} fill={INK.accInk} font-size="12.5" font-weight="600" font-family={MONO} text-anchor="middle">{fmt(view.mark)}</text>
+    <text x={plotL} y={H - 12} fill={INK.faint} font-size="12.5" font-family={SANS}>longs closed below ↓</text>
+  </svg>
+</figure>
+
+<div class="levels__reads">
+  <table class="tbl levels__tbl">
+    <caption>If {symbol} moves from {fmt(view.mark)} — modelled notional closed on the way</caption>
+    <thead><tr><th class="num">Move</th><th class="num">To</th><th class="num">Closed</th><th>Side</th></tr></thead>
+    <tbody>
+      {[...view.moves].sort((a, b) => b.pct - a.pct).map((m) => (
+        <tr><td class="num">{m.pct > 0 ? "+" : "−"}{Math.round(Math.abs(m.pct) * 100)}%</td><td class="num">{fmt(m.price)}</td><td class="num">{compact(m.notional)}</td><td>{m.side === "long" ? "longs" : "shorts"}</td></tr>
+      ))}
+    </tbody>
+  </table>
+  <p class="levels__note">
+    Standing within the drawn range: {compact(view.totalShort)} of shorts above the mark and
+    {" "}{compact(view.totalLong)} of longs below it. {pct(clipped)} of modelled notional sits beyond
+    that range and is not counted. Hover a bar for its leverage split.
+  </p>
+</div>
+
+<style>
+  .levels { margin: 0; max-width: 640px; }
+  .levels__svg { display: block; width: 100%; height: auto; }
+  .levels__reads { max-width: 420px; }
+  .levels__tbl caption { caption-side: top; text-align: left; font-size: var(--fs-sm); color: var(--text-dim); padding: 0 0 8px; }
+  .levels__note { font-size: 12.5px; color: var(--text-faint); line-height: 1.55; margin: 10px 0 0; }
+</style>

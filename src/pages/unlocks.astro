@@ -1,4 +1,5 @@
 ---
+import More from "../components/More.astro";
 import Base from "../layouts/Base.astro";
 import Figure from "../components/Figure.astro";
 import Overview from "../components/Overview.astro";
@@ -485,7 +486,7 @@ const lede = top
       four-row glossary first. The states are worth naming and the badges in the tables above use
       them, so it stays — one section later, where a reader has already seen the rows it explains
       and the definition answers a question they now have. */}
-  <h2 class="section">The four states a contract can be in</h2>
+  <More label="The four states a contract can be in">
   <p class="prose">
     Only the first of these is something a calendar can represent. The other three are what you
     find when you read the balance as well as the schedule, and two of them were discovered by
@@ -511,6 +512,7 @@ const lede = top
       </tbody>
     </table>
   </div>
+  </More>
   {lapsed.length > 0 && (
     <p class="section-note">
       These counts cover {contractCount - lapsed.length} of the {contractCount} contracts.
@@ -632,7 +634,7 @@ const lede = top
     <p class="section-note">{fill(t.note, { count: inWords(t.schedules.length), amount: num(t.schedules.reduce((a: number, x: any) => a + (x.amount ?? 0), 0)) })}</p>
   ))}
 
-  <h2 class="section">Days of volume — the column that matters most</h2>
+  <More label="Days of volume — the column that matters most">
   <p class="prose">
     An unlock is only meaningful against the liquidity that has to absorb it. Ten million tokens
     into a market trading a hundred million a day is noise; the same ten million into a market
@@ -654,8 +656,9 @@ const lede = top
     on both sides of that gap. For anything else the cell stays blank rather than borrowing a
     number from a source the rest of the page would not accept.
   </p>
+  </More>
 
-  <h2 class="section">How to read the provenance badges</h2>
+  <More label="How to read the provenance badges">
   <div class="panel" style="max-width:860px">
     <table class="tbl">
       <thead><tr><th>Provenance</th><th>What it means</th><th class="num">Rows</th></tr></thead>
@@ -680,8 +683,9 @@ const lede = top
     the {`${addressInferred.map((s) => s.symbol).join(" and ")} ${addressInferred.length === 1 ? "address was" : "addresses were"}`} identified by reading the chain rather than from a document, which is a weaker
     claim about the ADDRESS than the other rows make, and it is said out loud rather than hidden.</>}
   </p>
+  </More>
 
-  <h2 class="section">Contract-verified emission detail</h2>
+  <More label="Contract-verified emission detail">
   {emitting.map(({ e, f }) => {
     /* The detail table uses the same `forward` as the Releasing now row, so a horizon cannot be
        capped in one table and uncapped in the other. `byAllowance` and `byStep` are the horizons
@@ -747,8 +751,9 @@ const lede = top
     </>
     );
   })}
+  </More>
 
-  <h2 class="section">Addresses that carry no readable schedule</h2>
+  <More label="Addresses that carry no readable schedule">
   <p class="section-note">
     Named in project material as allocations, but exposing nothing to read. Listed because the
     absence is the finding: a balance with no schedule is not the same as no balance, and it is
@@ -768,8 +773,9 @@ const lede = top
       </tbody>
     </table>
   </div>
+  </More>
 
-  <h2 class="section" id="filling">What would extend the register</h2>
+  <More label="What would extend the register" id="filling">
   <div class="verdict verdict--ok">
     <div>
       <b>The register is deep rather than wide, and that is a deliberate trade rather than a
@@ -816,6 +822,7 @@ const lede = top
     as factory clones; curation is what reads a balance and notices that a finished schedule never
     emptied. The badge column is what makes running all three at once coherent instead of muddled.
   </p>
+  </More>
 
   <Related items={[
     { href: "/coins", label: "Coins", note: "Perpetual prices and Hyperliquid volume, coin by coin — the liquidity an unlock meets on one venue." },

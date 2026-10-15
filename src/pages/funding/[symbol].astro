@@ -1,5 +1,6 @@
 ---
 import Base from "../../layouts/Base.astro";
+import More from "../../components/More.astro";
 import { getSnapshot, coldStart, findPerp, getLive } from "../../lib/hyperliquid.ts";
 import { VENUE_LABEL, pct, usd, rawRate, carryCost, settlementsPerYear, nextSettlement, paysClass, paysLabel, type Venue } from "../../lib/funding.ts";
 import { liquidationPrice, type MarginTable, roomVerdict } from "../../lib/margin.ts";
@@ -529,6 +530,7 @@ const description = `What a ${p.symbol} perpetual costs to hold, against ${usd(p
       http://localhost:4322/funding/mon, where `offered` is empty. It now says why the figures are
       dashes: no timeframe reaches MIN_CHART_BARS, which is the very condition that empties `offered`,
       so the words and the dashes are decided by one test. See `candleCadence` for the charted branch. */}
+  <More label="Where each figure comes from, and how fresh it is">
   <p class="clock">
     {fresh.note} The oracle index, open interest and max leverage come from the
     snapshot taken <b><time data-fresh={snap.fetchedAt} data-clock="snapAt">{ageWords(minutesSince(snap.fetchedAt))}</time></b>.
@@ -537,6 +539,7 @@ const description = `What a ${p.symbol} perpetual costs to hold, against ${usd(p
       : <>The period high, low and volume come from the candle series, which has not yet given this page enough bars to chart;</>}
     {" "}margin tiers are published by the venue and change only when it changes them.
   </p>
+  </More>
 
   {hasChart ? (
     <>
@@ -568,6 +571,7 @@ const description = `What a ${p.symbol} perpetual costs to hold, against ${usd(p
           legend from the drawn chart; this page, drawing the same bars through the same builder, kept the
           flat claim (production, 17 September 2026). candleStyleNote() is now the one sentence, and it is
           a [data-tfstat] so a timeframe switch replaces it with the panel. */}
+      <More label="How to read the price chart">
       <p class="legend">
         <span data-tfstat="style" data-group="px">{candleStyleNote(active!.chart, "candle")}</span>
         {" "}Hollow is the older convention and the one that matters here: simulated for protanopia the two
@@ -613,6 +617,7 @@ const description = `What a ${p.symbol} perpetual costs to hold, against ${usd(p
           {" "}{active!.chart.fundingClipped === 1 ? "1 bar exceeds it and is" : `${active!.chart.fundingClipped} bars exceed it and are`} drawn at the edge; hover reads the true figure.</>
         )}
       </p>
+      </More>
 
       {/* The rows are rebuilt from the panel's own pts-* JSON when the timeframe is switched
           client-side, so the table reads the same array the chart was drawn from.
@@ -788,6 +793,7 @@ const description = `What a ${p.symbol} perpetual costs to hold, against ${usd(p
         contract's map had no address of its own. */}
     {" "}<a class="link" href={liqMapHref(p.symbol)}>Every {p.symbol} liquidation level, mapped →</a>
   </p>
+  <More label={`${p.symbol}'s margin tiers, in full`}>
   <div class="panel" style="max-width:620px">
     <table class="tbl">
       <thead><tr><th>Tier</th><th class="num">Notional from</th><th class="num">Max leverage</th><th class="num">Maintenance margin</th></tr></thead>
@@ -803,6 +809,8 @@ const description = `What a ${p.symbol} perpetual costs to hold, against ${usd(p
       </tbody>
     </table>
   </div>
+  <p class="section-note">Maintenance margin is half the initial margin at each tier's maximum leverage; a position's tier is set by its notional.</p>
+  </More>
 
   <div class="banner">
     <div>

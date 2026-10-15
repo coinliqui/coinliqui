@@ -26,7 +26,7 @@ import { usd, pct } from "../lib/funding.ts";
 import { ageWords, minutesSince, utcStamp } from "../lib/freshness.ts";
 import { maintenanceMarginFraction, nextTierBoundary, corridorAt, type MarginTable } from "../lib/margin.ts";
 import { T, O, H, L, C, type Candle, type getHourly } from "../lib/candles.ts";
-import { buildLiqMap, PROFILES, mixUsed, profilesCoincide, MAP_WINDOWS, DEFAULT_WINDOW, resolveWindow, canDrawMap, mapDrawable, type MapWindow } from "../lib/liqmap.ts";
+import { buildLiqMap, levelsView, PROFILES, mixUsed, profilesCoincide, MAP_WINDOWS, DEFAULT_WINDOW, resolveWindow, canDrawMap, mapDrawable, type MapWindow } from "../lib/liqmap.ts";
 import { paintHeatMap } from "../lib/heatmap.ts";
 import { RAMP, CH, INK, MONO, FS_AXIS, compact, niceTicks } from "../lib/chart.ts";
 import { slotBars, shortDate } from "../lib/series.ts";
@@ -35,6 +35,8 @@ import { liqMapHref } from "../lib/routes.ts";
 import tables from "../data/margin-tables.json";
 
 import Advisory from "./Advisory.astro";
+import More from "./More.astro";
+import LevelsMap from "./LevelsMap.astro";
 import Overview from "./Overview.astro";
 import { extremeBy } from "../lib/extreme.ts";
 import { priceDp, axisDp as axisDpOf } from "../lib/funding.ts";
@@ -161,6 +163,7 @@ const map =
         oiNotional: perp.oiNotional, profile, rows: 150, ageBars, minSpan: 0.16,
       })
     : null;
+const levels = map ? levelsView(map, mark, 3) : null;
 const paint = map ? paintHeatMap(map, { live: { px: mark, at: snap.fetchedAt } }) : null;
 const warmBars = map ? map.warmBars : 0;
 const stepMs = win.factor * 3_600_000;
@@ -375,8 +378,21 @@ const formNote: string | null = (() => {
     <Advisory modelled={Boolean(map)} />
   </div>
 
+  {/* THE LIQUIDATION MAP COMES FIRST, because it answers the question the page is searched for —
+      "if price goes there, how much gets closed" — and the heatmap below is the history behind it.
+      See src/components/LevelsMap.astro. */}
+  {map && levels && levels.bins.length > 0 && (
+    <section class="now">
+      <h2 class="section">If {perp.symbol} moves from here: what gets closed</h2>
+      <div class="now__grid">
+        <LevelsMap view={levels} symbol={perp.symbol} fmt={axisPx} clipped={map.clipped} />
+      </div>
+    </section>
+  )}
+
   {map && paint ? (
     <>
+      <h2 class="section">Over {win.label}: where levels sat, and what price cleared</h2>
       <div class="chart" style={`--mapRatio: ${CH.w} / 576`}>
         <Fragment set:html={paint.svg.replace("<svg ",
           `<svg data-heat="1" data-ramp="${RAMP.join(",")}" data-scale="${paint.scale}" data-gamma="${paint.gamma}" ` +
@@ -386,7 +402,10 @@ const formNote: string | null = (() => {
 
       <div class="scalebar">
         <Fragment set:html={paint.legend} />
-        <p class="scalebar__note">
+        <p class="scalebar__note">Modelled notional standing at a price. White marks where price traded through a level.</p>
+      </div>
+      <More label="How to read the heatmap">
+        <p class="section-note">
           Modelled notional standing at a price, at a moment. Colour tops out at the busiest 0.5% of the
           cells that carry anything
           so one dominant cluster cannot drag everything else to the floor; the most crowded spot holds
@@ -395,7 +414,7 @@ const formNote: string | null = (() => {
           positions behind it age past the {POSITION_LIFE_DAYS}-day position life. Hover any point for
           the value band it sits in.
         </p>
-      </div>
+      </More>
 
           <p class="datanote">
         {/* TWO CLOCKS, AND ONE OF THEM NEVER TICKED. "from a snapshot 2 minutes old" was arithmetic in the
@@ -415,6 +434,7 @@ const formNote: string | null = (() => {
         <div><b>{axisPx(map.tradedLo)} – {axisPx(map.tradedHi)}</b><span>the range that actually traded in this window</span></div>
       </div>
 
+      <More label="How this is modelled — every assumption">
       <div class="verdict verdict--warn">
         <div>
           <b>This surface is a model, and the assumptions below drive it.</b> No venue publishes
@@ -495,10 +515,10 @@ const formNote: string | null = (() => {
           </tbody>
         </table>
       </div>
+      </More>
 
       {sweptBars.length > 0 && (
-        <>
-          <h2 class="section">The bars that did the clearing</h2>
+        <More label="The bars that did the clearing">
           <p class="section-note" style="max-width:88ch">
             The dark corridor in the picture is not empty space, and it was not carved evenly.
             {oneBar
@@ -552,10 +572,10 @@ const formNote: string | null = (() => {
             field clears less than a quiet one through a crowded part. That is the reading the picture
             gives at a glance and this table gives in figures.
           </p>
-        </>
+        </More>
       )}
 
-      <h2 class="section">Where the model puts the biggest clusters</h2>
+      <More label="The biggest standing clusters, in figures">
       <p class="section-note">
         Price levels still carrying modelled notional at the right-hand edge of the chart, largest
         first — {map.clusters.length
@@ -578,6 +598,7 @@ const formNote: string | null = (() => {
           </tbody>
         </table>
       </div>
+      </More>
     </>
   ) : (
     <div class="empty">
@@ -612,6 +633,7 @@ const formNote: string | null = (() => {
       the assumptions table, and the corridor and tier tables after it are arithmetic on the margin
       table, not scaled from open interest. The empty state gets its own paragraph — see the note
       above formNote in the frontmatter. */}
+  <More label="What this page shows, and what it does not">
   {map ? (
     <p class="section-note">
       Where liquidation levels would sit if positions were opened the way the assumptions above
@@ -638,6 +660,13 @@ const formNote: string | null = (() => {
       <a class="link" href="/learn/liquidation-heatmap"> What a liquidation heatmap actually shows →</a>
     </p>
   )}
+  <p class="prose">
+    No liquidation totals and no cascade tracker. Those need an event feed, and every available one
+    is throttled — Binance publishes at most one liquidation per symbol per second, so a sum over
+    it understates by an unknown factor, worst exactly when the number is most quoted.
+    <a class="link" href="/methodology/liquidations">The full reasoning →</a>
+  </p>
+  </More>
 
   {/* THE CONTROLS COME AFTER THE PICTURE, because a reader who has not seen the map yet has
           no basis for changing it. They sat above it and, at 375px, put two dropdowns and a
@@ -705,7 +734,8 @@ const formNote: string | null = (() => {
     </svg>
   </div>
 
-  <div class="panel" style="margin-top:14px">
+  <More label="The corridor and margin tiers, in figures">
+  <div class="panel">
     <table class="tbl">
       <thead><tr><th class="num">Leverage</th><th class="num">Initial margin</th><th class="num">Long liquidation</th><th class="num">Move down</th><th class="num">Short liquidation</th><th class="num">Move up</th><th class="num">Corridor width</th></tr></thead>
       <tbody>
@@ -724,7 +754,7 @@ const formNote: string | null = (() => {
     </table>
   </div>
 
-  <h2 class="section">Where {perp.symbol}'s margin tiers step down</h2>
+  <h3 class="section">Where {perp.symbol}'s margin tiers step down</h3>
   <p class="section-note">
     Maintenance margin is set by the tier the notional falls in.
     {nextTier && <> Above {usd(nextTier.lowerBound)} the corridor widens, because maintenance margin rises to {pct(maintenanceMarginFraction(nextTier.maxLeverage), 3)}.</>}
@@ -744,14 +774,7 @@ const formNote: string | null = (() => {
       </tbody>
     </table>
   </div>
-
-  <h2 class="section">What is deliberately absent</h2>
-  <p class="prose">
-    No liquidation totals and no cascade tracker. Those need an event feed, and every available one
-    is throttled — Binance publishes at most one liquidation per symbol per second, so a sum over
-    it understates by an unknown factor, worst exactly when the number is most quoted.
-    <a class="link" href="/methodology/liquidations">The full reasoning →</a>
-  </p>
+  </More>
 
   {siblings && mapSiblings.length > 0 && (
     <>
@@ -798,6 +821,9 @@ const formNote: string | null = (() => {
     .reads { display: flex; flex-wrap: wrap; gap: var(--gap-block) 40px; margin: var(--inset-panel) 0 4px; }
     .reads b { display: block; font-size: 21px; font-weight: 650; letter-spacing: -.012em; font-variant-numeric: tabular-nums; }
     .reads span { font-size: 12.5px; color: var(--text-faint); }
+    .now { margin-top: var(--gap-block); }
+    .now__grid { display: grid; grid-template-columns: minmax(0, 640px) minmax(260px, 420px); gap: 24px; align-items: start; }
+    @media (max-width: 900px) { .now__grid { grid-template-columns: minmax(0, 1fr); } }
     .datanote { margin: 12px 0 0; font-size: var(--fs-sm); color: var(--text-faint); max-width: 80ch; }
     .datanote b { color: var(--text-dim); font-weight: 600; font-variant-numeric: tabular-nums; }
   </style>
