@@ -686,6 +686,14 @@ const schema = {
       .calc label { display: grid; gap: var(--gap-tight); font-size: var(--fs-sm); color: var(--text-dim); }
       /* .field is the same control outside a .calc row — the liquidation map's own-price box —
          so a form that cannot take .calc's layout still takes its field, not a second one. */
+      /* --- heatmap intensity scale (src/lib/heatmap.ts legendSvg, injected markup) ------ */
+      .hscale { width: min(560px, 100%); flex: 0 1 560px; }
+      .hscale__bar { height: 12px; border-radius: 2px; }
+      .hscale__labels { position: relative; height: 18px; margin-top: 4px; font: 11.5px var(--mono); color: var(--text-dim); }
+      .hscale__labels > span { position: absolute; top: 0; white-space: nowrap; }
+      .hscale__tick { transform: translateX(-50%); }
+      .hscale__end { left: 0; color: var(--text-faint); }
+      .hscale__end--r { left: auto; right: 0; color: var(--text-dim); }
       /* --- "see more" fold (src/components/More.astro) ----------------------------- */
       /* THIRD PLAN, ON PURPOSE. These folds hold method and text written for search; the reader came
          for the picture and the figures. The first version was too faint to find (15 October 2026,
