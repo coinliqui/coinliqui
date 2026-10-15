@@ -48,7 +48,7 @@
           "cliff": "2022-05-04",
           "end": "2025-11-04",
           "lastUpdate": null,
-          "note": "The contract publishes the schedule but not the amount originally locked — there is no getter for it — so the figure here is the balance it held at the stated block. The {span} linear unlock finished on {end}, which means all of it is unlocked and none of it has moved."
+          "note": "The contract publishes the schedule but not the amount originally locked — there is no getter for it — so the figure here is the balance it held at the stated block. The {span} linear unlock finished on {end}, which means all of it is unlocked; at the stated block none of it had moved."
         }
       ]
     },

@@ -323,7 +323,7 @@ const curationYield = oldestOverhang
    finished 316 days earlier and never moved; CRV finished 1,860 days earlier and has paid out
    141,212,401 of 151,515,152. The head now claims only what every overhang row shares. */
 const description = top
-  ? `One ${top.symbol} lock holds ${pct(top.heldNow / top.supply)} of supply and finished vesting on ${fmt(top.end)} — nobody has moved it. A register of token vesting, lock and emission contracts read directly from Ethereum: what each holds now, what it is still releasing, and which finished schedules still hold tokens.`
+  ? `At the last on-chain read, ${fmtTs(readAt)}, one ${top.symbol} lock held ${pct(top.heldNow / top.supply)} of supply; it finished vesting on ${fmt(top.end)} and nobody had moved it. A register of token vesting, lock and emission contracts read directly from Ethereum: what each holds now, what it is still releasing, and which finished schedules still hold tokens.`
   : "A register of token vesting, lock and emission contracts read directly from Ethereum: what each holds now, what it is still releasing, and whether each finished schedule still holds tokens.";
 
 /* THE QUOTABLE SENTENCE EXISTED AND WAS NOT ON THE PAGE. `description` above already leads
@@ -333,8 +333,11 @@ const description = top
    /unlocks carried no figure at all, while the strongest fact the page holds was sitting in
    the head of the same document. So the head sentence leads the body too, from the same
    `overhang[0]`, and the two cannot drift apart. */
+/* DATED, NOT PRESENT TENSE (15 October 2026). "Holds" and "nobody has moved it" were true of the
+   block read on 15 August and printed as true two months later. The chain is read by hand
+   (scripts/probe-vesting.mjs), so the sentence carries the read's date and says what it saw then. */
 const lede = top
-  ? `One ${top.symbol} lock holds ${pct(top.heldNow / top.supply)} of supply${top.absorb ? `, ${usd(top.absorb.usd)} at today's price` : ""}, and finished vesting on ${fmt(top.end)}. Nobody has moved it.`
+  ? `At the last on-chain read, ${fmtTs(readAt)}, one ${top.symbol} lock held ${pct(top.heldNow / top.supply)} of supply${top.absorb ? `, ${usd(top.absorb.usd)} at today's price` : ""}. It finished vesting on ${fmt(top.end)}, and nobody had moved it.`
   : "";
 ---
 
