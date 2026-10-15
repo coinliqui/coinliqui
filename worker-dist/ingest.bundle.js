@@ -368,9 +368,11 @@ function mergeFunding(prev, next, cap = 5200) {
 }
 
 // src/lib/sweep-order.ts
-function orderSweeps(states, now, backoffMs) {
+var PREEMPT_RATIO = 1.25;
+function orderSweeps(states, now, backoffMs, blind = false) {
   const eligible = states.filter((s) => !(s.stalledSince > 0 && now - s.stalledSince < backoffMs));
-  return eligible.sort((a, b) => {
+  const ratio = (s) => (now - s.lastCycle) / (s.hours * 36e5);
+  const base = [...eligible].sort((a, b) => {
     const ac = a.cursor > 0 ? 1 : 0, bc = b.cursor > 0 ? 1 : 0;
     if (ac !== bc) return bc - ac;
     const ar = (now - a.lastCycle) / (a.hours * 36e5);
@@ -378,6 +380,12 @@ function orderSweeps(states, now, backoffMs) {
     if (ar !== br) return br - ar;
     return a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
   });
+  if (blind) return base;
+  const running = base.filter((s) => s.cursor > 0);
+  if (!running.length) return base;
+  const slowest = Math.min(...running.map((s) => s.hours));
+  const urgent = base.filter((s) => s.cursor === 0 && s.hours < slowest && ratio(s) >= PREEMPT_RATIO);
+  return urgent.length ? [...urgent, ...base.filter((s) => !urgent.includes(s))] : base;
 }
 
 // src/lib/sweep-run.ts
@@ -1576,7 +1584,7 @@ async function stepGscExport(env, now = Date.now()) {
 }
 
 // worker/build-stamp.ts
-var WORKER_BUILD = "fa644610567d";
+var WORKER_BUILD = "a8a21dc28849";
 
 // worker/ingest.ts
 var RETAIN_HOURS = 720;

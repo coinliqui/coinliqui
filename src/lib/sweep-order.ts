@@ -34,9 +34,14 @@ export interface SweepState {
   stalledSince: number;
 }
 
-export function orderSweeps(states: SweepState[], now: number, backoffMs: number): SweepState[] {
+/** How far past its gate a faster sweep must be before it may go ahead of a slower one's
+ *  unfinished cycle — see rule 4. */
+export const PREEMPT_RATIO = 1.25;
+
+export function orderSweeps(states: SweepState[], now: number, backoffMs: number, blind = false): SweepState[] {
   const eligible = states.filter((s) => !(s.stalledSince > 0 && now - s.stalledSince < backoffMs));
-  return eligible.sort((a, b) => {
+  const ratio = (s: SweepState) => (now - s.lastCycle) / (s.hours * 3_600_000);
+  const base = [...eligible].sort((a, b) => {
     const ac = a.cursor > 0 ? 1 : 0, bc = b.cursor > 0 ? 1 : 0;
     if (ac !== bc) return bc - ac;
     /* Lateness as a MULTIPLE of the gate. A never-run sweep has lastCycle 0, so its ratio is
@@ -46,4 +51,18 @@ export function orderSweeps(states: SweepState[], now: number, backoffMs: number
     if (ar !== br) return br - ar;
     return a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
   });
+  /* 4. A FASTER SWEEP WELL PAST ITS GATE GOES AHEAD OF A SLOWER ONE'S UNFINISHED CYCLE. Rule 1 let
+     the 6-hour funding cycle — six symbols a tick, about ten ticks — hold the slot while the 2-hour
+     m15 sweep the 15-minute charts read went 169 minutes without a cycle, past the 3-hour ceiling
+     the live chart check allows (15 October 2026, after CHUNK fell from 24 to 12 to stop bursting
+     into Hyperliquid's limit). No request is added: the slower cycle keeps its cursor and resumes
+     where it stopped. Only a sweep not itself mid-cycle, at PREEMPT_RATIO of its own gate, with a
+     shorter gate than every cycle in progress, moves ahead — a slow sweep is delayed, never
+     abandoned, and the fast ones cannot preempt each other. */
+  if (blind) return base;
+  const running = base.filter((s) => s.cursor > 0);
+  if (!running.length) return base;
+  const slowest = Math.min(...running.map((s) => s.hours));
+  const urgent = base.filter((s) => s.cursor === 0 && s.hours < slowest && ratio(s) >= PREEMPT_RATIO);
+  return urgent.length ? [...urgent, ...base.filter((s) => !urgent.includes(s))] : base;
 }
