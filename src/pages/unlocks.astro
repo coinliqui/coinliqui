@@ -405,10 +405,8 @@ const lede = top
         #readContract lands on the tab where the same getters this page calls can be called by
         hand, which is the actual verification path rather than a gesture at one. */}
     <p class="clock">
-      The on-chain amounts were read at <strong>block {reg.verifiedBlock.toLocaleString("en-US")}</strong>,
-      {" "}<b><time datetime={reg.verifiedAt}>{utcStamp(Date.parse(reg.verifiedAt))}</time></b> — they change only when this register is re-read, not every minute. The USD values
-      beside them are struck at the current mark, which is why the freshness pill above moves
-      while these figures do not.
+      On-chain amounts read at <strong>block {reg.verifiedBlock.toLocaleString("en-US")}</strong>,
+      {" "}<b><time datetime={reg.verifiedAt}>{utcStamp(Date.parse(reg.verifiedAt))}</time></b>; USD values use the current mark.
     </p>
   </div>
 
@@ -419,9 +417,7 @@ const lede = top
       years of separate claims. What holds for every row is the timing, not the count of
       recipients, so that is what the sentence now asserts. */}
   <p class="prose">
-    Schedules that have finished with the tokens still in the contract. Nothing is scheduled and
-    nothing will be announced: every token still in these contracts can be claimed today, at a
-    moment chosen by whoever it is owed to.
+    Schedules that have finished with the tokens still in the contract.
     {/* "THIS IS THE SECTION THAT DOES NOT EXIST ANYWHERE ELSE" stood here, and the verdict box
         further down this page says whether anyone else publishes these "is not something this
         site has measured, so it is not claimed". The page broke its own rule one section before
@@ -459,6 +455,7 @@ const lede = top
   </div>
   {overhang.length > 0 && (
   <More label="How each finished lock is read, and why it matters">
+  <p class="section-note">Nothing is scheduled and nothing will be announced: every token still in these contracts can be claimed today, at a moment chosen by whoever it is owed to. The amounts change only when the register is re-read, not every minute.</p>
   {overhang.map((r) => (<p class="section-note">{fill(r.note, scheduleFacts(r))}{r.addressNote && <>{" "}{r.addressNote}</>}</p>))}
 
   {/* THE SAME FACT, SAID A THIRD TIME BEFORE ANY DATA. The lede states the ENS lock, the
@@ -500,10 +497,7 @@ const lede = top
         ))}
       </div>
       <p slot="note">
-        Each bar is what one contract still holds as a share of its token&rsquo;s total supply,
-        read from the chain at a stated block rather than from an announcement. These schedules
-        have all finished: nothing here is waiting for a date, and every one of these amounts can
-        move today. The raw amounts are in the table above.{rawVsShare && <>{" "}{rawVsShare}</>}
+        Each bar is one contract&rsquo;s balance at the last read as a share of its token&rsquo;s supply; the amounts are in the table above.{rawVsShare && <>{" "}{rawVsShare}</>}
       </p>
     </Figure>
   )}
@@ -552,9 +546,7 @@ const lede = top
     <>
       <h2 class="section" id="unfunded">{state("unfunded").label}</h2>
       <p class="prose">
-        A contract that publishes a forward rate is not the same as a contract that can pay it.
-        These publish a rate and hold nothing, so anything that reads the rate and multiplies by
-        time is forecasting supply that cannot arrive.
+        A published rate with nothing behind it.
       </p>
       {unfunded.map((e: any) => {
         const p = paperDebt(e);
@@ -579,6 +571,7 @@ const lede = top
             </table>
           </div>
           <More label={`How the ${e.symbol} paper debt is worked out, and what it does not say`}>
+          <p class="section-note">A contract that publishes a forward rate is not the same as a contract that can pay it: these publish a rate and hold nothing, so anything that multiplies the rate by time forecasts supply that cannot arrive.</p>
           <p class="section-note">{fill(e.note ?? "", { supply: num(e.totalSupply), endYear: e.distributionEnd ? String(new Date(`${e.distributionEnd}T00:00:00Z`).getUTCFullYear()) : "" })}{p && (
             <>{" "}<code>dripRate()</code>{" "}returns {`${e.ratePerBlock} ${e.symbol}`} per block, about {num(e.perDay)} a day, and has done since block {e.startBlock.toLocaleString("en-US")}.
             By the stated block, {reg.verifiedBlock.toLocaleString("en-US")}, the contract&rsquo;s own arithmetic says {`${num(p.owed)} ${e.symbol}`} should
@@ -595,9 +588,7 @@ const lede = top
 
   <h2 class="section" id="releasing">{state("releasing").label}</h2>
   <p class="prose">
-    Contracts paying out right now, at a rate each one publishes on-chain. This is the only part
-    of the register that answers "how much over the next N days", so it is the only part with a
-    horizon control.
+    Contracts paying out now, at a rate each publishes on-chain — the only part with a horizon.
   </p>
   <form method="GET" class="calc" style="margin-bottom:16px">
     <label>Horizon
@@ -643,8 +634,7 @@ const lede = top
 
   <h2 class="section" id="emptied">{state("emptied").label}</h2>
   <p class="prose">
-    Finished, and the tokens have gone. These rows are here because the only way to tell them
-    apart from the overhang above is to read the balance — the dates look identical{emptiedVsOverhang}.
+    Finished, and the tokens have gone.
   </p>
   <div class="panel">
     <table class="tbl">
@@ -665,6 +655,7 @@ const lede = top
   </div>
   {(reg.tokens as any[]).some((t) => t.note) && (
   <More label="How the emptied contracts were checked">
+  <p class="section-note">These rows are here because the only way to tell them apart from the overhang above is to read the balance — the dates look identical{emptiedVsOverhang}.</p>
   {(reg.tokens as any[]).filter((t) => t.note).map((t) => (
     <p class="section-note">{fill(t.note, { count: inWords(t.schedules.length), amount: num(t.schedules.reduce((a: number, x: any) => a + (x.amount ?? 0), 0)) })}</p>
   ))}
