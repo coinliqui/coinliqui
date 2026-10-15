@@ -358,6 +358,7 @@ const lede = top
         (rate × days, 54,750 AAVE and 97,161,876 CRV at a year) and days of volume divided by
         exchange volume. The readings are eth_calls; the forward totals are projections from
         them. The sentence now says which is which, with the horizon span taken from HORIZONS. */}
+    <More label="Which figures are read on-chain, and which are projected">
     <p class="section-note">
       Every on-chain reading below &mdash; balances, rates, allowances, schedule dates &mdash; is
       an <code>eth_call</code> at one stated block, not a date copied from an announcement. The
@@ -366,6 +367,7 @@ const lede = top
       those same readings set a limit the total stops there; where they date a step-down but not its
       size, the total is marked as an upper bound instead.
     </p>
+    </More>
     {/* TWO CLOCKS, AND ONLY ONE OF THEM WAS VISIBLE. This page passed the FUNDING snapshot's
         timestamp to the layout, so the freshness pill read "Updated 4 min ago" over on-chain
         figures captured at a fixed block days earlier. The pill was not lying about nothing —
@@ -435,6 +437,8 @@ const lede = top
       </tbody>
     </table>
   </div>
+  {overhang.length > 0 && (
+  <More label="How each finished lock is read, and why it matters">
   {overhang.map((r) => (<p class="section-note">{fill(r.note, scheduleFacts(r))}{r.addressNote && <>{" "}{r.addressNote}</>}</p>))}
 
   {/* THE SAME FACT, SAID A THIRD TIME BEFORE ANY DATA. The lede states the ENS lock, the
@@ -456,6 +460,8 @@ const lede = top
       why this page is a register of contracts rather than a list of dates.
     </div>
   </div>
+  )}
+  </More>
   )}
 
   {supplyBars.length > 1 && (
@@ -552,6 +558,7 @@ const lede = top
               </tbody>
             </table>
           </div>
+          <More label={`How the ${e.symbol} paper debt is worked out, and what it does not say`}>
           <p class="section-note">{fill(e.note ?? "", { supply: num(e.totalSupply), endYear: e.distributionEnd ? String(new Date(`${e.distributionEnd}T00:00:00Z`).getUTCFullYear()) : "" })}{p && (
             <>{" "}<code>dripRate()</code>{" "}returns {`${e.ratePerBlock} ${e.symbol}`} per block, about {num(e.perDay)} a day, and has done since block {e.startBlock.toLocaleString("en-US")}.
             By the stated block, {reg.verifiedBlock.toLocaleString("en-US")}, the contract&rsquo;s own arithmetic says {`${num(p.owed)} ${e.symbol}`} should
@@ -559,6 +566,7 @@ const lede = top
             total supply, is what the contract owed on paper at that block, and every block since adds {`${e.ratePerBlock} ${e.symbol}`} more.{e.heldNow === 0 && " Its balance at that block was zero, so none of it could move."}</>
           )}</p>
           <p class="section-note"><strong>What this does not say:</strong>{" "}{e.caveat}{" "}{e.detail}</p>
+          </More>
         </>
         );
       })}
@@ -608,7 +616,10 @@ const lede = top
       </tbody>
     </table>
   </div>
-  {lapsed.map((e) => (<p class="section-note"><strong>Not in this table: {e.name}.</strong>{" "}Its contract still publishes a rate, but {lapsedWhy(e)}</p>))}
+  {lapsed.map((e) => (<>
+    <p class="section-note"><strong>Not in this table: {e.name}.</strong></p>
+    <More label={`Why ${e.name} is left out`}><p class="section-note">Its contract still publishes a rate, but {lapsedWhy(e)}</p></More>
+  </>))}
 
   <h2 class="section" id="emptied">{state("emptied").label}</h2>
   <p class="prose">
@@ -632,9 +643,13 @@ const lede = top
       </tbody>
     </table>
   </div>
+  {(reg.tokens as any[]).some((t) => t.note) && (
+  <More label="How the emptied contracts were checked">
   {(reg.tokens as any[]).filter((t) => t.note).map((t) => (
     <p class="section-note">{fill(t.note, { count: inWords(t.schedules.length), amount: num(t.schedules.reduce((a: number, x: any) => a + (x.amount ?? 0), 0)) })}</p>
   ))}
+  </More>
+  )}
 
   <More label="Days of volume — the column that matters most">
   <p class="prose">
