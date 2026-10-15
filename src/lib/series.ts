@@ -1,6 +1,6 @@
 import { type Candle, type FundingPoint, T, O, H, L, C, V } from "./candles.ts";
 import { axisDp, shortDate, signedPct } from "../../public/shared.js";
-import { HOURS_PER_YEAR } from "./funding.ts";
+import { HOURS_PER_YEAR, isHlBaseApr } from "./funding.ts";
 import { U, CH, INK, SANS, MONO, niceTicks, timeTicks, xTick, text, rect, line, fint, crosshair, n2, FS_AXIS, FS_MICRO, PILL_H, PILL_R, PILL_GAP } from "./chart.ts";
 
 /* =========================================================================================
@@ -226,6 +226,42 @@ export type ChartMode = "candle" | "line";
  * `end` is the NEXT candle's timestamp rather than start + barMs, so the short leading bar that
  * aggregate() emits when the source does not divide evenly is closed correctly too.
  */
+/* =========================================================================================
+   ONE CONTRACT'S FUNDING, DESCRIBED FROM ITS OWN SERIES.
+
+   Measured 15 October 2026: the prose of /funding/btc and /funding/eth was 91% the same five-word
+   phrases — the template's — and only the figures differed. This is a short account no sibling can
+   share, read from the same daily averages the funding figure draws (fundingByBar), so the words and
+   the picture describe one series: how many days each side paid, the run the contract is in now and
+   when it began, where the latest day sits among the window's days, and how many days it rested at
+   the venue's base rate.
+   ========================================================================================= */
+export interface FundingRegime {
+  days: number; longsPaid: number; shortsPaid: number; atBase: number;
+  /** the current run: which side, how many consecutive days, and the day it began */
+  run: { side: "long" | "short"; days: number; since: number };
+  /** days in the window whose daily average was below the latest day's */
+  below: number;
+}
+export function fundingRegime(candles: Candle[], funding: FundingPoint[] | null, tf: Timeframe): FundingRegime | null {
+  if (!funding || funding.length < 5 || candles.length < 7) return null;
+  const by = fundingByBar(candles, funding, tf.hours * 3_600_000);
+  const pts = candles.map((c) => [c[T], by.get(c[T])] as const).filter((x): x is readonly [number, number] => Number.isFinite(x[1]));
+  if (pts.length < 7) return null;
+  const side = (a: number) => (a >= 0 ? "long" : "short") as "long" | "short";
+  const last = pts[pts.length - 1];
+  let k = pts.length - 1;
+  while (k > 0 && side(pts[k - 1][1]) === side(last[1])) k--;
+  return {
+    days: pts.length,
+    longsPaid: pts.filter(([, a]) => a > 0).length,
+    shortsPaid: pts.filter(([, a]) => a < 0).length,
+    atBase: pts.filter(([, a]) => isHlBaseApr(a)).length,
+    run: { side: side(last[1]), days: pts.length - k, since: pts[k][0] },
+    below: pts.filter(([, a]) => a < last[1]).length,
+  };
+}
+
 export function fundingByBar(
   candles: Candle[],
   funding: FundingPoint[],

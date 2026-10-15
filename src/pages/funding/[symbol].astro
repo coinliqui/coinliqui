@@ -6,12 +6,12 @@ import { VENUE_LABEL, pct, usd, rawRate, carryCost, settlementsPerYear, nextSett
 import { liquidationPrice, type MarginTable, roomVerdict, tableFor } from "../../lib/margin.ts";
 import { getCandles, getM15, getHourly, getFunding } from "../../lib/candles.ts";
 import PricePanel from "../../components/PricePanel.astro";
-import { narrowChart, NARROW_W, TIMEFRAMES, DEFAULT_TF, MIN_CHART_BARS, drawnBars, barSpan, buildPriceChart, buildFundingChart, candleStyleNote, timeframeGapNote, shortDate, CHART_H } from "../../lib/series.ts";
+import { narrowChart, NARROW_W, fundingRegime, TIMEFRAMES, DEFAULT_TF, MIN_CHART_BARS, drawnBars, barSpan, buildPriceChart, buildFundingChart, candleStyleNote, timeframeGapNote, shortDate, CHART_H } from "../../lib/series.ts";
 import { CH } from "../../lib/chart.ts";
 import { coinPageFor } from "../../lib/coins.ts";
 import { liqMapHref, canonicalRedirect } from "../../lib/routes.ts";
 import { qty } from "../../lib/funding.ts";
-import { freshness, ageWords, minutesSince, utcStamp } from "../../lib/freshness.ts";
+import { freshness, ageWords, minutesSince, utcStamp, plural } from "../../lib/freshness.ts";
 import Overview from "../../components/Overview.astro";
 import Figure from "../../components/Figure.astro";
 import { extremeBy, standing } from "../../lib/extreme.ts";
@@ -353,6 +353,8 @@ const dayTf = TIMEFRAMES.find((t) => t.key === "1d")!;
 const fundChart = dayset?.d && dayset.d.length >= MIN_CHART_BARS
   ? buildFundingChart(dayset.d.slice(-FUND_DAYS), funding, dayTf)
   : null;
+/* This contract's own account of the window drawn — see fundingRegime in src/lib/series.ts. */
+const regime = fundChart && dayset?.d ? fundingRegime(dayset.d.slice(-FUND_DAYS), funding, dayTf) : null;
 /* The same bars in a phone-width box; CSS shows one (Base.astro, .fxw / .fxn). */
 const fundChartN = fundChart && dayset?.d ? buildFundingChart(dayset.d.slice(-FUND_DAYS), funding, dayTf, NARROW_W) : null;
 /* THE DAY COUNT TAKES ITS NOUN FROM THE COUNT, as the band note below learned to. fundChart.bars is
@@ -453,6 +455,13 @@ const description = `What a ${p.symbol} perpetual costs to hold, against ${usd(p
       fetchedAt={snap.fetchedAt}>
       <Fragment set:html={fundChart.svg.replace("<svg ", '<svg class="fxw" ')} />
       {fundChartN && <Fragment set:html={fundChartN.svg.replace("<svg ", '<svg class="fxn" ')} />}
+      {regime && (
+        <p class="fregime">
+          Over the {regime.days} days drawn, longs paid on <b>{regime.longsPaid}</b> and shorts on <b>{regime.shortsPaid}</b>{regime.atBase > 0 && <>, and {p.symbol} sat at Hyperliquid's base rate on {plural(regime.atBase, "day", "days")}</>}.
+          {" "}The current run is <b>{plural(regime.run.days, "day", "days")} of {regime.run.side === "long" ? "longs" : "shorts"} paying</b>, since {shortDate(regime.run.since)};
+          {" "}the latest day's average is above {regime.below} of the {regime.days}.
+        </p>
+      )}
       <Fragment slot="note">
       <p>
         Amber above the line is <b>longs paying shorts</b>, cyan below is <b>shorts paying longs</b>;
@@ -875,6 +884,7 @@ const description = `What a ${p.symbol} perpetual costs to hold, against ${usd(p
     .tfbar__note { font-size: var(--fs-xs); color: var(--text-faint); }
     /* The box is reserved from the viewBox ratio before paint, so switching timeframe or
        loading the script cannot move a single pixel of the page. */
+    .fregime { margin: 10px 0 0; font-size: var(--fs-sm); line-height: 1.55; color: var(--text-dim); max-width: 74ch; }
     .chart--price :global(svg.pxw) { aspect-ratio: var(--chartRatio); }
     .chart--price :global(svg.pxn) { aspect-ratio: var(--chartRatioN); }
     .legend { max-width: 88ch; line-height: 1.6; margin-top: 12px; }
