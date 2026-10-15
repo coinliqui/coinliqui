@@ -223,7 +223,13 @@ const sparkRows = sparks.status === "ready"
   : 0;
 
 
-const title = "Crypto funding rates, normalised to APR";
+/* THE VENUES IN THE TITLE, because they are what the page is and what readers ask for. Search
+   Console, 17.09–14.10.2026: "hyperliquid funding rates" was shown 25 times across SIX of our URLs
+   (/funding/hype, /funding, /funding/pump, /funding/sol, /funding/btc, /funding/ltc) at positions
+   80–97 — no page claimed the query, and this one answers it. Google's title-link guidance asks for
+   a title that describes the page accurately; "normalised to APR" described the method. Re-read the
+   query's position after 30 October 2026 (two weeks of data delay). */
+const title = "Funding rates on Hyperliquid, Binance and Bybit, annualised";
 const description =
   /* THE FRAMING, NOT THE FIGURE. The count changes every tick and a description that moves every
      five minutes reads as unstable; the QUESTION it answers does not move, and it is the one hook

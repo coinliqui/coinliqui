@@ -89,6 +89,8 @@ const leverage = read("leverage", "Leverage", Math.min(10, LEV_MAX), 1, LEV_MAX,
    and "$2,500,000" in the card beside it (15 October 2026). */
 const notionalText = exactUsd(notional);
 const daysText = num(days);
+/* "an 8-day hold", "an 11-day hold": the article follows the sound of the number the reader typed. */
+const aDays = /^(8|1[18](?![\d.,]))/.test(daysText) ? "an" : "a";
 const dayWord = days === 1 ? "day" : "days";
 const settlementsWord = (k: number) => `${k.toLocaleString("en-US")} settlement${k === 1 ? "" : "s"}`;
 
@@ -245,7 +247,7 @@ if (!rows.length) {
 } else if (rows.length === 1) {
   introPre = `${hold} ${verbOf(rows[0])}`;
   introAmt = amtOf(rows[0]);
-  introPost = ` on ${rows[0].label}, the only venue with a ${perp.symbol} rate in these figures${certain}.`;
+  introPost = ` on ${rows[0].label}, the only venue with a rate for ${perp.symbol} in these figures${certain}.`;
 } else if (allTied) {
   introPre = `${hold} ${verbOf(rows[0])}`;
   introAmt = amtOf(rows[0]);
@@ -402,9 +404,9 @@ const dur = (sec: number) => {
 };
 let crossPre = "", crossNum = "", crossPost = "";
 if (holdSec === 0) {
-  crossPre = `so a ${daysText}-day hold crosses no settlement.`;
+  crossPre = `so ${aDays} ${daysText}-day hold crosses no settlement.`;
 } else {
-  crossPre = `so a ${daysText}-day hold crosses `;
+  crossPre = `so ${aDays} ${daysText}-day hold crosses `;
   crossNum = mine.k.toLocaleString("en-US");
   crossPost = mine.more
     ? ` settlement${mine.k === 1 ? "" : "s"} for certain, or ${(mine.k + 1).toLocaleString("en-US")} if the next is due within ${dur(mine.remSec)} of opening.`
@@ -454,7 +456,7 @@ const verdictTail =
 const markText = usd(markNow.px, priceDp(markNow.px));
 
 const title = `Funding cost calculator — what it costs to hold ${perp.symbol}`;
-const description = `What holding a ${perp.symbol} perpetual actually costs in funding, using each venue's real settlement interval rather than treating the quoted rate as a daily number.`;
+const description = `What holding the ${perp.symbol} perpetual actually costs in funding, using each venue's real settlement interval rather than treating the quoted rate as a daily number.`;
 ---
 
 <Base title={title} description={description} fetchedAt={snap.fetchedAt} crumb={{ href: "/tools", label: "Tools", current: "Funding cost" }}>

@@ -2753,6 +2753,32 @@ export function typographyFaults(html, selectorClass = "overview") {
 }
 
 /**
+ * AN ARTICLE THAT DOES NOT MATCH THE SOUND AFTER IT. Google's helpful-content questions ask
+ * whether a page is "free of spelling and stylistic problems" and looks carefully produced, and a
+ * template is where one slip becomes thirty: on 16 October 2026 the description of every
+ * /funding/{coin} page said "What a ETH perpetual", "a XRP", "a AAVE" — 29 pages, invisible on
+ * /funding/btc, which is the one page the typography check reads.
+ *
+ * ONLY THE UNAMBIGUOUS CASES. A ticker is read either as letters ("an LTC") or as a word
+ * ("a LINK"), and which one is a convention this check cannot know, so it flags only tickers
+ * whose first sound is a vowel either way (A, E, I, O, and X, which is always "ex") and numbers
+ * that are spoken with a vowel (8…, 11, 18), plus the mirror: "an" before a ticker or number that
+ * cannot start with a vowel sound. "a UNI" is right ("you-nee") and is not flagged.
+ */
+export function wrongArticles(text) {
+  const t = String(text ?? "");
+  const faults = [];
+  for (const m of t.matchAll(/\b([Aa]n?) ((?:[A-Z][A-Z0-9]{1,6})|\d[\d,.]*)(?=[\s×%\-–—.,;:)]|$)/g)) {
+    const [, art, w] = m;
+    const vowel = /^[AEIOX]/.test(w) || /^8/.test(w) || /^1[18](?![\d.,]*\d)/.test(w) || /^1[18](?=[.,]\d)/.test(w);
+    const consonant = /^[BCDGJKPQTVWZ]/.test(w) || (/^\d/.test(w) && !vowel);
+    if (art.toLowerCase() === "a" && vowel) faults.push(`"${art} ${w}" should be "an ${w}"`);
+    else if (art.toLowerCase() === "an" && consonant) faults.push(`"${art} ${w}" should be "a ${w}"`);
+  }
+  return [...new Set(faults)];
+}
+
+/**
  * THE VESTING REGISTER IS READ BY HAND, SO ITS AGE IS A FINDING. /unlocks dates every claim to the
  * block it was read at, and on 15 October 2026 that block was two months old: the ENS lock the page
  * called untouched had released 100,001 ENS since, and nothing said the read was due. The page

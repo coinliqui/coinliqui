@@ -44,6 +44,7 @@ import {
   collapsedStateEscapesMobile,
   llmsHostsAgree,
   registerAge,
+  wrongArticles,
 } from "./checks.mjs";
 
 /* Enough page for a check to have something to read. Deliberately minimal: a fixture that is
@@ -448,6 +449,25 @@ const cases = [
       underLinked(new Map([["/x", 1]])).length === 1,
       // the floor is inclusive-below: exactly at the floor passes
       underLinked({ "/x": 5 }).length === 0 && underLinked({ "/x": 4 }).length === 1,
+    ],
+  },
+  {
+    check: "wrongArticles",
+    why: "every /funding/{coin} description read \"What a ETH perpetual\" on 29 pages, and the one page the typography check reads is BTC, where the template is right",
+    fire: () => wrongArticles("What a ETH perpetual costs to hold, so a 8-day hold crosses two settlements"),
+    quiet: () => [
+      ...wrongArticles("What the ETH perpetual costs; an ETH long; a BTC long; a UNI lock; a 30-day hold; an 8-day hold; a 110× cap; an 11,000 ENS move; a URL"),
+      ...wrongArticles(""),
+    ],
+    /* BOTH DIRECTIONS, AND THE CASES IT MUST LEAVE ALONE. A ticker read as a word ("a LINK") or
+       whose first letter is ambiguous ("a FET" or "an FET") is a convention, not a fault. */
+    also: () => [
+      wrongArticles("an BTC perpetual").length === 1,
+      wrongArticles("a XRP perpetual").length === 1,
+      wrongArticles("an 18-hour window").length === 0 && wrongArticles("a 18-hour window").length === 1,
+      wrongArticles("a LINK perpetual and a FET perpetual and an LTC perpetual").length === 0,
+      wrongArticles("a 1,800 move and a 180 move").length === 0,
+      wrongArticles("a ETH, a ETH").length === 1,
     ],
   },
   {

@@ -413,7 +413,7 @@ const tfSpan = offered.length ? `${offered[0].label} to ${offered[offered.length
    today — was cut off every time, leaving fifty snippets that differed only by a ticker. Moved
    to the front. The sentence is still longer than the snippet; that is fine, because what gets
    dropped now is the generic tail rather than the distinguishing number. */
-const description = `What a ${p.symbol} perpetual costs to hold, against ${usd(p.oiNotional)} of open interest: ${venuePhrase}, the price chart from ${tfSpan}, and the published margin tiers.`;
+const description = `What the ${p.symbol} perpetual costs to hold, against ${usd(p.oiNotional)} of open interest: ${venuePhrase}, the price chart from ${tfSpan}, and the published margin tiers.`;
 ---
 
 <Base title={title} description={description} fetchedAt={snap.fetchedAt} crumb={{ href: "/funding", label: "Funding", current: p.symbol }}>

@@ -12,7 +12,7 @@
    — this runs against production and its whole claim is that it asserts what a client on the
    open internet receives. underLinked() decides nothing about the site; it turns a count into
    a sentence, and it lives in checks.mjs so it is covered by the gate's own fixture suite. */
-import { underLinked, duplicateHeadMetadata, leadsWithItsSubject, llmsHostsAgree, registerAge, openingFigure, PROSE_ROUTES, advertisedReadingsExist, typographyFaults } from "./checks.mjs";
+import { underLinked, duplicateHeadMetadata, leadsWithItsSubject, llmsHostsAgree, registerAge, openingFigure, PROSE_ROUTES, advertisedReadingsExist, typographyFaults, wrongArticles, renderedText } from "./checks.mjs";
 import { readFileSync as readFile } from "node:fs";
 
 const ORIGIN = process.argv[2] || "https://coinliqui.com";
@@ -535,6 +535,23 @@ console.log("\n5. sitemap");
     spoiled.length
       ? bad(`the stated situation reads wrong on ${spoiled.length} template(s): ${spoiled.join("; ")}`)
       : ok(`the stated situation on ${ROUTES.length} templates renders without a gap before punctuation, a welded figure or an unresolved value`);
+  }
+
+  /* ARTICLES BEFORE TICKERS AND NUMBERS, in the visible text and the description a search
+     result shows. Read on the symbols whose first sound is a vowel, because the template is right
+     on BTC: "What a ETH perpetual" reached 29 descriptions while the BTC page read correctly. */
+  {
+    const ROUTES = ["/funding/eth", "/funding/xrp", "/liquidations/eth", "/coins/ethereum", "/tools/funding-cost?symbol=ETH&days=8", "/learn/liquidation-price", "/unlocks"];
+    const found = [];
+    for (const r of ROUTES) {
+      const res = await fetchAs(r, "Mozilla/5.0");
+      const desc = (res.body.match(/<meta name="description" content="([^"]*)"/) || [])[1] ?? "";
+      const faults = wrongArticles(renderedText(res.body) + " " + desc);
+      if (faults.length) found.push(`${r} — ${faults.slice(0, 2).join(", ")}`);
+    }
+    found.length
+      ? bad(`an article does not match the sound after it on ${found.length} page(s): ${found.join("; ")}`)
+      : ok(`articles before tickers and numbers read right on ${ROUTES.length} pages, descriptions included`);
   }
 
   /* THE SAME ASSERTION FOR THE MAP HUB, which is the second-most-fetched page on the site.
