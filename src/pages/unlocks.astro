@@ -1,5 +1,7 @@
 ---
 import More from "../components/More.astro";
+import { shortDate } from "../../public/shared.js";
+import { utcStamp } from "../lib/freshness.ts";
 import Base from "../layouts/Base.astro";
 import Figure from "../components/Figure.astro";
 import Overview from "../components/Overview.astro";
@@ -36,7 +38,7 @@ import reg from "../data/vesting-contracts.json";
 const now = Date.now();
 const DAY = 86400000;
 const d = (s: string) => Date.parse(s + "T00:00:00Z");
-const fmtTs = (t: number) => new Date(t).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+const fmtTs = shortDate;
 const fmt = (s: string) => fmtTs(d(s));
 const num = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 0 });
 const daysSince = (s: string) => Math.round((now - d(s)) / DAY);
@@ -382,7 +384,7 @@ const lede = top
         hand, which is the actual verification path rather than a gesture at one. */}
     <p class="clock">
       The on-chain amounts were read at <strong>block {reg.verifiedBlock.toLocaleString("en-US")}</strong>,
-      {" "}<b><time datetime={reg.verifiedAt}>{new Date(reg.verifiedAt).toISOString().slice(0, 16).replace("T", " ")} UTC</time></b> — they change only when this register is re-read, not every minute. The USD values
+      {" "}<b><time datetime={reg.verifiedAt}>{utcStamp(Date.parse(reg.verifiedAt))}</time></b> — they change only when this register is re-read, not every minute. The USD values
       beside them are struck at the current mark, which is why the freshness pill above moves
       while these figures do not.
     </p>

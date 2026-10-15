@@ -9,6 +9,7 @@ import tables from "../../data/margin-tables.json";
 
 import Advisory from "../../components/Advisory.astro";
 import { priceDp } from "../../lib/funding.ts";
+import { shortDate } from "../../../public/shared.js";
 const env = (Astro.locals as any)?.runtime?.env;
 const snap = await getSnapshot(env?.SNAPSHOT, import.meta.env.DEV);
 if (!snap.available) return coldStart();
@@ -55,7 +56,7 @@ const grid =
    read "Entry days 26 Apr to 24 Jul" — fine beside a live page, useless in a search snippet or
    in anything that lifted the sentence, and every other date formatter in this repository passes
    year. */
-const dayLabel = (ms: number) => new Date(ms).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+const dayLabel = shortDate;
 
 /* THE MEDIAN COLUMN PRINTED THE UPPER MIDDLE. LevelResult.medianDays in src/lib/candles.ts was
    `days[Math.floor(days.length / 2)]` (the field is now removed), the median only for an odd count; for an even

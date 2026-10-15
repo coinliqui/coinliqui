@@ -14,7 +14,7 @@ import Overview from "../../components/Overview.astro";
 import { TIMEFRAMES, DEFAULT_TF, MIN_CHART_BARS, drawnBars, barSpan, buildPriceChart, candleStyleNote, timeframeGapNote, CHART_H, type ChartMode } from "../../lib/series.ts";
 import { CH } from "../../lib/chart.ts";
 
-import { priceDp } from "../../lib/funding.ts";
+import { priceDp, changeWords } from "../../lib/funding.ts";
 /* =========================================================================================
    ONE COIN.
 
@@ -278,7 +278,6 @@ const panels = active ? [active] : [];
 const hasChart = Boolean(active);
 /* The legend's bar count and unit come from barSpan() in src/lib/series.ts, shared with the contract
    page — which still called thirty-day bars "monthly" after this page stopped. */
-const arrow = (n: number) => (n >= 0 ? "▲" : "▼");
 /* The candle sentence is candleStyleNote() in src/lib/series.ts, shared with the contract page. */
 const styleNote = activeChart ? candleStyleNote(activeChart, activeMode.key) : "";
 
@@ -346,7 +345,7 @@ const description = `Live ${coin.name} (${coin.symbol}) perpetual price from Hyp
         check reads overlay behaviour; it was found by watching a live page for two pulls. */}
     <span class="hero__price" data-repaint="mark" data-sym={coin.symbol} data-dp={dp}>{Number.isFinite(price) ? px(price) : "—"}</span>
     <span class:list={["hero__chg"]} data-repaint="chgmark" data-sym={coin.symbol} data-prev={perp?.prevDayPx}>
-      {Number.isFinite(chg24) ? `${arrow(chg24)} ${(Math.abs(chg24) * 100).toFixed(2)}%` : "—"}
+      {changeWords(chg24)}
     </span>
     <span class="hero__span">24-hour change · Hyperliquid perpetual</span>
   </div>

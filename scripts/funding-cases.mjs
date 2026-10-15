@@ -16,7 +16,8 @@
  *
  *   node --experimental-strip-types scripts/funding-cases.mjs
  */
-import { nextSettlement, toApr, settlementsPerYear, queryNum, usd, paymentDirection, stopVerdict, rawRate, pct } from "../src/lib/funding.ts";
+import { nextSettlement, toApr, settlementsPerYear, queryNum, usd, paymentDirection, stopVerdict, rawRate, pct, compact, signedPct, changeWords, moveCounts } from "../src/lib/funding.ts";
+import { shortDate, dateTimeUtc } from "../public/shared.js";
 import { pickPerp } from "../src/lib/hyperliquid.ts";
 
 const now = Date.parse("2026-08-17T14:27:48Z");
@@ -119,6 +120,18 @@ t("1e30 is not a dollar amount", usd(1e30), "—");
 t("nor is 5e19", usd(5e19), "—");
 t("negatives too", usd(-1e30), "—");
 t("1e12 still prints", usd(1e12), "$1000.00B");
+
+console.log("\n  one rule per fact — signs, zero, months (15 October 2026: five signed-percent copies, three month spellings)");
+t("a loss is −$, not $-", usd(-5, 2), "\u2212$5.00");
+t("a loss that rounds to nothing has no sign", usd(-0.001, 2), "$0.00");
+t("compact losses too", compact(-5e6), "\u2212$5.0M");
+t("a flat move carries no sign", signedPct(0.000001), "0.00%");
+t("a fall is U+2212", signedPct(-0.0123), "\u22121.23%");
+t("a flat change carries no arrow", changeWords(0), "0.00%");
+t("a real change keeps its arrow", changeWords(-0.0123), "\u25bc 1.23%");
+t("counts follow the printed arrow", JSON.stringify(moveCounts([0.01, -0.02, 0.00001, NaN])), JSON.stringify({ up: 1, down: 1, n: 3 }));
+t("September is Sep, never Sept", shortDate(Date.UTC(2026, 8, 16)), "16 Sep 2026");
+t("a bar's time says its zone", dateTimeUtc(Date.UTC(2026, 8, 16, 15, 0)), "16 Sep 2026, 15:00 UTC");
 
 
 /* ------------------------------------------------------------------------------------------

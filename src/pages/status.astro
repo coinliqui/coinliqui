@@ -5,6 +5,7 @@ import { getSnapshot } from "../lib/hyperliquid.ts";
 import { reachRows } from "../lib/corroboration.ts";
 import { EXPECTED_WORKER_BUILD } from "../lib/version.ts";
 import { VENUE_LABEL, ageWords, type Venue } from "../lib/funding.ts";
+import { isStale, minutesSince, SNAP_STALE_MIN } from "../lib/freshness.ts";
 /* The Worker owns the endpoint list, the key name and the label rule. This page reads them
    rather than restating them — src/pages/[key].txt.ts already imports from the same module. */
 import { ENDPOINTS, STATE_KEY, endpointLabel } from "../../worker/indexnow.ts";
@@ -74,11 +75,9 @@ try {
 }
 
 const now = Date.now();
-const ageMin = snap.fetchedAt ? Math.round((now - snap.fetchedAt) / 60000) : null;
-// Cron runs every 5 minutes. Three consecutive misses is the point at which this is a
-// fault rather than a slow tick.
-const STALE_MIN = 15;
-const stale = ageMin === null || ageMin > STALE_MIN;
+/* The site's own staleness test and age, not a copy: see isStale in src/lib/freshness.ts. */
+const ageMin = snap.fetchedAt ? minutesSince(snap.fetchedAt, now) : null;
+const stale = !snap.fetchedAt || isStale(snap.fetchedAt, SNAP_STALE_MIN, now);
 
 /* THE ONE-MINUTE PATH. Sixty minutes is the window the "updates every minute" claim is about.
  *
@@ -287,7 +286,7 @@ const utc = (ms: number) => new Date(ms).toISOString().slice(0, 16).replace("T",
   <div class="cards">
     <div class="card">
       <div class="card__label">Snapshot age</div>
-      <div class:list={["card__value", stale && "is-bad"]}>{ageMin === null ? "—" : ageMin === 0 ? "under 1 min" : `${ageMin} min`}</div>
+      <div class:list={["card__value", stale && "is-bad"]}>{ageMin === null ? "—" : ageWords(ageMin)}</div>
       <div class="card__meta">{snap.fetchedAt ? utc(snap.fetchedAt) : "never written"}</div>
     </div>
     <div class="card">

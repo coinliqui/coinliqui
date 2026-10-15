@@ -11,7 +11,7 @@
    changes whenever either does, and passing it along keeps the two halves of one deploy
    together. */
 const __v = new URL(import.meta.url).searchParams.get("v");
-const { paysClass, paysLabel, carryCost, spreadOf, pct, changeWords, ageWords, nf, qty, compact: compactUsd, usd, visiblePanel, cumulativeAt, atReading, parsePrice } =
+const { paysClass, paysLabel, carryCost, spreadOf, pct, changeWords, ageWords, nf, qty, compact: compactUsd, usd, visiblePanel, cumulativeAt, atReading, parsePrice, shortDate, dateTimeUtc } =
   await import("./shared.js" + (__v ? `?v=${__v}` : ""));
 
 /* =========================================================================================
@@ -42,18 +42,12 @@ const { paysClass, paysLabel, carryCost, spreadOf, pct, changeWords, ageWords, n
 (() => {
   "use strict";
   const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
-  const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-  const p2 = (n) => String(n).padStart(2, "0");
   /* nf, qty and compactUsd ALL CAME FROM public/shared.js NOW. They were three separate
      implementations of rules the server also implements, kept in step by a magnitude sweep in
      scripts/checks.mjs — and two of them had already drifted in production before that sweep
      existed. The sweep stays as a guard against a fourth copy appearing; it no longer has two
      implementations to compare, because there are not two. */
-  const stamp = (t, withTime) => {
-    const d = new Date(t);
-    return `${d.getUTCDate()} ${MON[d.getUTCMonth()]} ${d.getUTCFullYear()}` +
-      (withTime ? `, ${p2(d.getUTCHours())}:${p2(d.getUTCMinutes())}` : "");
-  };
+  const stamp = (t, withTime) => (withTime ? dateTimeUtc(t).replace(/ UTC$/, "") : shortDate(t));
 
   /* ------------------------------------------------------------------------- tooltip */
   let tip, tipRaf = 0, tipNext = null;
@@ -204,7 +198,7 @@ const { paysClass, paysLabel, carryCost, spreadOf, pct, changeWords, ageWords, n
       else py.setAttribute("opacity", "0");
       setPill(tx, a[0], axisY || plotY + plotH + 5, stamp(a[1], withTime), plotX, axisX);
 
-      const up = a[5] >= a[2], apr = a[7];
+      const apr = a[7];
       showTip(
         `<div class="tip__h">${stamp(a[1], withTime)}${withTime ? " UTC" : ""}</div>` +
         `<div class="tip__g">` +
@@ -214,7 +208,7 @@ const { paysClass, paysLabel, carryCost, spreadOf, pct, changeWords, ageWords, n
         `<span>Close</span><b>$${nf(a[5], dp)}</b>` +
         `<span>Volume</span><b>${qty(a[6])} ${unit}</b>` +
         (Number.isFinite(apr) ? `<span>Funding</span><b class="${paysClass(apr)}">${pct(apr)} APR</b>` : "") +
-        `</div><div class="tip__f">${up ? "▲" : "▼"} ${nf(Math.abs((a[5] - a[2]) / (a[2] || 1)) * 100, 2)}% on the bar` +
+        `</div><div class="tip__f">${changeWords((a[5] - a[2]) / (a[2] || 1))} on the bar` +
         (Number.isFinite(apr) ? ` · ${paysLabel(apr)}` : "") + `</div>`,
         cx, cy, touch,
       );
@@ -428,7 +422,7 @@ const { paysClass, paysLabel, carryCost, spreadOf, pct, changeWords, ageWords, n
       let pts;
       try { pts = JSON.parse(src.textContent).slice(-200); } catch { return; }
       const dp = +table.dataset.dp || 2;
-      const money = (v) => "$" + nf(v, dp);
+      const money = (v) => usd(v, dp);
       body.innerHTML = pts.map((q) => {
         const f = Number.isFinite(q[7]);
         return "<tr>" +
@@ -685,7 +679,8 @@ const { paysClass, paysLabel, carryCost, spreadOf, pct, changeWords, ageWords, n
 const liveEls = [...document.querySelectorAll("[data-repaint]")];
   if (liveEls.length) {
     const dpOf = (el) => +(el.dataset.dp || 2);
-    const money = (v, dp) => "$" + nf(v, dp);
+    /* usd(), the server's own formatter for these cells — "$" + nf() agreed only below $1M. */
+    const money = (v, dp) => usd(v, dp);
     let last = {};
 
     /* THE SPOT FREEZE MACHINERY IS GONE WITH THE SPOT BRANCHES. It suppressed `mark` on any page
@@ -782,7 +777,7 @@ const liveEls = [...document.querySelectorAll("[data-repaint]")];
                   const notional = +el.dataset.notional || 10000;
                   const days = +el.dataset.days || 7;
                   const v = Math.abs(carryCost(notional, a, days));
-                  next = "$" + v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                  next = usd(v, 2);
                 }
               }
             }

@@ -10,6 +10,7 @@
  * table backs the on-site flip feed, the only event surface on the homepage. History cannot
  * be backfilled, so it starts accruing from day one.
  */
+import { isStale, SNAP_STALE_MIN, utcStamp } from "./freshness.ts";
 
 export interface Flip {
   symbol: string;
@@ -38,7 +39,7 @@ export type FlipsResult =
   /**
    * THE FEED IS OLD, WHICH IS NOT THE SAME AS SHORT, AND IT USED TO BE REPORTED AS SHORT.
    *
-   * A cache older than FLIPS_MAX_AGE_MS means the ingest has stopped writing `flips:24h`. That
+   * A cache older than SNAP_STALE_MIN (src/lib/freshness.ts) means the ingest has stopped writing `flips:24h`. That
    * was returned as `{ status: "warming", since, hours: 0 }` — `since` carried over from a
    * result that had been READY, so necessarily at least 24 hours old, and `hours` a hardcoded
    * zero measuring nothing. Rendered, with a cache 25 minutes stale and a first snapshot three
@@ -251,8 +252,9 @@ export interface CachedFlips {
 
 export const FLIPS_KEY = "flips:24h";
 
-/** Anything older than this is not shown. Two ingest passes; a third missed one is a fault. */
-export const FLIPS_MAX_AGE_MS = 20 * 60 * 1000;
+/* A feed older than the ingest's own staleness limit is not shown, so it is never presented as
+   current on a page that calls the same ingest's snapshot stale. It had its own limit, 20 minutes
+   against 15 (15 October 2026); now it asks isStale() with SNAP_STALE_MIN like every other clock. */
 
 export interface KVLike {
   get(key: string, type: "json"): Promise<unknown>;
@@ -276,7 +278,7 @@ export async function readCachedFlips(kv: KVLike | undefined): Promise<FlipsResu
   if (!cached || typeof cached.computedAt !== "number" || !cached.result) {
     return { status: "warming", since: 0, hours: 0 };
   }
-  if (Date.now() - cached.computedAt > FLIPS_MAX_AGE_MS) {
+  if (isStale(cached.computedAt, SNAP_STALE_MIN)) {
     /* Stale is not the same as missing, and printing a day-old event feed as current would be
        the exact defect this codebase keeps finding elsewhere. Report it as what it is. */
     const since = cached.result.status === "ready" ? cached.result.since : 0;
@@ -292,7 +294,7 @@ export async function writeCachedFlips(kv: KVLike, result: FlipsResult, now: num
 
 export function describeCoverage(r: FlipsResult): string {
   if (r.status === "stale") {
-    return `The flip feed is computed once per ingest pass and has not been rewritten since ${new Date(r.computedAt).toISOString().slice(0, 16).replace("T", " ")} UTC. That is a stalled ingest rather than a gap in the history.`;
+    return `The flip feed is computed once per ingest pass and has not been rewritten since ${utcStamp(r.computedAt)}. That is a stalled ingest rather than a gap in the history.`;
   }
   if (r.status === "no-store") {
     return "The flip feed reads the funding-history database, and it is not answering here.";
@@ -300,7 +302,7 @@ export function describeCoverage(r: FlipsResult): string {
   if (r.status === "warming") {
     if (!r.since) return "Collecting funding snapshots now. The first flips appear once 24 hours of history exist.";
     const h = Math.floor(r.hours);
-    return `Collecting funding snapshots since ${new Date(r.since).toISOString().slice(0, 16).replace("T", " ")} UTC — ${h} hour${h === 1 ? "" : "s"} of history so far. Flips are reported once the window covers 24 hours, so that "no flips" means no flips rather than no data.`;
+    return `Collecting funding snapshots since ${utcStamp(r.since)} — ${h} hour${h === 1 ? "" : "s"} of history so far. Flips are reported once the window covers 24 hours, so that "no flips" means no flips rather than no data.`;
   }
   return "";
 }

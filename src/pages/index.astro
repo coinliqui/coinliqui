@@ -2,8 +2,9 @@
 import Base from "../layouts/Base.astro";
 import { SITE } from "../lib/site.ts";
 import { getSnapshot, coldStart } from "../lib/hyperliquid.ts";
-import { pct, usd, paysClass, paysArrow, paysLabel, LEGEND_FUNDING, VENUE_LABEL, isHlBaseApr, type Venue } from "../lib/funding.ts";
+import { pct, usd, moveCounts, paysClass, paysArrow, paysLabel, LEGEND_FUNDING, VENUE_LABEL, isHlBaseApr, type Venue } from "../lib/funding.ts";
 import { readCachedFlips, describeCoverage } from "../lib/flips.ts";
+import { utcStamp, readableAge } from "../lib/freshness.ts";
 import { distribution } from "../lib/viz.ts";
 import { extremeBy, pluralityOf, widestSpread } from "../lib/extreme.ts";
 import Figure from "../components/Figure.astro";
@@ -20,7 +21,7 @@ const flips = await readCachedFlips(env?.SNAPSHOT);
 
 // Empty-state figures are computed on the server so the panel paints complete at first
 // byte — the progress bar never animates in from zero.
-const utc = (ms: number) => new Date(ms).toISOString().slice(0, 16).replace("T", " ") + " UTC";
+const utc = (ms: number) => utcStamp(ms);
 const coveredH = flips.status === "warming" ? Math.floor(flips.hours) : 24;
 const flipProgress = Math.min(100, Math.round((coveredH / 24) * 100));
 
@@ -63,7 +64,7 @@ const totalVol = snap.perps.reduce((s, p) => s + (Number.isFinite(p.dayNtlVlm) ?
 const btc = snap.perps.find((p) => p.symbol === "BTC");
 const maxOi = Math.max(...snap.perps.map((p) => p.oiNotional || 0), 1);
 const top = snap.perps.slice(0, 15);
-const stamp = new Date(snap.fetchedAt).toISOString().slice(0, 16).replace("T", " ") + " UTC";
+const stamp = utcStamp(snap.fetchedAt);
 
 /* MARKET BREADTH, WHICH IS THE ONE THING A FRONT PAGE OF TABLES COULD NOT SAY. Fifty 24-hour
    changes are on this page as numbers and nowhere as a shape, so "is this a red day or a mixed
@@ -71,8 +72,7 @@ const stamp = new Date(snap.fetchedAt).toISOString().slice(0, 16).replace("T", "
    rows. Unlike funding, this column genuinely spreads: it is not pinned to a venue constant, so
    a histogram is the right figure here and was the wrong one there. */
 const changes = snap.perps.map((p) => p.change24h).filter((v) => Number.isFinite(v));
-const upCount = changes.filter((v) => v > 0).length;
-const downCount = changes.filter((v) => v < 0).length;
+const { up: upCount, down: downCount } = moveCounts(changes);
 const ascChg = [...changes].sort((a, b) => a - b);
 const medianChg = ascChg.length
   ? ascChg.length % 2
@@ -313,8 +313,8 @@ const description =
                     IS the event time to the precision printed; above it, it is a deadline. */}
                 <td class="num faint">{
                   f.gapMin > 15
-                    ? <>by {new Date(f.at).toISOString().slice(11, 16)}<span class="dim">{" · within "}{f.gapMin >= 120 ? `${(f.gapMin / 60).toFixed(1)} h` : `${f.gapMin} min`}</span></>
-                    : <>{new Date(f.at).toISOString().slice(11, 16)} UTC</>
+                    ? <>by {utcStamp(f.at)}<span class="dim">{" · within "}{readableAge(f.gapMin)}</span></>
+                    : <>{utcStamp(f.at)}</>
                 }</td>
               </tr>
             ))}

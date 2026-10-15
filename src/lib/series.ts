@@ -1,4 +1,5 @@
 import { type Candle, type FundingPoint, T, O, H, L, C, V } from "./candles.ts";
+import { axisDp, shortDate } from "../../public/shared.js";
 import { U, CH, INK, SANS, MONO, niceTicks, timeTicks, xTick, text, rect, line, fint, crosshair, n2, FS_AXIS, FS_MICRO, PILL_H, PILL_R, PILL_GAP } from "./chart.ts";
 
 /* =========================================================================================
@@ -260,7 +261,10 @@ export function buildPriceChart(
   const gid = `f${tf.key}`;
   if (candles.length < 3) return null;
   const px = candles[candles.length - 1][C];
-  const dp = px >= 100 ? 0 : px >= 1 ? 2 : 4;
+  /* axisDp, not a ladder of its own: this one stopped at four decimals, so a coin at $0.00001234
+     read "0.0000" down its whole axis — the defect public/shared.js records as fixed for the
+     heatmap — and DOGE's price chart showed four decimals beside its heatmap's five. */
+  const dp = axisDp(px);
   const plotX = CH.padL, plotW = CH.w - CH.padL - CH.padR;
   const axisX = plotX + plotW;
 
@@ -466,8 +470,7 @@ export function buildPriceChart(
   };
 }
 
-const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-export const shortDate = (t: number) => { const d = new Date(t); return `${d.getUTCDate()} ${MON[d.getUTCMonth()]} ${d.getUTCFullYear()}`; };
+export { shortDate } from "../../public/shared.js";
 export const CHART_H = LY.h;
 
 /* =========================================================================================

@@ -29,7 +29,7 @@ import { T, O, H, L, C, type Candle, type getHourly } from "../lib/candles.ts";
 import { spanWords, MIN_SPAN, MOVE_STEPS, POSITION_LIFE_DAYS, DEFAULT_PROFILE, type MapModel, PROFILES, mixUsed, profilesCoincide, MAP_WINDOWS, DEFAULT_WINDOW, mapDrawable, type MapWindow } from "../lib/liqmap.ts";
 import { paintHeatMap } from "../lib/heatmap.ts";
 import { RAMP, CH, INK, MONO, FS_AXIS, compact, niceTicks } from "../lib/chart.ts";
-import { shortDate } from "../lib/series.ts";
+import { dateTimeUtc } from "../../public/shared.js";
 import type { Perp, Snapshot } from "../lib/hyperliquid.ts";
 import { liqMapHref } from "../lib/routes.ts";
 import { signedPct } from "../lib/funding.ts";
@@ -276,7 +276,7 @@ const largestBar = extremeBy(sweptBars, (b) => Math.round(Number((barShare(b.n) 
 const isLargestBar = (b: (typeof sweptBars)[number]) =>
   largestBar.kind === "unique" ? largestBar.item === b : largestBar.kind === "tied" ? largestBar.items.includes(b) : false;
 const barWord = (n: number) => `${n} bar${n === 1 ? "" : "s"}`;
-const barWhen = (b: (typeof sweptBars)[number]) => `${shortDate(b.c[T])} ${new Date(b.c[T]).toISOString().slice(11, 16)} UTC`;
+const barWhen = (b: (typeof sweptBars)[number]) => dateTimeUtc(b.c[T]);
 const oneBar = sweptBars.length === 1 && allClearingShown;
 const shownCleared = sweptBars.reduce((a, b) => a + b.n, 0);
 

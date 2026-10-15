@@ -28,6 +28,7 @@
  *      The safe direction is under-claiming, and section 17 of verify-live independently fetches
  *      whatever does get published, so a wrong `ok` fails the next deploy rather than shipping.
  */
+import { ageWords, minutesSince } from "../../public/shared.js";
 
 /** What the site would publish, IF a signed-out reader can reach it. Never published unchecked. */
 export const CANDIDATES = ["https://github.com/coinliqui/coinliqui"] as const;
@@ -76,8 +77,9 @@ export function reachRows(records: unknown, now: number): { url: string; state: 
   return CANDIDATES.map((url) => {
     const r = arr.find((x) => x && x.url === url);
     if (!r || typeof r.at !== "number") return { url, state: "never checked", detail: "no probe has run" };
-    const ageH = Math.round((now - r.at) / 3_600_000);
-    const age = ageH < 48 ? `${ageH}h ago` : `${Math.round(ageH / 24)}d ago`;
+    /* The site's age ladder, not a third one: this rounded to hours BEFORE comparing, so 47.6 h
+       read "2d ago" where ageWords says "48 h ago", and an hour-old check read "0h ago". */
+    const age = ageWords(minutesSince(r.at, now));
     if (r.ok !== true) return { url, state: "unreachable", detail: `${r.status === null || r.status === undefined ? "no answer" : `HTTP ${r.status}`}, checked ${age}` };
     if (now - r.at > MAX_AGE_MS) return { url, state: "stale", detail: `last good check ${age}, past the ${Math.round(MAX_AGE_MS / 86_400_000)}-day limit` };
     return { url, state: "published", detail: `HTTP ${r.status}, checked ${age}` };

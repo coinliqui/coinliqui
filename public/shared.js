@@ -57,6 +57,22 @@ export function pct(x, decimals = 2) {
   return `${(x * 100).toFixed(decimals)}%`;
 }
 
+/** MONTHS AND THE SHORT DATE, once. Five files carried their own month table, and two pages used
+ *  toLocaleDateString("en-GB", {month: "short"}) instead — which prints "Sept" for September, so a
+ *  date read "16 Sept 2026" on /unlocks and "16 Sep 2026" on every chart (15 October 2026). */
+export const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const p2 = (n) => String(n).padStart(2, "0");
+/** "16 Sep 2026", in UTC. */
+export function shortDate(t) {
+  const d = new Date(t);
+  return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
+}
+/** "16 Sep 2026, 15:00 UTC" — a bar or an event at a minute, always with its zone. */
+export function dateTimeUtc(t) {
+  const d = new Date(t);
+  return `${shortDate(t)}, ${p2(d.getUTCHours())}:${p2(d.getUTCMinutes())} UTC`;
+}
+
 /** A signed percentage: U+2212 for a fall, "+" for a rise, and NO sign on a figure whose printed
  *  digits are zero. Five copies of this existed on 15 October 2026 with three rules between them —
  *  two printed "+0.00%" for a flat value, one printed an ASCII hyphen, two never read the digits at
@@ -116,11 +132,22 @@ export function atReading(curve, mark, price, lo, hi, dp) {
   return `A move to ${where} closes ${compact(notional)} of modelled ${who} on the way.`;
 }
 
+/** How many changes are up and down, BY THE ARROW changeWords() PRINTS — so "31 up, 22 down" counts
+ *  exactly the ▲ and ▼ a reader can see, and a +0.001% that prints "0.00%" with no arrow is flat.
+ *  The home page and /coins each counted raw signs with their own filter. */
+export function moveCounts(fractions) {
+  const shown = fractions.filter(Number.isFinite).map((f) => Number((f * 100).toFixed(2)));
+  return { up: shown.filter((v) => v > 0).length, down: shown.filter((v) => v < 0).length, n: shown.length };
+}
+
 /** Signed percentage change, arrow included — the 24-hour cell, rendered identically either
  *  side of hydration. */
 export function changeWords(fraction) {
   if (!Number.isFinite(fraction)) return "—";
-  return `${paysArrow(fraction)} ${(Math.abs(fraction) * 100).toFixed(2)}%`;
+  /* No arrow on a change whose printed digits are zero — the signedPct rule. "▲ 0.00%" claimed a
+     direction for a flat candle that signedPct, on the next table, printed as "0.00%". */
+  const printed = (Math.abs(fraction) * 100).toFixed(2);
+  return Number(printed) === 0 ? `${printed}%` : `${paysArrow(fraction)} ${printed}%`;
 }
 
 /**
@@ -166,6 +193,7 @@ export function qty(n) {
  * same cell read "$29.65M". They are separate functions because they are separate rules.
  */
 export function compact(v) {
+  if (v < 0) return "\u2212" + compact(-v);
   const a = Math.abs(v);
   if (a >= 1e9) return `$${(v / 1e9).toFixed(2)}B`;
   if (a >= 1e6) return `$${(v / 1e6).toFixed(1)}M`;
@@ -181,6 +209,10 @@ export function compact(v) {
  */
 export function usd(x, decimals = 0) {
   if (!Number.isFinite(x)) return "—";
+  /* A loss is "−$5.00": the sign before the currency, as U+2212. It printed "$-5.00" here while
+     /learn/funding-rate wrote "-$5.00" and the arbitrage tool "−$5.00" (15 October 2026). */
+  if (x < 0 && Math.abs(x) < 1e15 && Number(Math.abs(x).toFixed(decimals)) !== 0) return "\u2212" + usd(-x, decimals);
+  if (x < 0 && Math.abs(x) < 1e15) x = 0;
   const abs = Math.abs(x);
   if (abs >= 1e15) return "—";
   if (abs >= 1e9) return `$${(x / 1e9).toFixed(2)}B`;

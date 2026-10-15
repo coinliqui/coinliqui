@@ -74,7 +74,7 @@ const costRows = btcVenues
    callout at the top quotes that venue — and signed, so the product printed is the product of
    the factors printed beside it. */
 const worked = costRows.find((r) => r.venue === "HlPerp") ?? costRows[0];
-const workedResult = worked ? `${worked.cost < 0 ? "-" : ""}${usd(Math.abs(worked.cost), 2)}` : "";
+const workedResult = worked ? usd(worked.cost, 2) : "";
 /* The spread between venues, worded by the signs actually present: both pay, both receive, or
    one pays while the other is paid. Absent when there is nothing to compare. */
 const byCost = [...costRows].sort((a, b) => a.cost - b.cost);

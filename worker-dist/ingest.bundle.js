@@ -490,7 +490,6 @@ async function readFlipEvents(db, hours = 24, now = Date.now()) {
   }
 }
 var FLIPS_KEY = "flips:24h";
-var FLIPS_MAX_AGE_MS = 20 * 60 * 1e3;
 async function writeCachedFlips(kv, result, now) {
   await kv.put(FLIPS_KEY, JSON.stringify({ computedAt: now, result }));
 }
@@ -1444,7 +1443,7 @@ async function stepGscExport(env, now = Date.now()) {
 }
 
 // worker/build-stamp.ts
-var WORKER_BUILD = "f65eca07fdd9";
+var WORKER_BUILD = "85ad691ab302";
 
 // worker/ingest.ts
 var RETAIN_HOURS = 720;

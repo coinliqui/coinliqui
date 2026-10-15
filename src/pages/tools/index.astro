@@ -1,7 +1,7 @@
 ---
 import Base from "../../layouts/Base.astro";
 import { getSnapshot, coldStart, requestedPerp } from "../../lib/hyperliquid.ts";
-import { pct, usd, VENUE_LABEL } from "../../lib/funding.ts";
+import { pct, usd, priceDp, VENUE_LABEL } from "../../lib/funding.ts";
 import { liquidationPrice, maintenanceMarginFraction, type MarginTable } from "../../lib/margin.ts";
 import tables from "../../data/margin-tables.json";
 import { widestSpread } from "../../lib/extreme.ts";
@@ -47,7 +47,7 @@ const tools = [
     blurb: "Risk-based sizing that checks the stop against the tier-correct liquidation price. A stop beyond liquidation is not a stop.",
     opens: pinnedPerp,
     live: pinnedPerp ? `${pinnedPerp.symbol} · tier-checked` : "—",
-    alone: pinnedPerp ? `${pinnedPerp.symbol} at ${usd(pinnedPerp.markPx)}` : "",
+    alone: pinnedPerp ? `${pinnedPerp.symbol} at ${usd(pinnedPerp.markPx, priceDp(pinnedPerp.markPx))}` : "",
   },
   {
     href: "/tools/leverage",
@@ -55,7 +55,7 @@ const tools = [
     blurb: "The advertised maximum applies to the smallest tier only. Shows what your notional actually allows, and where the next step falls.",
     opens: pinnedPerp,
     live: pinnedPerp ? `${pinnedPerp.symbol} advertised ${pinnedPerp.maxLeverage}×` : "—",
-    alone: pinnedPerp ? `${pinnedPerp.symbol} at ${usd(pinnedPerp.markPx)}` : "",
+    alone: pinnedPerp ? `${pinnedPerp.symbol} at ${usd(pinnedPerp.markPx, priceDp(pinnedPerp.markPx))}` : "",
   },
   {
     href: "/tools/funding-cost",
@@ -63,7 +63,7 @@ const tools = [
     blurb: "What a position costs to hold, counting real settlements rather than reading the quoted rate as a daily number.",
     opens: costPerp,
     live: `${costPerp.symbol} ${pct(costVenue.apr)} APR`,
-    alone: `${costPerp.symbol} at ${usd(costPerp.markPx)}, funding ${pct(costVenue.apr)} a year on ${VENUE_LABEL[costVenue.venue]}`,
+    alone: `${costPerp.symbol} at ${usd(costPerp.markPx, priceDp(costPerp.markPx))}, funding ${pct(costVenue.apr)} a year on ${VENUE_LABEL[costVenue.venue]}`,
   },
   {
     href: "/tools/funding-arbitrage",
@@ -96,7 +96,7 @@ const names = (ts: typeof tools) => {
   const n = ts.map((t, i) => (i === 0 ? t.name : t.name.toLowerCase()));
   return n.length < 2 ? (n[0] ?? "") : `${n.slice(0, -1).join(", ")} and ${n[n.length - 1]}`;
 };
-const leadOpens = `${leadPerp.symbol} at ${usd(leadPerp.markPx)}, funding ${pct(leadVenue.apr)} a year on ${VENUE_LABEL[leadVenue.venue]}`;
+const leadOpens = `${leadPerp.symbol} at ${usd(leadPerp.markPx, priceDp(leadPerp.markPx))}, funding ${pct(leadVenue.apr)} a year on ${VENUE_LABEL[leadVenue.venue]}`;
 const lede = others.length === 0 && leadGroup.length === tools.length
   ? `Every calculator here opens on ${leadOpens}`
   : [

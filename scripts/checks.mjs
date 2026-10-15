@@ -597,7 +597,22 @@ const SHARED_RULES = ["paysClass", "paysLabel", "paysArrow", "carryCost", "aprSp
                       "changeWords", "ageWords", "minutesSince", "nf", "qty", "compact", "usd",
                       /* 17 September 2026: two templates, two stamp formats, one job. */
                       "utcStamp", "candleStyleNote", "timeframeGapNote", "slotBars", "drawnBars", "barSpan",
-                      "timeTicks", "widestSpread", "settlementWords", "venueReachWords"];
+                      "timeTicks", "widestSpread", "settlementWords", "venueReachWords",
+                      /* 15 October 2026: five signed-percent copies with three rules for zero, five
+                         month tables, two staleness limits, the map's sum on two sides of hydration. */
+                      "signedPct", "moveCounts", "shortDate", "dateTimeUtc", "isStale",
+                      "cumulativeAt", "atReading", "parsePrice", "spanWords", "mapModel"];
+
+/* THE SHAPE OF A RULE WRITTEN INLINE, which a definition count cannot see because it has no name.
+   Each is a shape that shipped as a copy and disagreed with the shared rule; `only` names the one
+   file allowed to carry it. */
+const INLINE_SHAPES = [
+  { what: "a month table", re: /["']Jan["'],\s*["']Feb["'],\s*["']Mar["']/, only: "public/shared.js", use: "MONTHS / shortDate" },
+  { what: "toLocaleDateString with a short month (prints \"Sept\")", re: /month:\s*["']short["']/, only: null, use: "shortDate" },
+  /* a sign ternary with a percent sign after it on the same line — a signed COUNT ("+3 indexed")
+     is not this rule */
+  { what: "a hand-made sign for a percentage", re: /\?\s*["']\+["']\s*:\s*["'](\u2212|\\u2212|-)["'][^\n]{0,80}%/, only: "public/shared.js", use: "signedPct" },
+];
 
 /* Constants with the same standing. HL_BASE_APR was a const in three templates on 17 September
    2026, and the one without the home page's base-rate test called the base rate "the dearest". */
@@ -605,6 +620,14 @@ const SHARED_CONSTANTS = ["HL_BASE_APR"];
 
 export function duplicateRuleImplementations(sources) {
   const out = [];
+  for (const shape of INLINE_SHAPES) {
+    for (const [file, src] of sources) {
+      if (shape.only && file.endsWith(shape.only)) continue;
+      /* comments may quote the shape they replaced */
+      const code = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
+      if (shape.re.test(code)) out.push(`${file} carries ${shape.what} — use ${shape.use} from public/shared.js`);
+    }
+  }
   for (const name of SHARED_CONSTANTS) {
     const defs = [...sources].filter(([, src]) => new RegExp(`\\b(const|let|var)\\s+${name}\\s*=`).test(src)).map(([file]) => file);
     if (defs.length !== 1) out.push(defs.length ? `${name} is defined ${defs.length} times — ${defs.join(", ")}. One constant, one definition; see src/lib/funding.ts` : `${name} is not defined anywhere — the shared source has lost a constant this check guards`);

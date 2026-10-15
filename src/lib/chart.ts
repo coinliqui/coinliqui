@@ -137,7 +137,7 @@ export function niceTicks(lo: number, hi: number, want = 5): number[] {
 
 type TickUnit = { key: string; label: (d: Date) => string; bucket: (d: Date) => string };
 const pad = (n: number) => String(n).padStart(2, "0");
-const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const MON = MONTHS;
 const dm = (d: Date) => `${d.getUTCDate()} ${MON[d.getUTCMonth()]}`;
 const UNITS: TickUnit[] = [
   { key: "year", label: (d) => String(d.getUTCFullYear()), bucket: (d) => `${d.getUTCFullYear()}` },
@@ -240,6 +240,7 @@ export const fint = (v: number) => Math.round(v).toLocaleString("en-US");
    compactUsd, and the client version was `"$" + qty(n)` — one formatter answering to two rules,
    matching neither. One implementation now, read by the server, the worker and the browser. */
 export { compact } from "../../public/shared.js";
+import { MONTHS } from "../../public/shared.js";
 
 /**
  * Crosshair furniture. Emitted hidden; the interaction layer moves it and fills in the

@@ -19,6 +19,7 @@
    it was drawn from, and cannot disagree with the sentence beside it.
    ========================================================================================= */
 import { SITE } from "../lib/site.ts";
+import { utcStamp } from "../lib/freshness.ts";
 
 interface Props {
   /** What is being measured. Shown at the top of the card and used as the accessible name. */
@@ -38,7 +39,7 @@ interface Props {
 }
 const { title, lead, leadNote, fetchedAt, modelled = false, class: cls, id } = Astro.props;
 const stamp = Number.isFinite(fetchedAt)
-  ? new Date(fetchedAt!).toISOString().slice(0, 16).replace("T", " ") + " UTC"
+  ? utcStamp(fetchedAt!)
   : null;
 ---
 

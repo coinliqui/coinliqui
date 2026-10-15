@@ -1,7 +1,7 @@
 ---
 import Base from "../../layouts/Base.astro";
 import { getSnapshot, coldStart, requestedPerp } from "../../lib/hyperliquid.ts";
-import { usd, pct, queryNum } from "../../lib/funding.ts";
+import { usd, pct, compact, queryNum } from "../../lib/funding.ts";
 import { corridorAt, tierFor, maintenanceMarginFraction, type MarginTable, type Side } from "../../lib/margin.ts";
 import { extremeBy } from "../../lib/extreme.ts";
 import tables from "../../data/margin-tables.json";
@@ -160,7 +160,6 @@ const tierRows = ladder.map((t) => ({
   available: t.max <= permitted,
   margin: notional / t.max,
 }));
-const compactUsd = (v: number) => (v >= 1e6 ? `$${(v / 1e6).toFixed(v >= 1e7 ? 0 : 1)}M` : v >= 1e3 ? `$${Math.round(v / 1e3)}K` : `$${Math.round(v)}`);
 
 /* A SIZE IS PRINTED SO THAT READING IT BACK LANDS IN THE SAME TIER. Measured 16 September 2026 on
    /tools/leverage?symbol=XPL&side=long&notional=2999999&leverage=10: "Your notional of $3.00M is
@@ -176,7 +175,9 @@ const sided = (fmt: (v: number) => string) => (v: number) => {
   return Number.isFinite(back) && tierFor(table, back).index !== tierFor(table, v).index ? `$${Math.floor(v).toLocaleString("en-US")}` : s;
 };
 const money = sided((v) => usd(v));
-const brief = sided(compactUsd);
+/* compact() from public/shared.js, not a page copy: the copy dropped decimals from $10M up and had
+   no B rung, so $15.4M read "$15M" and $1.5B "$1500M" beside money() printing "$15.40M". */
+const brief = sided(compact);
 /* HALF-OPEN RANGES, LABELLED AS HALF-OPEN. The bars read "$0–$150M" and "$150M+", so exactly $150M
    fit both labels, and the page put it in tier 2 (measured 16 September 2026 on
    ?symbol=BTC&side=long&notional=150000000&leverage=40; the same on ETH at $100M). tierFor counts a

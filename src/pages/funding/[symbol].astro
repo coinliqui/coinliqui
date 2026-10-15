@@ -135,7 +135,7 @@ const quotable = (() => {
   return {
     head,
     tail: `${interval}${others}. Annualised, because the venues settle on different intervals and their quoted rates are not comparable until they are. Read at `,
-    stamp: `${new Date(snap.fetchedAt).toISOString().slice(0, 16).replace("T", " ")} UTC`,
+    stamp: utcStamp(snap.fetchedAt),
     iso: new Date(snap.fetchedAt).toISOString(),
   };
 })();
@@ -426,7 +426,7 @@ const description = `What a ${p.symbol} perpetual costs to hold, against ${usd(p
         {Number.isFinite(carry7d) && <>{" "}Holding $10,000 long {carry7d < 0 ? "pays you" : "costs"}{" "}<b>{usd(Math.abs(carry7d), 2)}</b> a week at this rate.</>}
         {venueSpan?.kind === "range" && <>{" "}Across venues it runs from {pct(venueSpan.lo)}{" "}{venueSpan.loOn} to{" "}{pct(venueSpan.hi)}{" "}{venueSpan.hiOn}, annualised so the different settlement intervals are comparable.</>}
         {venueSpan?.kind === "same" && <>{" "}All {venueSpan.n} venues publish the same annualised rate right now.</>}
-        {" "}Read at <time datetime={new Date(snap.fetchedAt).toISOString()}>{new Date(snap.fetchedAt).toISOString().slice(0, 16).replace("T", " ")} UTC</time>.
+        {" "}Read at <time datetime={new Date(snap.fetchedAt).toISOString()}>{utcStamp(snap.fetchedAt)}</time>.
       </Overview>
     )}
     {quotable && !(hl && Number.isFinite(hl.apr)) && (
