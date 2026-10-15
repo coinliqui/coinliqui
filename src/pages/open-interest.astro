@@ -105,15 +105,14 @@ const book = (() => {
     runs[runs.length - 1].push(pt as readonly [number, number]);
   }
   const segs = runs.filter((r) => r.length > 0);
-  const line = segs.map((r) => r.map(([t, v], k) => `${k ? "L" : "M"}${X(t).toFixed(1)},${Y(v).toFixed(1)}`).join("")).join("");
-  const area = segs.filter((r) => r.length > 1).map((r) => {
-    const d = r.map(([t, v], k) => `${k ? "L" : "M"}${X(t).toFixed(1)},${Y(v).toFixed(1)}`).join("");
-    return `${d}L${X(r[r.length - 1][0]).toFixed(1)},200L${X(r[0][0]).toFixed(1)},200Z`;
-  }).join("");
+  /* Whole units of a 1000×200 box: a tenth of a unit is invisible at any width this draws at, and the
+     decimals were most of the page's 851 bytes over budget. The line alone — an area fill under it
+     repeated every coordinate. */
+  const line = segs.map((r) => r.map(([t, v], k) => `${k ? "L" : "M"}${Math.round(X(t))},${Math.round(Y(v))}`).join("")).join("");
   const gaps = pts.filter(([, v]) => !Number.isFinite(v)).length;
   const winX = X(Math.max(t0, oiNow - OI_HOURS * HOUR_MS));
   return {
-    line, area, winX, gaps,
+    line, winX, gaps,
     hi, lo, hiPct: (Y(hi) / 200) * 100, loPct: (Y(lo) / 200) * 100,
     from: t0, to: t1, count: full.length,
     share: full.reduce((a, p) => a + p.oiNotional, 0) / Math.max(1, total),
@@ -364,7 +363,6 @@ const noChangeReason = oiHist.status === "no-store"
       <div class="oibook__plot">
         <svg viewBox="0 0 1000 200" preserveAspectRatio="none" role="img" aria-label={`Open interest of ${book.count} contracts from ${shortDate(book.from)} to ${shortDate(book.to)}, between ${compact(book.lo)} and ${compact(book.hi)}`}>
           <rect x={book.winX} y="0" width={1000 - book.winX} height="200" fill="currentColor" opacity="0.07" />
-          <path d={book.area} fill="currentColor" opacity="0.12" />
           <path d={book.line} fill="none" stroke="currentColor" stroke-width="2" vector-effect="non-scaling-stroke" />
         </svg>
         <span class="oibook__y" style={`top:${book.hiPct.toFixed(1)}%`}>{compact(book.hi)}</span>
