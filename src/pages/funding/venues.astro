@@ -1,0 +1,112 @@
+---
+import Base from "../../layouts/Base.astro";
+import More from "../../components/More.astro";
+import Overview from "../../components/Overview.astro";
+import { getSnapshot, coldStart } from "../../lib/hyperliquid.ts";
+import { pct, VENUE_LABEL, type Venue } from "../../lib/funding.ts";
+import { getVenueAgreement } from "../../lib/venue-agreement.ts";
+import { shortDate, plural } from "../../../public/shared.js";
+
+/* HOW OFTEN THE VENUES POINTED OPPOSITE WAYS. See src/lib/venue-agreement.ts for the reading and
+   worker/venue-agreement.ts for the query; this page reads the one record it writes. */
+const env = (Astro.locals as any)?.runtime?.env;
+const snap = await getSnapshot(env?.SNAPSHOT, import.meta.env.DEV);
+if (!snap.available) return coldStart();
+const agree = await getVenueAgreement(env?.SNAPSHOT);
+if (!agree) return coldStart();
+
+const VENUES = ["BinPerp", "BybitPerp"] as const;
+const live = new Set(snap.perps.map((p) => p.symbol));
+type Cell = { hours: number; opposite: number; gap: number };
+const bySym = new Map<string, Partial<Record<(typeof VENUES)[number], Cell>>>();
+for (const [s, v, hours, opposite, gap] of agree.rows) {
+  if (!(VENUES as readonly string[]).includes(v)) continue;
+  const m = bySym.get(s) ?? {};
+  m[v as (typeof VENUES)[number]] = { hours, opposite, gap };
+  bySym.set(s, m);
+}
+const share = (c?: Cell) => (c && c.hours ? c.opposite / c.hours : NaN);
+const rows = [...bySym.entries()].sort((a, b) => Math.max(share(b[1].BinPerp) || 0, share(b[1].BybitPerp) || 0) - Math.max(share(a[1].BinPerp) || 0, share(a[1].BybitPerp) || 0));
+
+/* A WEEK OF HOURS BEFORE A ROW CAN BE NAMED in the opening: a contract compared for two days that
+   disagreed on one is 50%, which says nothing about a month. The table still lists it, with its hours. */
+const MIN_HOURS = 24 * 7;
+const totals = VENUES.map((v) => {
+  let h = 0, o = 0;
+  for (const [, m] of bySym) { const c = m[v]; if (c) { h += c.hours; o += c.opposite; } }
+  return { v, share: h ? o / h : NaN, contracts: [...bySym.values()].filter((m) => m[v]).length };
+});
+const most = rows
+  .flatMap(([s, m]) => VENUES.map((v) => ({ s, v, c: m[v] })))
+  .filter((x) => x.c && x.c.hours >= MIN_HOURS)
+  .sort((a, b) => share(b.c) - share(a.c))[0];
+const never = rows.filter(([, m]) => VENUES.every((v) => !m[v] || (m[v]!.hours >= MIN_HOURS && m[v]!.opposite === 0)) && VENUES.some((v) => m[v])).map(([s]) => s);
+const to = agree.at, days = Math.round((to - agree.from) / 86_400_000);
+const label = (v: string) => VENUE_LABEL[v as Venue] ?? v;
+
+const title = "Funding direction across venues: how often Binance and Bybit disagreed with Hyperliquid";
+const description = `Over the ${days} days to ${shortDate(to)}, Binance quoted funding in the opposite direction to Hyperliquid in ${pct(totals[0].share, 1)} of contract-hours and Bybit in ${pct(totals[1].share, 1)}, per contract, from rates sampled every five minutes and averaged per hour.`;
+---
+
+<Base title={title} description={description} fetchedAt={Math.floor(to / 3_600_000) * 3_600_000} crumb={{ href: "/funding", label: "Funding", current: "Venues compared" }}>
+  <div class="page-head">
+    <p class="crumb"><a href="/funding">Funding</a> › Venues compared</p>
+    <h1>When venues disagree about who pays</h1>
+    <Overview>
+      Over the {days} days to {shortDate(to)}, <b>Binance quoted the opposite direction to Hyperliquid in {pct(totals[0].share, 1)} of contract-hours</b>,
+      across {plural(totals[0].contracts, "contract", "contracts")}, and Bybit in {pct(totals[1].share, 1)}, across {totals[1].contracts}.
+      {most && <>{" "}It happened most on <b>{most.s}</b> against {label(most.v)}: {pct(share(most.c), 1)} of {most.c!.hours} hours.</>}
+      {never.length > 0 && <>{" "}On {plural(never.length, "contract", "contracts")} the venues never disagreed in a week or more of hours: {never.slice(0, 8).join(", ")}{never.length > 8 ? ` and ${never.length - 8} more` : ""}.</>}
+    </Overview>
+    <p>
+      An hour of disagreement is one in which longs paid shorts on one venue while shorts paid longs on
+      the other. It is the condition a cross-venue funding trade is built on, and a property of the
+      month rather than of the moment the funding table shows.
+    </p>
+  </div>
+
+  <div class="panel"><table class="tbl venuetbl" data-sortable>
+    <thead><tr><th>Coin</th><th class="num">Opposite to Binance <span class="thscope">share of hours</span></th><th class="num">Mean gap <span class="thscope">APR</span></th><th class="num">Opposite to Bybit <span class="thscope">share of hours</span></th><th class="num">Mean gap <span class="thscope">APR</span></th><th class="num">Hours compared</th></tr></thead>
+    <tbody>
+      {rows.map(([s, m]) => (
+        <tr>
+          <td>{live.has(s) ? <a href={`/funding/${s.toLowerCase()}`}>{s}</a> : <>{s} <span class="faint">no longer covered</span></>}</td>
+          <td>{m.BinPerp ? pct(share(m.BinPerp), 0) : "—"}</td>
+          <td>{m.BinPerp ? pct(m.BinPerp.gap) : "—"}</td>
+          <td>{m.BybitPerp ? pct(share(m.BybitPerp), 0) : "—"}</td>
+          <td>{m.BybitPerp ? pct(m.BybitPerp.gap) : "—"}</td>
+          <td>{Math.max(m.BinPerp?.hours ?? 0, m.BybitPerp?.hours ?? 0)}</td>
+        </tr>
+      ))}
+    </tbody>
+  </table></div>
+  <p class="section-note" style="margin:12px 0 20px;max-width:74ch">
+    A dash: that venue lists no perpetual for the contract. The mean gap is the average absolute
+    difference between the two annualised rates over the hours compared. Contracts are listed if
+    Hyperliquid and at least one other venue both had a rate in the window; rows with fewer than
+    {" "}{MIN_HOURS} hours are listed but not named above.
+  </p>
+
+  <More label="How an hour is compared">
+    <p>
+      This site reads the rate each venue is quoting every five minutes; Binance&rsquo;s and Bybit&rsquo;s
+      reach it through Hyperliquid, which republishes them. For each contract, venue and hour, the
+      readings are averaged, and each Binance and Bybit hour is set beside Hyperliquid&rsquo;s for the same
+      hour. Opposite signs count as a disagreement; a rate of exactly zero on either side does not.
+      An hour one venue has and the other does not is not compared.
+    </p>
+    <p>
+      The comparison is computed once a day over the 30 days the store keeps. Rates are compared as
+      quoted, so an hour can disagree in sign while both venues settle on different schedules.
+      {" "}<a class="link" href="/data-sources">Where each series comes from →</a>
+    </p>
+  </More>
+
+  <p style="margin:20px 0 0">
+    <a class="link" href="/funding">Funding rates on every venue, now →</a>{" "}
+    <a class="link" href="/tools/funding-arbitrage">Whether a spread is worth trading →</a>
+  </p>
+  <style is:global>
+    .venuetbl td + td { font-family: var(--mono); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+  </style>
+</Base>

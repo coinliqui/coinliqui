@@ -59,6 +59,8 @@ export const FUNDING_HUB = ["/funding"] as const;
 export const FUNDING_PAID = ["/funding/paid"] as const;
 /** What funding took from a long over the whole stored history, per contract. */
 export const FUNDING_HISTORY = ["/funding/history"] as const;
+/** How often Binance and Bybit quoted the opposite direction to Hyperliquid, over 30 days. */
+export const FUNDING_VENUES = ["/funding/venues"] as const;
 export const OPEN_INTEREST = ["/open-interest"] as const;
 export const UNLOCKS = ["/unlocks"] as const;
 export const COINS_HUB = ["/coins"] as const;
@@ -74,7 +76,7 @@ export const COINS_HUB = ["/coins"] as const;
  */
 export const STATIC_ROUTES: readonly string[] = [
   ...PAGES_DATA, ...PAGES_CODE,
-  ...COINS_HUB, ...FUNDING_HUB, ...FUNDING_PAID, ...FUNDING_HISTORY, ...OPEN_INTEREST,
+  ...COINS_HUB, ...FUNDING_HUB, ...FUNDING_PAID, ...FUNDING_HISTORY, ...FUNDING_VENUES, ...OPEN_INTEREST,
   ...TOOLS, ...LIQUIDATIONS, ...UNLOCKS,
   ...LEARN,
 ];

@@ -13,6 +13,7 @@ import { CH } from "../../lib/chart.ts";
 import { coinPageFor } from "../../lib/coins.ts";
 import { readFundingPaidFor } from "../../lib/funding-paid.ts";
 import { fundingHistory } from "../../lib/funding-history.ts";
+import { getVenueAgreement, agreementFor } from "../../lib/venue-agreement.ts";
 import { liqMapHref, canonicalRedirect } from "../../lib/routes.ts";
 import { qty } from "../../lib/funding.ts";
 import { freshness, ageWords, minutesSince, utcStamp, plural } from "../../lib/freshness.ts";
@@ -180,6 +181,10 @@ const paidHere = await readFundingPaidFor(env?.DB, p.symbol, funding, Date.now()
 /* And over everything stored: what a long of constant size paid, beside the price over the same span
    (src/lib/funding-history.ts, the arithmetic /funding/history tabulates for every contract). */
 const histHere = fundingHistory(p.symbol, funding, dayset?.d ?? null);
+/* And across venues: how often Binance and Bybit quoted the opposite direction to Hyperliquid on this
+   contract over 30 days (worker/venue-agreement.ts). A week of hours before it is stated. */
+const venueAgree = await getVenueAgreement(env?.SNAPSHOT);
+const agreeHere = agreementFor(venueAgree, p.symbol).filter((a) => a.hours >= 24 * 7 && VENUE_LABEL[a.venue as Venue]);
 
 /* ========================================================================================
    WHAT THIS CONTRACT'S FUNDING IS DOING — the page's own subject, stated before its price.
@@ -748,6 +753,12 @@ const description = `What the ${p.symbol} perpetual costs to hold, against ${usd
       {histHere.paid >= 0 ? <> paid <b>{pct(histHere.paid)}</b> of its size</> : <> was paid <b>{pct(-histHere.paid)}</b> of its size</>} in funding
       over {histHere.hours.toLocaleString("en-US")} settled hours{Number.isFinite(histHere.price) && <>, while the price moved {signedPct(histHere.price)}</>}.
       {" "}<a class="link" href="/funding/history">Every contract over the same span →</a>
+    </p>
+  )}
+  {agreeHere.length > 0 && venueAgree && (
+    <p class="section-note" style="margin:0 0 20px;max-width:74ch">
+      Over the 30 days to {shortDate(venueAgree.at)}, {agreeHere.map((a, i) => <>{i > 0 && (i === agreeHere.length - 1 ? " and " : ", ")}{VENUE_LABEL[a.venue as Venue]} quoted {p.symbol}&rsquo;s funding in the opposite direction to Hyperliquid in <b>{pct(a.opposite / a.hours, 1)}</b> of {a.hours} hours</>)}.
+      {" "}<a class="link" href="/funding/venues">Every contract →</a>
     </p>
   )}
 

@@ -5,6 +5,7 @@ import { getSnapshot } from "../lib/hyperliquid.ts";
 import register from "../data/vesting-contracts.json";
 import { readFundingPaid } from "../lib/funding-paid.ts";
 import { historyStamp } from "../lib/funding-history.ts";
+import { getVenueAgreement } from "../lib/venue-agreement.ts";
 
 /**
  * The index carries a lastmod per child sitemap, because that is what a crawler reads to
@@ -21,6 +22,11 @@ import { historyStamp } from "../lib/funding-history.ts";
    the two in step is not optional: an index and a child disagreeing about the same URL set is
    a worse signal than either date alone. */
 
+const venuesStamp = async (kv: Parameters<typeof getVenueAgreement>[0]) => {
+  const a = await getVenueAgreement(kv);
+  return a ? dataStamp(a.at) : undefined;
+};
+
 export const GET: APIRoute = async ({ locals, site }) => {
   const base = origin(site);
   const snap = await getSnapshot((locals as any)?.runtime?.env?.SNAPSHOT, import.meta.env.DEV);
@@ -35,6 +41,7 @@ export const GET: APIRoute = async ({ locals, site }) => {
     { name: "coins", lastmod: data },
     { name: "funding-hub", lastmod: data },
     { name: "funding-paid", lastmod: paidStamp },
+    { name: "funding-venues", lastmod: await venuesStamp(env?.SNAPSHOT) },
     { name: "funding-history", lastmod: await historyStamp(env?.SNAPSHOT, snap.perps.map((p) => p.symbol)) },
     { name: "funding-symbols", lastmod: data },
     { name: "open-interest", lastmod: data },
