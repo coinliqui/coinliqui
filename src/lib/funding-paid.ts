@@ -159,3 +159,28 @@ export async function readFundingPaid(
     return { status: "no-store" };
   }
 }
+
+/**
+ * ONE CONTRACT, for its own page. Same arithmetic, same window; the rates are the series the page
+ * has already read, so the only new read is this symbol's slice of the store (idx_oi_sym).
+ */
+export async function readFundingPaidFor(
+  db: D1Like | undefined,
+  symbol: string,
+  rates: readonly FundingPoint[] | null,
+  now: number,
+  days = 30,
+): Promise<{ row: PaidRow; paid: FundingPaid } | null> {
+  if (!db || !rates?.length) return null;
+  const from = now - days * 24 * HOUR;
+  try {
+    const { results } = await db
+      .prepare("SELECT symbol, oi, at FROM oi_snapshot WHERE symbol = ?1 AND at >= ?2")
+      .bind(symbol, from)
+      .all<{ symbol: string; oi: number; at: number }>();
+    const paid = fundingPaid(results ?? [], new Map([[symbol, rates]]), from, now);
+    return paid.rows[0] ? { row: paid.rows[0], paid } : null;
+  } catch {
+    return null;
+  }
+}

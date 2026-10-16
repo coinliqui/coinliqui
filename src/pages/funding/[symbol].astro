@@ -11,6 +11,7 @@ import Versus from "../../components/Versus.astro";
 import { narrowChart, NARROW_W, fundingRegime, TIMEFRAMES, DEFAULT_TF, MIN_CHART_BARS, drawnBars, barSpan, buildPriceChart, buildFundingChart, candleStyleNote, timeframeGapNote, shortDate, CHART_H, versusRows } from "../../lib/series.ts";
 import { CH } from "../../lib/chart.ts";
 import { coinPageFor } from "../../lib/coins.ts";
+import { readFundingPaidFor } from "../../lib/funding-paid.ts";
 import { liqMapHref, canonicalRedirect } from "../../lib/routes.ts";
 import { qty } from "../../lib/funding.ts";
 import { freshness, ageWords, minutesSince, utcStamp, plural } from "../../lib/freshness.ts";
@@ -172,6 +173,9 @@ const vsRows = versusRows(p, refPerp, dayset?.d, refDay?.d, snap.fetchedAt);
 /* HOW FAR THE STORED FUNDING SERIES ACTUALLY GOES, read from the series rather than from
    whichever bar of the current panel happens to carry the first funding value. */
 const fundingSeriesFrom = funding && funding.length ? Math.min(...funding.map((f) => f[0])) : null;
+/* WHAT THE RATE COST IN DOLLARS on this contract over 30 days — the figure /funding/paid sums
+   across the book, here for one contract. See src/lib/funding-paid.ts for the method. */
+const paidHere = await readFundingPaidFor(env?.DB, p.symbol, funding, Date.now());
 
 /* ========================================================================================
    WHAT THIS CONTRACT'S FUNDING IS DOING — the page's own subject, stated before its price.
@@ -723,6 +727,18 @@ const description = `What the ${p.symbol} perpetual costs to hold, against ${usd
     </div>
   </div>
 
+  {paidHere && (
+    <p class="section-note" style="margin:0 0 20px;max-width:74ch">
+      Over the {Math.round(paidHere.paid.span / 24)} days to {shortDate(paidHere.paid.last)},
+      {paidHere.row.net >= 0
+        ? <> longs paid shorts a net <b>{usd(paidHere.row.net)}</b></>
+        : <> shorts paid longs a net <b>{usd(-paidHere.row.net)}</b></>} in funding on {p.symbol} on Hyperliquid,
+      from {paidHere.row.hours} hourly settlements times the open interest held at each.
+      At the base rate alone it would have been {usd(paidHere.row.base)}.
+      {" "}<a class="link" href="/funding/paid">Every contract, and how it is counted →</a>
+    </p>
+  )}
+
   <h2 class="section">Funding by venue</h2>
   {/* THE CALCULATOR FOR THE THING THESE FIFTY PAGES ARE ABOUT, AND NOT ONE OF THEM LINKED TO IT.
       Measured across the live surface on 20 August: /tools/funding-cost had exactly one inbound
@@ -739,7 +755,6 @@ const description = `What the ${p.symbol} perpetual costs to hold, against ${usd
         none of them says what a funding rate IS — the reader who does not know is offered two
         calculators and a table, which answer a question they have not got to yet. */}
     {" "}<a class="link" href="/learn/funding-rate">What a funding rate is, and who pays it →</a>
-    {" · "}<a class="link" href="/funding/paid">What funding cost in dollars, every contract, 30 days →</a>
     {/* SEPARATED, BECAUSE TWO OFFERS RAN TOGETHER AS ONE. At 375px both links wrap and the pair
         reads as a single run of blue with an arrow in the middle. The dot is the separator this
         site already uses between distinct items. */}
