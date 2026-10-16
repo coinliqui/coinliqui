@@ -320,6 +320,23 @@ for (const { key, blob_id } of rows) {
   console.log(`  spark:funding  ${Object.keys(series).length} series incl. a -60% outlier to clip, a zero-crossing row and a 2-point row; published contracts without one render a dash`);
 }
 
+/* THE CROSS-VENUE RECORD (worker/venue-agreement.ts), seeded with the shapes a page must survive:
+   a contract both venues compare, one only Binance does, a pair with no disagreement at all, and a
+   published contract with no row, which must say nothing rather than print 0%. */
+{
+  const now = Date.now();
+  const rows = [
+    ["BTC", "BinPerp", 718, 41, 0.0412], ["BTC", "BybitPerp", 718, 97, 0.0519],
+    ["ETH", "BinPerp", 718, 0, 0.0233],
+    ["ARB", "BinPerp", 718, 317, 0.1268], ["ARB", "BybitPerp", 718, 248, 0.117],
+  ];
+  const rec = { v: 1, at: now, attemptAt: now, from: now - 30 * 86_400_000, rows };
+  const id = randomBytes(40).toString("hex");
+  writeFileSync(join(blobDir, id), JSON.stringify(rec));
+  put.run("venues:agree", id);
+  console.log(`  venues:agree  ${rows.length} contract-venue rows, one pair that never disagreed`);
+}
+
 db.close();
 console.log(wrote ? `seeded ${wrote} m15 series into the gate's fixture` : "nothing written");
 process.exit(wrote ? 0 : 1);

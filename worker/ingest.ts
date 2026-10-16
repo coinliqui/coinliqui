@@ -11,6 +11,7 @@ import type { Flip } from "../src/lib/flips.ts";
 import { stepReport, stepProbe } from "./report.ts";
 import { stepCorroborate } from "./corroborate.ts";
 import { stepGscExport } from "./gsc-export.ts";
+import { stepVenueAgreement } from "./venue-agreement.ts";
 import { COINS } from "../src/lib/coins.ts";
 
 /**
@@ -292,6 +293,7 @@ interface RunResult {
   corroborate?: string;
   /** The daily Search Console export into KV, read locally by scripts/gsc.mjs. */
   gscExport?: string;
+  venueAgree?: string;
 }
 
 /** The shape every sweep keeps in KV: last full cycle, cursor, frozen list, symbols with data,
@@ -793,6 +795,12 @@ async function run(env: Env): Promise<RunResult> {
          feed that reads them are one step; nothing may run between them that can end the tick. */
       const gsc = await stepGscExport(env);
       if (gsc) { result.gscExport = gsc; throw SKIP_SWEEPS; }
+
+      /* THE CROSS-VENUE COMPARISON, once a day: one D1 query (~3M rows read) and one KV write.
+         Same placement and the same rule as the export above — after the flip feed, and on the one
+         tick it runs, the sweeps wait. See worker/venue-agreement.ts. */
+      const agree = await stepVenueAgreement({ SNAPSHOT: env.SNAPSHOT, DB: env.DB as unknown as D1Like });
+      if (agree) { result.venueAgree = agree; throw SKIP_SWEEPS; }
 
       /* THE WEEKLY REPORT TAKES THE SWEEPS, and like the export above it comes after the flip
          feed. It is roughly 140 subrequests against a 50-per-invocation ceiling, so it walks

@@ -1587,8 +1587,53 @@ async function stepGscExport(env, now = Date.now()) {
   }
 }
 
+// src/lib/venue-agreement.ts
+var VENUE_AGREE_KEY = "venues:agree";
+
+// worker/venue-agreement.ts
+var EVERY_MS = 20 * 36e5;
+var WINDOW_MS = 30 * 864e5;
+var HOUR = 36e5;
+function venueAgreeDue(prior, now) {
+  const last = prior && typeof prior.attemptAt === "number" ? prior.attemptAt : 0;
+  return now - last >= EVERY_MS;
+}
+var VENUE_AGREE_SQL = `
+  WITH h AS (
+    SELECT symbol, venue, CAST(at / ${HOUR} AS INTEGER) AS hr, AVG(apr) AS apr
+      FROM funding_snapshot WHERE at >= ?1 GROUP BY symbol, venue, hr
+  )
+  SELECT a.symbol AS symbol, b.venue AS venue, COUNT(*) AS n,
+         SUM(CASE WHEN (a.apr > 0 AND b.apr < 0) OR (a.apr < 0 AND b.apr > 0) THEN 1 ELSE 0 END) AS opp,
+         AVG(ABS(a.apr - b.apr)) AS gap, MIN(a.hr) AS first
+    FROM h a JOIN h b ON a.symbol = b.symbol AND a.hr = b.hr
+   WHERE a.venue = 'HlPerp' AND b.venue != 'HlPerp'
+   GROUP BY a.symbol, b.venue`;
+async function stepVenueAgreement(env, now = Date.now()) {
+  let prior = null;
+  try {
+    prior = await env.SNAPSHOT.get(VENUE_AGREE_KEY, "json");
+  } catch {
+  }
+  if (!venueAgreeDue(prior, now)) return null;
+  try {
+    const { results } = await env.DB.prepare(VENUE_AGREE_SQL).bind(now - WINDOW_MS).all();
+    const rs = results ?? [];
+    const rows = rs.filter((r) => r.n > 0 && Number.isFinite(r.gap)).map((r) => [r.symbol, r.venue, r.n, r.opp, Math.round(r.gap * 1e6) / 1e6]);
+    const from = rs.length ? Math.min(...rs.map((r) => r.first)) * HOUR : now - WINDOW_MS;
+    const doc = { v: 1, at: now, attemptAt: now, from, rows };
+    await env.SNAPSHOT.put(VENUE_AGREE_KEY, JSON.stringify(doc));
+    return `venue-agreement: ${rows.length} contract-venue pairs`;
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    const keep = prior && prior.v === 1 ? { ...prior, attemptAt: now, error: msg.slice(0, 200) } : { v: 1, at: 0, attemptAt: now, from: 0, rows: [], error: msg.slice(0, 200) };
+    await env.SNAPSHOT.put(VENUE_AGREE_KEY, JSON.stringify(keep));
+    return `venue-agreement: failed (${msg.slice(0, 80)})`;
+  }
+}
+
 // worker/build-stamp.ts
-var WORKER_BUILD = "bc43d004e987";
+var WORKER_BUILD = "674cb56a21e3";
 
 // worker/ingest.ts
 var RETAIN_HOURS = 720;
@@ -1866,6 +1911,11 @@ async function run(env) {
       const gsc = await stepGscExport(env);
       if (gsc) {
         result.gscExport = gsc;
+        throw SKIP_SWEEPS;
+      }
+      const agree = await stepVenueAgreement({ SNAPSHOT: env.SNAPSHOT, DB: env.DB });
+      if (agree) {
+        result.venueAgree = agree;
         throw SKIP_SWEEPS;
       }
       const step = await stepReport(env);
