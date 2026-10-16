@@ -1,7 +1,7 @@
 ---
 import Base from "../../layouts/Base.astro";
 import Related from "../../components/Related.astro";
-import { PROFILES, profilesCoincide } from "../../lib/liqmap.ts";
+import { PROFILES, profilesCoincide, POSITION_LIFE_DAYS, MIN_SPAN, MOVE_STEPS } from "../../lib/liqmap.ts";
 import { countWords } from "../../lib/site.ts";
 
 /**
@@ -148,6 +148,31 @@ const description =
   <p class="section-note" style="margin-top:10px">
     As written, across the full {ladderLo}×–{ladderHi}× ladder above. {PROFILES.map((p) => `${p.label}: ${p.note}`).join(" ")}
     {" "}Under a lower cap the rescaled shares are what the model uses, and the map prints them beneath the picture.
+  </p>
+
+  <h2 class="section" id="shared-inputs">The inputs every map on this site shares</h2>
+  <p class="prose">
+    Each coin's map prints the inputs that are its own: the open interest it is scaled from, the
+    leverage mix under that contract's cap, the maintenance margin, and the price range drawn.
+    These are the same on every coin, so they are set out once, here.
+  </p>
+  <div class="panel">
+    <table class="tbl">
+      <thead><tr><th>Input</th><th>Value used</th><th class="num">Observed or assumed</th></tr></thead>
+      <tbody>
+        <tr><td>When positions were opened</td><td>Spread over the bars of the window in proportion to each bar's traded volume <em>as a share of its own trailing {POSITION_LIFE_DAYS}-day window</em>, which is what stops a rising market from loading every cohort onto its latest bars</td><td class="num">assumed</td></tr>
+        <tr><td>Direction</td><td>Half long, half short at every leverage</td><td class="num">assumed</td></tr>
+        <tr><td>How long a position stays open</td><td>A bounded life of {POSITION_LIFE_DAYS} days, decaying in four tranches. Removed earlier if price trades through its level.</td><td class="num">assumed</td></tr>
+        <tr><td>Drawn price range</td><td>Fitted to the range that actually traded in the window, never narrower than ±{Math.round(MIN_SPAN * 50)}%, then widened if needed until a {Math.round(Math.max(...MOVE_STEPS) * 100)}% move either way from the live mark is on the picture. Low-leverage levels can fall outside it; each map names the ones that do.</td><td class="num">observed</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="prose">
+    On the picture, colour tops out at the busiest 0.5% of the cells that carry anything, so one
+    dominant cluster cannot drag everything else to the floor. A band ends where price trades
+    through it, drawn in white, or fades out in four steps as the positions behind it age past
+    the {POSITION_LIFE_DAYS}-day life. The dark corridor the price path carves through the field
+    is not empty space: it is the levels the market has already taken out.
   </p>
 
   <h2 class="section">How to read one without being misled</h2>

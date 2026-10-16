@@ -26,7 +26,7 @@ import { usd, pct } from "../lib/funding.ts";
 import { ageWords, minutesSince, utcStamp } from "../lib/freshness.ts";
 import { maintenanceMarginFraction, nextTierBoundary, corridorAt, type MarginTable, tableFor, sortedTiers } from "../lib/margin.ts";
 import { T, O, H, L, C, type Candle, type getHourly } from "../lib/candles.ts";
-import { spanWords, MIN_SPAN, MOVE_STEPS, POSITION_LIFE_DAYS, DEFAULT_PROFILE, type MapModel, PROFILES, mixUsed, profilesCoincide, MAP_WINDOWS, DEFAULT_WINDOW, mapDrawable, type MapWindow } from "../lib/liqmap.ts";
+import { spanWords, POSITION_LIFE_DAYS, DEFAULT_PROFILE, type MapModel, PROFILES, mixUsed, profilesCoincide, MAP_WINDOWS, DEFAULT_WINDOW, mapDrawable, type MapWindow } from "../lib/liqmap.ts";
 import { LADDER_PARAMS } from "../lib/liqmap.ts";
 import { paintHeatMap } from "../lib/heatmap.ts";
 import { RAMP, CH, INK, MONO, FS_AXIS, compact, niceTicks } from "../lib/chart.ts";
@@ -445,17 +445,10 @@ const formNote: string | null = (() => {
         <Fragment set:html={paint.legend} />
         <p class="scalebar__note">Modelled notional standing at a price. White marks where price traded through a level.</p>
       </div>
-      <More label="How to read the heatmap">
-        <p class="section-note">
-          Modelled notional standing at a price, at a moment. Colour tops out at the busiest 0.5% of the
-          cells that carry anything
-          so one dominant cluster cannot drag everything else to the floor; the most crowded spot holds
-          {" "}{compact(map.peak)}. A band ends where price trades through it — drawn in white,
-          both as scars on the field and as the strip beneath — or fades out in four steps as the
-          positions behind it age past the {POSITION_LIFE_DAYS}-day position life. Hover any point for
-          the value band it sits in.
-        </p>
-      </More>
+      <p class="datanote">
+        The most crowded spot on this map holds {compact(map.peak)}. Hover any point for the value band
+        it sits in. <a class="link" href="/learn/liquidation-heatmap#shared-inputs">How the colour and the white scars work →</a>
+      </p>
 
           <p class="datanote">
         {/* TWO CLOCKS, AND ONE OF THEM NEVER TICKED. "from a snapshot 2 minutes old" was arithmetic in the
@@ -484,18 +477,12 @@ const formNote: string | null = (() => {
       <div class="verdict verdict--warn">
         <div>
           <b>This surface is a model, and the assumptions below drive it.</b> No venue publishes
-          the distribution of open positions by leverage and entry price, so nobody can observe
-          this — not us, and not anyone shipping a similar picture.
+          open positions by leverage and entry price.
           {coincide
-            ? <>{" "}Where a contract's cap leaves the profiles room to differ, changing the leverage mix in the form below
-              moves the bands — the honest version of being handed someone else's Model 1, 2 and 3. Not on {perp.symbol}:
-              its {cap}× cap leaves {ladderLeft}, so {sameForAll} and draws this same picture.</>
-            : <>{" "}Change the leverage mix in the form below and the bands move: that is the honest version of being
-              handed someone else's Model 1, 2 and 3.</>}
-          {" "}What is <em>not</em> modelled is the price path drawn over the field, and
-          the claim the picture actually supports is a checkable one — that price traded through
-          where the model puts levels. <a class="link" href="/liquidations/sweep">See it happen on
-          5 February 2026 →</a>
+            ? <>{" "}On {perp.symbol} the leverage mix changes nothing: its {cap}× cap leaves {ladderLeft}, so {sameForAll} and draws this same picture.</>
+            : <>{" "}Change the leverage mix above the map and the bands move.</>}
+          {" "}The price path over the field is traded candles, not model. <a class="link" href="/liquidations/sweep">Price
+          clearing modelled levels on 5 February 2026 →</a>
         </div>
       </div>
 
@@ -505,34 +492,21 @@ const formNote: string | null = (() => {
           <thead><tr><th class="num">#</th><th>Assumption</th><th>Value used</th><th class="num">Observed or assumed</th></tr></thead>
           <tbody>
             <tr><td class="num">1</td><td>Total notional modelled</td><td>Equal to <a class="link" href="/open-interest">Hyperliquid's open interest</a> in {perp.symbol}, {usd(perp.oiNotional)} — one venue's book, not the market's</td><td class="num">observed</td></tr>
-            <tr><td class="num">2</td><td>When positions were opened</td><td>Spread over the bars of the window in proportion to each bar's traded volume <em>as a share of its own trailing {POSITION_LIFE_DAYS}-day window</em>, which is what stops a rising market from loading every cohort onto its latest bars</td><td class="num">assumed</td></tr>
-            <tr class="is-active"><td class="num">3</td><td>Leverage mix</td><td>{coincide
+            <tr class="is-active"><td class="num">2</td><td>Leverage mix</td><td>{coincide
                 ? <><strong>{profile.label}</strong>, which makes no difference here: this contract's {cap}× cap leaves {ladderLeft}, so {sameForAll}.</>
                 : droppedRungs.length > 0
                   ? <><strong>{profile.label}</strong>, rescaled to this contract's {cap}× cap: {rescaledShares}, once the {joinWith(droppedRungs, "and")} weight{droppedRungs.length === 1 ? " is" : "s are"} dropped. As written for a {ladderTop}× contract: {noteAsClause}</>
                   : <><strong>{profile.label}</strong> — {profile.note}</>}</td><td class="num">assumed</td></tr>
-            <tr><td class="num">4</td><td>Direction</td><td>Half long, half short at every leverage</td><td class="num">assumed</td></tr>
-            <tr><td class="num">5</td><td>How long a position stays open</td><td>A bounded life of {POSITION_LIFE_DAYS} days, decaying in four tranches. Removed earlier if price trades through its level.</td><td class="num">assumed</td></tr>
-            <tr><td class="num">6</td><td>Maintenance margin</td><td>{pct(mmf, 3)} at tier 1, from the published table</td><td class="num">observed</td></tr>
-            <tr><td class="num">7</td><td>Positions before the window opens</td><td>{warmBars} bars before the chart starts are modelled off-screen{warmBars >= ageBars
+            <tr><td class="num">3</td><td>Maintenance margin</td><td>{pct(mmf, 3)} at tier 1, from the published table</td><td class="num">observed</td></tr>
+            <tr><td class="num">4</td><td>Positions before the window opens</td><td>{warmBars} bars before the chart starts are modelled off-screen{warmBars >= ageBars
                 ? <>, so the first drawn column already holds a full position-life window of positions</>
                 : <>. That is short of the {ageBars} bars a full set needs, so the left of the picture is still filling up</>}</td><td class="num">assumed</td></tr>
-            <tr><td class="num">8</td><td>Drawn price range</td><td>{spanWords(map, px)}
-              {" "}{pct(map.clipped)} of modelled notional liquidates further away than this and is not drawn.</td><td class="num">observed</td></tr>
+            <tr><td class="num">5</td><td>Drawn price range</td><td>{spanWords(map, px)}
+              {" "}{pct(map.clipped)} of modelled notional liquidates further away than this and is not drawn{offAxis.length > 0 ? <>, including every {offAxis.map(([L]) => `${L}×`).join(", ").replace(/, ([^,]*)$/, " and $1")} level</> : ""}.</td><td class="num">observed</td></tr>
+            <tr><td class="num">6</td><td>The same on every coin</td><td>Positions opened in proportion to traded volume, half long and half short, each with a {POSITION_LIFE_DAYS}-day life. <a class="link" href="/learn/liquidation-heatmap#shared-inputs">Set out in full →</a></td><td class="num">assumed</td></tr>
           </tbody>
         </table>
       </div>
-      <p class="section-note" style="max-width:88ch">
-        Row 8 is the one most worth reading twice. Tying the axis to what actually traded is
-        what gives the price path presence — the previous version spanned a third of the price
-        to accommodate 2× levels half a market away, and flattened real movement into a
-        squiggle. A minimum of ±{Math.round(MIN_SPAN * 50)}% stops a very quiet window from zooming into noise, and in a
-        quiet window it is that minimum rather than the traded range that sets the axis. Either
-        way the axis is then widened, if it has to be, until a {Math.round(Math.max(...MOVE_STEPS) * 100)}% move either way from the
-        live mark is on it — the map above answers those moves, and a move off the picture is a
-        question it cannot answer. The cost is that low-leverage levels still fall off the picture.
-        {offAxis.length > 0 && <> Here that is {offAxis.map(([L]) => `${L}×`).join(", ").replace(/, ([^,]*)$/, " and $1")}.</>}
-      </p>
 
       <h2 class="section">Leverage mix used: {profile.label}</h2>
       {/* THE SHARES ARE THE MODEL'S, NOT THE PROFILE'S, and until now they were the profile's.
@@ -612,12 +586,6 @@ const formNote: string | null = (() => {
               </tbody>
             </table>
           </div>
-          <p class="section-note" style="max-width:88ch">
-            A bar clears a level by trading through it, so the column on the right is bounded by what
-            the model had standing there in the first place — a violent bar through a thin part of the
-            field clears less than a quiet one through a crowded part. That is the reading the picture
-            gives at a glance and this table gives in figures.
-          </p>
         </More>
       )}
 
@@ -679,40 +647,27 @@ const formNote: string | null = (() => {
       the assumptions table, and the corridor and tier tables after it are arithmetic on the margin
       table, not scaled from open interest. The empty state gets its own paragraph — see the note
       above formNote in the frontmatter. */}
-  <More label="What this page shows, and what it does not">
   {map ? (
     <p class="section-note">
-      Where liquidation levels would sit if positions were opened the way the assumptions above
-      describe — and, the part that matters, <strong>where price has already cleared them</strong>.
-      The dark corridor the price path carves through the field is not empty space; it is the
-      levels the market has already taken out. This is a model, and it is labelled as one inside
-      the picture, not only underneath it.
       {/* THE PAGE NEVER NAMED ITS VENUE. Measured: "Hyperliquid" appeared exactly once in
           &lt;main&gt;, in the shared footer credit that names three venues — so the open-interest
           figure the whole model is scaled from read as the market's. It is one venue's book.
           /open-interest states that scope in its first sentence and /data-sources states it
           again; this page, which is the one with the search demand behind it, did not. */}
       Every modelled figure here is scaled from <strong>Hyperliquid's</strong> open interest in {perp.symbol}, which is
-      one venue's book rather than the whole market's.
-      <a class="link" href="/learn/liquidation-heatmap"> What a liquidation heatmap actually shows →</a>
+      one venue's book rather than the whole market's. No liquidation totals: every event feed is throttled.
+      <a class="link" href="/methodology/liquidations"> Why →</a>
+      <a class="link" href="/learn/liquidation-heatmap"> What a liquidation heatmap shows →</a>
     </p>
   ) : (
     <p class="section-note">
       With enough hourly history this page draws a modelled map of where liquidation levels would
-      sit, with its assumptions printed beneath it, and <strong>where price has already cleared them</strong>.
-      {perp.symbol} over {win.label} has no such map, so neither the picture nor its assumptions appear
-      here; the corridor and margin tiers below are arithmetic on the published margin table and the
+      sit, and where price has already cleared them. {perp.symbol} over {win.label} has no such map;
+      the corridor and margin tiers below are arithmetic on the published margin table and the
       live mark, not model output.
-      <a class="link" href="/learn/liquidation-heatmap"> What a liquidation heatmap actually shows →</a>
+      <a class="link" href="/learn/liquidation-heatmap"> What a liquidation heatmap shows →</a>
     </p>
   )}
-  <p class="prose">
-    No liquidation totals and no cascade tracker. Those need an event feed, and every available one
-    is throttled — Binance publishes at most one liquidation per symbol per second, so a sum over
-    it understates by an unknown factor, worst exactly when the number is most quoted.
-    <a class="link" href="/methodology/liquidations">The full reasoning →</a>
-  </p>
-  </More>
 
 
   <h2 class="section">How far price can move before each leverage liquidates — derived, not modelled</h2>
