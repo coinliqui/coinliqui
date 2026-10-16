@@ -55,9 +55,11 @@ title guidance already supports: the title and snippet must promise what the pag
 | 16.10.2026 | /funding/{coin} title and heading carry the registry name, "Bitcoin (BTC)", for the ten coins in src/lib/coins.ts | GSC: "bitcoin funding rate perpetual" and similar reached a page that said only BTC | those queries after 30.10.2026 |
 | 16.10.2026 | Brand once in a title; no canonical on a 404 or 410 | Title links: concise branding; one URL per piece of content | — |
 
+| 16.10.2026 | /funding/paid: what funding cost in dollars over 30 days, per contract; the per-contract figure on every /funding/{coin} | Original content systems: original reporting ranks ahead of pages that cite it. A figure nobody else publishes, with its method on the page, is what a link is made to | impressions and links to /funding/paid from 06.11.2026 |
+| 16.10.2026 | /about and llms.txt: provenance and method only, nothing about how text is made | Owner's ruling; Google's who/how guidance is advice, not a ranking input | — |
+
 ## Queued, with the reason they wait
 
 - /liquidations and /liquidations/{coin}: name Hyperliquid and the registry name in the title, and build
   the description from the page's own derived figures (snippet guidance: page-specific data). Waits
   for the 22.10.2026 visits measurement of /liquidations*, so the two effects are not mixed.
-
