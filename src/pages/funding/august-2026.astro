@@ -1,0 +1,134 @@
+---
+import Base from "../../layouts/Base.astro";
+import More from "../../components/More.astro";
+import Overview from "../../components/Overview.astro";
+import { pct, signedPct, usd } from "../../lib/funding.ts";
+import { shortDate, dateTimeUtc } from "../../../public/shared.js";
+import event from "../../data/funding-event-2026-08.json";
+
+/* A FROZEN EVENT, the funding counterpart of /liquidations/sweep. The window, the rates and the
+   prices are in src/data/funding-event-2026-08.json, written once by scripts/freeze-funding-event.mjs
+   with its sources; nothing here reads the live store, so the page cannot drift. */
+const { window: win, contracts, hourly } = event as unknown as {
+  window: { from: number; to: number; hours: number; base: number };
+  contracts: Record<string, { rates: (number | null)[]; seriesFrom: number; seriesHours: number; steepest: number; steepestAt: number; px0: number | null; px1: number | null }>;
+  hourly: Record<string, [number, number][]>;
+};
+const H = 3_600_000, YEAR = 8760, HOT = 5;
+const rows = Object.entries(contracts).map(([symbol, c]) => {
+  let peak = 0, peakAt = NaN, hot = 0;
+  c.rates.forEach((v, i) => {
+    if (v === null) return;
+    if (v > HOT * win.base) hot++;
+    if (Math.abs(v) > Math.abs(peak)) { peak = v; peakAt = win.from + i * H; }
+  });
+  const steepestHere = c.steepestAt >= win.from && c.steepestAt < win.to;
+  const px = c.px0 && c.px1 ? c.px1 / c.px0 - 1 : NaN;
+  return { symbol, peak, peakAt, hot, steepestHere, px, seriesFrom: c.seriesFrom, seriesHours: c.seriesHours };
+}).sort((a, b) => b.peak - a.peak);
+
+const perHour = Array.from({ length: win.hours }, (_, i) => rows.filter((r) => {
+  const v = contracts[r.symbol].rates[i];
+  return v !== null && v > HOT * win.base;
+}).length);
+const most = Math.max(...perHour), mostAt = win.from + perHour.indexOf(most) * H;
+const busyHours = perHour.filter((n) => n >= 20).length;
+const steepest = rows.filter((r) => r.steepestHere);
+const seriesFrom = Math.min(...rows.map((r) => r.seriesFrom));
+const maxSeries = Math.max(...rows.map((r) => r.seriesHours));
+const eth = hourly.ETH ?? [];
+const ethTop = eth.reduce((a, b) => (b[1] > a[1] ? b : a), eth[0]);
+const ethLow = eth[0];
+const top = rows[0];
+
+/* THE CHART: contracts above five times the base, per hour, with ETH's hourly close over it. Bars
+   and line share an x axis of hour index; the line is scaled to its own range, stated in the caption. */
+const W = 1000, HT = 200;
+const bw = W / win.hours;
+const bars = perHour.map((n, i) => `M${(i * bw).toFixed(1)} ${HT}V${(HT - (n / rows.length) * HT).toFixed(1)}h${(bw * 0.8).toFixed(1)}V${HT}z`).join("");
+const lo = Math.min(...eth.map((e) => e[1])), hi = Math.max(...eth.map((e) => e[1]));
+const line = eth.map((e, i) => `${i ? "L" : "M"}${(((e[0] - win.from) / H + 0.4) * bw).toFixed(1)} ${(HT - 8 - ((e[1] - lo) / (hi - lo || 1)) * (HT - 16)).toFixed(1)}`).join("");
+
+const title = "The August 2026 funding spike on Hyperliquid, hour by hour";
+const description = `At ${dateTimeUtc(mostAt)}, ${most} of ${rows.length} Hyperliquid contracts were paying funding above five times the base rate at once. For ${steepest.length} of them an hour between 19 and 23 August 2026 is still the steepest of the ${maxSeries.toLocaleString("en-US")} hours this site holds.`;
+---
+
+<Base title={title} description={description} frozen crumb={{ href: "/funding", label: "Funding", current: "August 2026" }}>
+  <div class="page-head">
+    <p class="crumb"><a href="/funding">Funding</a> › August 2026</p>
+    <h1>The August 2026 funding spike</h1>
+    <Overview>
+      At <b>{dateTimeUtc(mostAt)}</b>, <b>{most} of {rows.length} contracts</b> on Hyperliquid were paying
+      funding above five times the base rate at once, and for {busyHours} hours between 19 and 23 August
+      at least twenty were. For <b>{steepest.length}</b> of them an hour in this window is still the
+      steepest of the {maxSeries.toLocaleString("en-US")} hours this site holds, which reach back to {shortDate(seriesFrom)}.
+      {ethTop && ethLow && <>{" "}ETH went from {usd(ethLow[1])} at the start of 19 August to {usd(ethTop[1])} at {dateTimeUtc(ethTop[0])}.</>}
+      {" "}The highest single rate was {top.symbol}&rsquo;s, {signedPct(top.peak * YEAR, 0)} a year.
+    </Overview>
+    <p>
+      Hyperliquid&rsquo;s funding sits at its base rate, 0.00125% an hour, while the perpetual trades
+      close to its oracle price. A rate many times that is longs paying because the perpetual traded
+      above spot, here across most of the book in the same hours.
+    </p>
+  </div>
+
+  <figure class="evt">
+    <figcaption class="evt__cap">
+      <b>Contracts above five times the base rate, per hour</b>, 19–23 August 2026 (UTC), out of {rows.length}.
+      The line is ETH&rsquo;s hourly close, scaled between {usd(lo)} and {usd(hi)}.
+    </figcaption>
+    <div class="evt__plot">
+      <svg viewBox={`0 0 ${W} ${HT}`} preserveAspectRatio="none" role="img" aria-label={`Bars: contracts above five times the base rate each hour, peaking at ${most} at ${dateTimeUtc(mostAt)}. Line: ETH from ${usd(lo)} to ${usd(hi)}.`}>
+        <path d={bars} fill="currentColor" opacity="0.35" />
+        <path d={line} fill="none" stroke="currentColor" stroke-width="2" vector-effect="non-scaling-stroke" />
+      </svg>
+    </div>
+    <div class="evt__x">{[0, 1, 2, 3, 4].map((d) => <span>{shortDate(win.from + d * 24 * H).replace(" 2026", "")}</span>)}</div>
+  </figure>
+
+  <div class="panel"><table class="tbl evttbl" data-sortable>
+    <thead><tr><th>Coin</th><th class="num">Peak hour <span class="thscope">UTC</span></th><th class="num">Peak rate <span class="thscope">APR</span></th><th class="num">Hours above 5× base</th><th class="num">Steepest of the series</th><th class="num">Price, 18 → 23 Aug</th></tr></thead>
+    <tbody>
+      {rows.map((r) => (
+        <tr>
+          <td><a href={`/funding/${r.symbol.toLowerCase()}`}>{r.symbol}</a></td>
+          <td>{Number.isFinite(r.peakAt) ? dateTimeUtc(r.peakAt).replace(" 2026,", "") : "—"}</td>
+          <td class={r.peak >= 0 ? "pays-l" : "pays-s"}>{signedPct(r.peak * YEAR, 0)}</td>
+          <td>{r.hot}</td>
+          <td>{r.steepestHere ? "yes" : "no"}</td>
+          <td>{Number.isFinite(r.px) ? signedPct(r.px) : "—"}</td>
+        </tr>
+      ))}
+    </tbody>
+  </table></div>
+  <p class="section-note" style="margin:12px 0 20px;max-width:74ch">
+    Peak rate is the hour in the window with the largest rate either way, annualised; amber where
+    longs paid, cyan where shorts did. &ldquo;Steepest of the series&rdquo; is yes where that contract&rsquo;s
+    steepest hour in everything this site holds falls in this window. Price runs from the close of
+    18 August to the close of 23 August. Contracts listed after the window are absent.
+  </p>
+
+  <More label="Where these numbers come from">
+    <p>
+      The rates are Hyperliquid&rsquo;s settled hourly funding, as this site stores it for every contract
+      it covers; the comparison with the rest of each series was made on 16 October 2026, against the
+      hours stored then. Daily prices are the stored daily candles, and ETH&rsquo;s hourly closes were read
+      from Hyperliquid once, when this window was frozen. Nothing on this page reads live data, so it
+      does not change.
+      {" "}<a class="link" href="/data-sources">Where each series comes from →</a>
+    </p>
+  </More>
+
+  <p style="margin:20px 0 0">
+    <a class="link" href="/funding/history">Seven months of funding, per contract →</a>{" "}
+    <a class="link" href="/liquidations/sweep">The 5 February 2026 crash →</a>
+  </p>
+  <style is:global>
+    .evttbl td + td { font-family: var(--mono); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+    .evt { margin: 0 0 20px; }
+    .evt__cap { font-size: var(--fs-sm); color: var(--text-dim); margin: 0 0 8px; max-width: 74ch; line-height: 1.5; }
+    .evt__plot { height: 180px; color: var(--text-dim); background: var(--surface-1); border-radius: 12px; overflow: hidden; }
+    .evt__plot svg { display: block; width: 100%; height: 100%; }
+    .evt__x { display: flex; justify-content: space-between; font: 11.5px var(--mono); color: var(--text-faint); margin-top: 4px; }
+  </style>
+</Base>

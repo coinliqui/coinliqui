@@ -41,6 +41,7 @@ export const GET: APIRoute = async ({ locals, site }) => {
     { name: "coins", lastmod: data },
     { name: "funding-hub", lastmod: data },
     { name: "funding-paid", lastmod: paidStamp },
+    { name: "funding-events", lastmod: codeStamp("/funding/august-2026") },
     { name: "funding-venues", lastmod: await venuesStamp(env?.SNAPSHOT) },
     { name: "funding-history", lastmod: await historyStamp(env?.SNAPSHOT, snap.perps.map((p) => p.symbol)) },
     { name: "funding-symbols", lastmod: data },

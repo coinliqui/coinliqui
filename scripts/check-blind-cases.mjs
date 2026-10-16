@@ -1040,7 +1040,7 @@ for (const c of cases) {
 const EXEMPTION_COUNTS = {
   /* check name -> how many named exemptions it carries. A check absent from this map carries
      none, which is the state to aim for. */
-  "check-inventory: MANUAL_BY_DESIGN": 3,
+  "check-inventory: MANUAL_BY_DESIGN": 4,
   "coin-charts: EXPECTED_TFS": 0,
   "controlGroupOverflow": 0,
 };

@@ -54,6 +54,7 @@ const ROUTES = {
   "/unlocks": ["src/pages/unlocks.astro", "src/data/vesting-contracts.json"],
   // Frozen by design: the window never moves, so this date is the truest lastmod on the site.
   "/liquidations/sweep": ["src/pages/liquidations/sweep.astro", "src/data/sweep-2026-02.json"],
+  "/funding/august-2026": ["src/pages/funding/august-2026.astro", "src/data/funding-event-2026-08.json"],
   /* The two explainers that describe a method rather than a market. Each names the library it
      explains, because a change to the arithmetic changes what the page teaches even when the
      page's own source is untouched — the margin functions and the leverage profiles are as much

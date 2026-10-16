@@ -67,6 +67,7 @@ export const GET: APIRoute = async ({ locals }) => {
     { label: "Funding paid on Hyperliquid, 30 days", alt: "funding paid longs shorts dollars", href: "/funding/paid", kind: "reference" },
     { label: "What funding took from a long, seven months", alt: "funding history cost of holding long", href: "/funding/history", kind: "reference" },
     { label: "When venues disagree about who pays", alt: "funding direction binance bybit hyperliquid", href: "/funding/venues", kind: "reference" },
+    { label: "The August 2026 funding spike", alt: "funding spike august 2026 hyperliquid", href: "/funding/august-2026", kind: "reference" },
     { label: "What a liquidation heatmap shows", alt: "liquidation heatmap explained", href: "/learn/liquidation-heatmap", kind: "reference" },
     { label: "How a liquidation price is calculated", alt: "liquidation price formula", href: "/learn/liquidation-price", kind: "reference" },
     { label: "What open interest tells you", alt: "open interest explained", href: "/learn/open-interest", kind: "reference" },

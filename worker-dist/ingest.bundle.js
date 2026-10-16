@@ -153,6 +153,7 @@ var FUNDING_HUB = ["/funding"];
 var FUNDING_PAID = ["/funding/paid"];
 var FUNDING_HISTORY = ["/funding/history"];
 var FUNDING_VENUES = ["/funding/venues"];
+var FUNDING_EVENTS = ["/funding/august-2026"];
 var OPEN_INTEREST = ["/open-interest"];
 var UNLOCKS = ["/unlocks"];
 var COINS_HUB = ["/coins"];
@@ -164,6 +165,7 @@ var STATIC_ROUTES = [
   ...FUNDING_PAID,
   ...FUNDING_HISTORY,
   ...FUNDING_VENUES,
+  ...FUNDING_EVENTS,
   ...OPEN_INTEREST,
   ...TOOLS,
   ...LIQUIDATIONS,
@@ -1635,7 +1637,7 @@ async function stepVenueAgreement(env, now = Date.now()) {
 }
 
 // worker/build-stamp.ts
-var WORKER_BUILD = "5443562dbb32";
+var WORKER_BUILD = "870b5c88a2c8";
 
 // worker/ingest.ts
 var RETAIN_HOURS = 720;
