@@ -5,6 +5,7 @@ import Overview from "../../components/Overview.astro";
 import { pct, signedPct, usd } from "../../lib/funding.ts";
 import { shortDate, dateTimeUtc } from "../../../public/shared.js";
 import event from "../../data/funding-event-2026-08.json";
+import { median } from "../../lib/funding-history.ts";
 
 /* A FROZEN EVENT, the funding counterpart of /liquidations/sweep. The window, the rates and the
    prices are in src/data/funding-event-2026-08.json, written once by scripts/freeze-funding-event.mjs
@@ -34,8 +35,10 @@ const perHour = Array.from({ length: win.hours }, (_, i) => rows.filter((r) => {
 const most = Math.max(...perHour), mostAt = win.from + perHour.indexOf(most) * H;
 const busyHours = perHour.filter((n) => n >= 20).length;
 const steepest = rows.filter((r) => r.steepestHere);
-const seriesFrom = Math.min(...rows.map((r) => r.seriesFrom));
 const maxSeries = Math.max(...rows.map((r) => r.seriesHours));
+/* The start most full-depth series share, not the earliest: HBAR's gapped series reaches 23 February
+   and is not where the others begin (the same correction /funding/history makes). */
+const seriesFrom = median(rows.filter((r) => r.seriesHours === maxSeries).map((r) => r.seriesFrom));
 const eth = hourly.ETH ?? [];
 const ethTop = eth.reduce((a, b) => (b[1] > a[1] ? b : a), eth[0]);
 const ethLow = eth[0];
