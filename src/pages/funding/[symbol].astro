@@ -757,7 +757,9 @@ const description = `What the ${p.symbol} perpetual costs to hold, against ${usd
   )}
   {agreeHere.length > 0 && venueAgree && (
     <p class="section-note" style="margin:0 0 20px;max-width:74ch">
-      Over the 30 days to {shortDate(venueAgree.at)}, {agreeHere.map((a, i) => <>{i > 0 && (i === agreeHere.length - 1 ? " and " : ", ")}{VENUE_LABEL[a.venue as Venue]} quoted {p.symbol}&rsquo;s funding in the opposite direction to Hyperliquid in <b>{pct(a.opposite / a.hours, 1)}</b> of {a.hours} hours</>)}.
+      Over the 30 days to {shortDate(venueAgree.at)}, {agreeHere.map((a) => VENUE_LABEL[a.venue as Venue]).join(" and ")} quoted {p.symbol}&rsquo;s
+      funding in the opposite direction to Hyperliquid in {agreeHere.map((a, i) => <>{i > 0 && " and "}<b>{pct(a.opposite / a.hours, 1)}</b></>)} of
+      {" "}{agreeHere.length > 1 ? "their" : "its"} hours{agreeHere.length > 1 ? " respectively" : ""}, out of {Math.max(...agreeHere.map((a) => a.hours))} compared.
       {" "}<a class="link" href="/funding/venues">Every contract →</a>
     </p>
   )}

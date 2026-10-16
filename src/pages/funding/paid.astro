@@ -57,7 +57,7 @@ const description = `Over the ${days} days to ${asOf}, longs paid shorts a net $
     <tbody>
       {paid.rows.map((r) => (
         <tr>
-          <td>{live.has(r.symbol) ? <a href={`/funding/${r.symbol.toLowerCase()}`}>{r.symbol}</a> : <>{r.symbol} <span class="faint">no longer covered</span></>}</td>
+          <td>{live.has(r.symbol) ? <a href={`/funding/${r.symbol.toLowerCase()}`}>{r.symbol}</a> : <>{r.symbol}{" "}<span class="faint">no longer covered</span></>}</td>
           <td>{usd(r.longsPaid)}</td>
           <td>{usd(r.shortsPaid)}</td>
           <td class={r.net >= 0 ? "pays-l" : "pays-s"}>{r.net >= 0 ? usd(r.net) : <>&minus;{usd(-r.net)}</>}</td>

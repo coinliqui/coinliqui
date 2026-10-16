@@ -1000,6 +1000,8 @@ console.log("\n11. page weight on the wire");
     ["/funding/paid", 9_000],
     /* SET FROM THE FIRST MEASUREMENT, 16 October 2026: 7,037b brotli for 55 rows, plus the usual quarter. */
     ["/funding/history", 9_000],
+    /* SET FROM THE FIRST MEASUREMENT, 16 October 2026: 6,613b brotli, plus the usual quarter. */
+    ["/funding/venues", 8_500],
     /* RAISED 6,500 -> 9,000 ON 2 SEPTEMBER, on purpose, in a diff, with the reason. The page
        gained the ranked-bar figure — the ten largest books with their share of the total — and
        came in at 7,011b, 511 over. The ratchet is doing exactly what the paragraph above says it

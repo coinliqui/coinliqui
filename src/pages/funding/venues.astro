@@ -26,7 +26,12 @@ for (const [s, v, hours, opposite, gap] of agree.rows) {
   bySym.set(s, m);
 }
 const share = (c?: Cell) => (c && c.hours ? c.opposite / c.hours : NaN);
-const rows = [...bySym.entries()].sort((a, b) => Math.max(share(b[1].BinPerp) || 0, share(b[1].BybitPerp) || 0) - Math.max(share(a[1].BinPerp) || 0, share(a[1].BybitPerp) || 0));
+/* Sorted by the larger share, with rows compared for under a week below the rest: a contract seen for
+   two days at 60% is not the month's most divided, and it led the table on its first render. */
+const hoursOf = (m: Partial<Record<(typeof VENUES)[number], Cell>>) => Math.max(m.BinPerp?.hours ?? 0, m.BybitPerp?.hours ?? 0);
+const top = (m: Partial<Record<(typeof VENUES)[number], Cell>>) => Math.max(share(m.BinPerp) || 0, share(m.BybitPerp) || 0);
+const rows = [...bySym.entries()].sort((a, b) =>
+  Number(hoursOf(b[1]) >= 24 * 7) - Number(hoursOf(a[1]) >= 24 * 7) || top(b[1]) - top(a[1]));
 
 /* A WEEK OF HOURS BEFORE A ROW CAN BE NAMED in the opening: a contract compared for two days that
    disagreed on one is 50%, which says nothing about a month. The table still lists it, with its hours. */
@@ -70,12 +75,12 @@ const description = `Over the ${days} days to ${shortDate(to)}, Binance quoted f
     <tbody>
       {rows.map(([s, m]) => (
         <tr>
-          <td>{live.has(s) ? <a href={`/funding/${s.toLowerCase()}`}>{s}</a> : <>{s} <span class="faint">no longer covered</span></>}</td>
+          <td>{live.has(s) ? <a href={`/funding/${s.toLowerCase()}`}>{s}</a> : <>{s}{" "}<span class="faint">no longer covered</span></>}</td>
           <td>{m.BinPerp ? pct(share(m.BinPerp), 0) : "—"}</td>
           <td>{m.BinPerp ? pct(m.BinPerp.gap) : "—"}</td>
           <td>{m.BybitPerp ? pct(share(m.BybitPerp), 0) : "—"}</td>
           <td>{m.BybitPerp ? pct(m.BybitPerp.gap) : "—"}</td>
-          <td>{Math.max(m.BinPerp?.hours ?? 0, m.BybitPerp?.hours ?? 0)}</td>
+          <td>{hoursOf(m)}</td>
         </tr>
       ))}
     </tbody>
