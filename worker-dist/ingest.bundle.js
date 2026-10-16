@@ -1635,10 +1635,11 @@ async function stepVenueAgreement(env, now = Date.now()) {
 }
 
 // worker/build-stamp.ts
-var WORKER_BUILD = "e4966760a49e";
+var WORKER_BUILD = "5443562dbb32";
 
 // worker/ingest.ts
 var RETAIN_HOURS = 720;
+var OI_RETAIN_HOURS = 800;
 var CANDLE_REFRESH_HOURS = 12;
 var HOURLY_REFRESH_HOURS = 2;
 var M15_REFRESH_HOURS = 2;
@@ -1807,7 +1808,7 @@ async function run(env) {
         await env.DB.batch(oiRows.map((r) => insertOi.bind(...r)));
         result.oi = `${oiRows.length} symbols recorded`;
       }
-      await env.DB.prepare("DELETE FROM oi_snapshot WHERE at < ?1").bind(at - RETAIN_HOURS * 36e5).run();
+      await env.DB.prepare("DELETE FROM oi_snapshot WHERE at < ?1").bind(at - OI_RETAIN_HOURS * 36e5).run();
     }
     if (!collapsed && env.DB) {
       try {

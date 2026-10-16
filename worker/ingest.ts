@@ -70,6 +70,12 @@ interface Env {
  * own 168-hour window.
  */
 const RETAIN_HOURS = 720;
+/* OPEN INTEREST IS KEPT 800 HOURS, NOT 720: long enough that on the first day of a month the whole
+   previous month is still in the table, so a calendar month's funding paid (/funding/paid) can be
+   summed and frozen. 720 hours is thirty days, and a 31-day month ends with its first day already
+   pruned. The table is 66 rows an hour; the extra 80 hours are about 5,000 rows. Every reader of
+   it asks for an explicit window, so none of them reads further back because more is kept. */
+const OI_RETAIN_HOURS = 800;
 
 /**
  * WRITE BUDGET. THE NUMBER THAT STOOD HERE WAS WRONG BY A FACTOR OF THREE.
@@ -563,7 +569,7 @@ async function run(env: Env): Promise<RunResult> {
         result.oi = `${oiRows.length} symbols recorded`;
       }
       await env.DB.prepare("DELETE FROM oi_snapshot WHERE at < ?1")
-        .bind(at - RETAIN_HOURS * 3_600_000)
+        .bind(at - OI_RETAIN_HOURS * 3_600_000)
         .run();
     }
 
