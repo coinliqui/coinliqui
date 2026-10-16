@@ -1033,6 +1033,7 @@ console.log("\n11. page weight on the wire");
        8,489 plus the quarter of headroom this list is specified to carry, not a round number
        chosen to stop the alarm. */
     ["/about", 10_600],
+    ["/corrections", 13_500],
   ];
   for (const [path, budget] of BUDGET) {
     const { wire, enc } = await wireSize(path);
