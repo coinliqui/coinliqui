@@ -35,17 +35,31 @@ export interface HistoryRow {
   shortsHours: number;
   /** Open of the first stored day to the newest close, or NaN when the candles do not reach. */
   price: number;
+  /** The longest run of consecutive settled hours in which shorts paid, and the hour it ended. A gap
+   *  in the series ends a run: hours that were not stored are not assumed to have continued it. */
+  shortsRun: number;
+  shortsRunEnd: number;
+  /** The single hour with the largest rate either way, and when. */
+  steepest: number;
+  steepestAt: number;
 }
 
 export function fundingHistory(symbol: string, rates: readonly FundingPoint[] | null, candles: readonly Candle[] | null): HistoryRow | null {
   const r = (rates ?? []).filter(([, v]) => Number.isFinite(v));
   if (r.length < 24) return null;
   const from = r[0][0], to = r[r.length - 1][0];
-  let paid = 0, atBase = 0, neg = 0;
-  for (const [, v] of r) {
+  let paid = 0, atBase = 0, neg = 0, run = 0, shortsRun = 0, shortsRunEnd = NaN, steepest = 0, steepestAt = NaN;
+  for (let i = 0; i < r.length; i++) {
+    const [t, v] = r[i];
     paid += v;
     if (Math.abs(v - HL_BASE_HOURLY) < 1e-12) atBase++;
-    if (v < 0) neg++;
+    if (v < 0) {
+      neg++;
+      const joined = i > 0 && r[i - 1][1] < 0 && t - r[i - 1][0] < 1.5 * 3_600_000;
+      run = joined ? run + 1 : 1;
+      if (run > shortsRun) { shortsRun = run; shortsRunEnd = t; }
+    } else run = 0;
+    if (Math.abs(v) > Math.abs(steepest)) { steepest = v; steepestAt = t; }
   }
   let price = NaN;
   if (candles?.length) {
@@ -61,6 +75,7 @@ export function fundingHistory(symbol: string, rates: readonly FundingPoint[] | 
   return {
     symbol, from, to, hours: r.length, paid, base: r.length * HL_BASE_HOURLY,
     atBase: atBase / r.length, shortsHours: neg / r.length, price,
+    shortsRun, shortsRunEnd, steepest, steepestAt,
   };
 }
 

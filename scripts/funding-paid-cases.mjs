@@ -93,6 +93,11 @@ if (!BLIND) {
   ok(near(fh.price, 0.1), "the price runs from the open of the first funding day, not from the oldest candle stored");
   ok(Number.isNaN(fundingHistory("AAA", hist, [[t0 + 3 * D, 1, 1, 1, 1, 1]]).price), "candles that start after the funding series give no price change, not a shorter one");
   ok(fundingHistory("AAA", hist.slice(0, 10), candles) === null, "under a day of hours is no row");
+  /* Hours 24–35 are the twelve negative ones, contiguous: a run of 12 ending at hour 35. A gap
+     inside a run must break it — the second series drops hour 30. */
+  ok(fh.shortsRun === 12 && fh.shortsRunEnd === t0 + 35 * H, "the longest run of shorts paying is twelve hours, ending at the twelfth");
+  ok(fundingHistory("AAA", hist.filter((_, i) => i !== 30), candles).shortsRun === 6, "a missing hour breaks a run rather than being assumed to continue it");
+  ok(near(fh.steepest, 3 * B) && fh.steepestAt === t0 + 36 * H, "the steepest hour is the first at three times the base, either sign considered");
   ok(median([3, 1, 2]) === 2 && median([4, 1, 2, 3]) === 2.5 && Number.isNaN(median([])), "the median of odd, even and empty sets");
 }
 

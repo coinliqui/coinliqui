@@ -48,6 +48,9 @@ const flipped = rows.filter((r) => Number.isFinite(r.price) && r.price > 0 && ke
 /* Floored to the hour, as the sitemap floors it (historyStamp): one instant on both surfaces. */
 const newest = Math.floor(Math.max(...rows.map((r) => r.to)) / 3_600_000) * 3_600_000;
 const list = (xs: HistoryRow[]) => xs.map((r) => r.symbol).join(", ");
+const longestShorts = [...rows].sort((a, b) => b.shortsRun - a.shortsRun)[0];
+const steepestRow = [...rows].sort((a, b) => Math.abs(b.steepest) - Math.abs(a.steepest))[0];
+const apr = (hourly: number) => hourly * 8760;
 
 const title = "Hyperliquid funding over seven months: what a long paid, per contract";
 const description = `Since ${shortDate(deepest)}, a long held at constant size on Hyperliquid paid a median ${pct(medPaid)} of its size in funding across ${plural(full.length, "contract", "contracts")}, against ${pct(baseFull)} at the base rate alone. Per contract, from ${plural(Math.max(...rows.map((r) => r.hours)), "settled hour", "settled hours")} of Hyperliquid's own funding history.`;
@@ -64,6 +67,8 @@ const description = `Since ${shortDate(deepest)}, a long held at constant size o
       median {pct(medAtBase, 0)} of hours.
       {shortsPaid.length > 0 && <>{" "}Shorts paid on balance on {plural(shortsPaid.length, "contract", "contracts")}: <b>{list(shortsPaid)}</b>.</>}
       {flipped.length > 0 && <>{" "}On <b>{list(flipped)}</b> the price rose and a long still lost money once funding is counted.</>}
+      {longestShorts && longestShorts.shortsRun >= 24 && <>{" "}The longest unbroken stretch of shorts paying was <b>{longestShorts.shortsRun} hours on {longestShorts.symbol}</b>, ending {shortDate(longestShorts.shortsRunEnd)}.</>}
+      {steepestRow && <>{" "}The steepest single hour was {steepestRow.symbol}&rsquo;s, {signedPct(apr(steepestRow.steepest), 0)} a year, on {shortDate(steepestRow.steepestAt)}.</>}
     </Overview>
     <p>
       Each figure is the sum of Hyperliquid&rsquo;s settled hourly rates: what a position of constant
@@ -73,7 +78,7 @@ const description = `Since ${shortDate(deepest)}, a long held at constant size o
   </div>
 
   <div class="panel"><table class="tbl histtbl" data-sortable>
-    <thead><tr><th>Coin</th><th class="num">Since</th><th class="num">Hours</th><th class="num">At base rate</th><th class="num">Shorts paid <span class="thscope">share of hours</span></th><th class="num">Long paid <span class="thscope">share of size</span></th><th class="num">Price change</th><th class="num">Price less funding</th></tr></thead>
+    <thead><tr><th>Coin</th><th class="num">Since</th><th class="num">Hours</th><th class="num">At base rate</th><th class="num">Shorts paid <span class="thscope">share of hours</span></th><th class="num">Long paid <span class="thscope">share of size</span></th><th class="num">Price change</th><th class="num">Price less funding</th><th class="num">Longest run shorts paid <span class="thscope">hours</span></th><th class="num">Steepest hour <span class="thscope">APR</span></th></tr></thead>
     <tbody>
       {rows.map((r) => (
         <tr>
@@ -85,6 +90,8 @@ const description = `Since ${shortDate(deepest)}, a long held at constant size o
           <td class={r.paid >= 0 ? "pays-l" : "pays-s"}>{signedPct(-r.paid)}</td>
           <td>{Number.isFinite(r.price) ? signedPct(r.price) : "—"}</td>
           <td>{Number.isFinite(r.price) ? signedPct(kept(r)) : "—"}</td>
+          <td>{r.shortsRun}</td>
+          <td>{signedPct(apr(r.steepest), 0)}</td>
         </tr>
       ))}
     </tbody>
