@@ -8,7 +8,7 @@
   },
   "scripts": {
     "dev": "astro dev",
-    "build": "node scripts/gen-assets.mjs && astro build",
+    "build": "node scripts/gen-assets.mjs && astro build && node scripts/minify-public.mjs",
     "preview": "astro preview",
     "gen:margin": "node scripts/gen-margin-tables.mjs",
     "build:worker": "node scripts/stamp-worker.mjs && esbuild worker/ingest.ts --bundle --format=esm --target=es2022 --outfile=worker-dist/ingest.bundle.js",

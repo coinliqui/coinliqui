@@ -15,7 +15,6 @@ dist/
 # worker-dist/ is COMMITTED on purpose: dashboard-only setup means the bundle is
 # copied from GitHub's web UI, so it has to be visible there.
 
-# Claude's working memory for this project — personal notes about the owner and how he works.
-# This repository is public; they stay on the machine and move with the folder, never with git.
+# Local working notes and editor settings. This repository is public; they stay on the machine.
 CLAUDE.local.md
-.claude/memory/
+.claude/
