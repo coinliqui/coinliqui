@@ -12,6 +12,9 @@
    — this runs against production and its whole claim is that it asserts what a client on the
    open internet receives. underLinked() decides nothing about the site; it turns a count into
    a sentence, and it lives in checks.mjs so it is covered by the gate's own fixture suite. */
+/* /funding/paid sits under /funding/ and is not a contract page; the contract checks skip it. */
+import { STATIC_ROUTES } from "../src/lib/routes.ts";
+const STATIC_PATHS = new Set(STATIC_ROUTES);
 import { underLinked, duplicateHeadMetadata, leadsWithItsSubject, llmsHostsAgree, registerAge, openingFigure, PROSE_ROUTES, advertisedReadingsExist, typographyFaults, wrongArticles, renderedText } from "./checks.mjs";
 import { readFileSync as readFile } from "node:fs";
 
@@ -433,7 +436,7 @@ console.log("\n5. sitemap");
       else beaconOk++;
     }
     if (
-      /\/funding\/[a-z0-9]/i.test(u) && r.status === 200 &&
+      /\/funding\/[a-z0-9]/i.test(u) && !STATIC_PATHS.has(new URL(u, ORIGIN).pathname) && r.status === 200 &&
       !/data-tfpanel="[^"]+" [^>]*data-on/.test(r.body) &&
       !/Candles not collected yet/.test(r.body)
     ) {
@@ -992,6 +995,9 @@ console.log("\n11. page weight on the wire");
        morning. That was the whole complaint. 18,000 is the observed 14,537 plus the quarter of
        headroom this list is specified to carry, not a round number picked to stop the alarm. */
     ["/funding", 18_000], ["/funding/btc", 92_000], ["/coins/bitcoin", 72_000],
+    /* SET FROM THE FIRST MEASUREMENT, 16 October 2026: 7,121b brotli for 55 rows. The usual quarter
+       of headroom; the table grows only when a contract joins coverage. */
+    ["/funding/paid", 9_000],
     /* RAISED 6,500 -> 9,000 ON 2 SEPTEMBER, on purpose, in a diff, with the reason. The page
        gained the ranked-bar figure — the ten largest books with their share of the total — and
        came in at 7,011b, 511 over. The ratchet is doing exactly what the paragraph above says it

@@ -153,7 +153,7 @@ the source in the dashboard to reconnect it cleanly turned out to be a ONE-WAY D
 |---|---|
 | `PATCH /pages/projects/coinliqui` with a `source` object | `8000069` — *"You cannot update the `source` object in a Direct Uploads project."* |
 | `POST /pages/projects` with git source, owner `coinliqui` | `8000011` — Pages Git installation issue |
-| the same, owner `yuryuryury-dsgnr` | `8000011` — **identical**, so this was never about the organisation |
+| the same, owner the operator's personal account | `8000011` — **identical**, so this was never about the organisation |
 | `GET /pages/connections`, `/connections/github`, `/connections/github/installations` | `[]`, `[]`, `[]` |
 | `GET orgs/coinliqui/installations` (GitHub) | `{"total_count": 0}` |
 | `POST /user/installations`, `POST /app/installations` (GitHub) | `404` — the endpoints do not exist |
