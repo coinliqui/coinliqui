@@ -58,6 +58,13 @@ title guidance already supports: the title and snippet must promise what the pag
 | 16.10.2026 | /funding/paid: what funding cost in dollars over 30 days, per contract; the per-contract figure on every /funding/{coin} | Original content systems: original reporting ranks ahead of pages that cite it. A figure nobody else publishes, with its method on the page, is what a link is made to | impressions and links to /funding/paid from 06.11.2026 |
 | 16.10.2026 | /about and llms.txt: provenance and method only, nothing about how text is made | Owner's ruling; Google's who/how guidance is advice, not a ranking input | — |
 
+| 16.10.2026 | /funding/history: seven months of settled funding per contract, what a constant-size long paid beside the price change | Original content systems; a reading no one else publishes | impressions and links from 06.11.2026 |
+| 16.10.2026 | /funding/venues: share of hours Binance and Bybit quoted the opposite sign to Hyperliquid, 30 days, computed daily by the worker | Same | same |
+
+Tested and dropped on 16.10.2026: an hour-of-day pattern in Hyperliquid funding. Over 5,200 hours ×
+55 contracts the premium moved between −0.023 and −0.046 bp an hour by UTC hour, and the share of
+hours off the base rate between 32% and 35%: no reading worth a page.
+
 ## Queued, with the reason they wait
 
 - /liquidations and /liquidations/{coin}: name Hyperliquid and the registry name in the title, and build
