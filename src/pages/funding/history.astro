@@ -26,10 +26,18 @@ const rows = symbols
 if (!rows.length) return coldStart();
 const missing = symbols.filter((s) => !rows.some((r) => r.symbol === s));
 
-/* THE COMMON SPAN, for the opening: the rows that reach the deepest start. Newer listings carry
-   their own start date in the table and are left out of the medians, which compare like with like. */
-const deepest = Math.min(...rows.map((r) => r.from));
-const full = rows.filter((r) => r.from - deepest < 2 * 86_400_000);
+/* THE COMMON SPAN, for the opening: the start most contracts share. Not the earliest start: on
+   16 October 2026 that was HBAR's, 23 February, because its series has gaps and its 5,200 hours
+   stretch further back — the medians came out "across 1 contracts". Newer listings and gapped
+   series carry their own start in the table and stay out of the medians, which compare like with like. */
+const DAY_MS = 86_400_000;
+const maxHours = Math.max(...rows.map((r) => r.hours));
+const typicalStart = median(rows.filter((r) => r.hours === maxHours).map((r) => r.from));
+const full = rows.filter((r) => Math.abs(r.from - typicalStart) < 2 * DAY_MS);
+const deepest = Math.min(...full.map((r) => r.from));
+/* A SERIES WITH GAPS sums fewer hours than its span holds, so its figure is a floor; it is marked. */
+const spanHours = (r: HistoryRow) => Math.round((r.to - r.from) / 3_600_000) + 1;
+const gapped = rows.filter((r) => r.hours < 0.98 * spanHours(r));
 const days = Math.round((Math.max(...full.map((r) => r.to)) - deepest) / 86_400_000);
 const medPaid = median(full.map((r) => r.paid));
 const baseFull = median(full.map((r) => r.base));
@@ -42,7 +50,7 @@ const newest = Math.floor(Math.max(...rows.map((r) => r.to)) / 3_600_000) * 3_60
 const list = (xs: HistoryRow[]) => xs.map((r) => r.symbol).join(", ");
 
 const title = "Hyperliquid funding over seven months: what a long paid, per contract";
-const description = `Since ${shortDate(deepest)}, a long held at constant size on Hyperliquid paid a median ${pct(medPaid)} of its size in funding across ${full.length} contracts, against ${pct(baseFull)} at the base rate alone. Per contract, from ${plural(Math.max(...rows.map((r) => r.hours)), "settled hour", "settled hours")} of Hyperliquid's own funding history.`;
+const description = `Since ${shortDate(deepest)}, a long held at constant size on Hyperliquid paid a median ${pct(medPaid)} of its size in funding across ${plural(full.length, "contract", "contracts")}, against ${pct(baseFull)} at the base rate alone. Per contract, from ${plural(Math.max(...rows.map((r) => r.hours)), "settled hour", "settled hours")} of Hyperliquid's own funding history.`;
 ---
 
 <Base title={title} description={description} fetchedAt={newest} crumb={{ href: "/funding", label: "Funding", current: "Funding history" }}>
@@ -51,7 +59,7 @@ const description = `Since ${shortDate(deepest)}, a long held at constant size o
     <h1>What funding took from a long</h1>
     <Overview>
       Over the {days} days since {shortDate(deepest)}, a long held at constant size on Hyperliquid
-      paid a median <b>{pct(medPaid)} of its size</b> in funding across {full.length} contracts, against
+      paid a median <b>{pct(medPaid)} of its size</b> in funding across {plural(full.length, "contract", "contracts")}, against
       {" "}{pct(baseFull)} had every hour settled at the base rate. The rate was exactly the base rate in a
       median {pct(medAtBase, 0)} of hours.
       {shortsPaid.length > 0 && <>{" "}Shorts paid on balance on {plural(shortsPaid.length, "contract", "contracts")}: <b>{list(shortsPaid)}</b>.</>}
@@ -71,7 +79,7 @@ const description = `Since ${shortDate(deepest)}, a long held at constant size o
         <tr>
           <td><a href={`/funding/${r.symbol.toLowerCase()}`}>{r.symbol}</a></td>
           <td>{shortDate(r.from)}</td>
-          <td>{r.hours.toLocaleString("en-US")}</td>
+          <td>{r.hours.toLocaleString("en-US")}{gapped.includes(r) && "†"}</td>
           <td>{pct(r.atBase, 0)}</td>
           <td>{pct(r.shortsHours, 0)}</td>
           <td class={r.paid >= 0 ? "pays-l" : "pays-s"}>{signedPct(-r.paid)}</td>
@@ -85,7 +93,7 @@ const description = `Since ${shortDate(deepest)}, a long held at constant size o
     &ldquo;Long paid&rdquo; is signed from the long&rsquo;s side: a minus is money paid, amber where longs
     paid on balance and cyan where shorts did. &ldquo;Price less funding&rdquo; is the price change with
     that sum taken off. A dash: the stored candles do not reach back to that contract&rsquo;s first
-    stored hour.{missing.length > 0 && <> Not listed, for want of a stored series: {missing.join(", ")}.</>}
+    stored hour.{gapped.length > 0 && <> &dagger; The stored series has gaps, so the sum covers fewer hours than the span since its start: {gapped.map((r) => `${r.symbol} ${(spanHours(r) - r.hours).toLocaleString("en-US")} missing`).join(", ")}.</>}{missing.length > 0 && <> Not listed, for want of a stored series: {missing.join(", ")}.</>}
   </p>
 
   <More label="What the figures approximate">
