@@ -198,7 +198,11 @@ console.log(`=== ${ORIGIN} — what moves and what holds ===\n`);
 
 console.log("0. the probe's own map matches the client's branches");
 {
-  const src = await get("/interact.js");
+  /* THE SOURCE, NOT THE SERVED FILE. The build ships interact.js minified (scripts/minify-public.mjs),
+     which renames the variable this reads branches by; the served bytes are a pure function of this
+     file, and their ?v= hash is taken from it. */
+  const { readFileSync } = await import("node:fs");
+  const src = readFileSync(new URL("../public/interact.js", import.meta.url), "utf8");
   const drift = kindsAgree(src, NEEDS);
   drift.length ? drift.forEach(bad) : ok(`${Object.keys(NEEDS).length} overlay kinds, and interact.js has a branch for each`);
 }
