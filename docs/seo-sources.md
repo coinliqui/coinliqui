@@ -61,6 +61,8 @@ title guidance already supports: the title and snippet must promise what the pag
 | 16.10.2026 | /funding/history: seven months of settled funding per contract, what a constant-size long paid beside the price change | Original content systems; a reading no one else publishes | impressions and links from 06.11.2026 |
 | 16.10.2026 | /funding/venues: share of hours Binance and Bybit quoted the opposite sign to Hyperliquid, 30 days, computed daily by the worker | Same | same |
 
+| 16.10.2026 | /funding/august-2026: the 19–23 August spike frozen, 42 of 53 contracts above 5× base at 05:00 UTC on 22 Aug; 26 had the steepest hour of their stored series there | Original reporting on an event, as /liquidations/sweep is | same |
+
 Tested and dropped on 16.10.2026: an hour-of-day pattern in Hyperliquid funding. Over 5,200 hours ×
 55 contracts the premium moved between −0.023 and −0.046 bp an hour by UTC hour, and the share of
 hours off the base rate between 32% and 35%: no reading worth a page.
