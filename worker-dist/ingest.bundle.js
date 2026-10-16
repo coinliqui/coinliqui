@@ -151,6 +151,7 @@ var LEARN_CODE = ["/learn/liquidation-heatmap", "/learn/liquidation-price"];
 var LEARN = [...LEARN_DATA, ...LEARN_CODE];
 var FUNDING_HUB = ["/funding"];
 var FUNDING_PAID = ["/funding/paid"];
+var FUNDING_HISTORY = ["/funding/history"];
 var OPEN_INTEREST = ["/open-interest"];
 var UNLOCKS = ["/unlocks"];
 var COINS_HUB = ["/coins"];
@@ -160,6 +161,7 @@ var STATIC_ROUTES = [
   ...COINS_HUB,
   ...FUNDING_HUB,
   ...FUNDING_PAID,
+  ...FUNDING_HISTORY,
   ...OPEN_INTEREST,
   ...TOOLS,
   ...LIQUIDATIONS,
@@ -1586,7 +1588,7 @@ async function stepGscExport(env, now = Date.now()) {
 }
 
 // worker/build-stamp.ts
-var WORKER_BUILD = "bb74ef22fa9e";
+var WORKER_BUILD = "bc43d004e987";
 
 // worker/ingest.ts
 var RETAIN_HOURS = 720;

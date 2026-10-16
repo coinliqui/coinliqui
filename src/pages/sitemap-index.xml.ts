@@ -4,6 +4,7 @@ import { dataStamp, codeStamp, newest } from "../lib/sitemap.ts";
 import { getSnapshot } from "../lib/hyperliquid.ts";
 import register from "../data/vesting-contracts.json";
 import { readFundingPaid } from "../lib/funding-paid.ts";
+import { historyStamp } from "../lib/funding-history.ts";
 
 /**
  * The index carries a lastmod per child sitemap, because that is what a crawler reads to
@@ -34,6 +35,7 @@ export const GET: APIRoute = async ({ locals, site }) => {
     { name: "coins", lastmod: data },
     { name: "funding-hub", lastmod: data },
     { name: "funding-paid", lastmod: paidStamp },
+    { name: "funding-history", lastmod: await historyStamp(env?.SNAPSHOT, snap.perps.map((p) => p.symbol)) },
     { name: "funding-symbols", lastmod: data },
     { name: "open-interest", lastmod: data },
     { name: "tools", lastmod: data },

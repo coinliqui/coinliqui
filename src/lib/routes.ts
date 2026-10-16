@@ -57,6 +57,8 @@ export const FUNDING_HUB = ["/funding"] as const;
 /** What funding cost in dollars over the open-interest store's 30 days. Its own sitemap, like
  *  every one-page template, so its indexation is readable on its own. */
 export const FUNDING_PAID = ["/funding/paid"] as const;
+/** What funding took from a long over the whole stored history, per contract. */
+export const FUNDING_HISTORY = ["/funding/history"] as const;
 export const OPEN_INTEREST = ["/open-interest"] as const;
 export const UNLOCKS = ["/unlocks"] as const;
 export const COINS_HUB = ["/coins"] as const;
@@ -72,7 +74,7 @@ export const COINS_HUB = ["/coins"] as const;
  */
 export const STATIC_ROUTES: readonly string[] = [
   ...PAGES_DATA, ...PAGES_CODE,
-  ...COINS_HUB, ...FUNDING_HUB, ...FUNDING_PAID, ...OPEN_INTEREST,
+  ...COINS_HUB, ...FUNDING_HUB, ...FUNDING_PAID, ...FUNDING_HISTORY, ...OPEN_INTEREST,
   ...TOOLS, ...LIQUIDATIONS, ...UNLOCKS,
   ...LEARN,
 ];

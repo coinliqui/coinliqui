@@ -27,7 +27,7 @@ const days = Math.round(paid.span / 24);
 const asOf = shortDate(paid.last);
 const retired = paid.rows.filter((r) => !live.has(r.symbol)).length;
 const baseHourPct = paid.hours ? paid.baseHours / paid.hours : NaN;
-const ratePct = `${(HL_BASE_HOURLY * 100).toFixed(5).replace(/0+$/, "")}%`;
+const ratePct = pct(HL_BASE_HOURLY, 5);
 
 const title = "Funding paid on Hyperliquid: what longs paid shorts in 30 days";
 const description = `Over the ${days} days to ${asOf}, longs paid shorts a net ${usd(paid.net)} in funding on Hyperliquid across ${paid.rows.length} contracts; ${usd(paid.base)} of it is the fixed base rate. Per contract, from settled hourly rates and hourly open interest.`;
@@ -99,6 +99,7 @@ const description = `Over the ${days} days to ${asOf}, longs paid shorts a net $
 
   <p style="margin:20px 0 0">
     <a class="link" href="/funding">Funding rates on every contract →</a>{" "}
+    <a class="link" href="/funding/history">What funding took from a long over seven months →</a>{" "}
     <a class="link" href="/learn/funding-rate">What a funding rate is, and who pays it →</a>
   </p>
   <style is:global>

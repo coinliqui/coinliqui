@@ -12,6 +12,7 @@ import { narrowChart, NARROW_W, fundingRegime, TIMEFRAMES, DEFAULT_TF, MIN_CHART
 import { CH } from "../../lib/chart.ts";
 import { coinPageFor } from "../../lib/coins.ts";
 import { readFundingPaidFor } from "../../lib/funding-paid.ts";
+import { fundingHistory } from "../../lib/funding-history.ts";
 import { liqMapHref, canonicalRedirect } from "../../lib/routes.ts";
 import { qty } from "../../lib/funding.ts";
 import { freshness, ageWords, minutesSince, utcStamp, plural } from "../../lib/freshness.ts";
@@ -176,6 +177,9 @@ const fundingSeriesFrom = funding && funding.length ? Math.min(...funding.map((f
 /* WHAT THE RATE COST IN DOLLARS on this contract over 30 days — the figure /funding/paid sums
    across the book, here for one contract. See src/lib/funding-paid.ts for the method. */
 const paidHere = await readFundingPaidFor(env?.DB, p.symbol, funding, Date.now());
+/* And over everything stored: what a long of constant size paid, beside the price over the same span
+   (src/lib/funding-history.ts, the arithmetic /funding/history tabulates for every contract). */
+const histHere = fundingHistory(p.symbol, funding, dayset?.d ?? null);
 
 /* ========================================================================================
    WHAT THIS CONTRACT'S FUNDING IS DOING — the page's own subject, stated before its price.
@@ -736,6 +740,14 @@ const description = `What the ${p.symbol} perpetual costs to hold, against ${usd
       from {paidHere.row.hours} hourly settlements times the open interest held at each.
       At the base rate alone it would have been {usd(paidHere.row.base)}.
       {" "}<a class="link" href="/funding/paid">Every contract, and how it is counted →</a>
+    </p>
+  )}
+  {histHere && histHere.hours >= 24 * 30 && (
+    <p class="section-note" style="margin:0 0 20px;max-width:74ch">
+      Since {shortDate(histHere.from)}, a long of constant size on {p.symbol}
+      {histHere.paid >= 0 ? <> paid <b>{pct(histHere.paid)}</b> of its size</> : <> was paid <b>{pct(-histHere.paid)}</b> of its size</>} in funding
+      over {histHere.hours.toLocaleString("en-US")} settled hours{Number.isFinite(histHere.price) && <>, while the price moved {signedPct(histHere.price)}</>}.
+      {" "}<a class="link" href="/funding/history">Every contract over the same span →</a>
     </p>
   )}
 

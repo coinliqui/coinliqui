@@ -11,6 +11,7 @@
  *   node --experimental-strip-types scripts/funding-paid-cases.mjs [--blind]
  */
 import { fundingPaid, HL_BASE_HOURLY } from "../src/lib/funding-paid.ts";
+import { fundingHistory, median } from "../src/lib/funding-history.ts";
 
 const BLIND = process.argv.includes("--blind");
 const H = 3_600_000;
@@ -73,6 +74,26 @@ ok(r.unjoined?.includes("BBB") && !r.rows.some((x) => x.symbol === "BBB"), "a co
 if (!BLIND) {
   ok(near(a.base, 4e6 * B) && a.baseHours === 1, "the base-rate counterfactual covers the joined hours only, and one of them settled at exactly the base");
   ok(r.span === 5 && r.last === T + 2 * H, "the window is five hours and the newest joined hour is the third");
+}
+
+/* THE SEVEN-MONTH TABLE. 48 hours: 24 at the base rate, 12 at −base, 12 at 3×base. By hand:
+   Σ = 24B − 12B + 36B = 48B; base-only 48B; at base 50%; shorts paid 25% of hours. Candles open
+   at 100 on the first day and close at 110: +10%. The naive version takes the price from the first
+   candle in the set rather than the first day of funding, which is what the blind run swaps in. */
+{
+  const D = 86_400_000, t0 = T - (T % D);
+  const hist = [];
+  for (let i = 0; i < 48; i++) hist.push([t0 + i * H, i < 24 ? B : i < 36 ? -B : 3 * B]);
+  const candles = [[t0 - 5 * D, 50, 50, 50, 50, 1], [t0, 100, 100, 100, 100, 1], [t0 + D, 105, 110, 104, 110, 1]];
+  const fh = BLIND
+    ? { ...fundingHistory("AAA", hist, candles), price: candles[candles.length - 1][4] / candles[0][1] - 1 }
+    : fundingHistory("AAA", hist, candles);
+  ok(near(fh.paid, 48 * B) && near(fh.base, 48 * B), "a long's sum is Σ rate over the stored hours, and the base-only sum is hours × base");
+  ok(fh.atBase === 0.5 && fh.shortsHours === 0.25, "half the hours at exactly the base rate, a quarter with shorts paying");
+  ok(near(fh.price, 0.1), "the price runs from the open of the first funding day, not from the oldest candle stored");
+  ok(Number.isNaN(fundingHistory("AAA", hist, [[t0 + 3 * D, 1, 1, 1, 1, 1]]).price), "candles that start after the funding series give no price change, not a shorter one");
+  ok(fundingHistory("AAA", hist.slice(0, 10), candles) === null, "under a day of hours is no row");
+  ok(median([3, 1, 2]) === 2 && median([4, 1, 2, 3]) === 2.5 && Number.isNaN(median([])), "the median of odd, even and empty sets");
 }
 
 if (BLIND) {

@@ -1,0 +1,114 @@
+---
+import Base from "../../layouts/Base.astro";
+import More from "../../components/More.astro";
+import Overview from "../../components/Overview.astro";
+import { getSnapshot, coldStart } from "../../lib/hyperliquid.ts";
+import { getFunding, getCandles } from "../../lib/candles.ts";
+import { pct, signedPct } from "../../lib/funding.ts";
+import { fundingHistory, median, type HistoryRow } from "../../lib/funding-history.ts";
+import { HL_BASE_HOURLY } from "../../lib/funding-paid.ts";
+import { shortDate, plural } from "../../../public/shared.js";
+
+/* SEVEN MONTHS OF SETTLED FUNDING, AND WHAT IT TOOK FROM A LONG. See src/lib/funding-history.ts
+   for the arithmetic and what it approximates. The population is every contract covered today. */
+const env = (Astro.locals as any)?.runtime?.env;
+const snap = await getSnapshot(env?.SNAPSHOT, import.meta.env.DEV);
+if (!snap.available) return coldStart();
+const symbols = snap.perps.map((p) => p.symbol);
+const [rates, candles] = await Promise.all([
+  Promise.all(symbols.map((s) => getFunding(env?.SNAPSHOT, s, import.meta.env.DEV))),
+  Promise.all(symbols.map((s) => getCandles(env?.SNAPSHOT, s, import.meta.env.DEV))),
+]);
+const rows = symbols
+  .map((s, i) => fundingHistory(s, rates[i], candles[i]?.d ?? null))
+  .filter((r): r is HistoryRow => r !== null)
+  .sort((a, b) => b.paid - a.paid);
+if (!rows.length) return coldStart();
+const missing = symbols.filter((s) => !rows.some((r) => r.symbol === s));
+
+/* THE COMMON SPAN, for the opening: the rows that reach the deepest start. Newer listings carry
+   their own start date in the table and are left out of the medians, which compare like with like. */
+const deepest = Math.min(...rows.map((r) => r.from));
+const full = rows.filter((r) => r.from - deepest < 2 * 86_400_000);
+const days = Math.round((Math.max(...full.map((r) => r.to)) - deepest) / 86_400_000);
+const medPaid = median(full.map((r) => r.paid));
+const baseFull = median(full.map((r) => r.base));
+const medAtBase = median(full.map((r) => r.atBase));
+const shortsPaid = rows.filter((r) => r.paid < 0);
+const kept = (r: HistoryRow) => r.price - r.paid;
+const flipped = rows.filter((r) => Number.isFinite(r.price) && r.price > 0 && kept(r) < 0);
+/* Floored to the hour, as the sitemap floors it (historyStamp): one instant on both surfaces. */
+const newest = Math.floor(Math.max(...rows.map((r) => r.to)) / 3_600_000) * 3_600_000;
+const list = (xs: HistoryRow[]) => xs.map((r) => r.symbol).join(", ");
+
+const title = "Hyperliquid funding over seven months: what a long paid, per contract";
+const description = `Since ${shortDate(deepest)}, a long held at constant size on Hyperliquid paid a median ${pct(medPaid)} of its size in funding across ${full.length} contracts, against ${pct(baseFull)} at the base rate alone. Per contract, from ${plural(Math.max(...rows.map((r) => r.hours)), "settled hour", "settled hours")} of Hyperliquid's own funding history.`;
+---
+
+<Base title={title} description={description} fetchedAt={newest} crumb={{ href: "/funding", label: "Funding", current: "Funding history" }}>
+  <div class="page-head">
+    <p class="crumb"><a href="/funding">Funding</a> › Funding history</p>
+    <h1>What funding took from a long</h1>
+    <Overview>
+      Over the {days} days since {shortDate(deepest)}, a long held at constant size on Hyperliquid
+      paid a median <b>{pct(medPaid)} of its size</b> in funding across {full.length} contracts, against
+      {" "}{pct(baseFull)} had every hour settled at the base rate. The rate was exactly the base rate in a
+      median {pct(medAtBase, 0)} of hours.
+      {shortsPaid.length > 0 && <>{" "}Shorts paid on balance on {plural(shortsPaid.length, "contract", "contracts")}: <b>{list(shortsPaid)}</b>.</>}
+      {flipped.length > 0 && <>{" "}On <b>{list(flipped)}</b> the price rose and a long still lost money once funding is counted.</>}
+    </Overview>
+    <p>
+      Each figure is the sum of Hyperliquid&rsquo;s settled hourly rates: what a position of constant
+      dollar size paid, as a share of that size. The base rate is {pct(HL_BASE_HOURLY, 5)} an
+      hour, so a long that never met a premium in either direction pays it and nothing else.
+    </p>
+  </div>
+
+  <div class="panel"><table class="tbl histtbl" data-sortable>
+    <thead><tr><th>Coin</th><th class="num">Since</th><th class="num">Hours</th><th class="num">At base rate</th><th class="num">Shorts paid <span class="thscope">share of hours</span></th><th class="num">Long paid <span class="thscope">share of size</span></th><th class="num">Price change</th><th class="num">Price less funding</th></tr></thead>
+    <tbody>
+      {rows.map((r) => (
+        <tr>
+          <td><a href={`/funding/${r.symbol.toLowerCase()}`}>{r.symbol}</a></td>
+          <td>{shortDate(r.from)}</td>
+          <td>{r.hours.toLocaleString("en-US")}</td>
+          <td>{pct(r.atBase, 0)}</td>
+          <td>{pct(r.shortsHours, 0)}</td>
+          <td class={r.paid >= 0 ? "pays-l" : "pays-s"}>{signedPct(-r.paid)}</td>
+          <td>{Number.isFinite(r.price) ? signedPct(r.price) : "—"}</td>
+          <td>{Number.isFinite(r.price) ? signedPct(kept(r)) : "—"}</td>
+        </tr>
+      ))}
+    </tbody>
+  </table></div>
+  <p class="section-note" style="margin:12px 0 20px;max-width:74ch">
+    &ldquo;Long paid&rdquo; is signed from the long&rsquo;s side: a minus is money paid, amber where longs
+    paid on balance and cyan where shorts did. &ldquo;Price less funding&rdquo; is the price change with
+    that sum taken off. A dash: the stored candles do not reach back to that contract&rsquo;s first
+    stored hour.{missing.length > 0 && <> Not listed, for want of a stored series: {missing.join(", ")}.</>}
+  </p>
+
+  <More label="What the figures approximate">
+    <p>
+      The sum is per dollar held throughout. A position of fixed coin size pays on a notional that
+      moves with price, so its funding differs by the price path. &ldquo;Price less funding&rdquo; sets
+      that constant-size sum beside a buy-and-hold price change, from the open of the first stored
+      day to the newest daily close: the size of what funding cost the long, not a backtest of one.
+    </p>
+    <p>
+      The history is Hyperliquid&rsquo;s own, read from its funding history and kept by this site up
+      to 5,200 hours per contract, so the window moves forward an hour at a time. Contracts listed
+      more recently start later and say so in the second column; the medians above use only the
+      {" "}{full.length} that reach back to {shortDate(deepest)}.
+      {" "}<a class="link" href="/data-sources">Where each series comes from →</a>
+    </p>
+  </More>
+
+  <p style="margin:20px 0 0">
+    <a class="link" href="/funding/paid">What funding cost in dollars over 30 days →</a>{" "}
+    <a class="link" href="/learn/funding-rate">What a funding rate is, and who pays it →</a>
+  </p>
+  <style is:global>
+    .histtbl td + td { font-family: var(--mono); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+  </style>
+</Base>
