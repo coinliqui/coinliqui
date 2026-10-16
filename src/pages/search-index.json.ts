@@ -64,6 +64,7 @@ export const GET: APIRoute = async ({ locals }) => {
     // "funding rate explained" inside a site, they type "funding rate" and expect both the
     // table and the explanation to be offered.
     { label: "What a funding rate is", alt: "funding rate explained", href: "/learn/funding-rate", kind: "reference" },
+    { label: "Funding paid on Hyperliquid, 30 days", alt: "funding paid longs shorts dollars", href: "/funding/paid", kind: "reference" },
     { label: "What a liquidation heatmap shows", alt: "liquidation heatmap explained", href: "/learn/liquidation-heatmap", kind: "reference" },
     { label: "How a liquidation price is calculated", alt: "liquidation price formula", href: "/learn/liquidation-price", kind: "reference" },
     { label: "What open interest tells you", alt: "open interest explained", href: "/learn/open-interest", kind: "reference" },

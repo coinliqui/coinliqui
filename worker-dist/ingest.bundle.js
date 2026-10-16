@@ -150,6 +150,7 @@ var LEARN_DATA = ["/learn", "/learn/funding-rate", "/learn/open-interest"];
 var LEARN_CODE = ["/learn/liquidation-heatmap", "/learn/liquidation-price"];
 var LEARN = [...LEARN_DATA, ...LEARN_CODE];
 var FUNDING_HUB = ["/funding"];
+var FUNDING_PAID = ["/funding/paid"];
 var OPEN_INTEREST = ["/open-interest"];
 var UNLOCKS = ["/unlocks"];
 var COINS_HUB = ["/coins"];
@@ -158,6 +159,7 @@ var STATIC_ROUTES = [
   ...PAGES_CODE,
   ...COINS_HUB,
   ...FUNDING_HUB,
+  ...FUNDING_PAID,
   ...OPEN_INTEREST,
   ...TOOLS,
   ...LIQUIDATIONS,
@@ -1584,7 +1586,7 @@ async function stepGscExport(env, now = Date.now()) {
 }
 
 // worker/build-stamp.ts
-var WORKER_BUILD = "a8a21dc28849";
+var WORKER_BUILD = "bb74ef22fa9e";
 
 // worker/ingest.ts
 var RETAIN_HOURS = 720;

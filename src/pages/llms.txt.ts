@@ -161,9 +161,10 @@ ${base}/status renders the real rate including failures. The cross-venue funding
 backfilled, so it accrues from the launch date forward; Hyperliquid's own funding history is read
 back from Hyperliquid, and each contract page states where its stored series begins.
 
-Pages are GENERATED: numbers, charts and tables are produced by scheduled code from the
-endpoints listed at ${base}/data-sources, and the explanatory prose is written. Nothing here is
-a model output, a forecast or a trading signal.
+Numbers, charts and tables are computed by scheduled code from the endpoints listed at
+${base}/data-sources, and each states its source and its age. Nothing here is a forecast or a
+trading signal. The liquidation map is the one modelled figure: open interest spread across
+leverage assumptions printed in full on the page, method at ${base}/learn/liquidation-heatmap.
 `;
 
   return new Response(body, {

@@ -86,7 +86,7 @@ if (PORT !== BASE_PORT) console.log(`  smoke: ${BASE_PORT} is in use by somethin
 const PAGE_STAMPS = new Map();
 
 const ROUTES = [
-  "/", "/coins", "/coins/bitcoin", "/funding", "/funding/btc", "/funding/kpepe",
+  "/", "/coins", "/coins/bitcoin", "/funding", "/funding/paid", "/funding/btc", "/funding/kpepe",
   "/open-interest", "/open-interest?w=7d", "/open-interest?w=14d", "/liquidations", "/liquidations/survival", "/liquidations/sweep",
   /* THE PER-CONTRACT MAPS, both branches. /liquidations/eth is the template; /liquidations/btc
      is the pinned default's alias and must answer 301 to /liquidations, because the default
@@ -132,7 +132,7 @@ const ROUTES = [
   /* EVERY sitemap, not a sample. Six of these were never requested by anything until the
      coverage check below started comparing this list against the build manifest — so a 500 in
      one of them would have shipped green and been served to Googlebot. */
-  "/sitemaps/coins.xml", "/sitemaps/funding-symbols.xml", "/sitemaps/funding-hub.xml",
+  "/sitemaps/coins.xml", "/sitemaps/funding-symbols.xml", "/sitemaps/funding-hub.xml", "/sitemaps/funding-paid.xml",
   "/sitemaps/liquidations.xml", "/sitemaps/open-interest.xml", "/sitemaps/pages.xml",
   "/sitemaps/tools.xml", "/sitemaps/unlocks.xml", "/sitemaps/learn.xml",
   "/sitemaps/liquidation-symbols.xml",
@@ -871,7 +871,10 @@ for (const path of ROUTES) {
       }
       /* The symbols come from what the sitemap itself published, so this tests the STATIC half
          and the wiring rather than re-deriving the contract set from the same snapshot twice. */
-      const symbols = [...listed].filter((u) => u.startsWith("/funding/")).map((u) => u.slice("/funding/".length));
+      /* /funding/paid lives under /funding/ and is not a contract: a static route there would be
+         read as a symbol called "paid" and announce /liquidations/paid. */
+      const { STATIC_ROUTES } = await import("../src/lib/routes.ts");
+      const symbols = [...listed].filter((u) => u.startsWith("/funding/") && !STATIC_ROUTES.includes(u)).map((u) => u.slice("/funding/".length));
       /* Called exactly as the worker calls it — two arguments, no third to get wrong. The
          first version of this check passed the coin slugs itself, so it validated the function
          while the CALL SITE stayed broken, and fault-injecting the original `[]` did not fail

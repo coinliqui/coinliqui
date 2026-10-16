@@ -1,0 +1,107 @@
+---
+import Base from "../../layouts/Base.astro";
+import More from "../../components/More.astro";
+import Overview from "../../components/Overview.astro";
+import { getSnapshot, coldStart } from "../../lib/hyperliquid.ts";
+import { usd, pct } from "../../lib/funding.ts";
+import { readFundingPaid, HL_BASE_HOURLY } from "../../lib/funding-paid.ts";
+import { shortDate, plural } from "../../../public/shared.js";
+
+/* WHAT A FUNDING RATE COST, IN DOLLARS, ACROSS THE BOOK. See src/lib/funding-paid.ts for the
+   method and every approximation in it. This page is the one place on the site that prints the
+   sum, and it is built to be quoted: one figure, its window, its population and its method. */
+const env = (Astro.locals as any)?.runtime?.env;
+const snap = await getSnapshot(env?.SNAPSHOT, import.meta.env.DEV);
+if (!snap.available) return coldStart();
+const read = await readFundingPaid(env?.DB, env?.SNAPSHOT, Date.now(), 30, import.meta.env.DEV);
+/* NO PAGE WITHOUT THE FIGURE. A page whose whole content is one sum does not render an empty
+   version of itself; it answers 503 like every page here whose store is cold. */
+if (read.status !== "ready") return coldStart();
+const paid = read.paid;
+
+const live = new Set(snap.perps.map((p) => p.symbol));
+const premium = paid.net - paid.base;
+const baseShare = paid.base / paid.net;
+const top = paid.rows[0];
+const days = Math.round(paid.span / 24);
+const asOf = shortDate(paid.last);
+const retired = paid.rows.filter((r) => !live.has(r.symbol)).length;
+const baseHourPct = paid.hours ? paid.baseHours / paid.hours : NaN;
+const ratePct = `${(HL_BASE_HOURLY * 100).toFixed(5).replace(/0+$/, "")}%`;
+
+const title = "Funding paid on Hyperliquid: what longs paid shorts in 30 days";
+const description = `Over the ${days} days to ${asOf}, longs paid shorts a net ${usd(paid.net)} in funding on Hyperliquid across ${paid.rows.length} contracts; ${usd(paid.base)} of it is the fixed base rate. Per contract, from settled hourly rates and hourly open interest.`;
+---
+
+<Base title={title} description={description} fetchedAt={paid.last} crumb={{ href: "/funding", label: "Funding", current: "Funding paid" }}>
+  <div class="page-head">
+    <p class="crumb"><a href="/funding">Funding</a> › Funding paid</p>
+    <h1>Funding paid on Hyperliquid</h1>
+    <Overview>
+      {paid.net >= 0
+        ? <>Over the {days} days to {asOf}, <b>longs paid shorts a net {usd(paid.net)}</b> in funding on Hyperliquid, across {paid.rows.length} contracts.</>
+        : <>Over the {days} days to {asOf}, <b>shorts paid longs a net {usd(-paid.net)}</b> in funding on Hyperliquid, across {paid.rows.length} contracts.</>}
+      {" "}<b>{usd(paid.base)}</b> of it is the fixed base rate of {ratePct} an hour{paid.net > 0 && <> &mdash; {pct(baseShare, 1)} of the total</>}, and the market premium added {premium >= 0 ? usd(premium) : <>&minus;{usd(-premium)}</>} on top.
+      {" "}{pct(baseHourPct, 1)} of contract-hours settled at exactly that rate. The most was paid on <b>{top.symbol}</b>, {usd(top.longsPaid + top.shortsPaid)} changing hands.
+    </Overview>
+    <p>
+      Hyperliquid&rsquo;s funding rate is the premium plus a clamped interest term fixed at 0.01% per
+      eight hours. While the premium stays inside the clamp, which is most hours, the rate is that
+      interest term and nothing else, paid hourly at one eighth: a charge longs pay shorts for
+      holding the position, whatever the market is doing.
+    </p>
+  </div>
+
+  <div class="panel"><table class="tbl paidtbl" data-sortable>
+    <thead><tr><th>Coin</th><th class="num">Longs paid shorts</th><th class="num">Shorts paid longs</th><th class="num">Net</th><th class="num">At base rate <span class="thscope">share of hours</span></th><th class="num">Hours held <span class="thscope">of {paid.span}</span></th></tr></thead>
+    <tbody>
+      {paid.rows.map((r) => (
+        <tr>
+          <td>{live.has(r.symbol) ? <a href={`/funding/${r.symbol.toLowerCase()}`}>{r.symbol}</a> : <>{r.symbol} <span class="faint">no longer covered</span></>}</td>
+          <td>{usd(r.longsPaid)}</td>
+          <td>{usd(r.shortsPaid)}</td>
+          <td class={r.net >= 0 ? "pays-l" : "pays-s"}>{r.net >= 0 ? usd(r.net) : <>&minus;{usd(-r.net)}</>}</td>
+          <td>{pct(r.baseHours / r.hours, 0)}</td>
+          <td>{r.hours}</td>
+        </tr>
+      ))}
+    </tbody>
+  </table></div>
+  <p class="section-note" style="margin:12px 0 20px;max-width:74ch">
+    Net is amber where longs paid on balance and cyan where shorts did. Listed: every contract with
+    both an open-interest reading and a settled rate in the window, {paid.rows.length} in all{retired > 0 && <>, {plural(retired, "of which has", "of which have")} since fallen below the coverage floor</>}.
+    {paid.unjoined.length > 0 && <>{" "}Left out: {paid.unjoined.join(", ")}, which had open interest recorded here but no stored funding history to multiply it by.</>}
+    An hour counts only where both an open-interest reading and a settled rate are held; the last
+    column is how many did, out of the {paid.span} in the window.
+  </p>
+
+  <More label="How the figure is built, and what it approximates">
+    <p>
+      Hyperliquid charges <code>position_size × oracle_price × funding_rate</code> every hour. Summed
+      over every position, position size is open interest: each long has a short on the other side,
+      so open interest is one side&rsquo;s size, and what one side pays the other receives. Each
+      hour here is open interest, read on the first minute of that hour, times the rate Hyperliquid
+      settled for it, from its own funding history.
+    </p>
+    <p>
+      Two approximations, both small. Open interest is valued at the mark price where the payment
+      uses the oracle price; they differ by the premium, a fraction of a percent outside a
+      dislocation. And an hour with either reading missing is left out rather than filled in, which
+      makes every figure a floor: the table prints the hours each one is built from.
+    </p>
+    <p>
+      The window is this site&rsquo;s open-interest store, kept hourly since 16 September 2026 and
+      for 30 days. It covers the contracts on this site, each holding at least the open-interest
+      floor named on <a class="link" href="/about">About</a>, not every market Hyperliquid lists.
+      {" "}<a class="link" href="/data-sources">Where each series comes from →</a>
+    </p>
+  </More>
+
+  <p style="margin:20px 0 0">
+    <a class="link" href="/funding">Funding rates on every contract →</a>{" "}
+    <a class="link" href="/learn/funding-rate">What a funding rate is, and who pays it →</a>
+  </p>
+  <style is:global>
+    .paidtbl td + td { font-family: var(--mono); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+  </style>
+</Base>

@@ -3,6 +3,7 @@ import { origin } from "../lib/site.ts";
 import { dataStamp, codeStamp, newest } from "../lib/sitemap.ts";
 import { getSnapshot } from "../lib/hyperliquid.ts";
 import register from "../data/vesting-contracts.json";
+import { readFundingPaid } from "../lib/funding-paid.ts";
 
 /**
  * The index carries a lastmod per child sitemap, because that is what a crawler reads to
@@ -23,12 +24,16 @@ export const GET: APIRoute = async ({ locals, site }) => {
   const base = origin(site);
   const snap = await getSnapshot((locals as any)?.runtime?.env?.SNAPSHOT, import.meta.env.DEV);
   const data = dataStamp(snap.fetchedAt);
+  const env = (locals as any)?.runtime?.env;
+  const paidRead = await readFundingPaid(env?.DB, env?.SNAPSHOT, Date.now(), 30, import.meta.env.DEV);
+  const paidStamp = paidRead.status === "ready" ? dataStamp(paidRead.paid.last) : undefined;
 
   const files: { name: string; lastmod?: string }[] = [
     // mixed: the homepage moves with the market, the prose does not
     { name: "pages", lastmod: newest([data, ...["/methodology", "/methodology/liquidations", "/data-sources", "/privacy"].map(codeStamp)]) },
     { name: "coins", lastmod: data },
     { name: "funding-hub", lastmod: data },
+    { name: "funding-paid", lastmod: paidStamp },
     { name: "funding-symbols", lastmod: data },
     { name: "open-interest", lastmod: data },
     { name: "tools", lastmod: data },

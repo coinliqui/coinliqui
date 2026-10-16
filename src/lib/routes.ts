@@ -54,6 +54,9 @@ export const LEARN = [...LEARN_DATA, ...LEARN_CODE] as const;
 
 /** One-page templates, each its own sitemap so its indexation rate is separately observable. */
 export const FUNDING_HUB = ["/funding"] as const;
+/** What funding cost in dollars over the open-interest store's 30 days. Its own sitemap, like
+ *  every one-page template, so its indexation is readable on its own. */
+export const FUNDING_PAID = ["/funding/paid"] as const;
 export const OPEN_INTEREST = ["/open-interest"] as const;
 export const UNLOCKS = ["/unlocks"] as const;
 export const COINS_HUB = ["/coins"] as const;
@@ -69,7 +72,7 @@ export const COINS_HUB = ["/coins"] as const;
  */
 export const STATIC_ROUTES: readonly string[] = [
   ...PAGES_DATA, ...PAGES_CODE,
-  ...COINS_HUB, ...FUNDING_HUB, ...OPEN_INTEREST,
+  ...COINS_HUB, ...FUNDING_HUB, ...FUNDING_PAID, ...OPEN_INTEREST,
   ...TOOLS, ...LIQUIDATIONS, ...UNLOCKS,
   ...LEARN,
 ];
