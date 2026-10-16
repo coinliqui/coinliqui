@@ -143,7 +143,7 @@ function tableFor(p) {
 
 // src/lib/routes.ts
 var PAGES_DATA = ["/", "/methodology", "/about"];
-var PAGES_CODE = ["/methodology/liquidations", "/data-sources", "/privacy", "/terms"];
+var PAGES_CODE = ["/methodology/liquidations", "/data-sources", "/privacy", "/terms", "/corrections"];
 var TOOLS = ["/tools", "/tools/position-size", "/tools/leverage", "/tools/funding-cost", "/tools/funding-arbitrage"];
 var LIQUIDATIONS = ["/liquidations", "/liquidations/sweep", "/liquidations/survival"];
 var LEARN_DATA = ["/learn", "/learn/funding-rate", "/learn/open-interest"];
@@ -1637,7 +1637,7 @@ async function stepVenueAgreement(env, now = Date.now()) {
 }
 
 // worker/build-stamp.ts
-var WORKER_BUILD = "870b5c88a2c8";
+var WORKER_BUILD = "2f814d91bed7";
 
 // worker/ingest.ts
 var RETAIN_HOURS = 720;

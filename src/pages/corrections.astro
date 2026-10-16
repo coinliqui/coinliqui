@@ -1,0 +1,73 @@
+---
+import Base from "../layouts/Base.astro";
+import Related from "../components/Related.astro";
+import { IDENTITY } from "../lib/site.ts";
+import CORRECTIONS from "../data/corrections.json";
+
+/**
+ * EVERY ERROR A READER COULD HAVE SEEN, WITH THE DATE IT WAS FIXED.
+ *
+ * Read from src/data/corrections.json, which is curated from the commit history: a wrong figure,
+ * a calculator output that could cost money, or a claim on a page that was not true. Tooling,
+ * styling and anything fixed before it was deployed are not in it. Dated by commit (gen-lastmod
+ * ROUTES), because the page changes only when an entry is added.
+ */
+type Entry = { date: string; commit: string; page: string; wrong: string; fixed: string; impact: "money" | "number" | "claim" };
+const entries = (CORRECTIONS as Entry[]).slice().sort((a, b) => b.date.localeCompare(a.date));
+const count = (k: Entry["impact"]) => entries.filter((e) => e.impact === k).length;
+const day = (d: string) => new Date(`${d}T00:00:00Z`).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
+const first = entries[entries.length - 1].date, last = entries[0].date;
+const KIND: Record<Entry["impact"], string> = { money: "Could cost money", number: "Wrong figure", claim: "Untrue claim" };
+
+const title = "Corrections";
+const description =
+  `${entries.length} errors readers could see on Coinliqui between ${day(first)} and ${day(last)}: ` +
+  `${count("money")} calculator or page outputs that could cost money, ${count("number")} wrong figures and ` +
+  `${count("claim")} untrue claims, each with what the page said and what it says now.`;
+---
+
+<Base title={title} description={description} crumb={{ href: "/about", label: "About", current: "Corrections" }}>
+  <div class="page-head">
+    <p class="crumb"><a href="/about">About</a> › Corrections</p>
+    <h1>Corrections</h1>
+  </div>
+  <p class="callout">
+    {entries.length} errors a reader could have seen on this site since it launched on {day(IDENTITY.launched)},
+    newest first: <strong>{count("money")}</strong> that could have cost a trader money, <strong>{count("number")}</strong> wrong
+    figures and <strong>{count("claim")}</strong> claims that were not true. Each is listed with what the page said and
+    what it says now.
+  </p>
+  <p class="prose">
+    Only errors that reached the live site are listed. Changes to wording, layout or speed are not
+    corrections and are not here. If a number on this site disagrees with the venue it came from,
+    write to <a class="link" href={`mailto:${IDENTITY.contact}`}>{IDENTITY.contact}</a>; a confirmed error is fixed and added to this page.
+  </p>
+
+  <ol class="fixes">
+    {entries.map((e) => (
+      <li class="fix">
+        <p class="fix__meta"><time datetime={e.date}>{day(e.date)}</time> · <span class={e.impact === "money" ? "fix__kind fix__kind--money" : "fix__kind"}>{KIND[e.impact]}</span> · {e.page}</p>
+        <p class="fix__line"><b>Was</b> {e.wrong}</p>
+        <p class="fix__line"><b>Now</b> {e.fixed}</p>
+      </li>
+    ))}
+  </ol>
+
+  <Related items={[
+    { href: "/about", label: "About", note: "What the site is, where every number comes from, and how to check it." },
+    { href: "/data-sources", label: "Data sources", note: "Every upstream endpoint, its cadence, and what is deliberately absent." },
+    { href: "/methodology", label: "Methodology", note: "How funding rates are annualised, and what is deliberately absent." },
+    { href: "/status", label: "Status", note: "The ingest's real success rate, failures included." },
+  ]} />
+
+  <style>
+    .fixes { list-style: none; padding: 0; margin: var(--gap-block) 0 0; max-width: 88ch; }
+    .fix { padding: 14px 0; border-top: 1px solid var(--border-soft); }
+    .fix p { margin: 0; }
+    .fix__meta { font-size: var(--fs-sm); color: var(--text-faint); overflow-wrap: anywhere; }
+    .fix__kind { color: var(--text-dim); font-weight: 600; }
+    .fix__kind--money { color: var(--text); }
+    .fix .fix__line { margin-top: 6px; line-height: 1.55; overflow-wrap: anywhere; }
+    .fix__line b { display: inline-block; min-width: 3.2em; color: var(--text-dim); font-weight: 600; }
+  </style>
+</Base>

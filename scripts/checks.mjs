@@ -2613,6 +2613,7 @@ export const PROSE_ROUTES = {
   "/data-sources": "a register of upstreams and their terms, not of readings",
   "/privacy": "legal text",
   "/terms": "legal text",
+  "/corrections": "a register of errors fixed on this site, not of readings",
   "/learn/liquidation-heatmap": "explains a method; commit-dated for that reason",
   "/learn/liquidation-price": "explains a method; commit-dated for that reason",
   "/status": "operational, addressed to whoever runs the ingest, and in no sitemap",

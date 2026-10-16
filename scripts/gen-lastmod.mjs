@@ -46,6 +46,7 @@ const ROUTES = {
   "/methodology/liquidations": ["src/pages/methodology/liquidations.astro"],
   "/data-sources": ["src/pages/data-sources.astro"],
   "/privacy": ["src/pages/privacy.astro"],
+  "/corrections": ["src/pages/corrections.astro", "src/data/corrections.json"],
   "/tools": ["src/pages/tools/index.astro"],
   "/tools/position-size": ["src/pages/tools/position-size.astro", "src/lib/margin.ts"],
   "/tools/leverage": ["src/pages/tools/leverage.astro", "src/lib/margin.ts"],

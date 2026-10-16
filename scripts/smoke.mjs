@@ -97,7 +97,7 @@ const ROUTES = [
   "/liquidations/sol?at=1", "/liquidations/eth?at=999999999", "/liquidations/eth?at=abc&profile=aggressive",
   "/unlocks", "/tools", "/tools/position-size", "/tools/leverage", "/tools/funding-cost",
   "/tools/funding-arbitrage", "/tools/liquidation-price", "/methodology",
-  "/methodology/liquidations", "/data-sources", "/privacy", "/about", "/terms", "/llms.txt",
+  "/methodology/liquidations", "/data-sources", "/privacy", "/about", "/terms", "/corrections", "/llms.txt",
   /* THE EXPLAINERS. Two of them read the live store and return 503 on a cold one, which is the
      behaviour every market page here has; the warm fixture covers that. The other two are prose
      over committed data and cannot 503, so a failure in either is a real render fault. */

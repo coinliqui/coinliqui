@@ -79,6 +79,7 @@ export const GET: APIRoute = async ({ locals }) => {
     { label: "Why we don't publish liquidation totals", href: "/methodology/liquidations", kind: "reference" },
     { label: "Data sources", href: "/data-sources", kind: "reference" },
     { label: "About", alt: "who runs this", href: "/about", kind: "reference" },
+    { label: "Corrections", alt: "errors fixed errata", href: "/corrections", kind: "reference" },
     { label: "Privacy", href: "/privacy", kind: "reference" },
     { label: "Terms and disclaimer", alt: "no financial service, no custody, no advice", href: "/terms", kind: "reference" },
   ];

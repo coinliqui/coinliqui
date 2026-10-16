@@ -1,0 +1,378 @@
+[
+ {
+  "date": "2026-10-15",
+  "commit": "88e36ad",
+  "page": "/unlocks",
+  "wrong": "The page said in the present tense that the largest finished ENS lock still held its balance and that nobody had moved it, a reading taken on 15 August; a re-read found 100,001 ENS had left it, 11,026 CRV had left the pre-CRV escrow and the Aave rewards allowance had grown from 5,856 to 27,220.",
+  "fixed": "The register is re-read at block 26,199,504, its figures are dated to the last on-chain read, and each row states what changed between the two reads.",
+  "impact": "claim"
+ },
+ {
+  "date": "2026-10-15",
+  "commit": "285f41a",
+  "page": "/funding/{coin}, /coins, /coins/{coin}, home page",
+  "wrong": "After a live update the venue table and weekly cost repainted while the Hyperliquid funding card and its direction words kept the rate from page load, and the home table's arrow could stay pointing up after a rate turned negative.",
+  "fixed": "All cells derived from a rate repaint together, and the home table's arrow follows the current direction of payment.",
+  "impact": "number"
+ },
+ {
+  "date": "2026-10-15",
+  "commit": "c6c8529",
+  "page": "/liquidations, /tools",
+  "wrong": "The liquidation map and the calculators used the five-minute snapshot's mark and the map called it live, so a 10x BTC long liquidated at $73,807.29 on the funding page and at $73,767.19 on the map and on the tool that page links to.",
+  "fixed": "Every page and tool computes from one mark, the one-minute live mark when there is one, and states the time it was read.",
+  "impact": "number"
+ },
+ {
+  "date": "2026-09-17",
+  "commit": "b7fae3c",
+  "page": "/learn, /learn/funding-rate",
+  "wrong": "The pages said Binance and Bybit settle funding on an eight-hour cycle, while 26 of 52 Binance contracts settle every four hours.",
+  "fixed": "Settlement intervals are worded from the venue data for each contract.",
+  "impact": "claim"
+ },
+ {
+  "date": "2026-09-17",
+  "commit": "3fb443e",
+  "page": "/learn/liquidation-price",
+  "wrong": "The common formula was fed the tier-capped leverage rather than the leverage requested, so a 10x request on a 5x-capped tier showed the formula's 5x price ($80.00) and understated the gap the page exists to show.",
+  "fixed": "The common formula uses the leverage the reader asked for; contracts without a cap are unchanged.",
+  "impact": "number"
+ },
+ {
+  "date": "2026-09-17",
+  "commit": "3fb443e",
+  "page": "/funding/{coin}, /tools/position-size",
+  "wrong": "A sentence giving liquidation's distance from the common formula's price took the percentage on the correct price instead (1.25% against 1.27% on BTC at 10x), and at 1x the page claimed more room 'because the tier caps the leverage' when nothing was capped.",
+  "fixed": "Both prices are compared as distances from entry on the same base, and the sentence distinguishes less room, more room from a cap, more room and the same room.",
+  "impact": "number"
+ },
+ {
+  "date": "2026-09-17",
+  "commit": "3fb443e",
+  "page": "/terms",
+  "wrong": "The terms said no personal data is collected, while the privacy page listed an analytics cookie identifier and IP address handling.",
+  "fixed": "The terms say there are no accounts and refer to the privacy page for what data is processed.",
+  "impact": "claim"
+ },
+ {
+  "date": "2026-08-31",
+  "commit": "97e4eef",
+  "page": "/privacy",
+  "wrong": "The page said no off-origin host could receive a request and that sending full page URLs to Google stopped when the analytics tag was removed, but the tag had been restored and was sending full URLs, including figures typed into calculators.",
+  "fixed": "Analytics is sent only the origin and path, and the page states what was sent, when, and that it was measured.",
+  "impact": "claim"
+ },
+ {
+  "date": "2026-08-31",
+  "commit": "3232bef",
+  "page": "/tools/position-size",
+  "wrong": "For a short whose stop sat far on the losing side, the calculator printed '1x / keeps liquidation beyond' the stop, although liquidation at 1x arrived before the stop and no leverage satisfied the claim.",
+  "fixed": "In that case the card prints a dash instead of a leverage, in both the server render and the in-page recalculation.",
+  "impact": "money"
+ },
+ {
+  "date": "2026-08-31",
+  "commit": "9e6831b",
+  "page": "/coins",
+  "wrong": "The legend under the table said ▲ meant longs pay shorts and ▼ shorts pay longs, while the table's only arrows showed 24-hour price direction.",
+  "fixed": "The page uses the arrow-free funding legend and says what its own arrows mean.",
+  "impact": "claim"
+ },
+ {
+  "date": "2026-08-31",
+  "commit": "9e6831b",
+  "page": "/liquidations/survival",
+  "wrong": "The lede said the grid tested 'the last 90 daily closes' (3 June to 30 August at the default 30-day hold), while the days actually tested ran 3 May to 31 July.",
+  "fixed": "The lede states the span of entry days actually tested, as the caption already did.",
+  "impact": "number"
+ },
+ {
+  "date": "2026-08-27",
+  "commit": "7c0bad2",
+  "page": "/methodology",
+  "wrong": "Raw funding rates were printed to seven decimals, so in 29 of 143 venue cells the stated conversion did not reproduce the APR beside it (ETH on Binance: 0.0000857 gives 9.38% beside a printed 9.39%).",
+  "fixed": "Each rate is printed with the fewest decimals at which the conversion lands on the printed APR, which leaves no cell irreproducible.",
+  "impact": "number"
+ },
+ {
+  "date": "2026-08-24",
+  "commit": "c823dea",
+  "page": "/liquidations",
+  "wrong": "The page never said whose open interest it models, so 'Total notional modelled — equal to current open interest, $3.36B' read as the whole market's.",
+  "fixed": "The lede, the assumptions table and the meta description state that the figure is Hyperliquid's book.",
+  "impact": "claim"
+ },
+ {
+  "date": "2026-08-24",
+  "commit": "69f75af",
+  "page": "/liquidations",
+  "wrong": "The 'Leverage mix used' table printed the raw profile weights instead of the renormalised ones the model uses, so on a 3x contract it showed 9% of open interest at 2x where the model placed 100%.",
+  "fixed": "The table and the model read the same weights from one function.",
+  "impact": "number"
+ },
+ {
+  "date": "2026-08-20",
+  "commit": "d33c711",
+  "page": "/methodology, /unlocks",
+  "wrong": "The pages claimed the raw rate comparison 'every other site publishes' is wrong and that the method found what 'nobody else has', claims about other sites that had not been surveyed.",
+  "fixed": "They state the checkable mechanism and say that a comparison with other sites was not measured.",
+  "impact": "claim"
+ },
+ {
+  "date": "2026-08-20",
+  "commit": "339b371",
+  "page": "/tools/position-size",
+  "wrong": "A short with its stop on the profitable side was told the stop executes first and the loss is bounded by the budget, and after a leverage change the verdict sentence kept the old leverage and liquidation price.",
+  "fixed": "The verdict has three states that account for which side the stop is on, and every figure in it updates with the inputs.",
+  "impact": "money"
+ },
+ {
+  "date": "2026-08-20",
+  "commit": "74404c3",
+  "page": "/coins/{coin}",
+  "wrong": "On the ten coin pages the live layer was frozen after the switch to perpetual prices: price, change, mark and the page clock stopped updating after load.",
+  "fixed": "The live layer updates these figures again, verified on the live site.",
+  "impact": "number"
+ },
+ {
+  "date": "2026-08-18",
+  "commit": "0996561",
+  "page": "/funding/{coin}",
+  "wrong": "The basis divided a five-minute snapshot mark by a one-minute spot price, so its sign could invert (AVAX printed +6.0 bps where the matched value was −0.2 bps).",
+  "fixed": "Both prices are read on one clock and the printed mark, spot and basis reconcile.",
+  "impact": "number"
+ },
+ {
+  "date": "2026-08-18",
+  "commit": "2f65971",
+  "page": "site-wide",
+  "wrong": "Open interest from Hyperliquid alone was presented unqualified as the market's, about a fifth of the three venues' combined BTC figure that day.",
+  "fixed": "Every open interest figure is labelled Hyperliquid, and /open-interest states the scope.",
+  "impact": "claim"
+ },
+ {
+  "date": "2026-08-18",
+  "commit": "db95a27",
+  "page": "/coins/{coin}",
+  "wrong": "When the live layer updated a funding rate, the weekly cost, direction words and venue spread beside it kept the earlier rate ($2.30 a week shown beside 0.90%, which costs $1.73).",
+  "fixed": "The derived cells repaint with the rate.",
+  "impact": "number"
+ },
+ {
+  "date": "2026-08-18",
+  "commit": "31fb0e8",
+  "page": "/funding/{coin} charts",
+  "wrong": "On 4H and 1W charts each bar carried funding from a window offset from the bar it was drawn under, and two 4H bars on BTC showed the opposite direction of payment.",
+  "fixed": "Funding is keyed to the bar the chart draws, for every timeframe.",
+  "impact": "number"
+ },
+ {
+  "date": "2026-08-18",
+  "commit": "d84ebe6",
+  "page": "/, /watchlist, /funding",
+  "wrong": "Two different Hyperliquid funding rates, the current interval's and the next one's, were both labelled 'Hyperliquid funding APR', so 21 of 49 coins disagreed between pages and three showed opposite directions (PENDLE −6.10% against 5.90%).",
+  "fixed": "Every page uses the next-interval rate that the venue comparison is computed from.",
+  "impact": "number"
+ },
+ {
+  "date": "2026-08-17",
+  "commit": "38c04a5",
+  "page": "/tools/funding-cost and other calculators",
+  "wrong": "Invalid inputs went straight into the arithmetic, so a negative number of days told a long position it would receive the amount it would in fact pay.",
+  "fixed": "Inputs are validated at the boundary, and the direction of payment depends only on the rate and the side.",
+  "impact": "money"
+ },
+ {
+  "date": "2026-08-17",
+  "commit": "2675fc2",
+  "page": "/privacy, /about, /watchlist",
+  "wrong": "The privacy page's description named Google Analytics with two cookies while its body said no analytics ran, and /about and /watchlist made privacy claims that an analytics setting would make false.",
+  "fixed": "The description follows the same setting as the body, and the unconditional claims are removed.",
+  "impact": "claim"
+ },
+ {
+  "date": "2026-08-17",
+  "commit": "0d2e2c2",
+  "page": "/funding/{coin}",
+  "wrong": "'Next settlement' printed Hyperliquid's start-of-hour time, which was always in the past.",
+  "fixed": "The time is rolled forward to the next settlement that has not yet happened.",
+  "impact": "number"
+ },
+ {
+  "date": "2026-08-17",
+  "commit": "c97a566",
+  "page": "home page",
+  "wrong": "The flip feed showed 25 rows under a heading covering all 104 contracts that flipped, without saying so, and printed minute-exact flip times for flips detected across gaps of up to 14 hours.",
+  "fixed": "The feed states how many flipped and how many are shown, and the column is 'Detected', with a window where the samples were far apart.",
+  "impact": "claim"
+ },
+ {
+  "date": "2026-08-17",
+  "commit": "78050b0",
+  "page": "/status",
+  "wrong": "The minute-tick card counted every recorded tick as a failure and printed '60 failed' for an hour in which 7 had failed.",
+  "fixed": "Failures and coverage are counted separately, so the card reports failed ticks and ticks that never ran.",
+  "impact": "number"
+ },
+ {
+  "date": "2026-08-17",
+  "commit": "7f1e652",
+  "page": "home page",
+  "wrong": "The flip feed's 'Now (APR)' column held the rate at the moment of the flip, up to 24 hours old and coloured as current, and one contract could appear four times with four different 'now' values.",
+  "fixed": "That column is 'After the flip', a real current rate sits beside it, colour applies only to the current value, and each contract appears once.",
+  "impact": "number"
+ },
+ {
+  "date": "2026-08-17",
+  "commit": "615ed1f",
+  "page": "/tools/leverage",
+  "wrong": "The meta description said maximum leverage steps down as position size grows, which is false for the 20 of 50 contracts with a single margin tier.",
+  "fixed": "Single-tier contracts get a description saying the same maximum leverage applies at every size.",
+  "impact": "claim"
+ },
+ {
+  "date": "2026-08-17",
+  "commit": "76ba878",
+  "page": "/liquidations/sweep",
+  "wrong": "The page said the fall took 30 hours; it took 23, and 30 hours was the width of the window examined.",
+  "fixed": "All three places, including the meta description, say 23 hours.",
+  "impact": "number"
+ },
+ {
+  "date": "2026-08-17",
+  "commit": "76ba878",
+  "page": "/liquidations/survival",
+  "wrong": "The grid judged positions against the day still in progress, so a position could be recorded as surviving against a partial low.",
+  "fixed": "Only completed days are used, so every column has a complete window.",
+  "impact": "number"
+ },
+ {
+  "date": "2026-08-17",
+  "commit": "7336b27",
+  "page": "/liquidations/survival",
+  "wrong": "Below a 30-day hold the legend kept fixed day bands, printing ranges such as '15–7' for days the grid cannot contain.",
+  "fixed": "The bands are clipped to the hold and their labels derived from it.",
+  "impact": "number"
+ },
+ {
+  "date": "2026-08-17",
+  "commit": "d0e372c",
+  "page": "/liquidations/survival",
+  "wrong": "The page opened by saying nothing on it is modelled, while deciding that a position would have closed rests on at least six unstated assumptions.",
+  "fixed": "It says the prices are real and the closing rule is a model, and lists the six assumptions with the direction each one bends the answer.",
+  "impact": "claim"
+ },
+ {
+  "date": "2026-08-17",
+  "commit": "2d8001f",
+  "page": "/tools/funding-cost",
+  "wrong": "Switching the side from Long to Short changed nothing on screen, so a short was shown as paying the amount it would in fact receive.",
+  "fixed": "Changing the side re-renders the page from the server, which states pay or receive correctly.",
+  "impact": "money"
+ },
+ {
+  "date": "2026-08-17",
+  "commit": "261bd9a",
+  "page": "/tools/position-size",
+  "wrong": "After an input change the verdict box turned to its warning state while its sentence still said 'The stop is reachable'.",
+  "fixed": "Both verdicts are rendered and the one matching the current inputs is shown.",
+  "impact": "money"
+ },
+ {
+  "date": "2026-08-17",
+  "commit": "da0b875",
+  "page": "/tools/funding-arbitrage",
+  "wrong": "The 'if both settled 8-hourly' figure showed 32.86% beside a real spread of 65.71%, exactly half, because it assumed eight hours when both legs settled every four.",
+  "fixed": "When the legs share an interval the comparison uses that interval and the two figures agree.",
+  "impact": "number"
+ },
+ {
+  "date": "2026-08-17",
+  "commit": "da0b875",
+  "page": "/tools/leverage, /tools/position-size",
+  "wrong": "Sub-cent liquidation prices were rounded to two decimals, so the leverage tool printed 'Liquidation falls at $0.00, 5.26% from the mark' for PUMP and the position-size tool rewrote kBONK's liquidation price to $0.00 on any input change.",
+  "fixed": "Instrument prices are printed at a precision derived from their magnitude.",
+  "impact": "money"
+ },
+ {
+  "date": "2026-08-17",
+  "commit": "eef39ee",
+  "page": "/tools/position-size",
+  "wrong": "On contracts capped below 10x the card read 'Liquidation at 10x' beside the 5x liquidation price (MON: $0.01793).",
+  "fixed": "The label shows the leverage actually used after the tier cap.",
+  "impact": "money"
+ },
+ {
+  "date": "2026-08-17",
+  "commit": "a684740",
+  "page": "home page",
+  "wrong": "'Funding is most expensive on FARTCOIN at 66.70% a year' was computed from Hyperliquid alone while /funding showed 80.35% for the same coin on Bybit.",
+  "fixed": "The lede and both cards name Hyperliquid as their scope.",
+  "impact": "claim"
+ },
+ {
+  "date": "2026-08-15",
+  "commit": "caa6b15",
+  "page": "/coins/{coin}",
+  "wrong": "The basis was computed from prices read on two different clocks, so its sign inverted repeatedly (ADA showed −0.6 bps where the matched value was +2.2).",
+  "fixed": "Mark and spot are read in the same one-minute pass, and the displayed mark uses the same value.",
+  "impact": "number"
+ },
+ {
+  "date": "2026-08-15",
+  "commit": "ddf379b",
+  "page": "/funding/{coin}",
+  "wrong": "On 20 of 50 contracts the page said 'At 10× long' beside a liquidation price computed at the tier maximum of 5x or 3x, where 10x cannot be opened.",
+  "fixed": "The label states the leverage actually used and says when it was capped.",
+  "impact": "money"
+ },
+ {
+  "date": "2026-08-15",
+  "commit": "ddf379b",
+  "page": "/funding/{coin}",
+  "wrong": "On 14 of 50 contracts priced under about $0.25, the gap between the correct and the common liquidation price was printed as '$0.00 away', in the worst case 8.9% of the price.",
+  "fixed": "The gap is printed at price precision and the percentage leads.",
+  "impact": "number"
+ },
+ {
+  "date": "2026-08-15",
+  "commit": "ddf379b",
+  "page": "/tools/position-size",
+  "wrong": "The default stop was rounded to two decimals, so on DOGE a 5% stop became 0.09% and the calculator described a $278,028 position needing $27,803 of margin on a $25,000 account.",
+  "fixed": "The stop and every price on the page keep the precision of the instrument's price.",
+  "impact": "money"
+ },
+ {
+  "date": "2026-08-15",
+  "commit": "0fbf54a",
+  "page": "/liquidations",
+  "wrong": "The tooltip over the brightest heatmap cell gave a closed band of '$29.65M – $30.41M' for a cell the caption said held $41.2M, and disagreed with the legend's '≥ $29.6M'.",
+  "fixed": "The top step reads '≥ $29.6M', matching the legend, with one formatter per kind of figure.",
+  "impact": "number"
+ },
+ {
+  "date": "2026-08-15",
+  "commit": "20407a9",
+  "page": "/data-sources",
+  "wrong": "The page promised every endpoint but listed five of nine, gave funding and mark a five-minute cadence when they refresh every minute, and said OKX was used as an internal cross-check although it was never called.",
+  "fixed": "All endpoints and hosts are listed with their real cadences, and the page says OKX is not called at all.",
+  "impact": "claim"
+ },
+ {
+  "date": "2026-08-14",
+  "commit": "c2b6ae7",
+  "page": "/funding/{coin}",
+  "wrong": "The headline figure on 50 contract pages was the Hyperliquid perpetual mark with no label, while the coin pages showed a spot price under the same word, so one asset showed two unexplained prices.",
+  "fixed": "The headline is labelled as the Hyperliquid perpetual mark.",
+  "impact": "claim"
+ },
+ {
+  "date": "2026-08-14",
+  "commit": "db6be7b",
+  "page": "/coins/{coin}",
+  "wrong": "The chart's last-price marker showed the last candle close ($62,725 on BTC) under a headline price of $62,977.52, and the headline could stop updating if the tab was not visible when it loaded.",
+  "fixed": "The marker follows the current quote and the page keeps polling in every state.",
+  "impact": "number"
+ }
+]

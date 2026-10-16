@@ -29,7 +29,7 @@
    refused it within one run. Its own structured data had been taking a data stamp from
    `fetchedAt` the whole time, so the two surfaces disagreed until now. */
 export const PAGES_DATA = ["/", "/methodology", "/about"] as const;
-export const PAGES_CODE = ["/methodology/liquidations", "/data-sources", "/privacy", "/terms"] as const;
+export const PAGES_CODE = ["/methodology/liquidations", "/data-sources", "/privacy", "/terms", "/corrections"] as const;
 
 /** The calculators. /tools/liquidation-price is deliberately absent: it serves 410 Gone. */
 export const TOOLS = ["/tools", "/tools/position-size", "/tools/leverage", "/tools/funding-cost", "/tools/funding-arbitrage"] as const;
