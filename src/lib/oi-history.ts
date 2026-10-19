@@ -152,3 +152,30 @@ export async function oiMoves(db: D1Like | undefined, symbol: string, nowOi: num
   const [h24, h7] = await Promise.all([readOiHistory(db, now, 24, 3), readOiHistory(db, now, 168, 3)]);
   return { d24: oiChange(h24, symbol, nowOi), d7: oiChange(h7, symbol, nowOi) };
 }
+
+/**
+ * ONE CONTRACT'S OPEN INTEREST OVER TIME, for the pages that draw a single contract. readOiSeries
+ * reads every contract at once, which the hub needs and a contract page does not; this asks for
+ * one symbol, so a map page reads ~180 rows rather than ~10,000. Same buckets, same NaN rule.
+ */
+export async function readOiSeriesFor(db: D1Like | undefined, symbol: string, now: number, days = 30, bucketHours = 4): Promise<{ buckets: number[]; oi: number[] } | null> {
+  if (!db) return null;
+  const step = bucketHours * 3_600_000;
+  const first = Math.floor((now - days * 86_400_000) / step) + 1;
+  const last = Math.floor(now / step);
+  try {
+    const { results } = await db
+      .prepare("SELECT CAST(at / ?1 AS INTEGER) AS b, AVG(oi) AS oi FROM oi_snapshot WHERE symbol = ?3 AND at >= ?2 GROUP BY b")
+      .bind(step, first * step, symbol)
+      .all<{ b: number; oi: number }>();
+    const buckets = Array.from({ length: last - first + 1 }, (_, i) => (first + i) * step);
+    const oi = buckets.map(() => NaN);
+    for (const r of results ?? []) {
+      const i = r.b - first;
+      if (i >= 0 && i < buckets.length && r.oi > 0) oi[i] = r.oi;
+    }
+    return oi.some(Number.isFinite) ? { buckets, oi } : null;
+  } catch {
+    return null;
+  }
+}

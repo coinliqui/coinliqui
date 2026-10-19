@@ -1,0 +1,65 @@
+---
+/* =========================================================================================
+   OPEN POSITIONS AND PRICE OVER 30 DAYS, BOTH INDEXED TO 100 AT THE START.
+
+   The map above is built from open interest as it stands now; this is how that open interest got
+   here. Open positions are counted in the contract's own units, so a rally does not pass for new
+   positions. Read together with price, the pair separates positions being opened from positions
+   being closed — the four combinations /learn/open-interest sets out. Path and words come from
+   oiPath() in src/lib/cohort.ts.
+   ========================================================================================= */
+import type { OiPath } from "../lib/cohort.ts";
+import { INK } from "../lib/chart.ts";
+import { shortDate } from "../../public/shared.js";
+
+interface Props { path: OiPath; symbol: string }
+const { path, symbol } = Astro.props;
+const n = path.t.length;
+const all = [...path.oiIdx, ...path.pxIdx, 100];
+const lo = Math.min(...all), hi = Math.max(...all);
+const pad = (hi - lo) * 0.08 || 1;
+const yMin = lo - pad, yMax = hi + pad;
+const VW = 1000, VH = 240;
+const x = (i: number) => (i / (n - 1)) * VW;
+const y = (v: number) => ((yMax - v) / (yMax - yMin)) * VH;
+const line = (vs: number[]) => vs.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
+const endOi = path.oiIdx[n - 1], endPx = path.pxIdx[n - 1];
+const pos = (v: number) => `top:calc(${y(v).toFixed(1)} / ${VH} * 100%)`;
+/* The two end labels are kept apart when the lines finish close together. */
+const apart = Math.abs(y(endOi) - y(endPx)) < 22;
+const oiTop = apart ? Math.min(y(endOi), y(endPx)) - 11 : y(endOi);
+const pxTop = apart ? Math.max(y(endOi), y(endPx)) + 11 : y(endPx);
+---
+<figure class="oip">
+  <div class="oip__plot">
+    <svg viewBox={`0 0 ${VW} ${VH}`} preserveAspectRatio="none" class="oip__svg" role="img"
+         aria-label={`${symbol} open positions counted in ${symbol}, and its price, each indexed to 100 on ${shortDate(path.t[0])}.`}>
+      <line x1="0" x2={VW} y1={y(100)} y2={y(100)} stroke={INK.zero} stroke-width="1" vector-effect="non-scaling-stroke" />
+      <polyline points={line(path.pxIdx)} fill="none" stroke={INK.neutral} stroke-opacity="0.55" stroke-width="1.5" vector-effect="non-scaling-stroke" />
+      <polyline points={line(path.oiIdx)} fill="none" stroke={INK.acc} stroke-width="2" vector-effect="non-scaling-stroke" />
+    </svg>
+    <span class="oip__lab oip__lab--oi" style={`top:calc(${oiTop.toFixed(1)} / ${VH} * 100%)`}>Open positions {Math.round(endOi)}</span>
+    <span class="oip__lab" style={`top:calc(${pxTop.toFixed(1)} / ${VH} * 100%)`}>Price {Math.round(endPx)}</span>
+    <span class="oip__base" style={pos(100)}>100</span>
+  </div>
+  <figcaption class="oip__cap">
+    <span>{shortDate(path.t[0])}</span>
+    <span>Both lines start at 100; open positions are counted in {symbol}, not dollars.</span>
+    <span>{shortDate(path.t[n - 1])}</span>
+  </figcaption>
+</figure>
+<style>
+  .oip { margin: var(--gap-block) 0; background: #0f1215; border-radius: 12px; padding: 12px 12px 8px; }
+  .oip__plot { position: relative; height: 200px; }
+  .oip__svg { position: absolute; top: 0; left: 0; width: calc(100% - 150px); height: 100%; display: block; }
+  .oip__lab { position: absolute; right: 0; width: 144px; transform: translateY(-50%); font: 600 12px var(--mono); color: var(--text-dim); white-space: nowrap; pointer-events: none; }
+  .oip__lab--oi { color: var(--accent); }
+  .oip__base { position: absolute; left: 4px; transform: translateY(-120%); font: 11px var(--mono); color: var(--text-faint); pointer-events: none; }
+  .oip__cap { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; margin-top: 8px; font-size: 12px; color: var(--text-faint); }
+  .oip__cap span:nth-child(2) { text-align: center; flex: 1; }
+  @media (max-width: 600px) {
+    .oip__cap span:nth-child(2) { order: 3; flex-basis: 100%; text-align: left; }
+    .oip__svg { width: calc(100% - 128px); }
+    .oip__lab { width: 122px; font-size: 11px; }
+  }
+</style>

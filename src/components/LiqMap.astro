@@ -41,7 +41,9 @@ import More from "./More.astro";
 import LevelsMap from "./LevelsMap.astro";
 import Overview from "./Overview.astro";
 import { extremeBy } from "../lib/extreme.ts";
-import { bookWords, daysFromHourly, daysThatReached, rungDaysWords, dayProfile, dayProfileWords, distanceInDays } from "../lib/cohort.ts";
+import { bookWords, daysFromHourly, daysThatReached, rungDaysWords, dayProfile, dayProfileWords, distanceInDays, oiPath, oiPathWords } from "../lib/cohort.ts";
+import { readOiSeriesFor } from "../lib/oi-history.ts";
+import OiPath from "./OiPath.astro";
 import DayMoves from "./DayMoves.astro";
 import { aboutOf, firstSentence } from "../lib/contracts.ts";
 import { priceDp, axisDp as axisDpOf } from "../lib/funding.ts";
@@ -310,6 +312,9 @@ const rungDays = rungs.map((r) => ({ L: r.L, ...daysThatReached(month, r.longDis
 const rungNote = rungDaysWords(perp.symbol, rungDays);
 const book = bookWords(snap.perps, perp.symbol);
 const about = aboutOf(perp.symbol);
+/* HOW THE OPEN INTEREST THE MAP IS SCALED FROM GOT HERE — 30 days of stored readings, one query. */
+const oiSeries = await readOiSeriesFor((Astro.locals as any)?.runtime?.env?.DB, perp.symbol, snap.fetchedAt);
+const oiTrail = oiSeries ? oiPath(oiSeries.buckets, oiSeries.oi, hourly?.d) : null;
 const dayProf = dayProfile(month);
 /* THE HEAVIEST STANDING CLUSTER, MEASURED IN THIS CONTRACT'S OWN DAYS: a 9% cluster is near on a
    coin that moves 6% a day and far on one that moves 1%. */
@@ -668,6 +673,17 @@ const formNote: string | null = (() => {
     </p>
   )}
 
+
+  {oiTrail && (
+    <>
+      <h2 class="section">How {perp.symbol}'s open interest got here</h2>
+      <p class="section-note">
+        {oiPathWords(perp.symbol, oiTrail)}
+        {" "}<a class="link" href="/learn/open-interest">Reading open interest with price →</a>
+      </p>
+      <OiPath path={oiTrail} symbol={perp.symbol} />
+    </>
+  )}
 
   <h2 class="section">How far {perp.symbol} can move before each leverage liquidates — derived, not modelled</h2>
   <p class="section-note">

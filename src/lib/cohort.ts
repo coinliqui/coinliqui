@@ -226,3 +226,45 @@ export function fitWords(symbol: string, refSymbol: string, f: { corr: number; b
     : ` At that fit a 1% day in ${refSymbol} says little about ${symbol}'s day.`;
   return `Over ${f.days} daily closes ${symbol} has tracked ${refSymbol} ${how} (correlation ${f.corr.toFixed(2)}).${beta}`;
 }
+
+/* =========================================================================================
+   OPEN POSITIONS AND PRICE, TOGETHER — the pairing /learn/open-interest calls the most
+   informative way to read open interest. Measured in the contract's own units (stored notional
+   divided by the hourly close at that moment), because notional rises with price on its own and
+   would read a rally as new positions.
+   ========================================================================================= */
+export interface OiPath { t: number[]; oiIdx: number[]; pxIdx: number[]; oiChg: number; pxChg: number; peakT: number; troughT: number }
+export function oiPath(buckets: readonly number[], oiNotional: readonly number[], hourly: readonly Candle[] | undefined | null): OiPath | null {
+  const hs = [...(hourly ?? [])].sort((a, b) => a[0] - b[0]);
+  if (!hs.length) return null;
+  let j = 0;
+  const rows: { t: number; coins: number; px: number }[] = [];
+  for (let i = 0; i < buckets.length; i++) {
+    if (!Number.isFinite(oiNotional[i])) continue;
+    while (j + 1 < hs.length && hs[j + 1][0] <= buckets[i]) j++;
+    const c = hs[j];
+    if (c[0] > buckets[i] || buckets[i] - c[0] > 6 * 3_600_000 || !(c[4] > 0)) continue;
+    rows.push({ t: buckets[i], coins: oiNotional[i] / c[4], px: c[4] });
+  }
+  if (rows.length < 20) return null;
+  const o0 = rows[0].coins, p0 = rows[0].px;
+  const oiIdx = rows.map((r) => (r.coins / o0) * 100), pxIdx = rows.map((r) => (r.px / p0) * 100);
+  const hi = oiIdx.indexOf(Math.max(...oiIdx)), lo = oiIdx.indexOf(Math.min(...oiIdx));
+  return {
+    t: rows.map((r) => r.t), oiIdx, pxIdx,
+    oiChg: rows[rows.length - 1].coins / o0 - 1, pxChg: rows[rows.length - 1].px / p0 - 1,
+    peakT: rows[hi].t, troughT: rows[lo].t,
+  };
+}
+export function oiPathWords(symbol: string, p: OiPath): string {
+  const days = Math.round((p.t[p.t.length - 1] - p.t[0]) / 86_400_000);
+  const oiUp = p.oiChg >= 0, pxUp = p.pxChg >= 0;
+  const head = `Counted in ${symbol} rather than dollars, open positions are ${oiUp ? "up" : "down"} ${pct(Math.abs(p.oiChg))} over ${days} days while the price is ${pxUp ? "up" : "down"} ${pct(Math.abs(p.pxChg))}.`;
+  const read = Math.abs(p.oiChg) < 0.03
+    ? " The book has barely changed size, so the move was made by positions already open."
+    : oiUp && pxUp ? " More positions joined the rise: the pattern read as new longs opening."
+    : oiUp && !pxUp ? " More positions were opened into the fall: the pattern read as new shorts opening."
+    : !oiUp && pxUp ? " Positions left while the price rose: the pattern read as shorts closing, exits rather than new conviction."
+    : " Positions were unwound as the price fell: the pattern read as longs closing.";
+  return `${head}${read} The book was largest on ${shortDate(p.peakT)} and smallest on ${shortDate(p.troughT)}.`;
+}
