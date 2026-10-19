@@ -43,6 +43,7 @@ import Overview from "./Overview.astro";
 import { extremeBy } from "../lib/extreme.ts";
 import { bookWords, daysFromHourly, daysThatReached, rungDaysWords, dayProfile, dayProfileWords, distanceInDays } from "../lib/cohort.ts";
 import DayMoves from "./DayMoves.astro";
+import { aboutOf, firstSentence } from "../lib/contracts.ts";
 import { priceDp, axisDp as axisDpOf } from "../lib/funding.ts";
 
 interface Props {
@@ -308,6 +309,7 @@ const month = daysFromHourly(hourly?.d, snap.fetchedAt);
 const rungDays = rungs.map((r) => ({ L: r.L, ...daysThatReached(month, r.longDist, r.shortDist) }));
 const rungNote = rungDaysWords(perp.symbol, rungDays);
 const book = bookWords(snap.perps, perp.symbol);
+const about = aboutOf(perp.symbol);
 const dayProf = dayProfile(month);
 /* THE HEAVIEST STANDING CLUSTER, MEASURED IN THIS CONTRACT'S OWN DAYS: a 9% cluster is near on a
    coin that moves 6% a day and far on one that moves 1%. */
@@ -667,7 +669,7 @@ const formNote: string | null = (() => {
   )}
 
 
-  <h2 class="section">How far price can move before each leverage liquidates — derived, not modelled</h2>
+  <h2 class="section">How far {perp.symbol} can move before each leverage liquidates — derived, not modelled</h2>
   <p class="section-note">
     {dayProf && <>{dayProfileWords(perp.symbol, dayProf)}{" "}</>}
     {rungNote ?? `Arithmetic on ${perp.symbol}'s margin tier and the mark: the top of each bar is where a short is closed, the bottom where a long is.`}
@@ -751,6 +753,15 @@ const formNote: string | null = (() => {
     </table>
   </div>
   </More>
+
+  {about && (
+    <section id="about">
+      <h2 class="section">What {about.name} is</h2>
+      {coinPage
+        ? <p class="prose">{firstSentence(about.about)} <a class="link" href={`/coins/${coinPage.slug}#about`}>More on {coinPage.name} →</a></p>
+        : <p class="prose">{about.about}</p>}
+    </section>
+  )}
 
   {siblings && mapSiblings.length > 0 && (
     <>

@@ -1,0 +1,519 @@
+{
+ "BTC": {
+  "name": "Bitcoin",
+  "about": "Bitcoin is a decentralized digital currency introduced by a person or group using the pseudonym Satoshi Nakamoto, whose white paper on a peer-to-peer electronic cash system appeared in October 2008. The network began on 3 January 2009 with the mining of its genesis block. Agreement on the ledger is reached through proof of work: miners compete to find a block hash below a difficulty target, producing a block about every ten minutes, and the block reward halves on a fixed schedule. BTC is used to transfer value and is divisible to eight decimal places, the smallest unit being the satoshi.",
+  "sources": [
+   "https://en.wikipedia.org/wiki/Bitcoin",
+   "https://hyperliquid.gitbook.io/hyperliquid-docs/trading/contract-specifications"
+  ],
+  "checked": "2026-10-19"
+ },
+ "ETH": {
+  "name": "Ethereum (Ether)",
+  "about": "Ether is the native currency of Ethereum, a programmable blockchain described by Vitalik Buterin in a late-2013 white paper and launched on 30 July 2015 with the Frontier release. Ethereum runs smart contracts, programs executed by the Ethereum Virtual Machine that can hold and move assets according to their code. Every transaction consumes gas, which is paid in ether; the base fee is burned and any tip goes to the block proposer. In September 2022 an upgrade known as the Merge moved the network from proof of work to proof of stake.",
+  "sources": [
+   "https://en.wikipedia.org/wiki/Ethereum",
+   "https://hyperliquid.gitbook.io/hyperliquid-docs/trading/contract-specifications"
+  ],
+  "checked": "2026-10-19"
+ },
+ "SOL": {
+  "name": "Solana",
+  "about": "SOL is the native token of Solana, a smart-contract blockchain founded in 2018 by Anatoly Yakovenko and Raj Gokal and developed by Solana Labs and the Solana Foundation. The network went public in March 2020. Solana is secured by validators under proof of stake and adds Proof of History, a sequence of SHA-256 hashes that lets nodes infer the order and timing of events without an outside clock. Every transaction pays a fee in SOL; half of the base fee is burned and the other half goes to the validator, and optional priority fees can be added.",
+  "sources": [
+   "https://en.wikipedia.org/wiki/Solana_(blockchain_platform)",
+   "https://solana.com/news/proof-of-history",
+   "https://solana.com/docs/core/fees"
+  ],
+  "checked": "2026-10-19"
+ },
+ "XRP": {
+  "name": "XRP (XRP Ledger)",
+  "about": "XRP is the native asset of the XRP Ledger, a blockchain built for payments that engineers David Schwartz, Jed McCaleb and Arthur Britto began developing in 2011 and launched in June 2012. Instead of mining, the ledger reaches consensus through validators: each server trusts a chosen list of validators and accepts a ledger version once a large enough share of them agree. A small transaction cost is paid in XRP and destroyed rather than paid to anyone. The company Ripple, co-founded in 2012, uses the ledger and XRP for liquidity in cross-border payments but is a separate entity from the network.",
+  "sources": [
+   "https://xrpl.org/about/history",
+   "https://xrpl.org/docs/concepts/consensus-protocol",
+   "https://xrpl.org/docs/concepts/transactions/transaction-cost"
+  ],
+  "checked": "2026-10-19"
+ },
+ "BNB": {
+  "name": "BNB (BNB Chain)",
+  "about": "BNB, originally called Binance Coin, was introduced by the Binance exchange in July 2017 to pay fees on its platform. It began as a token on Ethereum and moved to BNB Smart Chain after that network was released in September 2020; the token and chain took their current BNB names in 2022. BNB Smart Chain is EVM-compatible and uses Proof of Staked Authority, in which holders stake BNB with validators and an active set chosen by stake takes turns producing blocks. BNB pays gas for transactions and smart contracts and is staked to secure the network and take part in governance.",
+  "sources": [
+   "https://en.wikipedia.org/wiki/Binance",
+   "https://docs.bnbchain.org/bnb-smart-chain/introduction/",
+   "https://hyperliquid.gitbook.io/hyperliquid-docs/trading/contract-specifications"
+  ],
+  "checked": "2026-10-19"
+ },
+ "DOGE": {
+  "name": "Dogecoin",
+  "about": "Dogecoin is a cryptocurrency created by software engineers Billy Markus and Jackson Palmer and launched on 6 December 2013, partly as a joke about Bitcoin and the wave of new coins. Its name and logo come from the Doge internet meme. The protocol was originally forked from Litecoin and draws on Luckycoin. Dogecoin uses proof of work with the Scrypt hash function, produces a block about every minute, and has no maximum supply, with new coins issued continuously. It became known for online tipping on social sites.",
+  "sources": [
+   "https://en.wikipedia.org/wiki/Dogecoin",
+   "https://hyperliquid.gitbook.io/hyperliquid-docs/trading/contract-specifications"
+  ],
+  "checked": "2026-10-19"
+ },
+ "ADA": {
+  "name": "Cardano",
+  "about": "ADA is the native cryptocurrency of Cardano, a public blockchain planned from 2015 by Charles Hoskinson and Jeremy Wood and released in 2017. Its development is split between IOHK, which engineers the protocol, the Cardano Foundation in Switzerland, and Emurgo, which handles commercial work. Cardano runs on Ouroboros, a proof-of-stake protocol, and uses an extended UTXO model; smart contracts, written in the Haskell-based language Plutus, went live in September 2021. ADA is used for transactions, can be staked to help validate the chain and earn rewards, and supports on-chain governance. The token is named after Ada Lovelace, and its smallest unit is the lovelace.",
+  "sources": [
+   "https://en.wikipedia.org/wiki/Cardano_(blockchain_platform)",
+   "https://hyperliquid.gitbook.io/hyperliquid-docs/trading/contract-specifications"
+  ],
+  "checked": "2026-10-19"
+ },
+ "AVAX": {
+  "name": "Avalanche",
+  "about": "AVAX is the native token of Avalanche, a public smart-contract platform launched in September 2020 by Ava Labs, a company co-founded by Cornell researcher Emin Gün Sirer, with backing from the Avalanche Foundation. Its consensus protocol was first described in a 2018 white paper published under the pseudonym Team Rocket. The primary network has three chains: the X-Chain for asset transfers, the P-Chain for coordinating validators, and the C-Chain, an implementation of the Ethereum Virtual Machine that runs Solidity contracts. Transaction fees are paid in AVAX, and nodes stake AVAX to become validators of the primary network.",
+  "sources": [
+   "https://en.wikipedia.org/wiki/Avalanche_(blockchain_platform)",
+   "https://build.avax.network/docs/quick-start/avax-token",
+   "https://hyperliquid.gitbook.io/hyperliquid-docs/trading/contract-specifications"
+  ],
+  "checked": "2026-10-19"
+ },
+ "LINK": {
+  "name": "Chainlink",
+  "about": "LINK is the token of Chainlink, a decentralized oracle network that carries data from outside a blockchain to smart contracts on it. Chainlink was created by Sergey Nazarov and Steve Ellis, who published its white paper with Ari Juels in 2017, and the network launched formally in 2019. Its services include price and data feeds, proof-of-reserve checks, and since 2023 the Cross-Chain Interoperability Protocol for messaging between blockchains. LINK is an Ethereum token following the ERC-677 standard, compatible with ERC-20 wallets; node operators are paid in LINK for delivering data, may post LINK deposits, and holders can stake it to help secure the network.",
+  "sources": [
+   "https://en.wikipedia.org/wiki/Chainlink_(blockchain)",
+   "https://hyperliquid.gitbook.io/hyperliquid-docs/trading/contract-specifications"
+  ],
+  "checked": "2026-10-19"
+ },
+ "LTC": {
+  "name": "Litecoin",
+  "about": "Litecoin is a cryptocurrency and open-source software project created by Charlie Lee and released on 7 October 2011 as a fork of Bitcoin, with software derived from the Bitcoin codebase. It uses proof of work based on the Scrypt hash function instead of Bitcoin's SHA-256 and targets a block about every two and a half minutes. Since 2014 Dogecoin has been merge-mined together with Litecoin. In May 2022 the MimbleWimble Extension Block upgrade was activated as a soft fork, adding optional confidential transactions. Payment services such as BitPay support it.",
+  "sources": [
+   "https://en.wikipedia.org/wiki/Litecoin",
+   "https://hyperliquid.gitbook.io/hyperliquid-docs/trading/contract-specifications"
+  ],
+  "checked": "2026-10-19"
+ },
+ "HYPE": {
+  "name": "Hyperliquid (HYPE)",
+  "about": "HYPE is the native token of Hyperliquid, the layer-1 blockchain that runs the Hyperliquid perpetual and spot exchange itself. The token was created at a genesis event on 29 November 2024, when a large share was distributed to users who had earned points on the platform. HYPE is staked with validators that run HyperBFT, Hyperliquid's proof-of-stake consensus; delegators earn rewards and face a waiting period to unstake. It is also the gas token of HyperEVM, the chain's smart-contract environment, where it pays transaction fees. Unlike most Hyperliquid perpetuals, whose oracle prices are in USDT, the HYPE perpetual's oracle is drawn from Hyperliquid's own spot market and priced in USDC.",
+  "sources": [
+   "https://hyperliquid.gitbook.io/hyperliquid-docs/hypercore/staking.md",
+   "https://www.theblock.co/post/328769/hyperliquid-airdrops-over-1-2-billion-worth-of-tokens-to-users-as-hype-crosses-4-billion-fdv",
+   "https://hyperliquid.gitbook.io/hyperliquid-docs/trading/contract-specifications"
+  ],
+  "checked": "2026-10-19"
+ },
+ "AAVE": {
+  "name": "Aave",
+  "about": "AAVE is the governance token of Aave, a decentralized lending and borrowing protocol that began on Ethereum and now runs on more than a dozen networks. Founded by Stani Kulechov, the project started in 2017 as ETHLend, a peer-to-peer lending service, and relaunched under the Aave name in January 2020 with a pooled model. Suppliers deposit assets into shared pools and receive interest-bearing aTokens, while borrowers must post collateral worth more than their loans. Positions whose health factor falls below one can be liquidated by third parties, who receive collateral at a discount. Interest rates move with how much of each pool is borrowed. AAVE holders vote on protocol changes through a decentralized autonomous organization.",
+  "sources": [
+   "https://en.wikipedia.org/wiki/Aave",
+   "https://aave.com/docs/aave-v3/overview"
+  ],
+  "checked": "2026-10-19"
+ },
+ "AERO": {
+  "name": "Aerodrome Finance",
+  "about": "AERO is the token of Aerodrome Finance, a decentralized exchange on Base, the Ethereum layer-2 network launched by Coinbase. The Velodrome team, which runs a similar exchange on OP Mainnet, deployed Aerodrome as a fork of its own code at the end of August 2023, and part of the initial AERO supply went as veAERO to holders of locked Velodrome tokens. The design follows the vote-escrow model that began with Solidly: users lock AERO to receive veAERO, an NFT representing the lock, and vote each epoch on which liquidity pools receive new AERO emissions. Trading fees from a pool go to the veAERO holders who voted for it, while liquidity providers who stake in that pool's gauge earn emissions instead.",
+  "sources": [
+   "https://www.theblock.co/amp/post/247698/velodrome-to-launch-new-dex-on-coinbases-base-network",
+   "https://github.com/aerodrome-finance/contracts"
+  ],
+  "checked": "2026-10-19"
+ },
+ "ARB": {
+  "name": "Arbitrum",
+  "about": "ARB is the governance token of Arbitrum, a family of Ethereum layer-2 networks built on Nitro, software developed by Offchain Labs. Arbitrum One is a rollup that settles to Ethereum and treats posted results as valid unless someone challenges them during a dispute window. Arbitrum Nova uses the AnyTrust design, in which a small committee holds transaction data to lower fees. ARB is an ERC-20 token minted on Arbitrum One. Holders, or delegates they choose, vote in the ArbitrumDAO on chain upgrades and on how the DAO treasury is spent, with voting power in proportion to tokens held. The token was distributed to early users through an airdrop on 23 March 2023, a week after the launch of DAO governance was announced.",
+  "sources": [
+   "https://docs.arbitrum.foundation/concepts/arb-token",
+   "https://docs.arbitrum.io/welcome/arbitrum-gentle-introduction",
+   "https://www.kitco.com/news/article/2023-03-16/arbitrum-launches-dao-and-announces-arb-airdrop-early-adopters"
+  ],
+  "checked": "2026-10-19"
+ },
+ "ASTER": {
+  "name": "Aster",
+  "about": "ASTER is the governance and utility token of Aster, a decentralized exchange for perpetual futures and spot trading that competes with Hyperliquid. Aster came out of a merger between Astherus, a yield protocol, and APX Finance, a perpetuals platform; YZi Labs, the investment arm formerly known as Binance Labs, had invested in Astherus. The exchange has accepted traders from BNB Chain, Ethereum, Solana and Arbitrum, and in March 2026 it launched its own layer-1 network, Aster Chain, where orders stay encrypted until they execute. ASTER's token generation event was on 17 September 2025. The token is used for staking, voting and rewards. Since March 2026, ecosystem tokens are released only as staking rewards, and a share of platform fees has funded buybacks since December 2025.",
+  "sources": [
+   "https://www.theblock.co/amp/post/395724/aster-perps-dex-staking-token-emissions-changpeng-zhao",
+   "https://bitpinas.com/learn-how-to-guides/aster-guide/",
+   "https://docs.asterdex.com/"
+  ],
+  "checked": "2026-10-19"
+ },
+ "CRV": {
+  "name": "Curve DAO Token (Curve Finance)",
+  "about": "CRV is the native token of Curve, a decentralized exchange whose automated market maker pools are designed for swapping stablecoins and other assets of equal value with low slippage. Michael Egorov founded the project, and CRV launched on Ethereum in August 2020. New CRV is released on a fixed schedule that slows each August and is paid to liquidity providers in pools and lending markets. Holders can lock CRV for anywhere from one week to four years to receive veCRV, which cannot be transferred and grows with the length of the lock. veCRV earns a share of weekly fee revenue, votes on governance proposals and on which pools receive emissions, and boosts the holder's own liquidity rewards.",
+  "sources": [
+   "https://knowledge.curve.finance/docs/user/curve-tokens/crv.md",
+   "https://docs.curve.finance/user/curve-tokens/vecrv",
+   "https://forklog.com/en/curve-finance-to-launch-its-own-stablecoin/"
+  ],
+  "checked": "2026-10-19"
+ },
+ "ENA": {
+  "name": "Ethena",
+  "about": "ENA is the governance token of Ethena, a protocol that issues USDe, a synthetic dollar backed by crypto assets paired with short futures and perpetual positions rather than by bank deposits. The protocol earns most of its revenue from delta-neutral basis trades in crypto derivatives markets, with lending and other sources adding to it. sUSDe is the savings version of USDe and receives part of that revenue. Only approved counterparties can mint or redeem USDe directly. Ethena opened to the public in February 2024, and ENA launched on 2 April 2024 with an airdrop to users. ENA holders vote on questions such as what backs USDe and how protocol revenue is used, and they can stake ENA as sENA. The token is available on Ethereum and several other chains.",
+  "sources": [
+   "https://docs.ethena.fi/ena",
+   "https://docs.ethena.fi/",
+   "https://www.binance.com/en/research/projects/ethena"
+  ],
+  "checked": "2026-10-19"
+ },
+ "ETHFI": {
+  "name": "ether.fi",
+  "about": "ETHFI is the governance token of ether.fi, an Ethereum staking protocol. Users deposit ETH or liquid staking tokens and receive eETH one-to-one. The deposited ETH is staked and also restaked through EigenLayer, where it helps secure additional services such as bridges, data layers and layer-2 networks in return for extra rewards. eETH can be used across decentralized finance, and weETH is its wrapped, non-rebasing form. The protocol also offers automated yield strategies for eETH holders, a product for borrowing against an ether.fi balance, and staking services for institutions. ETHFI launched in March 2024, with part of the distribution going through Binance's launchpad, and holders use it to take part in governing the protocol.",
+  "sources": [
+   "https://tastycrypto.com/defi/ether-fi-explained"
+  ],
+  "checked": "2026-10-19"
+ },
+ "FET": {
+  "name": "Artificial Superintelligence Alliance (formerly Fetch.ai)",
+  "about": "FET is the token of the Artificial Superintelligence Alliance, which grew out of Fetch.ai, a project launched in 2019 to build software agents that negotiate, transact and coordinate on-chain. The alliance was announced in March 2024, and on 13 June 2024 the AGIX token of SingularityNET and the OCEAN token of Ocean Protocol began converting into FET at fixed rates. CUDOS joined later in 2024, and Ocean Protocol left in October 2025. A planned renaming of the ticker from FET to ASI had not happened as of mid-2026, so markets still list the token as FET. Alliance products include ASI:Chain, a layer-1 network in early testing, the ASI-1 Mini language model, which the alliance says runs on FET, and a GPU cloud service.",
+  "sources": [
+   "https://phemex.com/academy/artificial-superintelligence-alliance-fet-ai-merger",
+   "https://superintelligence.io/"
+  ],
+  "checked": "2026-10-19"
+ },
+ "FIL": {
+  "name": "Filecoin",
+  "about": "FIL is the native currency of Filecoin, a peer-to-peer network for storing and retrieving data, developed by Protocol Labs. Clients pay storage providers in FIL to keep their files. Providers must lock FIL as collateral, which is burned if they repeatedly fail to submit the cryptographic proofs showing that the data is still held; the network relies on proof-of-replication and proof-of-spacetime. Filecoin is closely tied to IPFS, the content-addressed file system: most Filecoin nodes are also IPFS nodes, and Filecoin adds a financial reason to keep files stored over the long term. The project raised funds in a 2017 token sale, and its mainnet went live on 15 October 2020.",
+  "sources": [
+   "https://en.wikipedia.org/wiki/Filecoin",
+   "https://docs.filecoin.io/basics/what-is-filecoin",
+   "https://www.theblock.co/post/81183/decentralized-storage-project-filecoin-launches-long-anticipated-mainnet"
+  ],
+  "checked": "2026-10-19"
+ },
+ "HBAR": {
+  "name": "Hedera",
+  "about": "HBAR is the native cryptocurrency of Hedera, a public distributed ledger whose mainnet launched in 2019. Hedera does not use blocks or miners. It reaches consensus with the hashgraph algorithm, invented by co-founder Leemon Baird, in which nodes gossip about transactions and build a directed acyclic graph that sets their order. The design is asynchronous Byzantine fault-tolerant and sits within a proof-of-stake model. Nodes are run by a Governing Council of companies whose members have included IBM, Google Cloud, Deutsche Telekom and Tata Communications. HBAR pays network transaction fees, which are priced in US dollars and converted to HBAR at the moment of each transaction, and it can be staked natively. In September 2024 the code was handed to the Linux Foundation as the open-source project Hiero.",
+  "sources": [
+   "https://en.wikipedia.org/wiki/Hedera_(distributed_ledger)",
+   "https://hedera.com/hbar"
+  ],
+  "checked": "2026-10-19"
+ },
+ "INJ": {
+  "name": "Injective",
+  "about": "INJ is the native token of Injective, a layer-1 blockchain for financial applications in the Cosmos ecosystem, secured by a customized Tendermint proof-of-stake consensus. Injective Labs, founded in 2018 by Eric Chen and Albert Chon, went through the first Binance Labs incubation program. The chain has a built-in exchange module that applications use for trading and derivatives. Holders stake INJ with validators to secure the network, pay transaction fees in it, and vote on governance proposals with staked tokens. Fees from exchange applications feed a weekly burn auction, in which bidders pay INJ for a basket of tokens and the winning INJ is destroyed. The token generation event was on 21 October 2020, and native EVM support went live on 11 November 2025.",
+  "sources": [
+   "https://injective.com/blog/inj-a-programmable-token-economy-for-deflationary-acceleration",
+   "https://www.theblock.co/post/378418/injective-rolls-out-native-evm-support-on-its-high-performance-cosmos-based-chain",
+   "https://en.wikipedia.org/wiki/Injective_(blockchain)"
+  ],
+  "checked": "2026-10-19"
+ },
+ "JUP": {
+  "name": "Jupiter",
+  "about": "JUP is the governance token of Jupiter, a decentralized exchange aggregator on Solana that routes token swaps across the network's on-chain exchanges to find better prices. Beyond swaps, Jupiter offers limit orders, dollar-cost averaging, a perpetual futures venue and a token launchpad called LFG. JUP launched on January 31, 2024, with an airdrop to wallets that had used Jupiter before a November 2023 snapshot, the first of several planned distribution rounds. Holders vote through the Jupiter DAO on matters such as liquidity incentives, future token issuance, grants and which projects appear on the launchpad. The community later voted to lower the token's maximum supply.",
+  "sources": [
+   "https://www.theblock.co/post/272800/jupiter-jup-token-launch-date-memecoin-drop-planned",
+   "https://www.coindesk.com/price/jupiter"
+  ],
+  "checked": "2026-10-19"
+ },
+ "LDO": {
+  "name": "Lido DAO",
+  "about": "LDO is the governance token of Lido DAO, the organization that runs the Lido liquid staking protocol. Lido lets users stake ETH and receive stETH, a transferable token whose balance grows as staking rewards accrue, so the staked value stays usable in other DeFi applications; a wrapped version, wstETH, keeps a fixed balance and rises in value instead. Deposits are spread across node operators chosen through DAO governance. LDO is an ERC-20 token on Ethereum, and holders vote on fees, node operator selection, upgrades and treasury use, with voting weight proportional to holdings. LDO is not a claim on staked ETH or its rewards.",
+  "sources": [
+   "https://docs.lido.fi/lido-dao",
+   "https://blog.portals.fi/lido-finance-how-the-largest-liquid-staking-protocol-works/",
+   "https://onekey.so/blog/ecosystem/what-is-lido-ldo-the-token-behind-ethereum-liquid-staking"
+  ],
+  "checked": "2026-10-19"
+ },
+ "NEAR": {
+  "name": "NEAR Protocol",
+  "about": "NEAR is the native token of NEAR Protocol, a public proof-of-stake blockchain for smart contracts and decentralized applications. The project was founded by Illia Polosukhin and Alexander Skidanov, and its mainnet went live in April 2020, first in a restricted mode before opening up. The network uses a sharded design, described in its Nightshade paper, aimed at high transaction throughput. NEAR pays for transaction gas and is staked by validators. Contracts also lock NEAR in proportion to the data they keep on chain, a mechanism called storage staking; deleting data releases the locked tokens.",
+  "sources": [
+   "https://en.wikipedia.org/wiki/NEAR_Protocol",
+   "https://docs.near.org/protocol/storage/storage-staking"
+  ],
+  "checked": "2026-10-19"
+ },
+ "ONDO": {
+  "name": "Ondo",
+  "about": "ONDO is the governance token of the Ondo DAO, associated with Ondo Finance, a company that brings traditional financial assets on chain. Ondo's products include USDY, a yield-bearing token not offered in the United States; OUSG, which gives institutional investors exposure to short-term US Treasuries; and Ondo Stocks, tokens tracking publicly listed securities. ONDO is an ERC-20 token on Ethereum that also governs the Flux Finance lending protocol, and its supply has no planned inflation. The token was initially non-transferable; after a DAO vote, transfer restrictions were lifted on January 18, 2024. Locked tokens can still vote.",
+  "sources": [
+   "https://docs.ondo.foundation/ondo-token",
+   "https://ondo.finance/"
+  ],
+  "checked": "2026-10-19"
+ },
+ "PAXG": {
+  "name": "PAX Gold",
+  "about": "PAX Gold is a gold-backed token issued by Paxos Trust Company. Each token represents one fine troy ounce of a London Good Delivery gold bar held in vaults in London, so its value follows the gold price rather than a crypto network. Paxos launched it in September 2019 as an ERC-20 token on Ethereum, with approval from the New York Department of Financial Services; Paxos now describes itself as regulated by the OCC, and PAXG also appears in Solana wallets. Holders can redeem tokens for allocated gold bars, for smaller amounts of physical gold through partners, or for US dollars. Tokens are created and destroyed as customers buy and redeem.",
+  "sources": [
+   "https://www.paxos.com/pax-gold",
+   "https://www.theblock.co/post/38553/security",
+   "https://www.gemini.com/cryptopedia/what-is-pax-gold-paxg-token-paxos-gold-backed-crypto"
+  ],
+  "checked": "2026-10-19"
+ },
+ "PENDLE": {
+  "name": "Pendle",
+  "about": "PENDLE is the token of Pendle Finance, a DeFi protocol that splits yield-bearing assets into separate tradable parts. A deposit is wrapped as a Standardized Yield token and divided into a Principal Token, redeemable for the underlying asset at a fixed maturity date, and a Yield Token, which collects the asset's variable yield until maturity. A purpose-built AMM handles trading in both, letting users lock in a fixed rate or speculate on yields. Pendle launched in mid-2021 and runs on Ethereum and several other networks. PENDLE is used for incentives and governance; in January 2026 the vePENDLE locking model was replaced by sPENDLE, a liquid staked form with a 14-day withdrawal period, with protocol revenue directed to PENDLE buybacks.",
+  "sources": [
+   "https://www.coingecko.com/learn/pendle?locale=en",
+   "https://www.theblock.co/amp/post/386255/pendle-retires-vependle-multi-year-lockups-as-spendle-staking-goes-live"
+  ],
+  "checked": "2026-10-19"
+ },
+ "PENGU": {
+  "name": "Pudgy Penguins (PENGU)",
+  "about": "PENGU is the token of Pudgy Penguins, an NFT collection launched on Ethereum in 2021 and run by the company Igloo. The token went live on Solana on December 17, 2024, with Ethereum and Abstract chain compatibility planned to follow. It was distributed through a claim open to holders of Pudgy Penguins, Lil Pudgys and related collections, holders of Pudgy Toys via a later bridge, and wallets from partner communities and protocols. The claim window lasted 88 days, after which unclaimed tokens were to be burned.",
+  "sources": [
+   "https://www.theblock.co/post/331180/pudgy-penguins-pengu-token-launch-solana"
+  ],
+  "checked": "2026-10-19"
+ },
+ "PUMP": {
+  "name": "Pump.fun (PUMP)",
+  "about": "PUMP is the token of Pump.fun, a Solana-based launchpad for issuing memecoins; its products include a bonding curve for new tokens, its own exchange PumpSwap, and a trading tool called Terminal. Pump.fun announced the token in June 2025 and sold it in a public sale that began on July 12, 2025, with open trading following days later. Pump.fun uses platform revenue to buy PUMP on the open market and burn it; from April 2026 half of net revenue from its main products goes to an automated buyback and burn contract. Hyperliquid listed PUMP as a pre-launch perpetual on July 10, 2025, before the token existed. Such Hyperliquid-only contracts, called hyperps, price funding against their own moving-average mark price and convert to standard perpetuals once major exchanges list spot trading.",
+  "sources": [
+   "https://www.theblock.co/post/361975/pump-token-ico",
+   "https://www.coindesk.com/markets/2026/04/29/pump-fun-burns-36-of-pump-supply-in-usd370-million-wipe-locks-50-revenue-into-ongoing-buybacks",
+   "https://hyperliquid.gitbook.io/hyperliquid-docs/trading/hyperps"
+  ],
+  "checked": "2026-10-19"
+ },
+ "PURR": {
+  "name": "Purr (Hyperliquid)",
+  "about": "PURR is a cat-themed memecoin native to Hyperliquid, created by the Hyperliquid team in April 2024 as the first token listed on the chain's spot market. It served as an early test of the newly released spot trading system. A large share of its supply went to Hyperliquid points holders in proportion to their points. A portion was first placed in Hyperliquidity, the protocol's built-in market-making mechanism under HIP-2, and later burned. Trading fees paid in PURR are also burned. Its stated purpose is to encourage engagement with the platform and grow the Hyperliquid ecosystem. Its spot market is on Hyperliquid itself, beside the perpetual.",
+  "sources": [
+   "https://alearesearch.io/theses/hyperliquid-purr",
+   "https://www.coindesk.com/price/purr"
+  ],
+  "checked": "2026-10-19"
+ },
+ "STRK": {
+  "name": "Starknet",
+  "about": "STRK is the native token of Starknet, a layer-2 network on Ethereum developed by StarkWare. Starknet is a validity rollup: it executes transactions off chain, batches them, and posts a STARK proof with the resulting state changes to Ethereum, where a verifier contract checks it. STRK was distributed from February 20, 2024, through a claim open to Starknet users, developers, early community members, users of StarkEx-powered applications and some Ethereum stakers. The token is used for network transaction fees, for governance votes, and for staking: holders can stake or delegate to validators and earn newly minted STRK as Starknet moves toward validator-run block production.",
+  "sources": [
+   "https://www.starknet.io/what-is-starknet/",
+   "https://forkast.news/strk-trading-begins-amidst-massive-airdrop-event/",
+   "https://docs.starknet.io/learn/protocol/staking"
+  ],
+  "checked": "2026-10-19"
+ },
+ "SUI": {
+  "name": "Sui",
+  "about": "SUI is the native token of Sui, a proof-of-stake layer-1 blockchain built by Mysten Labs, a team that came out of Meta's Diem project. Sui uses the Move programming language and consensus engines developed by Mysten called Narwhal and Bullshark. Its mainnet went live on May 3, 2023. SUI pays gas fees, is staked to validators through delegated proof of stake, and gives holders a vote on matters such as protocol upgrades. Storage fees go into a storage fund whose returns compensate validators for keeping data, and users receive a partial refund when they delete stored data. Staked SUI is held as a self-custodial stake object.",
+  "sources": [
+   "https://docs.sui.io/concepts/tokenomics",
+   "https://www.theblock.co/post/229236/mysten-labs-sui-mainnet"
+  ],
+  "checked": "2026-10-19"
+ },
+ "TAO": {
+  "name": "Bittensor",
+  "about": "TAO is the native token of Bittensor, an open network made up of independent subnets, each running its own market for a digital commodity such as compute, inference, storage or prediction. Inside a subnet, miners produce the commodity, validators score their output, and subnet creators set the incentive rules; the chain pays participants in TAO according to the value they contribute, and holders stake TAO behind validators. The chain itself, Subtensor, is built with Substrate and records subnet state, staking and emissions. An upgrade called dynamic TAO, launched in February 2025, made individual subnets directly investable. The first halving of TAO issuance, closing the network's first four-year cycle, was scheduled for 14 December 2025.",
+  "sources": [
+   "https://github.com/opentensor/subtensor",
+   "https://bittensor.com/docs",
+   "https://www.theblock.co/post/381638/bittensors-halving-tao-price"
+  ],
+  "checked": "2026-10-19"
+ },
+ "TIA": {
+  "name": "Celestia",
+  "about": "TIA is the native token of Celestia, a modular blockchain that specialises in data availability: rollups and other chains publish their transaction data to Celestia so that anyone can retrieve it, while execution happens elsewhere. Light nodes confirm that data is available through data availability sampling, downloading only small pieces of each block, which lets the network carry more data as more light nodes join. TIA pays for publishing data to Celestia's blobspace, is staked to take part in consensus and secure the network, and can serve as the gas token for rollups built on Celestia. The mainnet and the token went live at the end of October 2023, after a genesis airdrop aimed at users of Ethereum layer-2 networks, stakers on Cosmos Hub and Osmosis, and developers.",
+  "sources": [
+   "https://celestia.org/what-is-celestia/",
+   "https://celestia.org/what-is-tia/",
+   "https://www.theblock.co/post/259970/celestia-mainnet-tia-token"
+  ],
+  "checked": "2026-10-19"
+ },
+ "TRUMP": {
+  "name": "Official Trump",
+  "about": "TRUMP, branded Official Trump, is a meme coin associated with US President Donald Trump. It launched on the Solana blockchain on 17 January 2025, and its official website states that the same coin also exists on TRON under a different contract address. The site is operated by Fight Fight Fight LLC and describes the tokens as digital collectibles meant as an expression of support, not as an investment opportunity or security of any kind; it also says they are not sold by Donald J. Trump or The Trump Organization. CIC Digital LLC, an affiliate of The Trump Organization, is named alongside Fight Fight Fight LLC as a developer. Hyperliquid listed a TRUMP perpetual in January 2025, at first allowing up to 3x leverage on long and short positions.",
+  "sources": [
+   "https://gettrumpmemes.com/",
+   "https://en.wikipedia.org/wiki/$Trump",
+   "https://www.theblock.co/post/335996/hyperliquid-reports-record-high-22-billion-in-24-hour-volume"
+  ],
+  "checked": "2026-10-19"
+ },
+ "TRX": {
+  "name": "TRON",
+  "about": "TRX is the native token of TRON, a proof-of-stake blockchain with smart contracts, founded by Justin Sun and overseen since 2017 by the TRON Foundation, a Singapore non-profit later reorganised as a DAO. TRX began as an ERC-20 token on Ethereum and moved to TRON's own independent network in mid-2018. Blocks are produced under delegated proof of stake: holders stake TRX to obtain voting power and elect Super Representatives, and the 27 candidates with the most votes produce blocks, share rewards with their voters and vote on network proposals, with the ranking refreshed every six hours. The protocol also allocates computing resources to TRX holders through two internal measures called bandwidth and energy.",
+  "sources": [
+   "https://en.wikipedia.org/wiki/Tron_(cryptocurrency)",
+   "https://developers.tron.network/docs/super-representatives"
+  ],
+  "checked": "2026-10-19"
+ },
+ "UNI": {
+  "name": "Uniswap",
+  "about": "UNI is the governance token of Uniswap, a decentralised exchange protocol on Ethereum created by Hayden Adams in November 2018. Uniswap works as an automated market maker: liquidity providers deposit pairs of tokens into pools, traders swap against those pools, and providers earn a share of trading fees. Version 3, released in May 2021, added concentrated liquidity, and version 4, released in January 2025, added hooks that customise how individual pools behave. UNI was introduced in 2020 and distributed retroactively to earlier users; holders vote on upgrades and fee changes, though the token is not needed to use the exchange. In December 2025 governance approved the UNIfication proposal, which switched on protocol fees and routes them, together with net sequencer fees from the Unichain network, into buying and burning UNI.",
+  "sources": [
+   "https://en.wikipedia.org/wiki/Uniswap",
+   "https://www.theblock.co/post/383742/uniswap-passes-unification-proposal"
+  ],
+  "checked": "2026-10-19"
+ },
+ "WLD": {
+  "name": "World (formerly Worldcoin)",
+  "about": "WLD is the token of World, a project formerly called Worldcoin and renamed World Network in October 2024. It is developed by Tools for Humanity, a company founded in 2019 by Sam Altman, Max Novendstern and Alex Blania. The project aims to let people prove online that they are a unique human: a device called the Orb captures images of a person's face and eyes, and the resulting credential, World ID, can then be used without revealing their identity. The network came out of beta on 24 July 2023. Other products include World App and World Chain, an Ethereum layer-2 network built on Optimism's OP Stack whose mainnet launched in October 2024. The project's whitepaper presents WLD as the token for governance, identity and financial access for verified humans.",
+  "sources": [
+   "https://en.wikipedia.org/wiki/World_(blockchain)",
+   "https://decrypt.co/286983/world-chain-launches-mainnet-world-coin",
+   "https://whitepaper.world.org/"
+  ],
+  "checked": "2026-10-19"
+ },
+ "WLFI": {
+  "name": "World Liberty Financial",
+  "about": "WLFI is the governance token of World Liberty Financial, a decentralised finance project linked to Donald Trump and his family that also issues USD1, a US dollar stablecoin. Holders propose and vote on platform changes and can stake WLFI for possible USD1 rewards tied to governance participation. The token originated on Ethereum; the project lists Ethereum, BNB Smart Chain and Solana among supported networks. WLFI was initially non-transferable; after a holder vote in July 2025 it became tradable, and spot trading opened on 1 September 2025. Earlier, Hyperliquid offered WLFI as a hyperp, a pre-launch perpetual priced from a moving average of its own mark prices rather than an external spot oracle, at up to 3x leverage; hyperps convert into ordinary perpetuals once major exchanges list spot trading.",
+  "sources": [
+   "https://www.worldlibertyfinancial.com/",
+   "https://coincodex.com/article/72044/20-billion-valuation-wlfi-perpetual-contracts-launch-ahead-of-token-unlock",
+   "https://hyperliquid.gitbook.io/hyperliquid-docs/trading/hyperps"
+  ],
+  "checked": "2026-10-19"
+ },
+ "XLM": {
+  "name": "Stellar",
+  "about": "XLM, also called the lumen, is the native asset of Stellar, an open-source network for issuing and exchanging money and tokens. Stellar was launched in 2014 by Jed McCaleb and Joyce Kim, and its development is supported by the Stellar Development Foundation, a non-profit set up the same year. Transactions are not mined; they are confirmed through the Stellar Consensus Protocol, in which validators reach agreement through overlapping groups of trusted nodes known as quorum slices. Lumens pay the small fee that every transaction requires, which deters spam and orders transactions during busy periods, and each account must keep a minimum lumen balance that rises with every trustline, offer or other entry it holds. Smart contracts on Stellar pay resource fees, and rent for the data they store, in lumens.",
+  "sources": [
+   "https://en.wikipedia.org/wiki/Stellar_(payment_network)",
+   "https://developers.stellar.org/docs/learn/fundamentals/lumens"
+  ],
+  "checked": "2026-10-19"
+ },
+ "XMR": {
+  "name": "Monero",
+  "about": "XMR is the native coin of Monero, a privacy-focused cryptocurrency whose mainnet launched in April 2014. It descends from BitMonero, a coin built on the CryptoNote protocol, which members of an online forum forked and renamed. Privacy is on by default: ring signatures mix a sender's outputs with decoys, Ring Confidential Transactions hide amounts, stealth addresses shield recipients, and Dandelion++ obscures the network address of whoever broadcasts a transaction. Users can share view keys to disclose their activity selectively. Blocks arrive roughly every two minutes and are mined by proof of work with RandomX, an algorithm adopted in November 2019 that is designed to run well on ordinary processors rather than specialised mining hardware. Several exchanges have delisted Monero, including Binance in February 2024.",
+  "sources": [
+   "https://en.wikipedia.org/wiki/Monero"
+  ],
+  "checked": "2026-10-19"
+ },
+ "ZEC": {
+  "name": "Zcash",
+  "about": "ZEC is the native coin of Zcash, a cryptocurrency launched on 28 October 2016 that uses zero-knowledge proofs to offer optional privacy. Its code is derived from Bitcoin, and it is mined by proof of work using the Equihash function. Zcash grew out of academic work that began in 2013 at Johns Hopkins University, with later contributions from researchers at MIT, the Technion and Tel Aviv University. It supports transparent addresses, which behave like Bitcoin addresses, and shielded addresses, whose transactions are verified with zk-SNARKs without revealing the sender, recipient or amount. Users can share viewing keys with chosen auditors. Development is carried out by the Electric Coin Company and the Zcash Foundation; the Halo proving system, introduced in 2019, removes the need for a trusted setup.",
+  "sources": [
+   "https://en.wikipedia.org/wiki/Zcash"
+  ],
+  "checked": "2026-10-19"
+ },
+ "kPEPE": {
+  "name": "Pepe (1,000 PEPE contract)",
+  "about": "kPEPE is Hyperliquid's perpetual contract on the PEPE token in which one unit stands for 1,000 PEPE, which keeps quotes workable for a token with a very small unit price; the Hyperdash explorer lists the market as 1000PEPE. PEPE itself is a meme coin on Ethereum themed on the Pepe the Frog cartoon character, which Matt Furie created in 2005; the token has no official connection with Furie. It launched on 17 April 2023 without a presale. Its website describes it as having no intrinsic value or expectation of financial return, says there is no formal team and no transaction tax, and states that the liquidity tokens were burnt and contract ownership renounced.",
+  "sources": [
+   "https://www.pepe.vip/",
+   "https://decrypt.co/resources/what-is-pepecoin-pepe",
+   "https://hyperdash.com/asset/kpepe-hyperliquid"
+  ],
+  "checked": "2026-10-19"
+ },
+ "CASHCAT": {
+  "name": "Cash Cat",
+  "about": "CASHCAT is a memecoin issued on Robinhood Chain, the Ethereum layer-2 network that Robinhood switched on at mainnet on 1 July 2026. An anonymous deployer created the token during the chain's first week. Its name and cat mascot refer to Cash Cat, which Robinhood CEO Vlad Tenev has described as the company's early working name before the founders chose Robinhood. Robinhood did not create, list or endorse the token. CASHCAT has no stated function beyond trading and community use; reporting describes zero buy and sell taxes and burned liquidity-pool tokens, while the contract itself is unverified. A Solana version was later made available through Sunrise. Hyperliquid opened a CASHCAT perpetual on 11 July 2026 with leverage capped at 3x on isolated margin, and said the listing was not an endorsement.",
+  "sources": [
+   "https://www.datawallet.com/crypto/cash-cat-explained",
+   "https://coinstats.app/news/635a3af939ce0f093d095f1863f5d270c74359b1afcf9262215ce85dc47e3605_Hyperliquid-Lists-CASHCAT-Perps-As-Token-Goes-Live-On-Solana",
+   "https://www.kucoin.com/news/flash/hyperliquid-ends-3-month-streak-without-new-crypto-contracts-with-cashcat-launch"
+  ],
+  "checked": "2026-10-19"
+ },
+ "CHIP": {
+  "name": "USD.AI (CHIP)",
+  "about": "CHIP is the governance and utility token of USD.AI, a lending protocol developed by Permian Labs that finances GPU hardware through on-chain loans and issues a dollar-pegged token, USDai, along with a yield-bearing version, sUSDai. CHIP holders vote on loan risk and eligibility rules, interest-rate and fee parameters, and treasury spending, while a USD.AI Foundation represents token holders in legal and contractual matters. CHIP can be staked for sCHIP, which acts as the protocol's risk backstop, so stakers can take losses if shortfalls must be covered. The token is an ERC-20 issued on Arbitrum, with versions on Ethereum and Base. It was offered in a CoinList token sale in early 2026 and began public trading in April 2026.",
+  "sources": [
+   "https://www.coindesk.com/price/chip",
+   "https://iq.wiki/wiki/chip-usdai.md"
+  ],
+  "checked": "2026-10-19"
+ },
+ "FARTCOIN": {
+  "name": "Fartcoin",
+  "about": "Fartcoin is a memecoin issued as an SPL token on Solana. An anonymous creator launched it on 18 October 2024 through Pump.fun, a Solana token launch platform, and the project has no named team and no detailed whitepaper. The original developer reportedly sold their holdings early, and the community has guided the project since. The token has no function beyond transfers, trading and community activity; its joke gas-fee feature attaches a fart sound to transactions. Besides the FARTCOIN perpetual, Hyperliquid also carries a bridged version of the token, Unit Fartcoin, issued through the Unit protocol. It is deployed on both HyperCore and HyperEVM and is fungible between the two, which lets the Solana token be held and traded on Hyperliquid's spot market.",
+  "sources": [
+   "https://ambcrypto.com/who-made-fartcoin-and-what-does-it-do/",
+   "https://docs.hyperunit.xyz/developers/key-addresses/mainnet/solana"
+  ],
+  "checked": "2026-10-19"
+ },
+ "GRAM": {
+  "name": "Gram (formerly Toncoin)",
+  "about": "GRAM is the native token of TON (The Open Network), a layer-1 blockchain integrated with Telegram's app ecosystem and used mainly for payments and digital asset trading. The token was called Toncoin until a TON Vote community poll approved renaming it; the change took effect on 15 June 2026, with the ticker moving from TON to GRAM. Balances, addresses and smart contracts were unaffected and no migration was required, and the blockchain kept the TON name. Gram was the token name in Telegram's original 2018 project, which Telegram abandoned in 2020 after a legal dispute with the US SEC, after which independent developers continued the network. Hyperliquid added GRAM perpetuals in early July 2026, at the request of its community.",
+  "sources": [
+   "https://www.theblock.co/post/403231",
+   "https://www.kucoin.com/news/flash/ton-native-token-to-be-renamed-gram-on-june-15-2026",
+   "https://u.today/telegram-linked-gram-token-jumps-10-on-binance-and-hyperliquid-listing"
+  ],
+  "checked": "2026-10-19"
+ },
+ "GRASS": {
+  "name": "Grass",
+  "about": "GRASS is the native token of Grass, a network built by Wynd Labs in which people share their unused internet bandwidth through a desktop app, mobile app or browser extension that runs in the background. The network uses these connections to collect and validate public web data, and verified institutions can use the shared bandwidth for their online services. Participants earn points for uptime, referrals and the traffic their connection handles, and these help determine rewards paid in GRASS or USDC. The token runs on Solana; it can be staked to support web traffic flowing through the network and used to pay for bandwidth. GRASS launched on 28 October 2024 with an airdrop to early participants, which drew claims from a very large number of Solana addresses within days.",
+  "sources": [
+   "https://www.theblock.co/post/323805/grass-becomes-most-distributed-solana-airdrop-as-nearly-1-5-million-addresses-claim-tokens",
+   "https://www.grass.io/"
+  ],
+  "checked": "2026-10-19"
+ },
+ "LIT": {
+  "name": "Lighter",
+  "about": "LIT is the token of Lighter, a decentralized perpetual futures exchange that runs as a zero-knowledge rollup on Ethereum and describes itself as offering verifiable order matching and liquidations. Lighter opened its public mainnet on 1 October 2025. The team announced LIT at the end of December 2025 ahead of its token generation event. Lighter says revenue from its exchange and future products built on its infrastructure will be traceable on-chain and directed to growth initiatives and token buybacks, that the token is issued by its US C-corporation, and that the protocol itself will run at cost. Hyperliquid listed LIT on its pre-market perpetual platform in December 2025, before the token had launched.",
+  "sources": [
+   "https://www.valuethemarkets.com/cryptocurrency/news/lit-tokens-launch-on-hyperliquid-signals-new-competitiveness-in-crypto-exchange-market",
+   "https://www.btc-echo.de/schlagzeilen/lighter-launcht-lit-token-das-naechste-hyperliquid-222495/",
+   "https://docs.lighter.xyz/"
+  ],
+  "checked": "2026-10-19"
+ },
+ "MON": {
+  "name": "Monad",
+  "about": "MON is the native token of Monad, a layer-1 blockchain that supports full Ethereum Virtual Machine bytecode and the Ethereum RPC interface, so existing Ethereum applications and tools can run on it. Monad executes transactions in parallel with just-in-time compilation, reaches agreement through a consensus protocol called MonadBFT, and is designed for blocks every 300 milliseconds with finality in about 600 milliseconds. Its public mainnet launched on 24 November 2025. Hyperliquid opened its MON-USD market on 8 October 2025, before the token existed, as a hyperp: a Hyperliquid-only perpetual that works like a standard perpetual but does not depend on an external spot or index oracle price. At that launch, leverage on the market was capped at 3x.",
+  "sources": [
+   "https://docs.monad.xyz/",
+   "https://www.theblock.co/post/373750/hyperliquid-lists-hyperps-monad-token"
+  ],
+  "checked": "2026-10-19"
+ },
+ "PONS": {
+  "name": "Pons",
+  "about": "PONS is the native token of pons, a token launchpad on Robinhood Chain. Anyone can create a fixed-supply token through pons; each launch deploys the token and its own Uniswap V3 pool against WETH in a single transaction, with the liquidity locked and no bonding curve or later migration. A launch counts as graduated once its pool holds a set amount of WETH, and trading continues in the same pool. Pools charge a 1% fee, most of which goes to the token's creator. According to the project's documentation, 80% of the protocol's share of fees funds automated buybacks of PONS that are sent to a burn address, a mechanism the documentation says is not yet immutable. Hyperliquid listed a PONS perpetual on 31 August 2026 with up to 3x leverage.",
+  "sources": [
+   "https://docs.ponsfamily.com/",
+   "https://m.lookonchain.com/feeds/70653",
+   "https://airdropalert.com/blogs/what-is-pons-token/"
+  ],
+  "checked": "2026-10-19"
+ },
+ "VVV": {
+  "name": "Venice Token",
+  "about": "VVV is the token of Venice, a privacy-focused platform for text, image and code generation that also offers developer API access. VVV launched on 27 January 2025 as an ERC-20 token on Base, with initial liquidity on Aerodrome, no pre-sale and no governance role. Its main use is staking: stakers receive a pro-rata share of Venice's API capacity, measured in a unit called Diem, and can use it without paying per request, while also earning yield from token emissions. New tokens are issued every year, and emissions are split between stakers and Venice according to how heavily the API is used. At launch, tokens were airdropped to Venice users and to community projects in the Base ecosystem.",
+  "sources": [
+   "https://venice.ai/blog/introducing-the-venice-token-vvv"
+  ],
+  "checked": "2026-10-19"
+ },
+ "XPL": {
+  "name": "Plasma",
+  "about": "XPL is the native token of Plasma, a layer-1 blockchain focused on stablecoins and backed by Bitfinex. The network uses a consensus layer called PlasmaBFT and supports zero-fee USDT transfers that the protocol subsidizes. An early plan to merge Bitcoin's UTXO model with the EVM gave way to an independent chain with a trust-minimised Bitcoin bridge. Plasma held a public token sale in July 2025, and its mainnet beta and XPL went live on 25 September 2025. Hyperliquid listed XPL in August 2025 as a pre-launch hyperp with up to 3x leverage. On 26 August 2025 an order-book sweep spiked that market and triggered auto-deleveraging; Hyperliquid then announced a cap on hyperp mark prices tied to an 8-hour moving average and external perpetual prices in the mark formula.",
+  "sources": [
+   "https://www.theblock.co/post/367929/plasmas-xpl-token-trades-above-4-5-billion-fully-diluted-valuation-in-pre-markets",
+   "https://www.theblock.co/post/368486/hyperliquid-new-safeguards-following-whale-driven-xpl-pre-market-liquidations",
+   "https://www.theblock.co/post/371228/bitfinex-plasma-blockchain-mainnet-launch"
+  ],
+  "checked": "2026-10-19"
+ },
+ "ZRO": {
+  "name": "LayerZero",
+  "about": "ZRO is the governance token of LayerZero, an omnichain messaging protocol that lets applications send data and instructions between blockchains, including EVM chains such as Ethereum, Optimism and Arbitrum, as well as Solana, Aptos and Hyperliquid. Developers use it to move tokens and NFTs across chains through its Omnichain Fungible Token and Non-Fungible Token standards, to read data from other chains, and to combine several cross-chain operations in one transaction. ZRO launched on 20 June 2024 through an airdrop. Claimants had to make a small donation per token, paid to Protocol Guild, which funds Ethereum core developers, and the claim window ran until 20 September 2024. ZRO holders vote on whether to activate the protocol's fee switch in an on-chain referendum held every six months.",
+  "sources": [
+   "https://docs.layerzero.network/v2",
+   "https://forklog.com/en/layerzero-foundation-introduces-token-claim-fee-via-proof-of-donation/",
+   "https://kucoin.com/news/articles/layerzero-zro-airdrop-starts-june-20-eligibility-checker-now-live"
+  ],
+  "checked": "2026-10-19"
+ }
+}

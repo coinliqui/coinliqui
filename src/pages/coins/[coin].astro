@@ -15,6 +15,7 @@ import Versus from "../../components/Versus.astro";
 import { narrowChart, TIMEFRAMES, DEFAULT_TF, MIN_CHART_BARS, drawnBars, barSpan, buildPriceChart, timeframeGapNote, CHART_H, versusRows, type ChartMode } from "../../lib/series.ts";
 import { bookWords, fundingStandingWords, closedDays, daysThatReached, rungDaysWords, dayProfile, dayProfileWords, fitAgainst, fitWords } from "../../lib/cohort.ts";
 import DayMoves from "../../components/DayMoves.astro";
+import { aboutOf } from "../../lib/contracts.ts";
 import { extremeBy } from "../../lib/extreme.ts";
 import { CH } from "../../lib/chart.ts";
 
@@ -303,6 +304,7 @@ const month = closedDays(dayset?.d, snap.fetchedAt);
 const rungDays = rungs.map((r) => ({ L: r.L, ...daysThatReached(month, r.longDist, r.shortDist) }));
 const rungNote = rungDaysWords(coin.symbol, rungDays);
 const profile = dayProfile(month);
+const about = aboutOf(coin.symbol);
 const fitRef = fitAgainst(dayset?.d, refDay?.d, snap.fetchedAt);
 const fitNote = fitRef ? fitWords(coin.symbol, refSymbol, fitRef) : null;
 /* THE VENUE TABLE'S SENTENCE IS ITS RESULT: which venue is cheapest for the same long, tie-aware. */
@@ -446,7 +448,7 @@ const description = `Live ${coin.name} (${coin.symbol}) perpetual price from Hyp
       the two page families side by side rather than by reading the file. The lesson is the one
       the uncited-claims sweep already taught: a sentence deleted in one place has copies, and
       the copies are not always sentences. */}
-  <h2 class="section">What the position costs</h2>
+  <h2 class="section">What holding {coin.symbol} costs</h2>
   {(fundStanding || book) && (
     <p class="section-note">
       {hl && Number.isFinite(hl.apr) && <>Hyperliquid funding on {coin.symbol} is <b>{pct(hl.apr)}</b>. </>}{fundStanding}{book && <>{" "}{book}</>}
@@ -481,7 +483,7 @@ const description = `Live ${coin.name} (${coin.symbol}) perpetual price from Hyp
     </div>
   </div>
 
-  <h2 class="section">What leverage costs, per venue</h2>
+  <h2 class="section">{coin.symbol} carry, per venue</h2>
   <p class="section-note">
     {venueVerdict ?? `The same $10,000 long on ${allRows}, a week at the current rate.`}
     {" "}<a class="link" href="/methodology">Why the quoted rates cannot be compared →</a>
@@ -561,6 +563,13 @@ const description = `Live ${coin.name} (${coin.symbol}) perpetual price from Hyp
     · <a class="link" href={liqMapHref(coin.symbol)}>Where {coin.symbol} leverage breaks →</a>
     · <a class="link" href={`/liquidations/survival?symbol=${coin.symbol}`}>What the rules did to past positions →</a>
   </p>
+
+  {about && (
+    <section id="about">
+      <h2 class="section">What {about.name} is</h2>
+      <p class="prose">{about.about}</p>
+    </section>
+  )}
 
   <h2 class="section">Other coins</h2>
   <p class="related">

@@ -20,6 +20,7 @@ import { utcStamp, plural } from "../../lib/freshness.ts";
 import Overview from "../../components/Overview.astro";
 import Figure from "../../components/Figure.astro";
 import { extremeBy, standing } from "../../lib/extreme.ts";
+import { aboutOf, firstSentence } from "../../lib/contracts.ts";
 import { fundingStandingWords, closedDays, daysThatReached, fitAgainst, fitWords } from "../../lib/cohort.ts";
 
 import { priceDp, changeWords, signedPct, weekCarry } from "../../lib/funding.ts";
@@ -283,6 +284,7 @@ const standingWords = hlStanding && hlStanding.of >= 24
    They took the place of explanations every contract page printed word for word (19 October 2026);
    those are said once on /methodology now. */
 const fundStanding = fundingStandingWords(snap.perps, p.symbol);
+const about = aboutOf(p.symbol);
 const fitRef = fitAgainst(dayset?.d, refDay?.d, snap.fetchedAt);
 const fitNote = fitRef ? fitWords(p.symbol, refSymbol, fitRef) : null;
 const month = closedDays(dayset?.d, snap.fetchedAt);
@@ -677,7 +679,7 @@ const description = `What the ${p.symbol} perpetual costs to hold, against ${usd
 
   <Versus symbol={p.symbol} refSymbol={refSymbol} refHref={`/funding/${refSymbol.toLowerCase()}`} rows={vsRows} at={snap.fetchedAt} fit={fitNote} />
 
-  <h2 class="section">Funding</h2>
+  <h2 class="section">{p.symbol} funding now</h2>
   {fundStanding && <p class="section-note">{fundStanding}</p>}
   <div class="cards">
     <div class="card">
@@ -733,7 +735,7 @@ const description = `What the ${p.symbol} perpetual costs to hold, against ${usd
     </p>
   )}
 
-  <h2 class="section">Funding by venue</h2>
+  <h2 class="section">{p.symbol} funding by venue</h2>
   {/* THE CALCULATOR FOR THE THING THESE FIFTY PAGES ARE ABOUT, AND NOT ONE OF THEM LINKED TO IT.
       Measured across the live surface on 20 August: /tools/funding-cost had exactly one inbound
       link in the whole site — the tools hub — while its three siblings had two or three, and the
@@ -777,7 +779,7 @@ const description = `What the ${p.symbol} perpetual costs to hold, against ${usd
     </table>
   </div>
 
-  <h2 class="section">Margin tiers</h2>
+  <h2 class="section">{p.symbol} margin tiers</h2>
   {/* THE LABEL MUST BE THE LEVERAGE THAT WAS ACTUALLY USED. This asked margin.ts for 10× and
       printed "At 10× long" — but margin.ts clamps the request to the tier maximum and says so
       in `leverageClamped`, which nothing here read. On the twenty contracts whose tier caps at
@@ -854,6 +856,15 @@ const description = `What the ${p.symbol} perpetual costs to hold, against ${usd
     {/* liqMapHref, as the paragraph link above already was: /liquidations?symbol= answers 301. */}
     <a class="btn btn--primary" href={liqMapHref(p.symbol)}>Open the map</a>
   </div>
+
+  {about && (
+    <section id="about">
+      <h2 class="section">What {about.name} is</h2>
+      {coin
+        ? <p class="prose">{firstSentence(about.about)} <a class="link" href={`/coins/${coin.slug}`}>More on {coin.name} →</a></p>
+        : <p class="prose">{about.about}</p>}
+    </section>
+  )}
 
   <h2 class="section">Funding rates for other coins</h2>
   {/* EVERY SIBLING, BECAUSE slice(0, 24) OFF A VOLUME-ORDERED LIST IS THE SAME 24 ON ALL FIFTY
