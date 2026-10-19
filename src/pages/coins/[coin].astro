@@ -471,12 +471,6 @@ const description = `Live ${coin.name} (${coin.symbol}) perpetual price from Hyp
       <div class="card__meta" data-repaint={hl ? "dir" : undefined} data-sym={coin.symbol} data-venue="HlPerp" data-pay="longs pay shorts" data-recv="shorts pay longs">{hl ? paysLabel(hl.apr) : "—"}</div>
     </div>
     <div class="card">
-      <div class="card__label">Cost to hold $10,000 long</div>
-      <div class="card__value" data-repaint={hl ? "carry" : undefined} data-sym={coin.symbol} data-venue="HlPerp"
-           data-notional="10000" data-days="7">{hl ? usd(Math.abs(week(hl.apr)), 2) : "—"}</div>
-      <div class="card__meta">{hl ? `per week · ${hl.apr >= 0 ? "you pay" : "you receive"}` : "—"}</div>
-    </div>
-    <div class="card">
       <div class="card__label">Open interest ÷ 24h volume <span class="card__scope">Hyperliquid</span></div>
       <div class="card__value">{Number.isFinite(oiToVol) ? `${oiToVol.toFixed(2)}×` : "—"}</div>
       <div class="card__meta">how long the open book takes to turn over</div>
