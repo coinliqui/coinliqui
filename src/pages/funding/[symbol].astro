@@ -848,14 +848,6 @@ const description = `What the ${p.symbol} perpetual costs to hold, against ${usd
   <p class="section-note">A position's tier is set by its notional. <a class="link" href="/methodology#levels">How the levels are worked out →</a></p>
   </More>
 
-  <div class="banner">
-    <div>
-      <div class="banner__title">Where these levels sit across the modelled positions</div>
-      <div class="banner__sub">The modelled liquidation density for {p.symbol}, built from these same tiers, over the real candles.</div>
-    </div>
-    {/* liqMapHref, as the paragraph link above already was: /liquidations?symbol= answers 301. */}
-    <a class="btn btn--primary" href={liqMapHref(p.symbol)}>Open the map</a>
-  </div>
 
   {about && (
     <section id="about">

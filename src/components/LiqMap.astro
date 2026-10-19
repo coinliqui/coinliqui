@@ -770,6 +770,13 @@ const formNote: string | null = (() => {
   </div>
   </More>
 
+  {about?.onHL && (
+    <section id="on-hyperliquid">
+      <h2 class="section">The {perp.symbol} contract on Hyperliquid</h2>
+      <p class="prose">{about.onHL}</p>
+    </section>
+  )}
+
   {about && (
     <section id="about">
       <h2 class="section">What {about.name} is</h2>

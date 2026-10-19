@@ -12,7 +12,11 @@
    ========================================================================================= */
 import CONTRACTS from "../data/contracts.json";
 
-export interface About { name: string; about: string; sources: string[]; checked: string }
+export interface About {
+  name: string; about: string; sources: string[]; checked: string;
+  /** what is particular to the contract on Hyperliquid: listing, pre-launch origin, episodes */
+  onHL?: string; onHLSources?: string[];
+}
 const TABLE = CONTRACTS as Record<string, About>;
 
 /** The entry for a contract, by its venue symbol (case as the venue writes it), or null. */

@@ -6,7 +6,13 @@
    "https://en.wikipedia.org/wiki/Bitcoin",
    "https://hyperliquid.gitbook.io/hyperliquid-docs/trading/contract-specifications"
   ],
-  "checked": "2026-10-19"
+  "checked": "2026-10-19",
+  "onHL": "The BTC perpetual is a linear contract of one bitcoin per unit, margined in USDC. Its oracle is a weighted median of external spot venues; Hyperliquid's docs name BTC as an asset whose own Hyperliquid spot price is left out because its main liquidity is elsewhere. On 12 March 2025, after a large ETH long was liquidated at a loss to the HLP vault, Hyperliquid said it would set BTC's maximum leverage to 40x.",
+  "onHLSources": [
+   "https://hyperliquid.gitbook.io/hyperliquid-docs/hypercore/oracle",
+   "https://decrypt.co/309684/hype-drops-leveraged-trade-4m-hyperliquid-loss",
+   "https://api.hyperliquid.xyz/info"
+  ]
  },
  "ETH": {
   "name": "Ethereum (Ether)",
@@ -15,7 +21,13 @@
    "https://en.wikipedia.org/wiki/Ethereum",
    "https://hyperliquid.gitbook.io/hyperliquid-docs/trading/contract-specifications"
   ],
-  "checked": "2026-10-19"
+  "checked": "2026-10-19",
+  "onHL": "The ETH perpetual is a linear contract of one ether per unit, margined in USDC. On 12 March 2025 a trader withdrew margin from a large, heavily leveraged ETH long, the position was liquidated, and the HLP vault took over it, losing about $4 million. Hyperliquid said there was no exploit or hack, then set ETH's maximum leverage to 25x and raised maintenance margin for large positions.",
+  "onHLSources": [
+   "https://decrypt.co/309684/hype-drops-leveraged-trade-4m-hyperliquid-loss",
+   "https://hyperliquid.gitbook.io/hyperliquid-docs/trading/contract-specifications",
+   "https://api.hyperliquid.xyz/info"
+  ]
  },
  "SOL": {
   "name": "Solana",
@@ -101,7 +113,13 @@
    "https://www.theblock.co/post/328769/hyperliquid-airdrops-over-1-2-billion-worth-of-tokens-to-users-as-hype-crosses-4-billion-fdv",
    "https://hyperliquid.gitbook.io/hyperliquid-docs/trading/contract-specifications"
   ],
-  "checked": "2026-10-19"
+  "checked": "2026-10-19",
+  "onHL": "HYPE is Hyperliquid's own token, launched with its airdrop on 29 November 2024. Hyperliquid's docs list HYPE-USD as one of only two perpetuals priced in USDC rather than USDT, because its most liquid market is Hyperliquid spot. The oracle docs add that external venues are left out of HYPE's oracle until they have enough liquidity.",
+  "onHLSources": [
+   "https://hyperliquid.gitbook.io/hyperliquid-docs/trading/contract-specifications",
+   "https://hyperliquid.gitbook.io/hyperliquid-docs/hypercore/oracle",
+   "https://www.theblock.co/post/328769/hyperliquid-airdrops-over-1-2-billion-worth-of-tokens-to-users-as-hype-crosses-4-billion-fdv"
+  ]
  },
  "AAVE": {
   "name": "Aave",
@@ -273,13 +291,19 @@
  },
  "PUMP": {
   "name": "Pump.fun (PUMP)",
-  "about": "PUMP is the token of Pump.fun, a Solana-based launchpad for issuing memecoins; its products include a bonding curve for new tokens, its own exchange PumpSwap, and a trading tool called Terminal. Pump.fun announced the token in June 2025 and sold it in a public sale that began on July 12, 2025, with open trading following days later. Pump.fun uses platform revenue to buy PUMP on the open market and burn it; from April 2026 half of net revenue from its main products goes to an automated buyback and burn contract. Hyperliquid listed PUMP as a pre-launch perpetual on July 10, 2025, before the token existed. Such Hyperliquid-only contracts, called hyperps, price funding against their own moving-average mark price and convert to standard perpetuals once major exchanges list spot trading.",
+  "about": "PUMP is the token of Pump.fun, a Solana-based launchpad for issuing memecoins; its products include a bonding curve for new tokens, its own exchange PumpSwap, and a trading tool called Terminal. Pump.fun announced the token in June 2025 and sold it in a public sale that began on July 12, 2025, with open trading following days later. Pump.fun uses platform revenue to buy PUMP on the open market and burn it; from April 2026 half of net revenue from its main products goes to an automated buyback and burn contract.",
   "sources": [
    "https://www.theblock.co/post/361975/pump-token-ico",
    "https://www.coindesk.com/markets/2026/04/29/pump-fun-burns-36-of-pump-supply-in-usd370-million-wipe-locks-50-revenue-into-ongoing-buybacks",
    "https://hyperliquid.gitbook.io/hyperliquid-docs/trading/hyperps"
   ],
-  "checked": "2026-10-19"
+  "checked": "2026-10-19",
+  "onHL": "Hyperliquid listed PUMP as a pre-market perpetual early on Thursday 10 July 2025. That was before Pump.fun's token sale, and The Block reported large traders opening low-leverage shorts on it ahead of the sale. Pre-launch contracts of this kind, called hyperps, take funding from a moving average of Hyperliquid's own mark price rather than an external index. Under Hyperliquid's rules they convert to a regular perp once spot trading starts on Binance, OKX or Bybit.",
+  "onHLSources": [
+   "https://www.theblock.co/post/361975/pump-token-ico",
+   "https://hyperliquid.gitbook.io/hyperliquid-docs/trading/hyperps",
+   "https://api.hyperliquid.xyz/info"
+  ]
  },
  "PURR": {
   "name": "Purr (Hyperliquid)",
@@ -331,13 +355,19 @@
  },
  "TRUMP": {
   "name": "Official Trump",
-  "about": "TRUMP, branded Official Trump, is a meme coin associated with US President Donald Trump. It launched on the Solana blockchain on 17 January 2025, and its official website states that the same coin also exists on TRON under a different contract address. The site is operated by Fight Fight Fight LLC and describes the tokens as digital collectibles meant as an expression of support, not as an investment opportunity or security of any kind; it also says they are not sold by Donald J. Trump or The Trump Organization. CIC Digital LLC, an affiliate of The Trump Organization, is named alongside Fight Fight Fight LLC as a developer. Hyperliquid listed a TRUMP perpetual in January 2025, at first allowing up to 3x leverage on long and short positions.",
+  "about": "TRUMP, branded Official Trump, is a meme coin associated with US President Donald Trump. It launched on the Solana blockchain on 17 January 2025, and its official website states that the same coin also exists on TRON under a different contract address. The site is operated by Fight Fight Fight LLC and describes the tokens as digital collectibles meant as an expression of support, not as an investment opportunity or security of any kind; it also says they are not sold by Donald J. Trump or The Trump Organization. CIC Digital LLC, an affiliate of The Trump Organization, is named alongside Fight Fight Fight LLC as a developer.",
   "sources": [
    "https://gettrumpmemes.com/",
    "https://en.wikipedia.org/wiki/$Trump",
    "https://www.theblock.co/post/335996/hyperliquid-reports-record-high-22-billion-in-24-hour-volume"
   ],
-  "checked": "2026-10-19"
+  "checked": "2026-10-19",
+  "onHL": "Hyperliquid added the TRUMP perpetual in January 2025, together with MELANIA. The Block, writing on 21 January 2025, reported that both meme contracts opened with leverage of up to 3x for longs and shorts.",
+  "onHLSources": [
+   "https://www.theblock.co/post/335996/hyperliquid-reports-record-high-22-billion-in-24-hour-volume",
+   "https://hyperliquid.gitbook.io/hyperliquid-docs/trading/margin-tiers",
+   "https://api.hyperliquid.xyz/info"
+  ]
  },
  "TRX": {
   "name": "TRON",
@@ -369,13 +399,19 @@
  },
  "WLFI": {
   "name": "World Liberty Financial",
-  "about": "WLFI is the governance token of World Liberty Financial, a decentralised finance project linked to Donald Trump and his family that also issues USD1, a US dollar stablecoin. Holders propose and vote on platform changes and can stake WLFI for possible USD1 rewards tied to governance participation. The token originated on Ethereum; the project lists Ethereum, BNB Smart Chain and Solana among supported networks. WLFI was initially non-transferable; after a holder vote in July 2025 it became tradable, and spot trading opened on 1 September 2025. Earlier, Hyperliquid offered WLFI as a hyperp, a pre-launch perpetual priced from a moving average of its own mark prices rather than an external spot oracle, at up to 3x leverage; hyperps convert into ordinary perpetuals once major exchanges list spot trading.",
+  "about": "WLFI is the governance token of World Liberty Financial, a decentralised finance project linked to Donald Trump and his family that also issues USD1, a US dollar stablecoin. Holders propose and vote on platform changes and can stake WLFI for possible USD1 rewards tied to governance participation. The token originated on Ethereum; the project lists Ethereum, BNB Smart Chain and Solana among supported networks. WLFI was initially non-transferable; after a holder vote in July 2025 it became tradable, and spot trading opened on 1 September 2025.",
   "sources": [
    "https://www.worldlibertyfinancial.com/",
    "https://coincodex.com/article/72044/20-billion-valuation-wlfi-perpetual-contracts-launch-ahead-of-token-unlock",
    "https://hyperliquid.gitbook.io/hyperliquid-docs/trading/hyperps"
   ],
-  "checked": "2026-10-19"
+  "checked": "2026-10-19",
+  "onHL": "Hyperliquid opened WLFI-USD on 23 August 2025 as a pre-launch hyperp with leverage of up to 3x, before the World Liberty Financial token could be traded anywhere. A hyperp has no external spot oracle; its oracle is a moving average of the contract's own mark price, and under Hyperliquid's rules it converts to a regular perpetual once spot trading lists on Binance, OKX or Bybit. CoinDesk confirmed the 23 August start and reported heavy shorting in the first hours of trading.",
+  "onHLSources": [
+   "https://www.coindesk.com/business/2025/08/26/wlfi-futures-tumble-44-on-debut-as-traders-short-the-trump-linked-token",
+   "https://coincodex.com/article/72044/20-billion-valuation-wlfi-perpetual-contracts-launch-ahead-of-token-unlock",
+   "https://hyperliquid.gitbook.io/hyperliquid-docs/trading/hyperps"
+  ]
  },
  "XLM": {
   "name": "Stellar",
@@ -392,7 +428,13 @@
   "sources": [
    "https://en.wikipedia.org/wiki/Monero"
   ],
-  "checked": "2026-10-19"
+  "checked": "2026-10-19",
+  "onHL": "Hyperliquid added a Monero perpetual to its main order book in mid-January 2026; U.Today reported the listing on 15 January 2026 and noted that most major centralized exchanges had dropped XMR spot trading. Hyperliquid itself has no XMR spot market.",
+  "onHLSources": [
+   "https://u.today/hyperliquid-joins-monero-party-as-xmr-price-rockets-81-with-no-spot-markets",
+   "https://cryptobriefing.com/hyperliquid-outperforms-bitcoin-steady-64000/",
+   "https://api.hyperliquid.xyz/info"
+  ]
  },
  "ZEC": {
   "name": "Zcash",
@@ -414,13 +456,18 @@
  },
  "CASHCAT": {
   "name": "Cash Cat",
-  "about": "CASHCAT is a memecoin issued on Robinhood Chain, the Ethereum layer-2 network that Robinhood switched on at mainnet on 1 July 2026. An anonymous deployer created the token during the chain's first week. Its name and cat mascot refer to Cash Cat, which Robinhood CEO Vlad Tenev has described as the company's early working name before the founders chose Robinhood. Robinhood did not create, list or endorse the token. CASHCAT has no stated function beyond trading and community use; reporting describes zero buy and sell taxes and burned liquidity-pool tokens, while the contract itself is unverified. A Solana version was later made available through Sunrise. Hyperliquid opened a CASHCAT perpetual on 11 July 2026 with leverage capped at 3x on isolated margin, and said the listing was not an endorsement.",
+  "about": "CASHCAT is a memecoin issued on Robinhood Chain, the Ethereum layer-2 network that Robinhood switched on at mainnet on 1 July 2026. An anonymous deployer created the token during the chain's first week. Its name and cat mascot refer to Cash Cat, which Robinhood CEO Vlad Tenev has described as the company's early working name before the founders chose Robinhood. Robinhood did not create, list or endorse the token. CASHCAT has no stated function beyond trading and community use; reporting describes zero buy and sell taxes and burned liquidity-pool tokens, while the contract itself is unverified. A Solana version was later made available through Sunrise.",
   "sources": [
    "https://www.datawallet.com/crypto/cash-cat-explained",
    "https://coinstats.app/news/635a3af939ce0f093d095f1863f5d270c74359b1afcf9262215ce85dc47e3605_Hyperliquid-Lists-CASHCAT-Perps-As-Token-Goes-Live-On-Solana",
    "https://www.kucoin.com/news/flash/hyperliquid-ends-3-month-streak-without-new-crypto-contracts-with-cashcat-launch"
   ],
-  "checked": "2026-10-19"
+  "checked": "2026-10-19",
+  "onHL": "Hyperliquid opened the CASHCAT perpetual on 11 July 2026 after requests from its community, with leverage of up to 3x on isolated margin only, and stated that the listing was not an endorsement of the project. It was the exchange's first new crypto perpetual in about three months, the previous one being CHIP on 22 April 2026; the move of the TON contract to GRAM was not counted as a new listing.",
+  "onHLSources": [
+   "https://coinstats.app/news/635a3af939ce0f093d095f1863f5d270c74359b1afcf9262215ce85dc47e3605_Hyperliquid-Lists-CASHCAT-Perps-As-Token-Goes-Live-On-Solana",
+   "https://www.kucoin.com/news/flash/hyperliquid-ends-3-month-streak-without-new-crypto-contracts-with-cashcat-launch"
+  ]
  },
  "CHIP": {
   "name": "USD.AI (CHIP)",
@@ -429,7 +476,11 @@
    "https://www.coindesk.com/price/chip",
    "https://iq.wiki/wiki/chip-usdai.md"
   ],
-  "checked": "2026-10-19"
+  "checked": "2026-10-19",
+  "onHL": "Hyperliquid listed the CHIP perpetual on 22 April 2026. It was the last new crypto contract the exchange added before a gap of about three months, which ended with the CASHCAT listing on 11 July 2026.",
+  "onHLSources": [
+   "https://www.kucoin.com/news/flash/hyperliquid-ends-3-month-streak-without-new-crypto-contracts-with-cashcat-launch"
+  ]
  },
  "FARTCOIN": {
   "name": "Fartcoin",
@@ -438,17 +489,27 @@
    "https://ambcrypto.com/who-made-fartcoin-and-what-does-it-do/",
    "https://docs.hyperunit.xyz/developers/key-addresses/mainnet/solana"
   ],
-  "checked": "2026-10-19"
+  "checked": "2026-10-19",
+  "onHL": "In early April 2026 two wallets built a large leveraged long on Hyperliquid's FARTCOIN perpetual over several days, after which the price collapsed within a single hour and both wallets were liquidated. On 9 April 2026 the liquidation was too large for the order book to absorb, so Hyperliquid's auto-deleveraging closed two profitable short positions on the other side, without fees. CoinDesk described the position as a failed attempt to manipulate the price.",
+  "onHLSources": [
+   "https://www.coindesk.com/markets/2026/04/09/someone-tried-to-manipulate-fartcoin-s-price-with-a-usd145-million-long-it-crashed-50"
+  ]
  },
  "GRAM": {
   "name": "Gram (formerly Toncoin)",
-  "about": "GRAM is the native token of TON (The Open Network), a layer-1 blockchain integrated with Telegram's app ecosystem and used mainly for payments and digital asset trading. The token was called Toncoin until a TON Vote community poll approved renaming it; the change took effect on 15 June 2026, with the ticker moving from TON to GRAM. Balances, addresses and smart contracts were unaffected and no migration was required, and the blockchain kept the TON name. Gram was the token name in Telegram's original 2018 project, which Telegram abandoned in 2020 after a legal dispute with the US SEC, after which independent developers continued the network. Hyperliquid added GRAM perpetuals in early July 2026, at the request of its community.",
+  "about": "GRAM is the native token of TON (The Open Network), a layer-1 blockchain integrated with Telegram's app ecosystem and used mainly for payments and digital asset trading. The token was called Toncoin until a TON Vote community poll approved renaming it; the change took effect on 15 June 2026, with the ticker moving from TON to GRAM. Balances, addresses and smart contracts were unaffected and no migration was required, and the blockchain kept the TON name. Gram was the token name in Telegram's original 2018 project, which Telegram abandoned in 2020 after a legal dispute with the US SEC, after which independent developers continued the network.",
   "sources": [
    "https://www.theblock.co/post/403231",
    "https://www.kucoin.com/news/flash/ton-native-token-to-be-renamed-gram-on-june-15-2026",
    "https://u.today/telegram-linked-gram-token-jumps-10-on-binance-and-hyperliquid-listing"
   ],
-  "checked": "2026-10-19"
+  "checked": "2026-10-19",
+  "onHL": "GRAM is a separate contract from Hyperliquid's earlier TON perpetual. As Toncoin was being renamed Gram, Hyperliquid said its validators would vote at about 09:00 UTC on 15 June 2026 on delisting the TON perpetual, with positions settled at the one-hour time-weighted average spot oracle price before the vote and open orders cancelled; Hyperliquid's API now marks TON as delisted. The GRAM perpetual was added in early July 2026 at the community's request.",
+  "onHLSources": [
+   "https://www.odaily.news/en/newsflash/489748",
+   "https://u.today/telegram-linked-gram-token-jumps-10-on-binance-and-hyperliquid-listing",
+   "https://api.hyperliquid.xyz/info"
+  ]
  },
  "GRASS": {
   "name": "Grass",
@@ -461,32 +522,46 @@
  },
  "LIT": {
   "name": "Lighter",
-  "about": "LIT is the token of Lighter, a decentralized perpetual futures exchange that runs as a zero-knowledge rollup on Ethereum and describes itself as offering verifiable order matching and liquidations. Lighter opened its public mainnet on 1 October 2025. The team announced LIT at the end of December 2025 ahead of its token generation event. Lighter says revenue from its exchange and future products built on its infrastructure will be traceable on-chain and directed to growth initiatives and token buybacks, that the token is issued by its US C-corporation, and that the protocol itself will run at cost. Hyperliquid listed LIT on its pre-market perpetual platform in December 2025, before the token had launched.",
+  "about": "LIT is the token of Lighter, a decentralized perpetual futures exchange that runs as a zero-knowledge rollup on Ethereum and describes itself as offering verifiable order matching and liquidations. Lighter opened its public mainnet on 1 October 2025. The team announced LIT at the end of December 2025 ahead of its token generation event. Lighter says revenue from its exchange and future products built on its infrastructure will be traceable on-chain and directed to growth initiatives and token buybacks, that the token is issued by its US C-corporation, and that the protocol itself will run at cost.",
   "sources": [
    "https://www.valuethemarkets.com/cryptocurrency/news/lit-tokens-launch-on-hyperliquid-signals-new-competitiveness-in-crypto-exchange-market",
    "https://www.btc-echo.de/schlagzeilen/lighter-launcht-lit-token-das-naechste-hyperliquid-222495/",
    "https://docs.lighter.xyz/"
   ],
-  "checked": "2026-10-19"
+  "checked": "2026-10-19",
+  "onHL": "Hyperliquid added LIT to its pre-market perpetual platform in December 2025, before Lighter's token generation event, so traders could go long or short on the token before it traded on any spot market.",
+  "onHLSources": [
+   "https://www.valuethemarkets.com/cryptocurrency/news/lit-tokens-launch-on-hyperliquid-signals-new-competitiveness-in-crypto-exchange-market",
+   "https://cointelegraph.com/news/polymarket-odds-lighter-airdrop-surge-hyperliquid-lit-usdc"
+  ]
  },
  "MON": {
   "name": "Monad",
-  "about": "MON is the native token of Monad, a layer-1 blockchain that supports full Ethereum Virtual Machine bytecode and the Ethereum RPC interface, so existing Ethereum applications and tools can run on it. Monad executes transactions in parallel with just-in-time compilation, reaches agreement through a consensus protocol called MonadBFT, and is designed for blocks every 300 milliseconds with finality in about 600 milliseconds. Its public mainnet launched on 24 November 2025. Hyperliquid opened its MON-USD market on 8 October 2025, before the token existed, as a hyperp: a Hyperliquid-only perpetual that works like a standard perpetual but does not depend on an external spot or index oracle price. At that launch, leverage on the market was capped at 3x.",
+  "about": "MON is the native token of Monad, a layer-1 blockchain that supports full Ethereum Virtual Machine bytecode and the Ethereum RPC interface, so existing Ethereum applications and tools can run on it. Monad executes transactions in parallel with just-in-time compilation, reaches agreement through a consensus protocol called MonadBFT, and is designed for blocks every 300 milliseconds with finality in about 600 milliseconds. Its public mainnet launched on 24 November 2025.",
   "sources": [
    "https://docs.monad.xyz/",
    "https://www.theblock.co/post/373750/hyperliquid-lists-hyperps-monad-token"
   ],
-  "checked": "2026-10-19"
+  "checked": "2026-10-19",
+  "onHL": "Hyperliquid opened MON-USD on 8 October 2025, before the Monad token existed, as a hyperp: a Hyperliquid-only perpetual whose funding is set against a moving average of its own mark price instead of an external spot or index oracle. Leverage at launch was capped at 3x for both longs and shorts. Under Hyperliquid's hyperp rules, such a contract converts to a normal perpetual shortly after spot trading in the token opens on Binance, OKX or Bybit.",
+  "onHLSources": [
+   "https://www.theblock.co/post/373750/hyperliquid-lists-hyperps-monad-token",
+   "https://hyperliquid.gitbook.io/hyperliquid-docs/trading/hyperps"
+  ]
  },
  "PONS": {
   "name": "Pons",
-  "about": "PONS is the native token of pons, a token launchpad on Robinhood Chain. Anyone can create a fixed-supply token through pons; each launch deploys the token and its own Uniswap V3 pool against WETH in a single transaction, with the liquidity locked and no bonding curve or later migration. A launch counts as graduated once its pool holds a set amount of WETH, and trading continues in the same pool. Pools charge a 1% fee, most of which goes to the token's creator. According to the project's documentation, 80% of the protocol's share of fees funds automated buybacks of PONS that are sent to a burn address, a mechanism the documentation says is not yet immutable. Hyperliquid listed a PONS perpetual on 31 August 2026 with up to 3x leverage.",
+  "about": "PONS is the native token of pons, a token launchpad on Robinhood Chain. Anyone can create a fixed-supply token through pons; each launch deploys the token and its own Uniswap V3 pool against WETH in a single transaction, with the liquidity locked and no bonding curve or later migration. A launch counts as graduated once its pool holds a set amount of WETH, and trading continues in the same pool. Pools charge a 1% fee, most of which goes to the token's creator. According to the project's documentation, 80% of the protocol's share of fees funds automated buybacks of PONS that are sent to a burn address, a mechanism the documentation says is not yet immutable.",
   "sources": [
    "https://docs.ponsfamily.com/",
    "https://m.lookonchain.com/feeds/70653",
    "https://airdropalert.com/blogs/what-is-pons-token/"
   ],
-  "checked": "2026-10-19"
+  "checked": "2026-10-19",
+  "onHL": "Hyperliquid launched the PONS perpetual on 31 August 2026 with leverage of up to 3x, according to its announcement as relayed by BlockBeats.",
+  "onHLSources": [
+   "https://m.lookonchain.com/feeds/70653"
+  ]
  },
  "VVV": {
   "name": "Venice Token",
@@ -498,13 +573,18 @@
  },
  "XPL": {
   "name": "Plasma",
-  "about": "XPL is the native token of Plasma, a layer-1 blockchain focused on stablecoins and backed by Bitfinex. The network uses a consensus layer called PlasmaBFT and supports zero-fee USDT transfers that the protocol subsidizes. An early plan to merge Bitcoin's UTXO model with the EVM gave way to an independent chain with a trust-minimised Bitcoin bridge. Plasma held a public token sale in July 2025, and its mainnet beta and XPL went live on 25 September 2025. Hyperliquid listed XPL in August 2025 as a pre-launch hyperp with up to 3x leverage. On 26 August 2025 an order-book sweep spiked that market and triggered auto-deleveraging; Hyperliquid then announced a cap on hyperp mark prices tied to an 8-hour moving average and external perpetual prices in the mark formula.",
+  "about": "XPL is the native token of Plasma, a layer-1 blockchain focused on stablecoins and backed by Bitfinex. The network uses a consensus layer called PlasmaBFT and supports zero-fee USDT transfers that the protocol subsidizes. An early plan to merge Bitcoin's UTXO model with the EVM gave way to an independent chain with a trust-minimised Bitcoin bridge. Plasma held a public token sale in July 2025, and its mainnet beta and XPL went live on 25 September 2025.",
   "sources": [
    "https://www.theblock.co/post/367929/plasmas-xpl-token-trades-above-4-5-billion-fully-diluted-valuation-in-pre-markets",
    "https://www.theblock.co/post/368486/hyperliquid-new-safeguards-following-whale-driven-xpl-pre-market-liquidations",
    "https://www.theblock.co/post/371228/bitfinex-plasma-blockchain-mainnet-launch"
   ],
-  "checked": "2026-10-19"
+  "checked": "2026-10-19",
+  "onHL": "Hyperliquid listed XPL-USD in August 2025, before Plasma's token launched, as a hyperp with leverage of up to 3x. On 26 August 2025 whales swept the order book, the contract spiked within minutes, and liquidations, mostly of shorts, moved to auto-deleveraging. Hyperliquid said its systems worked as designed with no bad debt, and that isolated margin kept losses inside the XPL market. It then announced a hard cap on hyperp mark prices at 10 times the 8-hour moving average, and use of external perpetual prices, such as Binance's, in the hyperp mark price.",
+  "onHLSources": [
+   "https://www.theblock.co/post/367929/plasmas-xpl-token-trades-above-4-5-billion-fully-diluted-valuation-in-pre-markets",
+   "https://www.theblock.co/post/368486/hyperliquid-new-safeguards-following-whale-driven-xpl-pre-market-liquidations"
+  ]
  },
  "ZRO": {
   "name": "LayerZero",
@@ -514,6 +594,11 @@
    "https://forklog.com/en/layerzero-foundation-introduces-token-claim-fee-via-proof-of-donation/",
    "https://kucoin.com/news/articles/layerzero-zro-airdrop-starts-june-20-eligibility-checker-now-live"
   ],
-  "checked": "2026-10-19"
+  "checked": "2026-10-19",
+  "onHL": "Hyperliquid opened ZRO-USD on 7 September 2023 as its first hyperp, before the LayerZero token existed; funding was set against a moving average of the contract's own mark price instead of an external oracle. The contract tracked ZRO's fully diluted value divided by 2 billion and launched at up to 3x leverage on isolated margin only. Hyperliquid said that once ZRO spot listed on Binance or OKX, the contract would convert to a normal perpetual if maximum supply was exactly 2 billion, and otherwise settle a week later and be replaced by a new standard perpetual.",
+  "onHLSources": [
+   "https://web.archive.org/web/2024/https://hyperliquid.medium.com/introducing-hyperps-layerzero-pre-launch-perps-b0421414fb66",
+   "https://hyperliquid.gitbook.io/hyperliquid-docs/trading/hyperps"
+  ]
  }
 }
