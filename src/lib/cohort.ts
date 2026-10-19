@@ -64,13 +64,14 @@ export function bookWords(perps: readonly Perp[], symbol: string): string | null
   if (!turn) return `${head}.`;
   /* Turnover is volume over open interest: the higher it is, the more of the day's trading is
      churn against a book that stays put. Third by third, because a rank of 31 out of 56 is not
-     something a reader can use and "middle third" is. */
+     something a reader can use and "top third" is. The middle third is the ordinary case and is not
+     printed at all. */
   const third = turn.place <= turn.of / 3 ? "top" : turn.place > (2 * turn.of) / 3 ? "bottom" : "middle";
   const tail = third === "top"
     ? `, and its book churns faster than most: a day's volume against open interest puts it ${placeWords(turn, "highest", "lowest")} of ${turn.of}`
     : third === "bottom"
       ? `, and its book turns over slowly: a day's volume against open interest puts it ${placeWords(turn, "highest", "lowest")} of ${turn.of}`
-      : `; a day's volume against its open interest sits in the middle third of the book, ${ordinal(turn.place)} of ${turn.of}`;
+      : "";
   return `${head}${tail}.`;
 }
 
@@ -86,7 +87,7 @@ export function fundingStandingWords(perps: readonly Perp[], symbol: string): st
   if (n < 5) return null;
   const onBase = rated.filter((p) => isHlBaseApr(p.hlApr)).length;
   if (isHlBaseApr(own.hlApr)) {
-    return `That is Hyperliquid's base rate, ${pct(HL_BASE_APR)}, and ${onBase - 1} of the other ${n - 1} covered contracts print exactly the same figure: a venue constant rather than a view about ${symbol}, so on its own it says little about which side is crowded.`;
+    return `That is Hyperliquid's base rate, ${pct(HL_BASE_APR)}, which ${onBase - 1} of the other ${n - 1} covered contracts also print: a venue constant, not a view about ${symbol}.`;
   }
   const others = (k: number, verb: string) => (k === 0 ? `no other covered contract ${verb}` : `${k} of the other ${n - 1} covered contracts ${verb === "does" ? "do" : "are"}`);
   if (own.hlApr < 0) {
@@ -191,7 +192,12 @@ export function dayProfile(days: readonly Candle[]): DayProfile | null {
 export function dayProfileWords(symbol: string, p: DayProfile): string {
   const big = p.bigDays === 0 ? "No day closed 5% or more from where it opened"
     : `${p.bigDays === 1 ? "One day" : `${p.bigDays} days`} closed 5% or more from where ${p.bigDays === 1 ? "it" : "they"} opened`;
-  return `Over its last ${p.of} closed days ${symbol}'s median day spanned ${pct(p.medRange)} from high to low, and ${p.upDays} of the ${p.of} closed at or above their open. The deepest fall from a day's open was ${pct(p.worstFall.v)}, on ${dayDate(p.worstFall.t)}; the highest rise ${pct(p.bestRise.v)}, on ${dayDate(p.bestRise.t)}. ${big}.`;
+  /* ONLY WHAT STANDS OUT. A balanced month of up and down days, or a month with no 5% day, is the
+     ordinary case and says nothing a reader needs; printing it anyway made the sentence the same on
+     most pages. The day range and the two extremes are always this contract's own. */
+  const lean = p.upDays >= Math.ceil(p.of * 0.63) ? ` ${p.upDays} of the ${p.of} closed at or above their open.`
+    : p.upDays <= Math.floor(p.of * 0.37) ? ` Only ${p.upDays} of the ${p.of} closed at or above their open.` : "";
+  return `Over its last ${p.of} closed days ${symbol}'s median day spanned ${pct(p.medRange)} from high to low.${lean} The deepest fall from a day's open was ${pct(p.worstFall.v)}, on ${dayDate(p.worstFall.t)}; the highest rise ${pct(p.bestRise.v)}, on ${dayDate(p.bestRise.t)}.${p.bigDays > 0 ? ` ${big}.` : ""}`;
 }
 
 /** How a price distance compares with this contract's own days: in median days, and how many days covered it. */

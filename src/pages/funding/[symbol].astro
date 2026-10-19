@@ -520,8 +520,9 @@ const description = `What the ${p.symbol} perpetual costs to hold, against ${usd
       {regime && (
         <p class="fregime">
           Over the {regime.days} days drawn, longs paid on <b>{regime.longsPaid}</b> and shorts on <b>{regime.shortsPaid}</b>{regime.atBase > 0 && <>, and {p.symbol} sat at Hyperliquid's base rate on {plural(regime.atBase, "day", "days")}</>}.
-          {" "}The current run is <b>{plural(regime.run.days, "day", "days")} of {regime.run.side === "long" ? "longs" : "shorts"} paying</b>, since {shortDate(regime.run.since)};
-          {" "}the latest day's average is above {regime.below} of the {regime.days}.
+          {" "}The current run is <b>{plural(regime.run.days, "day", "days")} of {regime.run.side === "long" ? "longs" : "shorts"} paying</b>, since {shortDate(regime.run.since)}{(regime.below <= regime.days * 0.1 || regime.below >= regime.days * 0.9)
+            ? <>; the latest day's average is above {regime.below} of the {regime.days}.</>
+            : "."}
           {fundEnds && <>{" "}{fundEnds}</>}
         </p>
       )}

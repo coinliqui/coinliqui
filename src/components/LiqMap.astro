@@ -556,7 +556,6 @@ const formNote: string | null = (() => {
                   that ranged {px(largestBar.item.c[L])} to {px(largestBar.item.c[H])}.</>}
                 {largestBar.kind === "tied" && <>{" "}{largestBar.items.length} of them tie for the largest share,
                   {" "}{pct(largestBar.value / 10000)} each: {joinWith(largestBar.items.map(barWhen), "and")}.</>}</>}
-            {" "}Range: traded candles. Cleared: the model.
           </p>
           <div class="panel">
             <table class="tbl">
