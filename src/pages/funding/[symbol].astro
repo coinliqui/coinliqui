@@ -8,7 +8,7 @@ import { oiMoves } from "../../lib/oi-history.ts";
 import { getCandles, getM15, getHourly, getFunding } from "../../lib/candles.ts";
 import PricePanel from "../../components/PricePanel.astro";
 import Versus from "../../components/Versus.astro";
-import { narrowChart, NARROW_W, fundingRegime, TIMEFRAMES, DEFAULT_TF, MIN_CHART_BARS, drawnBars, barSpan, buildPriceChart, buildFundingChart, timeframeGapNote, shortDate, CHART_H, versusRows } from "../../lib/series.ts";
+import { narrowChart, NARROW_W, fundingRegime, TIMEFRAMES, DEFAULT_TF, MIN_CHART_BARS, drawnBars, barSpan, buildPriceChart, buildFundingChart, fundingByBar, timeframeGapNote, shortDate, CHART_H, versusRows } from "../../lib/series.ts";
 import { CH } from "../../lib/chart.ts";
 import { coinPageFor } from "../../lib/coins.ts";
 import { readFundingPaidFor } from "../../lib/funding-paid.ts";
@@ -20,7 +20,7 @@ import { utcStamp, plural } from "../../lib/freshness.ts";
 import Overview from "../../components/Overview.astro";
 import Figure from "../../components/Figure.astro";
 import { extremeBy, standing } from "../../lib/extreme.ts";
-import { fundingStandingWords, closedDays, daysThatReached } from "../../lib/cohort.ts";
+import { fundingStandingWords, closedDays, daysThatReached, fitAgainst, fitWords } from "../../lib/cohort.ts";
 
 import { priceDp, changeWords, signedPct, weekCarry } from "../../lib/funding.ts";
 const env = (Astro.locals as any)?.runtime?.env;
@@ -283,6 +283,8 @@ const standingWords = hlStanding && hlStanding.of >= 24
    They took the place of explanations every contract page printed word for word (19 October 2026);
    those are said once on /methodology now. */
 const fundStanding = fundingStandingWords(snap.perps, p.symbol);
+const fitRef = fitAgainst(dayset?.d, refDay?.d, snap.fetchedAt);
+const fitNote = fitRef ? fitWords(p.symbol, refSymbol, fitRef) : null;
 const month = closedDays(dayset?.d, snap.fetchedAt);
 const liqDays = month.length >= 10 && Number.isFinite(liq.distancePct) ? daysThatReached(month, liq.distancePct, Infinity).long : null;
 /* WHAT THE QUOTED COLUMN WOULD HAVE TOLD A READER, AGAINST WHAT THE ANNUALISED ONE DOES — the table's
@@ -394,6 +396,20 @@ const fundChart = dayset?.d && dayset.d.length >= MIN_CHART_BARS
   : null;
 /* This contract's own account of the window drawn — see fundingRegime in src/lib/series.ts. */
 const regime = fundChart && dayset?.d ? fundingRegime(dayset.d.slice(-FUND_DAYS), funding, dayTf) : null;
+/* THE TWO DAYS AT THE ENDS OF THE DRAWN SERIES, AND WHAT PRICE DID ON EACH — read from the same daily
+   means the figure draws (fundingByBar), so the sentence names two points a reader can find on it. */
+const fundEnds = (() => {
+  if (!fundChart || !dayset?.d || !funding) return null;
+  const bars = dayset.d.slice(-FUND_DAYS);
+  const by = fundingByBar(bars, funding, dayTf.hours * 3_600_000);
+  const pts = bars.map((c) => ({ c, a: by.get(c[0]) })).filter((x): x is { c: typeof bars[number]; a: number } => Number.isFinite(x.a));
+  if (pts.length < 7) return null;
+  const hi = pts.reduce((m, x) => (x.a > m.a ? x : m)), lo = pts.reduce((m, x) => (x.a < m.a ? x : m));
+  const mv = (x: { c: number[] }) => signedPct(x.c[4] / x.c[1] - 1);
+  return `Its dearest day for longs was ${shortDate(hi.c[0])}, at ${pct(hi.a)} a year, a day ${p.symbol} moved ${mv(hi)} open to close; ${lo.a < 0
+    ? `the day shorts paid the most was ${shortDate(lo.c[0])}, at ${pct(-lo.a)}, a day of ${mv(lo)}.`
+    : `its cheapest was ${shortDate(lo.c[0])}, at ${pct(lo.a)} and still paid by longs, a day of ${mv(lo)}.`}`;
+})();
 /* The same bars in a phone-width box; CSS shows one (Base.astro, .fxw / .fxn). */
 const fundChartN = fundChart && dayset?.d ? buildFundingChart(dayset.d.slice(-FUND_DAYS), funding, dayTf, NARROW_W) : null;
 /* THE DAY COUNT TAKES ITS NOUN FROM THE COUNT, as the band note below learned to. fundChart.bars is
@@ -504,6 +520,7 @@ const description = `What the ${p.symbol} perpetual costs to hold, against ${usd
           Over the {regime.days} days drawn, longs paid on <b>{regime.longsPaid}</b> and shorts on <b>{regime.shortsPaid}</b>{regime.atBase > 0 && <>, and {p.symbol} sat at Hyperliquid's base rate on {plural(regime.atBase, "day", "days")}</>}.
           {" "}The current run is <b>{plural(regime.run.days, "day", "days")} of {regime.run.side === "long" ? "longs" : "shorts"} paying</b>, since {shortDate(regime.run.since)};
           {" "}the latest day's average is above {regime.below} of the {regime.days}.
+          {fundEnds && <>{" "}{fundEnds}</>}
         </p>
       )}
       <Fragment slot="note">
@@ -658,7 +675,7 @@ const description = `What the ${p.symbol} perpetual costs to hold, against ${usd
     </div>
   )}
 
-  <Versus symbol={p.symbol} refSymbol={refSymbol} refHref={`/funding/${refSymbol.toLowerCase()}`} rows={vsRows} at={snap.fetchedAt} />
+  <Versus symbol={p.symbol} refSymbol={refSymbol} refHref={`/funding/${refSymbol.toLowerCase()}`} rows={vsRows} at={snap.fetchedAt} fit={fitNote} />
 
   <h2 class="section">Funding</h2>
   {fundStanding && <p class="section-note">{fundStanding}</p>}

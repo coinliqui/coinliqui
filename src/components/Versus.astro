@@ -16,8 +16,10 @@ interface Props {
   rows: VersusRow[];
   /** when both marks were read */
   at: number;
+  /** how closely the daily moves tracked, in words (src/lib/cohort.ts fitWords) */
+  fit?: string | null;
 }
-const { symbol, refSymbol, refHref, rows, at } = Astro.props;
+const { symbol, refSymbol, refHref, rows, at, fit } = Astro.props;
 const points = (d: number) => {
   const p = (d * 100).toFixed(2);
   return Number(p) === 0 ? "level" : `${d > 0 ? "+" : "−"}${Math.abs(Number(p)).toFixed(2)} pts`;
@@ -40,7 +42,7 @@ const verdict = !rows.length ? null
   <>
     <h2 class="section">Against {refHref ? <a class="link" href={refHref}>{refSymbol}</a> : refSymbol}</h2>
     <p class="section-note">
-      {verdict}{" "}Marks read together at {utcStamp(at, 0)}{froms.length > 0 && <>; longer windows from the same daily close in both</>}.
+      {verdict}{fit && <>{" "}{fit}</>}{" "}Marks read together at {utcStamp(at, 0)}{froms.length > 0 && <>; longer windows from the same daily close in both</>}.
     </p>
     <div class="panel"><table class="tbl">
       <thead><tr><th>Over</th><th class="num">{symbol}</th><th class="num">{refSymbol}</th><th class="num">Difference</th></tr></thead>

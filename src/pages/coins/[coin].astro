@@ -13,7 +13,8 @@ import Overview from "../../components/Overview.astro";
 import PricePanel from "../../components/PricePanel.astro";
 import Versus from "../../components/Versus.astro";
 import { narrowChart, TIMEFRAMES, DEFAULT_TF, MIN_CHART_BARS, drawnBars, barSpan, buildPriceChart, timeframeGapNote, CHART_H, versusRows, type ChartMode } from "../../lib/series.ts";
-import { bookWords, fundingStandingWords, closedDays, daysThatReached, rungDaysWords } from "../../lib/cohort.ts";
+import { bookWords, fundingStandingWords, closedDays, daysThatReached, rungDaysWords, dayProfile, dayProfileWords, fitAgainst, fitWords } from "../../lib/cohort.ts";
+import DayMoves from "../../components/DayMoves.astro";
 import { extremeBy } from "../../lib/extreme.ts";
 import { CH } from "../../lib/chart.ts";
 
@@ -301,6 +302,9 @@ const fundStanding = fundingStandingWords(snap.perps, coin.symbol);
 const month = closedDays(dayset?.d, snap.fetchedAt);
 const rungDays = rungs.map((r) => ({ L: r.L, ...daysThatReached(month, r.longDist, r.shortDist) }));
 const rungNote = rungDaysWords(coin.symbol, rungDays);
+const profile = dayProfile(month);
+const fitRef = fitAgainst(dayset?.d, refDay?.d, snap.fetchedAt);
+const fitNote = fitRef ? fitWords(coin.symbol, refSymbol, fitRef) : null;
 /* THE VENUE TABLE'S SENTENCE IS ITS RESULT: which venue is cheapest for the same long, tie-aware. */
 const weekRows = venueRows.filter((r) => r.ok).map((r) => ({ name: VENUE_LABEL[r.v], cost: week(r.f!.apr) }));
 const cheapest = extremeBy(weekRows, (r) => r.cost, "min", 0.005);
@@ -434,7 +438,7 @@ const description = `Live ${coin.name} (${coin.symbol}) perpetual price from Hyp
     </div>
   )}
 
-  <Versus symbol={coin.symbol} refSymbol={refSymbol} refHref={refCoin ? `/coins/${refCoin.slug}` : null} rows={vsRows} at={snap.fetchedAt} />
+  <Versus symbol={coin.symbol} refSymbol={refSymbol} refHref={refCoin ? `/coins/${refCoin.slug}` : null} rows={vsRows} at={snap.fetchedAt} fit={fitNote} />
 
   {/* THIS HEADING SAID "Spot against the perpetual" AND THE SECTION HAD NO SPOT IN IT. The cards
       beneath were re-based when Coinbase was removed and the heading above them was not — a
@@ -513,6 +517,7 @@ const description = `Live ${coin.name} (${coin.symbol}) perpetual price from Hyp
       <h2 class="section">How far {coin.symbol} can move before each leverage closes you</h2>
       <p class="section-note" style="max-width:88ch">
         From the mark of {px(markNow)}{markClock ? ` at ${markClock}` : ""} and {coin.name}'s first margin tier, {tier1.maxLeverage}× at most.
+        {profile && <>{" "}{dayProfileWords(coin.symbol, profile)}</>}
         {rungNote && <>{" "}{rungNote}</>}
         {" "}<a class="link" href="/methodology#levels">How these are worked out →</a>
       </p>
@@ -542,6 +547,7 @@ const description = `Live ${coin.name} (${coin.symbol}) perpetual price from Hyp
           </tbody>
         </table>
       </div>
+      <DayMoves days={month} rungs={rungs} symbol={coin.symbol} />
     </>
   )}
 

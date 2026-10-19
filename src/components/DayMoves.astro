@@ -1,0 +1,91 @@
+---
+/* =========================================================================================
+   THE CONTRACT'S LAST THIRTY DAYS AGAINST ITS OWN LEVERAGE LINES.
+
+   One bar per closed UTC day: how far price rose from the day's open (above the zero line) and
+   how far it fell (below), with dashed lines at the distance each leverage is closed. The table
+   beside it counts the days that crossed each line; this is the same count drawn, so a reader
+   sees WHICH days did it and how far past the line they went. Every bar is traded candles and
+   every line is arithmetic on the published tier — nothing here is modelled.
+
+   Added 19 October 2026, when the coin and map pages were found to say the same sentences with
+   different numbers in them: this picture is different on every contract because the days are.
+   ========================================================================================= */
+import type { Candle } from "../lib/candles.ts";
+import { INK } from "../lib/chart.ts";
+import { pct, signedPct } from "../lib/funding.ts";
+import { shortDate } from "../../public/shared.js";
+
+interface Props {
+  days: Candle[];
+  rungs: { L: number; longDist: number; shortDist: number }[];
+  symbol: string;
+}
+const { days, rungs, symbol } = Astro.props;
+const N = days.length;
+const rise = days.map(([, o, h]) => (h - o) / o);
+const fall = days.map(([, o, , l]) => (o - l) / o);
+const S = Math.max(...rise, ...fall, 1e-6) * 1.08;
+const VW = N * 10, VH = 200, MID = 100, AMP = 96;
+const yUp = (v: number) => MID - (v / S) * AMP;
+const yDn = (v: number) => MID + (v / S) * AMP;
+/* At most three leverage lines, highest leverage first, and only those inside the drawn scale:
+   a line past every bar says only that no day reached it, which the table already says. */
+const shown = [...rungs].sort((a, b) => b.L - a.L).filter((r) => r.longDist <= S || r.shortDist <= S).slice(0, 3);
+const top = shown[0];
+const hitDay = (i: number) => !!top && (fall[i] >= top.longDist || rise[i] >= top.shortDist);
+/* Labels as HTML at a percentage height, so they stay legible at phone width while the bars stretch. */
+type Lab = { y: number; text: string };
+const labs: Lab[] = [];
+const place = (y: number, text: string) => {
+  if (y < 2 || y > VH - 2) return;
+  if (labs.some((l) => Math.abs(l.y - y) < 16)) return;
+  labs.push({ y, text });
+};
+for (const r of shown) {
+  if (r.shortDist <= S) place(yUp(r.shortDist), `${r.L}× short ${signedPct(r.shortDist)}`);
+  if (r.longDist <= S) place(yDn(r.longDist), `${r.L}× long ${signedPct(-r.longDist)}`);
+}
+const tip = (i: number) => {
+  const [t, o, , , c] = days[i];
+  return `<div class="tip__h">${shortDate(t)}</div><div class="tip__g"><span>Up from open</span><b>${signedPct(rise[i])}</b><span>Down from open</span><b>${signedPct(-fall[i])}</b><span>Close vs open</span><b>${signedPct(c / o - 1)}</b></div>`;
+};
+---
+{N >= 10 && (
+  <figure class="dm">
+    <div class="dm__plot">
+      <svg viewBox={`0 0 ${VW} ${VH}`} preserveAspectRatio="none" role="img" data-tips class="dm__svg"
+           aria-label={`${symbol}'s rise and fall from each day's open over its last ${N} closed days, against the price distance at which each leverage is closed. The counts are in the table.`}>
+        <line x1="0" x2={VW} y1={MID} y2={MID} stroke={INK.dim} stroke-width="1" vector-effect="non-scaling-stroke" />
+        {shown.map((r) => (
+          <g>
+            {r.shortDist <= S && <line x1="0" x2={VW} y1={yUp(r.shortDist)} y2={yUp(r.shortDist)} stroke={INK.neutral} stroke-width="1" stroke-dasharray="4 4" opacity="0.7" vector-effect="non-scaling-stroke" />}
+            {r.longDist <= S && <line x1="0" x2={VW} y1={yDn(r.longDist)} y2={yDn(r.longDist)} stroke={INK.neutral} stroke-width="1" stroke-dasharray="4 4" opacity="0.7" vector-effect="non-scaling-stroke" />}
+          </g>
+        ))}
+        {days.map((_, i) => (
+          <g>
+            <rect x={i * 10 + 2} y={yUp(rise[i])} width="6" height={Math.max(0.5, MID - yUp(rise[i]))} fill={hitDay(i) ? INK.acc : INK.neutral} opacity={hitDay(i) ? 1 : 0.55} />
+            <rect x={i * 10 + 2} y={MID} width="6" height={Math.max(0.5, yDn(fall[i]) - MID)} fill={hitDay(i) ? INK.acc : INK.neutral} opacity={hitDay(i) ? 1 : 0.55} />
+            <rect x={i * 10} y="0" width="10" height={VH} fill="transparent" data-tip={tip(i)} />
+          </g>
+        ))}
+      </svg>
+      {labs.map((l) => <span class="dm__lab" style={`top:calc(${l.y.toFixed(1)} / ${VH} * 100%)`}>{l.text}</span>)}
+    </div>
+    <figcaption class="dm__cap">
+      <span>{shortDate(days[0][0])}</span>
+      <span>One bar per closed day: the rise from its open above the line, the fall below.{top && <> Bright: days that reached a {top.L}× line.</>}</span>
+      <span>{shortDate(days[N - 1][0])}</span>
+    </figcaption>
+  </figure>
+)}
+<style>
+  .dm { margin: var(--gap-block) 0; background: #0f1215; border-radius: 12px; padding: 12px 12px 8px; }
+  .dm__plot { position: relative; height: 220px; }
+  .dm__svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: crosshair; }
+  .dm__lab { position: absolute; right: 4px; transform: translateY(-50%); font: 600 12px var(--mono); color: var(--text-dim); background: rgba(15, 18, 21, .85); padding: 1px 6px; border-radius: 4px; pointer-events: none; white-space: nowrap; }
+  .dm__cap { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; margin-top: 8px; font-size: 12px; color: var(--text-faint); }
+  .dm__cap span:nth-child(2) { text-align: center; flex: 1; }
+  @media (max-width: 600px) { .dm__cap span:nth-child(2) { order: 3; flex-basis: 100%; text-align: left; } }
+</style>

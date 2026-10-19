@@ -23,6 +23,7 @@
 import type { Perp } from "./hyperliquid.ts";
 import type { Candle } from "./candles.ts";
 import { HL_BASE_APR, isHlBaseApr, pct } from "./funding.ts";
+import { shortDate } from "../../public/shared.js";
 
 /** "1st", "2nd", "23rd". */
 export const ordinal = (n: number) => {
@@ -156,4 +157,72 @@ export function rungDaysWords(symbol: string, rows: readonly RungDays[]): string
     ? ` ${clean.L}× is the highest leverage here that every one of those days left standing, long or short.`
     : ` No leverage on this table got through all ${of} of them on both sides.`;
   return `${lead}${tail}`;
+}
+
+/* =========================================================================================
+   WHAT THE CONTRACT'S OWN DAYS LOOK LIKE — the second half of "each page says something only
+   it can". Added 19 October 2026 with the day-moves chart (src/components/DayMoves.astro).
+   ========================================================================================= */
+const median = (xs: number[]) => {
+  const a = [...xs].sort((x, y) => x - y);
+  return a.length ? (a.length % 2 ? a[(a.length - 1) / 2] : (a[a.length / 2 - 1] + a[a.length / 2]) / 2) : NaN;
+};
+const dayDate = (t: number) => shortDate(t);
+
+export interface DayProfile {
+  of: number;
+  medFall: number; medRise: number; medRange: number;
+  worstFall: { t: number; v: number }; bestRise: { t: number; v: number };
+  /** days that closed at least 5% from their own open */
+  bigDays: number; upDays: number;
+}
+export function dayProfile(days: readonly Candle[]): DayProfile | null {
+  if (days.length < 10) return null;
+  const fall = days.map(([, o, , l]) => (o - l) / o), rise = days.map(([, o, h]) => (h - o) / o);
+  const wf = fall.indexOf(Math.max(...fall)), br = rise.indexOf(Math.max(...rise));
+  return {
+    of: days.length,
+    medFall: median(fall), medRise: median(rise), medRange: median(days.map(([, o, h, l]) => (h - l) / o)),
+    worstFall: { t: days[wf][0], v: fall[wf] }, bestRise: { t: days[br][0], v: rise[br] },
+    bigDays: days.filter(([, o, , , c]) => Math.abs(c / o - 1) >= 0.05).length,
+    upDays: days.filter(([, o, , , c]) => c >= o).length,
+  };
+}
+export function dayProfileWords(symbol: string, p: DayProfile): string {
+  const big = p.bigDays === 0 ? "No day closed 5% or more from where it opened"
+    : `${p.bigDays === 1 ? "One day" : `${p.bigDays} days`} closed 5% or more from where ${p.bigDays === 1 ? "it" : "they"} opened`;
+  return `Over its last ${p.of} closed days ${symbol}'s median day spanned ${pct(p.medRange)} from high to low, and ${p.upDays} of the ${p.of} closed at or above their open. The deepest fall from a day's open was ${pct(p.worstFall.v)}, on ${dayDate(p.worstFall.t)}; the highest rise ${pct(p.bestRise.v)}, on ${dayDate(p.bestRise.t)}. ${big}.`;
+}
+
+/** How a price distance compares with this contract's own days: in median days, and how many days covered it. */
+export function distanceInDays(days: readonly Candle[], dist: number, side: "down" | "up") {
+  const moves = days.map(([, o, h, l]) => (side === "down" ? (o - l) / o : (h - o) / o));
+  const med = median(moves);
+  return { times: med > 0 ? dist / med : NaN, reached: moves.filter((m) => m >= dist).length, of: days.length, med };
+}
+
+/**
+ * How closely the contract's daily moves followed the reference contract's over the same days:
+ * correlation and beta of close-to-close returns on days both series have.
+ */
+export function fitAgainst(own: readonly Candle[] | undefined | null, ref: readonly Candle[] | undefined | null, now: number, n = 30) {
+  const a = closedDays(own as Candle[], now, n + 1), b = new Map(closedDays(ref as Candle[], now, n + 1).map((c) => [c[0], c[4]]));
+  const pairs: [number, number][] = [];
+  for (let i = 1; i < a.length; i++) {
+    const r0 = b.get(a[i - 1][0]), r1 = b.get(a[i][0]);
+    if (r0 && r1 && a[i - 1][4] > 0) pairs.push([a[i][4] / a[i - 1][4] - 1, r1 / r0 - 1]);
+  }
+  if (pairs.length < 15) return null;
+  const mx = pairs.reduce((s, p) => s + p[0], 0) / pairs.length, my = pairs.reduce((s, p) => s + p[1], 0) / pairs.length;
+  let sxy = 0, sxx = 0, syy = 0;
+  for (const [x, y] of pairs) { sxy += (x - mx) * (y - my); sxx += (x - mx) ** 2; syy += (y - my) ** 2; }
+  if (!(sxx > 0) || !(syy > 0)) return null;
+  return { corr: sxy / Math.sqrt(sxx * syy), beta: sxy / syy, days: pairs.length };
+}
+export function fitWords(symbol: string, refSymbol: string, f: { corr: number; beta: number; days: number }): string {
+  const how = f.corr >= 0.8 ? "closely" : f.corr >= 0.5 ? "loosely" : f.corr >= 0.2 ? "only faintly" : "hardly at all";
+  const beta = f.corr >= 0.5
+    ? ` On a typical day a 1% move in ${refSymbol} came with a ${f.beta.toFixed(1)}% move in ${symbol}${f.beta > 1.15 ? ", a larger swing in the same direction" : f.beta < 0.85 ? ", a smaller one" : ", about the same size"}.`
+    : ` At that fit a 1% day in ${refSymbol} says little about ${symbol}'s day.`;
+  return `Over ${f.days} daily closes ${symbol} has tracked ${refSymbol} ${how} (correlation ${f.corr.toFixed(2)}).${beta}`;
 }
