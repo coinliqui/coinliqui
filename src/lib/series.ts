@@ -180,38 +180,6 @@ export interface PriceChart {
   dp: number; bars: number;
 }
 
-/* THE CANDLE SENTENCE DESCRIBED CANDLES ON THE LINE VIEW. It was one server string for both chart
-   styles, and the client swap never touched it: /coins/bnb?tf=1m&view=line, on production on 16
-   September 2026, drew one neutral close line (stroke #e8ecf1) and no candle bodies at all under
-   "Candles are green for up and red for down, with the up candles hollow". All 26 line variants
-   fetched that day said it.
-   It was also not true of every candle on the Candles view. buildPriceChart outlines an up body
-   only when it is tall enough to outline, and draws the rest solid: counted on the local render
-   of /coins/bitcoin the same day, 30 of the 99 green candles on 4H and 33 of 154 on 30m were
-   solid — the ones whose direction can be read only from colour.
-   So the sentence is chosen by the style that was drawn, and the solid bodies are COUNTED FROM
-   THE DRAWN SVG: every hollow body is the only <rect fill="none"> the price chart emits, and
-   every green candle is a point whose close is at or above its open (the same `c >= o` that picks
-   the colour). No threshold is copied out of series.ts, so if that one moves this count follows
-   it. The sentence is a [data-tfstat] so the client swaps it with the panel — see the note on the
-   legend below.
-   MOVED HERE ON 17 SEPTEMBER 2026 because the contract page kept the sentence this replaced: its
-   legend said "The up candles are hollow" under the same buildPriceChart bars, on every timeframe
-   of /funding/{symbol}. */
-export function candleStyleNote(chart: PriceChart, mode: ChartMode): string {
-  if (mode === "line") {
-    return "The line joins each bar's close instead of drawing candles, so a bar's high and low are not on it and the period high and low can sit beyond it; the volume bars beneath are green where a bar closed at or above its open and red where it closed below.";
-  }
-  const green = chart.points.filter((p) => p[5] >= p[2]).length;
-  const hollow = (chart.svg.match(/<rect\b[^>]*\bfill="none"/g) ?? []).length;
-  const solid = Math.max(0, green - hollow);
-  const lead = "Candles and the volume bars beneath them are green where a bar closed at or above its open and red where it closed below";
-  if (green === 0) return `${lead}.`;
-  if (solid === 0) return `${lead}, and every green body is hollow, so direction reads without relying on colour.`;
-  if (hollow === 0) return `${lead}. Every green body here is too short to outline and is drawn solid, so on this view direction is carried by colour alone.`;
-  return `${lead}, and green bodies are hollow so direction reads without relying on colour — except ${solid} of the ${green} green candles, whose ${solid === 1 ? "body is" : "bodies are"} too short to outline and drawn solid.`;
-}
-
 /** Candles or a close line. The line is a presentation of the same array, not a second series. */
 export type ChartMode = "candle" | "line";
 

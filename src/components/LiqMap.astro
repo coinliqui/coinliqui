@@ -41,6 +41,7 @@ import More from "./More.astro";
 import LevelsMap from "./LevelsMap.astro";
 import Overview from "./Overview.astro";
 import { extremeBy } from "../lib/extreme.ts";
+import { bookWords, daysFromHourly, daysThatReached, rungDaysWords } from "../lib/cohort.ts";
 import { priceDp, axisDp as axisDpOf } from "../lib/funding.ts";
 
 interface Props {
@@ -172,6 +173,7 @@ const paint = map ? paintHeatMap(map, { live: { px: mark, at: markNow.at } }) : 
 const warmBars = map ? map.warmBars : 0;
 const stepMs = win.factor * 3_600_000;
 const totalClustered = map ? map.clusters.reduce((s, c) => s + c.notional, 0) : 0;
+const clusterLongShare = map && totalClustered > 0 ? map.clusters.filter((c) => c.side === "long").reduce((s, c) => s + c.notional, 0) / totalClustered : null;
 /* THE HEAVIEST CLUSTER STILL STANDING, NOT map.peak, and not a first element either.
    `peak` is the largest cell in the WHOLE grid, every column included, so it can be a level price
    cleared a fortnight ago — "still standing" over it would be a label asserting what the expression
@@ -217,16 +219,13 @@ const sameForAll = mix.length === 0
     ? `every profile puts all of its weight at ${rungList}`
     : "every profile rescales to the same shares";
 const droppedRungs = profile.weights.filter(([L]) => L > cap).map(([L]) => `${L}×`);
-const ladderTop = Math.max(...profile.weights.map(([L]) => L));
 /* ROW 3 LEADS WITH THE SHARES THE MODEL USES WHEN A CAP RESCALES THEM. Measured 16 September 2026
    on /liquidations/xmr?profile=conservative&win=30 (5× cap, rendered from this code before the
    change): the row opened "Conservative — Most size at low leverage" and qualified it a sentence
    later, above a table that put 58.18% at 5×, the highest rung in play. The shares come from `mix`,
    the vector the table and the model read, printed with the same pct(), so the row cannot name a
-   shape the table beneath it does not show; the profile's own sentence follows, labelled as the
-   shape written for the full ladder. */
+   shape the table beneath it does not show. */
 const rescaledShares = joinWith(mix.map(({ L, share }) => `${pct(share)} at ${L}×`), "and");
-const noteAsClause = profile.note.charAt(0).toLowerCase() + profile.note.slice(1);
 /* IT TESTED ONE SIDE AGAINST ONE BOUND. The map places BOTH a long and a short level at every
    leverage — buildLiqMap iterates [[longLiq, true], [shortLiq, false]] — and this filter checked
    only the long level against only the lower bound. The axis is not symmetric about the mark: it
@@ -302,6 +301,12 @@ const rungs = [...new Set(CHART_FRACTIONS.map((f) => Math.max(2, Math.round(tier
   .filter((l) => l <= tier1.maxLeverage && l >= 2)
   .sort((a, b) => b - a)
   .map(rung);
+/* WHAT THIS CONTRACT'S OWN LAST THIRTY DAYS DID TO EACH RUNG, and where it stands in the book —
+   src/lib/cohort.ts. They replaced sentences every map page carried word for word (19 October 2026). */
+const month = daysFromHourly(hourly?.d, snap.fetchedAt);
+const rungDays = rungs.map((r) => ({ L: r.L, ...daysThatReached(month, r.longDist, r.shortDist) }));
+const rungNote = rungDaysWords(perp.symbol, rungDays);
+const book = bookWords(snap.perps, perp.symbol);
 const CW = 1000, CHT = 440, cpL = 20, cpR = 96, cpT = 20, cpB = 62;
 const cPlotW = CW - cpL - cpR, cPlotH = CHT - cpT - cpB;
 const cLo = Math.min(...rungs.map((r) => r.longLiq)), cHi = Math.max(...rungs.map((r) => r.shortLiq));
@@ -455,17 +460,10 @@ const formNote: string | null = (() => {
             markup — frozen at render, "1 minutes" at one minute, beside a top-bar pill that ages — and the
             candle time had no date, so yesterday's last bar read as today's (production, 17 September 2026).
             /funding and /watchlist had moved to ageWords() and data-fresh. Both are shared calls now. */}
-        Hourly candles to <b>{hourly ? utcStamp(hourly.d[hourly.d.length - 1][0]) : "—"}</b>,
-        refreshed every 2 hours and drawn here in {win.factor}-hour steps.
+        Hourly candles to <b>{hourly ? utcStamp(hourly.d[hourly.d.length - 1][0]) : "—"}</b>, drawn in {win.factor}-hour steps;
+        the dashed line is the {markNow.live ? "live" : "snapshot"} mark, {px(mark)}, read
+        {" "}<time datetime={new Date(markNow.at).toISOString()} data-fresh={markNow.at}>{ageWords(minutesSince(markNow.at))}</time>.
       </p>
-      <More label="The dashed line, and why the map carries two ages">
-        <p class="datanote">
-          The dashed line is the
-          <b>{markNow.live ? "live mark" : "snapshot mark"}, {px(mark)}</b>, read
-          {" "}<time datetime={new Date(markNow.at).toISOString()} data-fresh={markNow.at}>{ageWords(minutesSince(markNow.at))}</time>. Two
-          different ages, so neither is allowed to stand for the other.
-        </p>
-      </More>
 
       <div class="reads">
         <div><b>{compact(sweptTotal)}</b><span>modelled notional price traded through inside this window</span></div>
@@ -476,13 +474,8 @@ const formNote: string | null = (() => {
       <More label="How this is modelled — every assumption">
       <div class="verdict verdict--warn">
         <div>
-          <b>This surface is a model, and the assumptions below drive it.</b> No venue publishes
-          open positions by leverage and entry price.
-          {coincide
-            ? <>{" "}On {perp.symbol} the leverage mix changes nothing: its {cap}× cap leaves {ladderLeft}, so {sameForAll} and draws this same picture.</>
-            : <>{" "}Change the leverage mix above the map and the bands move.</>}
-          {" "}The price path over the field is traded candles, not model. <a class="link" href="/liquidations/sweep">Price
-          clearing modelled levels on 5 February 2026 →</a>
+          <b>A model:</b> no venue publishes open positions by leverage and entry price; the price path over it is traded candles.
+          {coincide && <>{" "}On {perp.symbol} the leverage mix changes nothing: its {cap}× cap leaves {ladderLeft}, so {sameForAll}.</>}
         </div>
       </div>
 
@@ -495,12 +488,12 @@ const formNote: string | null = (() => {
             <tr class="is-active"><td class="num">2</td><td>Leverage mix</td><td>{coincide
                 ? <><strong>{profile.label}</strong>, which makes no difference here: this contract's {cap}× cap leaves {ladderLeft}, so {sameForAll}.</>
                 : droppedRungs.length > 0
-                  ? <><strong>{profile.label}</strong>, rescaled to this contract's {cap}× cap: {rescaledShares}, once the {joinWith(droppedRungs, "and")} weight{droppedRungs.length === 1 ? " is" : "s are"} dropped. As written for a {ladderTop}× contract: {noteAsClause}</>
+                  ? <><strong>{profile.label}</strong>, rescaled to this contract's {cap}× cap: {rescaledShares}, once the {joinWith(droppedRungs, "and")} weight{droppedRungs.length === 1 ? " is" : "s are"} dropped.</>
                   : <><strong>{profile.label}</strong> — {profile.note}</>}</td><td class="num">assumed</td></tr>
             <tr><td class="num">3</td><td>Maintenance margin</td><td>{pct(mmf, 3)} at tier 1, from the published table</td><td class="num">observed</td></tr>
-            <tr><td class="num">4</td><td>Positions before the window opens</td><td>{warmBars} bars before the chart starts are modelled off-screen{warmBars >= ageBars
-                ? <>, so the first drawn column already holds a full position-life window of positions</>
-                : <>. That is short of the {ageBars} bars a full set needs, so the left of the picture is still filling up</>}</td><td class="num">assumed</td></tr>
+            <tr><td class="num">4</td><td>Positions before the window opens</td><td>{warmBars} bars modelled before the chart starts{warmBars >= ageBars
+                ? <>, so its first column is already full</>
+                : <>, short of the {ageBars} a full set needs: the left edge is still filling</>}</td><td class="num">assumed</td></tr>
             <tr><td class="num">5</td><td>Drawn price range</td><td>{spanWords(map, px)}
               {" "}{pct(map.clipped)} of modelled notional liquidates further away than this and is not drawn{offAxis.length > 0 ? <>, including every {offAxis.map(([L]) => `${L}×`).join(", ").replace(/, ([^,]*)$/, " and $1")} level</> : ""}.</td><td class="num">observed</td></tr>
             <tr><td class="num">6</td><td>The same on every coin</td><td>Positions opened in proportion to traded volume, half long and half short, each with a {POSITION_LIFE_DAYS}-day life. <a class="link" href="/learn/liquidation-heatmap#shared-inputs">Set out in full →</a></td><td class="num">assumed</td></tr>
@@ -521,9 +514,7 @@ const formNote: string | null = (() => {
       <p class="section-note">
         The exact weight vector behind the picture{mix.length > 0 && mix.length < profile.weights.length
           ? <>, renormalised over the {mix.length} rung{mix.length === 1 ? "" : "s"} this contract's {tier1.maxLeverage}× cap leaves in play</>
-          : ""}.{coincide
-          ? <>{" "}Under that cap it is every profile's vector, so switching profile redraws this same table and this same picture.</>
-          : <>{" "}The form below switches to any other profile in one submission.</>}
+          : ""}.{coincide && <>{" "}Under that cap it is every profile's vector.</>}
       </p>
       <div class="panel">
         <table class="tbl">
@@ -540,20 +531,18 @@ const formNote: string | null = (() => {
       {sweptBars.length > 0 && (
         <More label="The bars that did the clearing">
           <p class="section-note" style="max-width:88ch">
-            The dark corridor in the picture is not empty space, and it was not carved evenly.
             {oneBar
-              ? <>{" "}Only one bar of this window traded through anything the model had standing, so everything
+              ? <>Only one bar of this window traded through anything the model had standing, so everything
                 cleared in {win.label} went in 1 bar out of {map!.cols}: <b>{barWhen(sweptBars[0])}</b>, a {win.factor}-hour
                 bar that ranged {px(sweptBars[0].c[L])} to {px(sweptBars[0].c[H])}.</>
-              : <>{" "}These are the {barWord(sweptBars.length)} of this window in which the model says {allClearingShown ? "any" : "the most"}
+              : <>These are the {barWord(sweptBars.length)} of this window in which the model says {allClearingShown ? "any" : "the most"}
                 {" "}notional was traded through — {allClearingShown ? "everything" : `${pct(barShare(shownCleared))} of everything`}
                 {" "}cleared in {win.label}, in {barWord(sweptBars.length)} out of {map!.cols}.
                 {largestBar.kind === "unique" && <>{" "}The largest was <b>{barWhen(largestBar.item)}</b>, a {win.factor}-hour bar
                   that ranged {px(largestBar.item.c[L])} to {px(largestBar.item.c[H])}.</>}
                 {largestBar.kind === "tied" && <>{" "}{largestBar.items.length} of them tie for the largest share,
                   {" "}{pct(largestBar.value / 10000)} each: {joinWith(largestBar.items.map(barWhen), "and")}.</>}</>}
-            {" "}The bar and its range are traded candles; what it cleared is the model's,
-            and the two are separated in the columns below for that reason.
+            {" "}Range: traded candles. Cleared: the model.
           </p>
           <div class="panel">
             <table class="tbl">
@@ -591,10 +580,9 @@ const formNote: string | null = (() => {
 
       <More label="The biggest standing clusters, in figures">
       <p class="section-note">
-        Price levels still carrying modelled notional at the right-hand edge of the chart, largest
-        first — {map.clusters.length
-          ? <>{usd(totalClustered)} across the {map.clusters.length} listed. These are the numbers the bright bands stand for.</>
-          : <>and there are none: every modelled level has been cleared, has aged out or sits outside the drawn range.</>}
+        {map.clusters.length
+          ? <>{usd(totalClustered)} across the {map.clusters.length} levels still standing at the chart's right edge, largest first{clusterLongShare !== null && <>; {pct(clusterLongShare)} of it would close longs</>}.</>
+          : <>No level is still standing at the chart's right edge: every modelled level has been cleared, has aged out or sits outside the drawn range.</>}
       </p>
       <div class="panel">
         <table class="tbl">
@@ -654,8 +642,9 @@ const formNote: string | null = (() => {
           figure the whole model is scaled from read as the market's. It is one venue's book.
           /open-interest states that scope in its first sentence and /data-sources states it
           again; this page, which is the one with the search demand behind it, did not. */}
-      Every modelled figure here is scaled from <strong>Hyperliquid's</strong> open interest in {perp.symbol}, which is
-      one venue's book rather than the whole market's. No liquidation totals: every event feed is throttled.
+      Every modelled figure here is scaled from <strong>Hyperliquid's</strong> open interest in {perp.symbol} alone.
+      {book && <>{" "}{book}</>}
+      {" "}No liquidation totals: every event feed is throttled.
       <a class="link" href="/methodology/liquidations"> Why →</a>
       <a class="link" href="/learn/liquidation-heatmap"> What a liquidation heatmap shows →</a>
     </p>
@@ -672,8 +661,8 @@ const formNote: string | null = (() => {
 
   <h2 class="section">How far price can move before each leverage liquidates — derived, not modelled</h2>
   <p class="section-note">
-    No assumptions here. Given the tier table and a mark these prices are arithmetic: the upper cap
-    is where a short is closed, the lower cap where a long is closed.
+    {rungNote ?? `Arithmetic on ${perp.symbol}'s margin tier and the mark: the top of each bar is where a short is closed, the bottom where a long is.`}
+    {" "}<a class="link" href="/methodology#levels">How these are worked out →</a>
   </p>
   <div class="chart" style={`--corrRatio: ${CW} / ${CHT}`}>
     <svg viewBox={`0 0 ${CW} ${CHT}`} class="corr" role="img" data-tips
@@ -712,9 +701,9 @@ const formNote: string | null = (() => {
   <More label="The corridor and margin tiers, in figures">
   <div class="panel">
     <table class="tbl">
-      <thead><tr><th class="num">Leverage</th><th class="num">Initial margin</th><th class="num">Long liquidation</th><th class="num">Move down</th><th class="num">Short liquidation</th><th class="num">Move up</th><th class="num">Corridor width</th></tr></thead>
+      <thead><tr><th class="num">Leverage</th><th class="num">Initial margin</th><th class="num">Long liquidation</th><th class="num">Move down</th><th class="num">Short liquidation</th><th class="num">Move up</th><th class="num">Corridor width</th>{month.length >= 10 && <th class="num">Days that closed it, long · short</th>}</tr></thead>
       <tbody>
-        {rungs.map((r) => (
+        {rungs.map((r, i) => (
           <tr class={r.L === tier1.maxLeverage ? "is-active" : undefined}>
             <td class="num">{r.L}×{r.L === tier1.maxLeverage ? " · max" : ""}</td>
             <td class="num">{pct(r.margin)}</td>
@@ -723,6 +712,7 @@ const formNote: string | null = (() => {
             <td class="num">{px(r.shortLiq)}</td>
             <td class="num">{signedPct(r.shortDist)}</td>
             <td class="num">{pct(r.corridor)}</td>
+            {month.length >= 10 && <td class="num">{rungDays[i].long} · {rungDays[i].short} of {rungDays[i].of}</td>}
           </tr>
         ))}
       </tbody>
@@ -765,10 +755,7 @@ const formNote: string | null = (() => {
           16 September /liquidations/pons had no 30-day map while this strip offered it one — so the
           sentence says what every href carries, which is true by construction. */}
       <p class="section-note">
-        Every other covered contract, each linked with the {profile.label} leverage mix and the
-        {" "}{dayWord(win)} window set here.{" "}{map
-          ? <>{perp.symbol} is the one drawn above.</>
-          : <>{perp.symbol} is this page, which has no {dayWord(win)} map to draw.</>}
+        Each opens with the {profile.label} mix and the {dayWord(win)} window set here.
       </p>
       <p class="related">
         {mapSiblings.map((x) => (
@@ -815,6 +802,6 @@ const formNote: string | null = (() => {
     /* The ladder takes the whole column; what reads it sits underneath (the owner's call, 15 October 2026). */
     .now__grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; align-items: start; }
     .now { container: now / inline-size; }
-    .datanote { margin: 12px 0 0; font-size: var(--fs-sm); color: var(--text-faint); max-width: 80ch; }
+    .datanote { margin: 12px 0 0; }
     .datanote b { color: var(--text-dim); font-weight: 600; font-variant-numeric: tabular-nums; }
   </style>

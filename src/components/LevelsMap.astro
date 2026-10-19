@@ -148,6 +148,15 @@ const rowsOut = bins.map((b, i) => {
     segs, tip: tip(i), label: showLabel ? afmt(b.mid) : "", ly: y(b.mid) + 4, ghost,
   };
 });
+/* WHICH SIDE THE LADDER LEANS TO, as a ratio a reader can carry away, rather than two totals to divide. */
+const sideWords = (() => {
+  const s = view.totalShort, l = view.totalLong;
+  if (!(s > 0) && !(l > 0)) return "Nothing modelled stands within the drawn range.";
+  if (!(s > 0) || !(l > 0)) return `Only ${s > 0 ? "shorts" : "longs"} stand within the drawn range: ${compact(s > 0 ? s : l)}.`;
+  const r = s >= l ? s / l : l / s;
+  const heavy = s >= l ? `shorts above the mark (${compact(s)}) outweigh longs below it (${compact(l)})` : `longs below the mark (${compact(l)}) outweigh shorts above it (${compact(s)})`;
+  return r < 1.1 ? `Shorts above the mark (${compact(s)}) and longs below it (${compact(l)}) stand roughly level within the drawn range.` : `Within the drawn range ${heavy}, ${r.toFixed(1)} to 1.`;
+})();
 ---
 <figure class="levels" data-levels={curveJson}>
   <svg viewBox={`0 0 ${W} ${padT}`} class="levels__head">
@@ -220,12 +229,12 @@ const rowsOut = bins.map((b, i) => {
       <button class="btn btn--primary" type="submit">Read</button>
     </div>
     <p class="levels__atout" data-at-out aria-live="polite">{
-      reading ?? (atRaw ? `“${atRaw}” is not a price this page can read. Enter one like ${example}.` : "Type a price, or press anywhere on the ladder. The address keeps your reading, so the link shows it to whoever opens it.")
+      reading ?? (atRaw ? `“${atRaw}” is not a price this page can read. Enter one like ${example}.` : "Type a price, or press the ladder. The link keeps your reading.")
     }</p>
   </form>
   <div class="levels__figures">
   <table class="tbl levels__tbl">
-    <caption>If {symbol} moves from {fmt(view.mark)} — modelled notional closed on the way, shorts going up and longs going down</caption>
+    <caption>If {symbol} moves from {fmt(view.mark)}: modelled notional closed on the way</caption>
     <thead><tr><th class="num">Move</th><th class="num">To</th><th class="num">Closed</th>{then && <th class="num">A day earlier</th>}</tr></thead>
     <tbody>
       {[...view.moves].sort((a, b) => b.pct - a.pct).map((m) => (
@@ -235,16 +244,13 @@ const rowsOut = bins.map((b, i) => {
   </table>
   {then && (
     <p class="levels__day">
-      <b>Since a day earlier</b> (the same model on candles to {utcStamp(then.candlesTo, 0)}, open interest
-      read {utcStamp(then.oiAt, 0)}): longs standing within 5% below the mark are {moved(band5[0].now, band5[0].was)};
-      shorts within 5% above are {moved(band5[1].now, band5[1].was)}. Price traded through
-      {" "}{compact(then.cleared)} of modelled levels in that day. The outlined bars on the ladder are the day-earlier run.
+      <b>Against a day earlier</b> (the outlined bars; candles to {utcStamp(then.candlesTo, 0)}, open interest
+      read {utcStamp(then.oiAt, 0)}): longs within 5% below the mark are {moved(band5[0].now, band5[0].was)},
+      shorts within 5% above {moved(band5[1].now, band5[1].was)}, and price cleared {compact(then.cleared)}.
     </p>
   )}
   <p class="levels__note">
-    Standing within the drawn range: {compact(view.totalShort)} of shorts above the mark and
-    {" "}{compact(view.totalLong)} of longs below it. {pct(clipped)} of modelled notional sits beyond
-    that range and is not counted. Hover a bar for its leverage split.
+    {sideWords} {pct(clipped)} of modelled notional sits beyond the drawn range and is not counted.
     {view.moves.some((m) => m.beyond) && <>{" "}† That move lands past the edge of the drawn range
     ({fmt(view.lo)} – {fmt(view.hi)}): the figure is every level of its side inside the range, and
     whatever stands beyond the edge is not in it.</>}

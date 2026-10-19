@@ -6,6 +6,7 @@ import { getSnapshot, coldStart, findPerp } from "../../lib/hyperliquid.ts";
 import { pct, rawRate, settlementsPerYear, settlementWords, VENUE_LABEL, type Venue } from "../../lib/funding.ts";
 
 import { coverageRule, coverageToday } from "../../lib/coverage.ts";
+import { MIN_CHART_BARS } from "../../lib/series.ts";
 const snap = await getSnapshot((Astro.locals as any)?.runtime?.env?.SNAPSHOT, import.meta.env.DEV);
 // Cold store: 503 + Retry-After rather than a page rendered from nothing.
 if (!snap.available) return coldStart();
@@ -129,6 +130,65 @@ const description =
       </p>
     </>
   )}
+
+  {/* THE EXPLANATIONS EVERY CONTRACT PAGE USED TO CARRY, SAID ONCE. Until 19 October 2026 each
+      of the 122 coin, contract and map pages printed its own copy of how a candle is coloured,
+      which clock each figure keeps and how a leverage level is worked out — the same paragraphs
+      with the numbers changed, 83–91% of every page's prose. They live here now and the pages
+      link to the section they need. */}
+  <h2 id="charts">How the price and funding charts are drawn</h2>
+  <p class="prose">
+    Every price chart on a coin or contract page is Hyperliquid's own perpetual candles — the
+    traded contract, not its oracle index — and only bars that traded: the pre-launch backfill the
+    venue returns carries zero volume and is left out. A candle and the volume bar beneath it are
+    green where the bar closed at or above its open and red where it closed below. Green bodies are
+    drawn hollow so direction survives without colour (simulated for protanopia the two hues
+    separate by very little); a body too short to outline is drawn solid. In line view the line
+    joins the closes, so a bar's high and low are not on it and the period high and low can sit
+    beyond it.
+  </p>
+  <p class="prose">
+    A timeframe is offered only when it has at least {MIN_CHART_BARS} bars to draw. A missing
+    button means either too little history at that size or a series that could not be read, and
+    the page says which.
+  </p>
+  <p class="prose">
+    The funding chart on each contract page is a separate figure: one point per day, the mean of
+    that day's hourly Hyperliquid settlements, amber above zero where longs pay shorts and cyan
+    below where shorts pay longs. Its axis runs each side to its own 96th percentile, so one spike
+    cannot flatten the rest onto the line; days beyond it are drawn at the edge and counted under
+    the chart.
+  </p>
+
+  <h2 id="clocks">How fresh each figure is</h2>
+  <p class="prose">
+    The mark price and Hyperliquid's funding are read by a job that runs once a minute. Open interest, 24-hour volume,
+    the oracle index and the maximum leverage come from a snapshot taken every five minutes.
+    Fifteen-minute and hourly candles are collected every two hours and daily candles every
+    twelve; the newest bar of each is still open when it is collected, so a 24-hour high or low
+    can move on the next sweep. Margin tiers change only when the venue changes them. The pill at
+    the top of every page carries the age of the page's figures, and where a figure keeps a slower
+    clock the page prints that clock beside it.
+  </p>
+
+  <h2 id="levels">How the per-leverage levels are worked out</h2>
+  <p class="prose">
+    The tables of where each leverage is closed are arithmetic, not a model: no assumption about
+    who holds what. Each takes the contract's published first margin tier — its maximum leverage,
+    and a maintenance margin of half the initial margin at that maximum — and the mark the page was
+    served with, and works out the price at which an isolated long and an isolated short of that
+    leverage are closed. The corridor is the whole width between the two. The levels do not follow
+    the price after the page loads; a reload reworks them from a newer mark. Why this differs from
+    the <code>entry × (1 − 1/leverage)</code> formula most calculators use is set out on
+    {" "}<a href="/learn/liquidation-price">how a liquidation price is calculated</a>.
+  </p>
+  <p class="prose">
+    Beside the levels, each page counts how many of the contract's last 30 closed days would have
+    reached them: for a long, how many days fell from the open at least that far before the day
+    ended; for a short, how many rose that far. That is read off the traded daily candles, one day
+    at a time, from the day's open. A position held across days, or opened anywhere but the open,
+    would fare differently, and the liquidation itself is triggered on the mark, not on trades.
+  </p>
 
   <h2>Coverage, and why it is capped</h2>
   <p class="prose">

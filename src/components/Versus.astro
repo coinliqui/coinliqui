@@ -23,12 +23,24 @@ const points = (d: number) => {
   return Number(p) === 0 ? "level" : `${d > 0 ? "+" : "−"}${Math.abs(Number(p)).toFixed(2)} pts`;
 };
 const froms = rows.filter((r) => r.from != null).map((r) => utcStamp(r.from!, 0));
+/* THE TABLE'S RESULT IN WORDS, decided from the same rows at the printed precision. It replaced a
+   note that was the same sentence on every page (19 October 2026); which windows a coin led and
+   trailed in is the thing the table is read for. */
+const gap = (r: VersusRow) => Number(((r.own - r.ref) * 100).toFixed(2));
+const led = rows.filter((r) => gap(r) > 0), trailed = rows.filter((r) => gap(r) < 0);
+const names = (rs: VersusRow[]) => rs.map((r) => r.label).join(rs.length === 2 ? " and " : ", ").replace(/, ([^,]*)$/, " and $1");
+const widest = [...rows].sort((a, b) => Math.abs(gap(b)) - Math.abs(gap(a)))[0];
+const verdict = !rows.length ? null
+  : led.length === rows.length ? `${symbol} has outrun ${refSymbol} over ${rows.length === 1 ? "the day" : `all ${rows.length} windows`}, by the most over ${widest.label}: ${points(widest.own - widest.ref)}.`
+  : trailed.length === rows.length ? `${symbol} has trailed ${refSymbol} over ${rows.length === 1 ? "the day" : `all ${rows.length} windows`}, by the most over ${widest.label}: ${points(widest.own - widest.ref)}.`
+  : led.length && trailed.length ? `${symbol} led ${refSymbol} over ${names(led)} and trailed it over ${names(trailed)}.`
+  : `${symbol} and ${refSymbol} moved level over ${names(rows.filter((r) => gap(r) === 0))}${led.length ? `, and ${symbol} led over ${names(led)}` : trailed.length ? `, and ${symbol} trailed over ${names(trailed)}` : ""}.`;
 ---
 {rows.length > 0 && (
   <>
     <h2 class="section">Against {refHref ? <a class="link" href={refHref}>{refSymbol}</a> : refSymbol}</h2>
     <p class="section-note">
-      {symbol} and {refSymbol} perpetual marks read together at {utcStamp(at, 0)}{froms.length > 0 && <>; the longer windows run from the same daily close in both, {froms.join(" and ")}</>}.
+      {verdict}{" "}Marks read together at {utcStamp(at, 0)}{froms.length > 0 && <>; longer windows from the same daily close in both</>}.
     </p>
     <div class="panel"><table class="tbl">
       <thead><tr><th>Over</th><th class="num">{symbol}</th><th class="num">{refSymbol}</th><th class="num">Difference</th></tr></thead>

@@ -596,7 +596,7 @@ const LADDER = [
 const SHARED_RULES = ["paysClass", "paysLabel", "carryCost", "aprSpread", "pct",
                       "changeWords", "ageWords", "minutesSince", "nf", "qty", "compact", "usd",
                       /* 17 September 2026: two templates, two stamp formats, one job. */
-                      "utcStamp", "candleStyleNote", "timeframeGapNote", "slotBars", "drawnBars", "barSpan",
+                      "utcStamp", "timeframeGapNote", "slotBars", "drawnBars", "barSpan",
                       "timeTicks", "widestSpread", "settlementWords", "venueReachWords",
                       /* 15 October 2026: five signed-percent copies with three rules for zero, five
                          month tables, two staleness limits, the map's sum on two sides of hydration. */
@@ -1715,7 +1715,7 @@ export function hiddenFromEveryone(html) {
  */
 export const MORE_ROUTES = [
   /^\/liquidations$/, /^\/liquidations\/(?!sweep$|survival$)[a-z0-9]+$/i,
-  /^\/funding$/, /^\/funding\/[a-z0-9]+$/i, /^\/coins\/[a-z0-9-]+$/i, /^\/unlocks$/,
+  /^\/funding$/, /^\/funding\/[a-z0-9]+$/i, /^\/unlocks$/,
   /* 15 October 2026, second pass: every page with explanation gets its fold */
   /^\/$/, /^\/coins$/, /^\/open-interest$/, /^\/watchlist$/, /^\/liquidations\/(sweep|survival)$/,
   /^\/tools(\/(leverage|funding-cost|funding-arbitrage|position-size))?$/,

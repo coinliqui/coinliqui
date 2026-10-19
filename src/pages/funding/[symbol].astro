@@ -8,7 +8,7 @@ import { oiMoves } from "../../lib/oi-history.ts";
 import { getCandles, getM15, getHourly, getFunding } from "../../lib/candles.ts";
 import PricePanel from "../../components/PricePanel.astro";
 import Versus from "../../components/Versus.astro";
-import { narrowChart, NARROW_W, fundingRegime, TIMEFRAMES, DEFAULT_TF, MIN_CHART_BARS, drawnBars, barSpan, buildPriceChart, buildFundingChart, candleStyleNote, timeframeGapNote, shortDate, CHART_H, versusRows } from "../../lib/series.ts";
+import { narrowChart, NARROW_W, fundingRegime, TIMEFRAMES, DEFAULT_TF, MIN_CHART_BARS, drawnBars, barSpan, buildPriceChart, buildFundingChart, timeframeGapNote, shortDate, CHART_H, versusRows } from "../../lib/series.ts";
 import { CH } from "../../lib/chart.ts";
 import { coinPageFor } from "../../lib/coins.ts";
 import { readFundingPaidFor } from "../../lib/funding-paid.ts";
@@ -16,10 +16,11 @@ import { fundingHistory } from "../../lib/funding-history.ts";
 import { getVenueAgreement, agreementFor } from "../../lib/venue-agreement.ts";
 import { liqMapHref, canonicalRedirect } from "../../lib/routes.ts";
 import { qty } from "../../lib/funding.ts";
-import { freshness, ageWords, minutesSince, utcStamp, plural } from "../../lib/freshness.ts";
+import { utcStamp, plural } from "../../lib/freshness.ts";
 import Overview from "../../components/Overview.astro";
 import Figure from "../../components/Figure.astro";
 import { extremeBy, standing } from "../../lib/extreme.ts";
+import { fundingStandingWords, closedDays, daysThatReached } from "../../lib/cohort.ts";
 
 import { priceDp, changeWords, signedPct, weekCarry } from "../../lib/funding.ts";
 const env = (Astro.locals as any)?.runtime?.env;
@@ -278,8 +279,22 @@ const standingWords = hlStanding && hlStanding.of >= 24
    same reason the coin pages do: the headline price and the funding beside it should be read off
    one tick. `live` and `markNow` are read near the top now, because the margin-tier example is
    drawn at the same mark — see the note at `liq`. */
-const fresh = freshness(live?.at, snap.fetchedAt,
-  "Mark price and funding update every minute.", "Mark price and funding");
+/* THIS CONTRACT AGAINST THE BOOK, AND ITS OWN MONTH AGAINST THE WORKED EXAMPLE — src/lib/cohort.ts.
+   They took the place of explanations every contract page printed word for word (19 October 2026);
+   those are said once on /methodology now. */
+const fundStanding = fundingStandingWords(snap.perps, p.symbol);
+const month = closedDays(dayset?.d, snap.fetchedAt);
+const liqDays = month.length >= 10 && Number.isFinite(liq.distancePct) ? daysThatReached(month, liq.distancePct, Infinity).long : null;
+/* WHAT THE QUOTED COLUMN WOULD HAVE TOLD A READER, AGAINST WHAT THE ANNUALISED ONE DOES — the table's
+   whole argument, stated for this contract. Only venues with a usable quoted rate and interval count. */
+const quotedRows = ORDER.map((v) => by.get(v)).filter((f): f is NonNullable<typeof f> => !!f && Number.isFinite(f.rate) && Number.isFinite(f.intervalHours) && Number.isFinite(f.apr));
+const cheapQuoted = extremeBy(quotedRows, (f) => f.rate, "min");
+const cheapApr = extremeBy(quotedRows, (f) => f.apr, "min");
+const nameOf = (e: typeof cheapApr) => e.kind === "unique" ? VENUE_LABEL[e.item.venue as Venue] : e.kind === "tied" ? e.items.map((f) => VENUE_LABEL[f.venue as Venue]).join(" and ") : "";
+const quotedVerdict = quotedRows.length < 2 || cheapQuoted.kind === "none" || cheapApr.kind === "none" ? null
+  : nameOf(cheapQuoted) === nameOf(cheapApr)
+    ? `Quoted or annualised, ${nameOf(cheapApr)} ${cheapApr.kind === "tied" ? "are" : "is"} the cheapest place to hold a ${p.symbol} long right now.`
+    : `By the quoted rate a ${p.symbol} long looks cheapest on ${nameOf(cheapQuoted)}; annualised on each venue's own interval, it is cheapest on ${nameOf(cheapApr)}.`;
 
 /* ONE PANEL IS BUILT, NOT SIX.
  *
@@ -390,10 +405,6 @@ const fundChartN = fundChart && dayset?.d ? buildFundingChart(dayset.d.slice(-FU
    is why it is decided here once rather than left to be met. */
 const fundDays = fundChart ? `${fundChart.bars} ${fundChart.bars === 1 ? "day" : "days"}` : "";
 const hasChart = Boolean(active);
-/* WHETHER THE PRICE CHART DREW A FUNDING BAND, read off the chart's own aria-label — which
-   buildPriceChart words from the same fundOn that decides the drawing — rather than restated here
-   from the band:false above plus a copy of its coverage threshold. See the legend. */
-const bandDrawn = Boolean(active?.chart.svg.includes('aria-label="Price, volume and funding history"'));
 const fundedBars = active ? active.chart.points.filter((q) => Number.isFinite(q[7])).length : 0;
 const tfGapNote = timeframeGapNote(TIMEFRAMES.filter((tf) => !offered.some((o) => o.key === tf.key)).map((tf) => ({ tf, baseBars: baseFor(tf)?.length ?? 0 })));
 /* THE TOKEN-QUANTITY RULE WAS IMPLEMENTED INLINE HERE — a third copy, and the one interact.js
@@ -500,23 +511,13 @@ const description = `What the ${p.symbol} perpetual costs to hold, against ${usd
         Amber above the line is <b>longs paying shorts</b>, cyan below is <b>shorts paying longs</b>;
         the line itself is zero, where neither side pays.
       </p>
-      <More label="How the funding chart is drawn">
       <p>
-        Each point is the mean of one day, from
-        Hyperliquid's own hourly settlements.{fundChart.bars === 1
-          ? <>{" "}On the 1 day drawn the rate was <b>{pct(fundChart.hi)}</b> a year.</>
-          : <>{" "}Over these {fundChart.bars} days the rate ran from <b>{pct(fundChart.lo)}</b> to <b>{pct(fundChart.hi)}</b> a year.</>}
-        {/* THE CLIP IS DESCRIBED ONLY WHEN IT CLIPPED. On a young contract the 96th percentile and the
-            maximum are the same reading, and the note printed "±100.45%, the 96th percentile rather
-            than the maximum" beside "ran from … to 100.45%" — found on /funding/useless by the
-            audit's completeness critic. */}
-        {fundChart.clipped > 0
-          ? <>{" "}The axis runs from {signedPct(-fundChart.down, 0)} to {signedPct(fundChart.up, 0)}, each side to its own 96th percentile rather than
-            the extreme, because one spike otherwise flattens the whole shape onto the line &mdash;
-            {" "}<b>{fundChart.clipped}</b>{fundChart.clipped === 1 ? " day sits beyond it and is" : " days sit beyond it and are"} drawn at the edge.</>
-          : <>{" "}The axis runs from {signedPct(-fundChart.down, 0)} to {signedPct(fundChart.up, 0)}, which reaches every day shown.</>}
+        {fundChart.bars === 1
+          ? <>On the 1 day drawn the rate was <b>{pct(fundChart.hi)}</b> a year.</>
+          : <>Over these {fundChart.bars} days the daily mean ran from <b>{pct(fundChart.lo)}</b> to <b>{pct(fundChart.hi)}</b> a year.</>}
+        {fundChart.clipped > 0 && <>{" "}<b>{fundChart.clipped}</b>{fundChart.clipped === 1 ? " day lies beyond the axis and is" : " days lie beyond the axis and are"} drawn at its edge.</>}
+        {" "}<a class="link" href="/methodology#charts">How it is drawn →</a>
       </p>
-      </More>
       </Fragment>
     </Figure>
   )}
@@ -580,16 +581,12 @@ const description = `What the ${p.symbol} perpetual costs to hold, against ${usd
       http://localhost:4322/funding/mon, where `offered` is empty. It now says why the figures are
       dashes: no timeframe reaches MIN_CHART_BARS, which is the very condition that empties `offered`,
       so the words and the dashes are decided by one test. See `candleCadence` for the charted branch. */}
-  <More label="Where each figure comes from, and how fresh it is">
-  <p class="clock">
-    {fresh.note} The oracle index, open interest and max leverage come from the
-    snapshot taken <b><time data-fresh={snap.fetchedAt} data-clock="snapAt">{ageWords(minutesSince(snap.fetchedAt))}</time></b>.
+  <p class="datanote clock">
     {active
-      ? <>The period change, high, low and volume are read from the candle series behind the chart, collected <span data-tfstat="cadence" data-group="px">{candleCadence}</span> and last written at <b data-tfstat="written" data-group="px">{candleWritten}</b>;</>
-      : <>The period high, low and volume come from the candle series, which has not yet given this page enough bars to chart;</>}
-    {" "}margin tiers are published by the venue and change only when it changes them.
+      ? <>Period figures: the candle series behind the chart, collected <span data-tfstat="cadence" data-group="px">{candleCadence}</span>, last written <b data-tfstat="written" data-group="px">{candleWritten}</b>.</>
+      : <>No timeframe has enough bars to chart yet, so the period figures are blank.</>}
+    {" "}<a class="link" href="/methodology#clocks">Every figure's clock →</a>
   </p>
-  </More>
 
   {hasChart ? (
     <>
@@ -600,7 +597,6 @@ const description = `What the ${p.symbol} perpetual costs to hold, against ${usd
           ))}
         </div>
         <span class="tfbar__note">
-          Real traded candles only — Hyperliquid's pre-launch backfill carries zero volume and is excluded.
           {/* Why a timeframe is missing is timeframeGapNote() in src/lib/series.ts, shared with /coins. */}
           {tfGapNote}
         </span>
@@ -610,58 +606,14 @@ const description = `What the ${p.symbol} perpetual costs to hold, against ${usd
       <PricePanel chart={active!.chart} narrow={narrowChart(drawnBars(baseFor(active!.tf), active!.tf), funding, active!.tf, "candle")} tf={active!.tf}
                   unit={p.symbol} ptsPrefix="pts" panel={active!.tf.key} group="px" on={true} />
 
-      {/* "THE UP CANDLES ARE HOLLOW" WAS SAID OF EVERY TIMEFRAME, AND BARS TOO SHORT TO OUTLINE ARE SOLID.
-          /coins/[coin] counted them on 16 September 2026 (30 of 99 green candles on 4H) and worded its
-          legend from the drawn chart; this page, drawing the same bars through the same builder, kept the
-          flat claim (production, 17 September 2026). candleStyleNote() is now the one sentence, and it is
-          a [data-tfstat] so a timeframe switch replaces it with the panel. */}
-      <More label="How to read the price chart">
       <p class="legend">
-        <span data-tfstat="style" data-group="px">{candleStyleNote(active!.chart, "candle")}</span>
-        {" "}Hollow is the older convention and the one that matters here: simulated for protanopia the two
-        candle colours separate by very little, so an outlined body carries the direction when the hue cannot.
-        {/* THE LEGEND DESCRIBED A BAND THIS CHART NO LONGER DRAWS. The price chart is built with
-            band:false since funding got its own figure above, and the legend went on explaining "the
-            band under the volume histogram", its shading and its scale — measured 16 September 2026
-            on http://localhost:4322/funding/trx?tf=1w: the svg labelled "Price and volume history",
-            no polygon or polyline in it, and the legend reading "1 bar exceeds it and is drawn at the
-            edge" about a band that is not there. The branch now follows the chart's own label, which
-            series.ts derives from the same fundOn that decides whether the band is drawn, so the
-            words cannot outlive the picture in either direction. */}
-        {bandDrawn ? (
-          <> The band under the volume histogram is a different language and a different pair —
-          <b class="pays-l">amber where longs pay shorts</b> and <b class="pays-s">cyan where shorts
-          pay longs</b>, deliberately not the candle colours, so one screen never says two things with
-          one pair. It sits on the same time axis as the price, and it is the reason this chart is not
-          the one everybody else draws.</>
-        ) : (
-          <> Funding is not drawn on this chart{fundChart ? " — it has its own figure above, on the daily series" : ""}.{fundedBars > 0
-            ? " Hovering a candle reads that bar's funding, and the table below carries it as a column."
-            : " No bar in this window has a funding reading."}</>
-        )}
-        {/* "THIS SERIES REACHES BACK TO X" WAS A CLAIM ABOUT THE STORE AND X CAME FROM THE WINDOW.
-            chart.fundingFrom is candles[cov[0]][T] — the first bar OF THE PANEL BEING DRAWN that
-            carries funding — which is the right value for placing the shading and the wrong one
-            for stating how far the series goes. On any window funding covers completely, cov[0]
-            is 0, so the 15m panel said the series reached back two days while the store holds it
-            from 18 May. Two facts, one date, and the sentence claimed the one it did not have.
-            The depth now comes from the stored series; the shading is described in words, so it
-            needs no second date to be wrong with. */}
-        {fundingSeriesFrom && (bandDrawn
-          ? <> Hyperliquid publishes its own funding hourly; the stored series begins {shortDate(fundingSeriesFrom)},
-            and where a window reaches back further than that the band is shaded to mark the part
-            with no funding to show.</>
-          : <> Hyperliquid publishes its own funding hourly; the stored series begins {shortDate(fundingSeriesFrom)},
-            and a bar older than that has no funding reading.</>)}
-        {/* THE VERBS FOLLOW THE COUNT TOO. Only the noun did: "1 bar exceed it and are drawn at the
-            edge", measured 16 September 2026 on https://coinliqui.com/funding/useless?tf=4h. The
-            clause is now one expression per count, so noun and verbs cannot be chosen apart. */}
-        {bandDrawn && active!.chart.fundingClipped > 0 && (
-          <> The band is scaled to ±{pct(active!.chart.fundingMax, 0)} APR, the 96th percentile —
-          {" "}{active!.chart.fundingClipped === 1 ? "1 bar exceeds it and is" : `${active!.chart.fundingClipped} bars exceed it and are`} drawn at the edge; hover reads the true figure.</>
-        )}
+        Candles are green where a bar closed at or above its open, red where it closed below.
+        {" "}{fundedBars > 0
+          ? <>Hovering a candle reads that bar's funding, and the table below carries it as a column.</>
+          : <>No bar in this window has a funding reading.</>}
+        {fundingSeriesFrom && <>{" "}The stored funding series begins {shortDate(fundingSeriesFrom)}.</>}
+        {" "}<a class="link" href="/methodology#charts">How the chart is drawn →</a>
       </p>
-      </More>
 
       {/* The rows are rebuilt from the panel's own pts-* JSON when the timeframe is switched
           client-side, so the table reads the same array the chart was drawn from.
@@ -702,7 +654,7 @@ const description = `What the ${p.symbol} perpetual costs to hold, against ${usd
     <div class="empty">
       <div class="empty__body">
         <p class="empty__title">Candles not collected yet</p>
-        <p class="empty__text">A contract that has just entered coverage is fetched within five minutes, rather than waiting hours for the ordinary refresh, so this fills in shortly. Everything below is unaffected — funding, venue comparison and margin tiers all come from the snapshot, not from the stored candles.</p>
+        <p class="empty__text">A contract that has just entered coverage is fetched within five minutes. Funding, the venue comparison and the margin tiers below come from the snapshot and are unaffected.</p>
       </div>
     </div>
   )}
@@ -710,6 +662,7 @@ const description = `What the ${p.symbol} perpetual costs to hold, against ${usd
   <Versus symbol={p.symbol} refSymbol={refSymbol} refHref={`/funding/${refSymbol.toLowerCase()}`} rows={vsRows} at={snap.fetchedAt} />
 
   <h2 class="section">Funding</h2>
+  {fundStanding && <p class="section-note">{fundStanding}</p>}
   <div class="cards">
     <div class="card">
       <div class="card__label">Hyperliquid funding</div>
@@ -773,25 +726,12 @@ const description = `What the ${p.symbol} perpetual costs to hold, against ${usd
       one period, and the calculator is where a reader changes both. It carries ?symbol= for the
       same reason /liquidations?symbol= does — arriving on the contract you were already reading
       is the difference between a link and a detour. */}
-  <More label="Quoted versus annualised rates, and the calculators for them">
   <p class="section-note">
-    The quoted column is what each venue publishes. Those numbers are not comparable to each other; the annualised column is.
-    {/* THE PAGE ASSUMES THE READER KNOWS WHAT THE COLUMN IS. Fifty pages carry this sentence and
-        none of them says what a funding rate IS — the reader who does not know is offered two
-        calculators and a table, which answer a question they have not got to yet. */}
-    {" "}<a class="link" href="/learn/funding-rate">What a funding rate is, and who pays it →</a>
-    {/* SEPARATED, BECAUSE TWO OFFERS RAN TOGETHER AS ONE. At 375px both links wrap and the pair
-        reads as a single run of blue with an arrow in the middle. The dot is the separator this
-        site already uses between distinct items. */}
-    {" "}<a class="link" href={`/tools/funding-cost?symbol=${p.symbol}`}>Cost of holding {p.symbol}, at your size and horizon →</a>
-    {/* A second question arising from the same table, not a second link for its own sake: the
-        annualised column is what makes venues comparable, and whether the difference between
-        them is worth anything is the next thing a reader asks. ONLY WHERE THERE IS A SPREAD: on a
-        contract only Hyperliquid quotes, the table shows dashes and the spread card a dash, and the
-        link offered to trade "the spread between them" (/funding/purr, 16 September 2026). */}
+    {quotedVerdict ?? "The quoted column is what each venue publishes; only the annualised column compares."}
+    {" "}<a class="link" href="/learn/funding-rate">What a funding rate is →</a>
+    {" "}· <a class="link" href={`/tools/funding-cost?symbol=${p.symbol}`}>Cost of holding {p.symbol}, at your size and horizon →</a>
     {venueRates.length > 1 && <> · <a class="link" href={`/tools/funding-arbitrage?symbol=${p.symbol}`}>Whether the spread between them is worth trading →</a></>}
   </p>
-  </More>
   <div class="panel">
     <table class="tbl">
       <thead><tr><th>Venue</th><th class="num">Quoted rate</th><th class="num">Interval</th><th class="num">Settlements / yr</th><th class="num">Annualised</th></tr></thead>
@@ -839,7 +779,7 @@ const description = `What the ${p.symbol} perpetual costs to hold, against ${usd
   <More label={`A worked liquidation example, and ${p.symbol}'s margin tiers in full`}>
   <p class="section-note">
     {/* THE ENTRY IS PRINTED, WITH THE MINUTE IT WAS READ — see the note at `liq`. */}
-    Maintenance margin is half the initial margin at the tier's max leverage. At {liq.effectiveLeverage}× long
+    At {liq.effectiveLeverage}× long
     with 1 {p.symbol} entered at <strong style="color:var(--text)">{px(markNow)}</strong>, the Hyperliquid mark at <time datetime={new Date(markAt).toISOString()}>{utcStamp(markAt)}</time>{liq.leverageClamped
       ? <> — {liq.effectiveLeverage}× being this contract's tier maximum, so 10× cannot be opened on it at all — </>
       : ", "}the tier-correct liquidation price is <strong style="color:var(--text)">{px(liq.liquidationPrice)}</strong> —
@@ -853,6 +793,7 @@ const description = `What the ${p.symbol} perpetual costs to hold, against ${usd
       : roomVerdict(liq) === "more-capped" ? <>{px(liq.differenceAbs)} more room than the formula shows, because the tier caps the leverage at {liq.effectiveLeverage}×.</>
       : roomVerdict(liq) === "more" ? <>{px(liq.differenceAbs)} more room than the formula shows.</>
       : <>the same room the formula shows.</>}
+    {liqDays != null && <>{" "}{liqDays === 0 ? "None" : liqDays} of {p.symbol}'s last {month.length} days would have closed that long, had it been opened at the day's open.</>}
     {/* THE SAME DEFECT AS THE SIBLING BLOCK, ONE LEVEL UP. Measured on the live surface after the
         contract pages were cross-linked: /tools/funding-cost went to 51 inbound editorial links
         and the other three calculators sat at 2, 2 and 3 — /tools/leverage and
@@ -886,7 +827,7 @@ const description = `What the ${p.symbol} perpetual costs to hold, against ${usd
       </tbody>
     </table>
   </div>
-  <p class="section-note">Maintenance margin is half the initial margin at each tier's maximum leverage; a position's tier is set by its notional.</p>
+  <p class="section-note">A position's tier is set by its notional. <a class="link" href="/methodology#levels">How the levels are worked out →</a></p>
   </More>
 
   <div class="banner">
