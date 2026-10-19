@@ -829,6 +829,10 @@ for (const p of ["/funding/btc", "/funding/eth", "/funding/sol", "/funding/kpepe
   const renderedAt = new Date();   // within a second of when the server rendered it
   const card = /Next settlement<\/div>\s*<div[^>]*>([^<]*)</.exec(r.body)?.[1]?.trim();
   const stampStr = /<time datetime="([^"]+)"/.exec(r.body)?.[1];
+  /* THE CARD WAS REMOVED ON 19 OCTOBER 2026. Every covered contract settles hourly, so it read the
+     same hour on every contract page and told a reader nothing that page alone could. Absent is
+     correct now; if a card comes back, everything below still holds it to the next sixty minutes. */
+  if (!/Next settlement/.test(r.body)) { ok(`${p.padEnd(16)} no next-settlement card (removed 19 Oct 2026; hourly on every contract)`); continue; }
   if (!card || !stampStr) { bad(`${p} has no readable "Next settlement" card or render stamp`); continue; }
   if (card === "—") { ok(`${p.padEnd(16)} no next settlement published — dash, not a guess`); continue; }
   const m = /^(\d{2}):(\d{2})$/.exec(card);
