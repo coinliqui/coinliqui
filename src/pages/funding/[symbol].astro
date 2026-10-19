@@ -612,7 +612,6 @@ const description = `What the ${p.symbol} perpetual costs to hold, against ${usd
           ? <>Hovering a candle reads that bar's funding, and the table below carries it as a column.</>
           : <>No bar in this window has a funding reading.</>}
         {fundingSeriesFrom && <>{" "}The stored funding series begins {shortDate(fundingSeriesFrom)}.</>}
-        {" "}<a class="link" href="/methodology#charts">How the chart is drawn →</a>
       </p>
 
       {/* The rows are rebuilt from the panel's own pts-* JSON when the timeframe is switched
