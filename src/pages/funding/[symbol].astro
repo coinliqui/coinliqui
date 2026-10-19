@@ -293,8 +293,8 @@ const cheapApr = extremeBy(quotedRows, (f) => f.apr, "min");
 const nameOf = (e: typeof cheapApr) => e.kind === "unique" ? VENUE_LABEL[e.item.venue as Venue] : e.kind === "tied" ? e.items.map((f) => VENUE_LABEL[f.venue as Venue]).join(" and ") : "";
 const quotedVerdict = quotedRows.length < 2 || cheapQuoted.kind === "none" || cheapApr.kind === "none" ? null
   : nameOf(cheapQuoted) === nameOf(cheapApr)
-    ? `Quoted or annualised, ${nameOf(cheapApr)} ${cheapApr.kind === "tied" ? "are" : "is"} the cheapest place to hold a ${p.symbol} long right now.`
-    : `By the quoted rate a ${p.symbol} long looks cheapest on ${nameOf(cheapQuoted)}; annualised on each venue's own interval, it is cheapest on ${nameOf(cheapApr)}.`;
+    ? `Quoted or annualised, ${nameOf(cheapApr)} ${cheapApr.kind === "tied" ? "are" : "is"} the cheapest place to hold a long on ${p.symbol} right now.`
+    : `By the quoted rate a long on ${p.symbol} looks cheapest on ${nameOf(cheapQuoted)}; annualised on each venue's own interval, it is cheapest on ${nameOf(cheapApr)}.`;
 
 /* ONE PANEL IS BUILT, NOT SIX.
  *

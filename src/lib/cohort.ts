@@ -150,8 +150,8 @@ export function rungDaysWords(symbol: string, rows: readonly RungDays[]): string
   const worse = top.long >= top.short ? "long" : "short";
   const hit = Math.max(top.long, top.short);
   const lead = hit === 0
-    ? `None of ${symbol}'s last ${of} days moved far enough from its open to close even a ${top.L}× position opened there.`
-    : `On ${hit} of ${symbol}'s last ${of} days, a ${top.L}× ${worse} opened at the day's open was closed before the day ended.`;
+    ? `None of ${symbol}'s last ${of} days moved far enough from its open to close even a position at ${top.L}× opened there.`
+    : `On ${hit} of ${symbol}'s last ${of} days, a ${worse} at ${top.L}× opened at the day's open was closed before the day ended.`;
   const tail = hit === 0 ? "" : clean
     ? ` ${clean.L}× is the highest leverage here that every one of those days left standing, long or short.`
     : ` No leverage on this table got through all ${of} of them on both sides.`;
