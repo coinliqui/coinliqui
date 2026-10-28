@@ -1544,8 +1544,12 @@ console.log("\nA. the server-side arrival count");
     const before = read();
     const headers = { "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
       "sec-fetch-mode": "navigate", "sec-fetch-dest": "document", "sec-fetch-site": "cross-site" };
-    await fetch(`${ORIGIN}/liquidations?utm_source=coinliqui-selfcheck`, { headers });
-    await fetch(`${ORIGIN}/liquidations?utm_source=coinliqui-selfcheck`, { headers: { "user-agent": headers["user-agent"] } });
+    /* curl, not fetch: Node's fetch sets sec-fetch-mode: cors itself and overrides the header,
+       so the navigation it sends is not the one a browser sends (found on the first run). */
+    const curl = (hs) => execFileSync("curl", ["-s", "-o", "/dev/null", ...Object.entries(hs).flatMap(([k, v]) => ["-H", `${k}: ${v}`]),
+      `${ORIGIN}/liquidations?utm_source=coinliqui-selfcheck`]);
+    curl(headers);
+    curl({ "user-agent": headers["user-agent"] });
     await new Promise((r) => setTimeout(r, 4000));
     const after = read();
     after - before === 1
