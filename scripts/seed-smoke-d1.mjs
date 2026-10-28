@@ -135,7 +135,7 @@ for (let h = 26; h >= 1; h--) {
 
 const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS oi_snapshot (symbol TEXT NOT NULL, oi REAL NOT NULL, at INTEGER NOT NULL)`,
-  `CREATE TABLE IF NOT EXISTS entry_day (day TEXT NOT NULL, path TEXT NOT NULL, src TEXT NOT NULL, how TEXT NOT NULL, device TEXT NOT NULL, n INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (day, path, src, how, device))`,
+  `CREATE TABLE IF NOT EXISTS entry_day (day TEXT NOT NULL, path TEXT NOT NULL, src TEXT NOT NULL, how TEXT NOT NULL, device TEXT NOT NULL, country TEXT NOT NULL, n INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (day, path, src, how, device, country))`,
   `CREATE TABLE IF NOT EXISTS funding_snapshot (symbol TEXT NOT NULL, venue TEXT NOT NULL, apr REAL NOT NULL, at INTEGER NOT NULL)`,
   `CREATE TABLE IF NOT EXISTS upstream_check (at INTEGER NOT NULL, source TEXT NOT NULL, status INTEGER NOT NULL, ms INTEGER NOT NULL, ok INTEGER NOT NULL, note TEXT)`,
 ];

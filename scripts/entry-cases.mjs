@@ -24,7 +24,7 @@ const HTML = { status: 200, contentType: "text/html; charset=utf-8" };
 /** What the rule replaces: every GET of a page is an arrival. */
 const naive = (r, res) => (r.method === "GET" && res.status === 200 && res.contentType.includes("text/html")
   ? { how: "external", src: "(none)", device: "desktop", path: new URL(r.url).pathname, day: "x" } : null);
-const subject = blind ? naive : (r, res) => classifyEntry(r, res, ORIGIN, Date.UTC(2026, 9, 28, 12));
+const subject = blind ? naive : (r, res, country) => classifyEntry(r, res, ORIGIN, Date.UTC(2026, 9, 28, 12), country);
 
 let bad = 0;
 const ok = (cond, what) => { console.log(`  ${cond ? "ok  " : "FAIL"}  ${what}`); if (!cond) bad++; };
@@ -35,6 +35,8 @@ ok(is(subject(req(`${ORIGIN}/liquidations/eth?utm_source=chatgpt.com`, { ...nav,
   { how: "external", src: "chatgpt.com", path: "/liquidations/eth", device: "desktop" }), "a ChatGPT link counts as an external arrival from chatgpt.com");
 ok(is(subject(req(`${ORIGIN}/funding/btc`, { ...nav, "sec-fetch-site": "cross-site", referer: "https://www.google.com/", "user-agent": IPHONE }), HTML),
   { how: "external", src: "www.google.com", device: "mobile" }), "a Google result on a phone counts, with the referring host and the device");
+ok(is(subject(req(`${ORIGIN}/funding/sol`, { ...nav, "sec-fetch-site": "none", "user-agent": CHROME }), HTML, "GE"),
+  { how: "direct", country: "GE" }), "the country Cloudflare reports is kept, so the operator's own visits can be set aside");
 ok(is(subject(req(`${ORIGIN}/`, { ...nav, "sec-fetch-site": "none", "user-agent": CHROME }), HTML),
   { how: "direct", src: "(none)" }), "a typed address or bookmark counts as direct");
 ok(is(subject(req(`${ORIGIN}/coins`, { ...nav, "sec-fetch-site": "same-origin", referer: `${ORIGIN}/`, "user-agent": CHROME }), HTML),
@@ -44,6 +46,8 @@ ok(subject(req(`${ORIGIN}/funding/btc`, { "user-agent": "Mozilla/5.0 (compatible
 ok(subject(req(`${ORIGIN}/funding/btc`, { ...nav, "sec-fetch-site": "cross-site", "user-agent": "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko); compatible; ChatGPT-User/1.0; +https://openai.com/bot" }), HTML) === null,
   "ChatGPT's own fetch is not a reader, even with browser headers");
 ok(subject(req(`${ORIGIN}/funding/btc`, { "user-agent": "curl/8.7.1" }), HTML) === null, "curl is not a reader");
+ok(subject(req(`${ORIGIN}/liquidations/eth`, { ...nav, "sec-fetch-site": "none", "user-agent": "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Mobile Safari/537.36 (+https://coinliqui.com/about; coinliqui-selfcheck)" }), HTML) === null,
+  "the site's own phone-width sweep, a real Chrome on every page, is not 153 readers");
 ok(subject(req(`${ORIGIN}/funding/eth`, { ...nav, "sec-fetch-site": "same-origin", "sec-purpose": "prefetch;prerender", "user-agent": CHROME }), HTML) === null,
   "a prerender is the browser guessing, not a person arriving");
 ok(subject(req(`https://coinliqui.pages.dev/funding/btc`, { ...nav, "sec-fetch-site": "none", "user-agent": CHROME }), HTML) === null,

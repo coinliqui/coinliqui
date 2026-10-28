@@ -7,7 +7,10 @@
  * another site; internal: from a page of this one) and by source host. The deploy's own live
  * check arrives as utm_source=coinliqui-selfcheck and is left out of every figure here.
  *
- *   node scripts/entries.mjs [--days=14]
+ * The operator reads the site from Georgia; --exclude=GE (the default) leaves those rows out, and
+ * --exclude= with nothing keeps everything.
+ *
+ *   node scripts/entries.mjs [--days=14] [--exclude=GE,..]
  */
 import { execFileSync } from "node:child_process";
 
@@ -17,11 +20,12 @@ const sql = (q) => {
   const raw = execFileSync("npx", ["wrangler", "d1", "execute", "coinliqui", "--remote", "--json", "--command", q], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
   return JSON.parse(raw.slice(raw.indexOf("[")))[0].results;
 };
-const SELF = "src <> 'coinliqui-selfcheck'";
+const EXCL = ((process.argv.find((a) => a.startsWith("--exclude=")) ?? "--exclude=GE").split("=")[1] || "").split(",").filter((c) => /^[A-Z]{2}$/.test(c));
+const SELF = "src <> 'coinliqui-selfcheck'" + (EXCL.length ? ` AND country NOT IN (${EXCL.map((c) => `'${c}'`).join(",")})` : "");
 const fam = (p) => (p === "/" ? "/" : p.split("/").length > 2 ? `/${p.split("/")[1]}/{x}` : p);
 
 const days = sql(`SELECT day, how, SUM(n) AS n FROM entry_day WHERE day >= '${since}' AND ${SELF} GROUP BY day, how ORDER BY day`);
-console.log(`\n=== Arrivals · coinliqui.com · since ${since} · server-side, unsampled ===\n`);
+console.log(`\n=== Arrivals · coinliqui.com · since ${since} · server-side, unsampled${EXCL.length ? ` · without ${EXCL.join(", ")}` : ""} ===\n`);
 console.log("   day          direct  external  internal");
 const byDay = {};
 for (const r of days) (byDay[r.day] ??= { direct: 0, external: 0, internal: 0 })[r.how] = r.n;
@@ -30,6 +34,10 @@ for (const [d, v] of Object.entries(byDay)) console.log(`   ${d}  ${String(v.dir
 console.log("\n   sources of arrivals from outside (direct + external)");
 for (const r of sql(`SELECT src, SUM(n) AS n FROM entry_day WHERE day >= '${since}' AND how <> 'internal' AND ${SELF} GROUP BY src ORDER BY n DESC LIMIT 15`))
   console.log(`   ${String(r.n).padStart(6)}  ${r.src}`);
+
+console.log("\n   countries of arrivals from outside");
+for (const r of sql(`SELECT country, SUM(n) AS n FROM entry_day WHERE day >= '${since}' AND how <> 'internal' AND ${SELF} GROUP BY country ORDER BY n DESC LIMIT 10`))
+  console.log(`   ${String(r.n).padStart(6)}  ${r.country}`);
 
 console.log("\n   landing pages, by family (direct + external)");
 const fams = {};

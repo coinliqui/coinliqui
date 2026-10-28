@@ -112,12 +112,13 @@ export const onRequest = defineMiddleware(async (ctx, next) => {
      off the critical path: waitUntil lets the write finish after the page has gone, and a failed
      write costs a count, never a page. */
   if (canonical) {
-    const entry = classifyEntry(ctx.request, { status: res.status, contentType: res.headers.get("content-type") ?? "" }, canonical);
     const rt = (ctx.locals as any)?.runtime;
+    const country = String((ctx.request as any).cf?.country ?? rt?.cf?.country ?? "??");
+    const entry = classifyEntry(ctx.request, { status: res.status, contentType: res.headers.get("content-type") ?? "" }, canonical, Date.now(), country);
     const db = rt?.env?.DB;
     if (entry && db && rt?.ctx?.waitUntil) {
       rt.ctx.waitUntil(
-        db.prepare(ENTRY_UPSERT).bind(entry.day, entry.path, entry.src, entry.how, entry.device).run().catch(() => {}),
+        db.prepare(ENTRY_UPSERT).bind(entry.day, entry.path, entry.src, entry.how, entry.device, entry.country).run().catch(() => {}),
       );
     }
   }

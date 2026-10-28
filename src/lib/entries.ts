@@ -15,10 +15,11 @@
    PURE ON PURPOSE: scripts/entry-cases.mjs runs this exact function against the requests it must
    count and the ones it must not, and fails a classifier that counts every page load.
    ========================================================================================= */
-export interface Entry { day: string; path: string; src: string; how: "direct" | "external" | "internal"; device: "mobile" | "desktop" }
+export interface Entry { day: string; path: string; src: string; how: "direct" | "external" | "internal"; device: "mobile" | "desktop"; country: string }
 
-/** Agents that are not a person reading, including the ones that send browser-like headers. */
-const AGENT = /bot|crawl|spider|slurp|fetch|preview|headless|lighthouse|pagespeed|chatgpt|gpt|claude|anthropic|perplexity|bytespider|petal|yandex|baidu|facebookexternalhit|embedly|whatsapp|telegram|discord|slack|curl|wget|python|node|axios|go-http|java\//i;
+/** Agents that are not a person reading, including the ones that send browser-like headers — and this
+ *  site's own checks, which drive a real Chrome across every page and sign their user-agent. */
+const AGENT = /coinliqui-selfcheck|bot|crawl|spider|slurp|fetch|preview|headless|lighthouse|pagespeed|chatgpt|gpt|claude|anthropic|perplexity|bytespider|petal|yandex|baidu|facebookexternalhit|embedly|whatsapp|telegram|discord|slack|curl|wget|python|node|axios|go-http|java\//i;
 
 /** A name the deploy's own live check carries, so its arrivals can be told apart and left out. */
 export const SELF_CHECK = "coinliqui-selfcheck";
@@ -28,6 +29,8 @@ export function classifyEntry(
   res: { status: number; contentType: string },
   canonicalOrigin: string,
   now = Date.now(),
+  /** two-letter code from Cloudflare's request.cf.country; "??" when absent */
+  country = "??",
 ): Entry | null {
   if (req.method !== "GET" || res.status !== 200 || !res.contentType.includes("text/html")) return null;
   const url = new URL(req.url);
@@ -51,9 +54,10 @@ export function classifyEntry(
     src,
     how,
     device: /Mobi|Android|iPhone|iPad/.test(ua) ? "mobile" : "desktop",
+    country: /^[A-Z]{2}$/.test(country) ? country : "??",
   };
 }
 
 export const ENTRY_UPSERT =
-  "INSERT INTO entry_day (day, path, src, how, device, n) VALUES (?1, ?2, ?3, ?4, ?5, 1) " +
-  "ON CONFLICT (day, path, src, how, device) DO UPDATE SET n = n + 1";
+  "INSERT INTO entry_day (day, path, src, how, device, country, n) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1) " +
+  "ON CONFLICT (day, path, src, how, device, country) DO UPDATE SET n = n + 1";
