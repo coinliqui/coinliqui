@@ -1526,5 +1526,35 @@ console.log("\n17. the URLs this site publishes about itself resolve to a signed
   }
 }
 
+/* THE SERVER-SIDE ARRIVAL COUNT COUNTS, AND COUNTS ONCE. One navigation shaped exactly as a
+   browser sends it, carrying utm_source=coinliqui-selfcheck, must raise today's selfcheck tally in
+   D1 by one — and a fetch without the browser's Sec-Fetch headers, made a moment later, must not.
+   The selfcheck source is excluded from scripts/entries.mjs, so this check never inflates the
+   figures it guards. See src/lib/entries.ts. */
+console.log("\nA. the server-side arrival count");
+{
+  const { execFileSync } = await import("node:child_process");
+  const day = new Date().toISOString().slice(0, 10);
+  const read = () => {
+    const raw = execFileSync("npx", ["wrangler", "d1", "execute", "coinliqui", "--remote", "--json", "--command",
+      `SELECT COALESCE(SUM(n),0) AS n FROM entry_day WHERE day='${day}' AND src='coinliqui-selfcheck'`], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+    return Number(JSON.parse(raw.slice(raw.indexOf("[")))[0].results[0].n);
+  };
+  try {
+    const before = read();
+    const headers = { "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
+      "sec-fetch-mode": "navigate", "sec-fetch-dest": "document", "sec-fetch-site": "cross-site" };
+    await fetch(`${ORIGIN}/liquidations?utm_source=coinliqui-selfcheck`, { headers });
+    await fetch(`${ORIGIN}/liquidations?utm_source=coinliqui-selfcheck`, { headers: { "user-agent": headers["user-agent"] } });
+    await new Promise((r) => setTimeout(r, 4000));
+    const after = read();
+    after - before === 1
+      ? ok(`one browser navigation counted once (${before} → ${after}); the same fetch without Sec-Fetch headers was not counted`)
+      : bad(`the arrival count moved by ${after - before} for one browser navigation and one header-less fetch (expected exactly 1)`);
+  } catch (e) {
+    bad(`could not read entry_day: ${String(e?.message ?? e).slice(0, 160)}`);
+  }
+}
+
 console.log(`\n${failures ? `${failures} FAILURES` : "all checks passed"}\n`);
 process.exit(failures ? 1 : 0);

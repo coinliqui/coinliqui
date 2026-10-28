@@ -83,7 +83,7 @@ const updated = "27 August 2026";
 
   <h2 class="section">Analytics</h2>
   <p class="prose">
-    <strong>Two counters run here: Cloudflare Web Analytics and Google Analytics 4.</strong>
+    <strong>Two counters run in your browser here: Cloudflare Web Analytics and Google Analytics 4.</strong> A third count, on the server and without any script, is described <a class="link" href="#arrival-count">after them</a>.
     Cloudflare's has been permitted since 27&nbsp;August&nbsp;2026; Google's was installed
     between 17 and 19&nbsp;August&nbsp;2026, removed, and restored on
     27&nbsp;August&nbsp;2026. They answer different questions, which is the only reason both
@@ -173,6 +173,18 @@ const updated = "27 August 2026";
     <code>gtag.js</code> added 145.8&nbsp;KB over the wire and about 419&nbsp;KB of JavaScript
     to parse, on pages whose own budget is under 70&nbsp;KB. Deferring it keeps the page fast
     and still counts the visit.
+  </p>
+
+  <h3 class="subsection" id="arrival-count">An arrival count on this site's own server</h3>
+  <p class="prose">
+    Since 28&nbsp;October&nbsp;2026 the server that answers each page also adds one to a daily
+    tally when a browser opens a page because a person asked it to. It runs no script in your
+    browser, sets no cookie and stores nothing about you: a row in the tally is a date, the page,
+    the host of the site or the <code>utm_source</code> the link came from, whether the page was
+    typed or bookmarked, linked from another site or reached from a page of this one, and phone
+    or desktop. No IP address, no browser string and no identifier is written, so a row cannot be
+    tied to a person. It exists because the two counters above sample, depend on JavaScript and
+    hide the referrer, which left a fall in readers unexplained in October.
   </p>
 
   <h2 class="section">Cookies and local storage</h2>
