@@ -471,8 +471,7 @@ const formNote: string | null = (() => {
         <p class="scalebar__note">Modelled notional standing at a price. White marks where price traded through a level.</p>
       </div>
       <p class="datanote">
-        The most crowded spot on this map holds {compact(map.peak)}. Hover any point for the value band
-        it sits in. <a class="link" href="/learn/liquidation-heatmap#shared-inputs">How the colour and the white scars work →</a>
+        The most crowded spot on this map holds {compact(map.peak)}. <a class="link" href="/learn/liquidation-heatmap#shared-inputs">How the colour and the white scars work →</a>
       </p>
 
           <p class="datanote">
@@ -798,9 +797,6 @@ const formNote: string | null = (() => {
           this window is not known here without reading forty-nine candle series — locally on
           16 September /liquidations/pons had no 30-day map while this strip offered it one — so the
           sentence says what every href carries, which is true by construction. */}
-      <p class="section-note">
-        Each opens with the {profile.label} mix and the {dayWord(win)} window set here.
-      </p>
       <p class="related">
         {mapSiblings.map((x) => (
           <a class="chip-link" href={viewHref(liqMapHref(x.symbol), win)}>{x.symbol}</a>

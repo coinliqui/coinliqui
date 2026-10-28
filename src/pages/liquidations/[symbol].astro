@@ -135,10 +135,4 @@ const description = mapDescription(p.symbol, { state, maxLeverage: cap, days: wi
 >
   <LiqMap perp={p} table={table} snap={snap} hourly={hourly} model={model} ladder={ladder} markNow={markNow} params={Astro.url.searchParams} crumb={{ href: "/liquidations", label: "Liquidation maps", current: p.symbol }} />
 
-  <p style="margin-top:24px">
-    {/* Not "every covered contract's map": a contract with too little history has none. */}
-    <a class="link" href="/liquidations">Liquidation maps by contract →</a>
-    · <a class="link" href={`/funding/${p.symbol.toLowerCase()}`}>{p.symbol} funding and margin tiers →</a>
-    · <a class="link" href="/learn/liquidation-heatmap">What a liquidation heatmap actually shows →</a>
-  </p>
 </Base>
