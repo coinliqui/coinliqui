@@ -92,7 +92,7 @@ const ROUTES = [
      is the pinned default's alias and must answer 301 to /liquidations, because the default
      keeps the URL Google already indexed. A template covered only by its happy path is how the
      404-vs-410 pair went unnoticed. */
-  "/liquidations/eth", "/liquidations/btc", "/liquidations/notacoin",
+  "/liquidations/eth", "/liquidations/btc", "/liquidations/notacoin", "/funding/ton", "/liquidations/ton",
   /* the reader's own price: one inside the range, one far past it, one unreadable */
   "/liquidations/sol?at=1", "/liquidations/eth?at=999999999", "/liquidations/eth?at=abc&profile=aggressive",
   "/unlocks", "/tools", "/tools/position-size", "/tools/leverage", "/tools/funding-cost",
@@ -151,7 +151,9 @@ const EXPECT = { "/tools/liquidation-price": 410, "/404": 404, "/rail": 404, "/s
   "/tools/leverage?symbol=NOTACOIN": 404, "/tools/position-size?symbol=NOTACOIN": 404,
   /* The default's map is at /liquidations, so its own slug is an alias and answers 301.
      A contract that was never covered answers 404, the same as /funding/notacoin. */
-  "/liquidations/btc": 301, "/liquidations/notacoin": 404 };
+  "/liquidations/btc": 301, "/liquidations/notacoin": 404,
+  /* renamed by the venue before this site published it: sent to the successor (src/lib/renamed.ts) */
+  "/funding/ton": 301, "/liquidations/ton": 301 };
 
 const warmDir = process.argv.includes("--warm") ? process.argv[process.argv.indexOf("--warm") + 1] : null;
 const MODES = warmDir ? [{ name: "cold", args: [] }, { name: "warm", args: ["--kv", "SNAPSHOT", "--d1", "DB", "--persist-to", warmDir] }]

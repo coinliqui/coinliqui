@@ -42,6 +42,7 @@ import { readOiAt } from "../../lib/oi-history.ts";
 import { mapTitle, mapDescription, mapState, resolveWindow, mapModel, dayEarlierCut, ladderQuery, sameView } from "../../lib/liqmap.ts";
 import tables from "../../data/margin-tables.json";
 import { canonicalRedirect } from "../../lib/routes.ts";
+import { renamedTo } from "../../lib/renamed.ts";
 
 const env = (Astro.locals as any)?.runtime?.env;
 const wanted = (Astro.params.symbol ?? "").trim();
@@ -70,6 +71,8 @@ const carriedQs = carried.toString() ? `?${carried.toString()}` : "";
    same reason: a canonical tag built from the requested path cannot deduplicate two paths
    that each declare themselves canonical. */
 if (p && wanted !== p.symbol.toLowerCase()) return canonicalRedirect(`/liquidations/${p.symbol.toLowerCase()}`, Astro.url.searchParams, ["symbol"]);
+/* A ticker the venue renamed before this site published it — see src/lib/renamed.ts. */
+if (!p && renamedTo(wanted)) return canonicalRedirect(`/liquidations/${renamedTo(wanted)}`, Astro.url.searchParams, ["symbol"]);
 
 if (!p) {
   const retiredAt = await (async () => {

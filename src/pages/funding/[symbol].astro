@@ -15,6 +15,7 @@ import { readFundingPaidFor } from "../../lib/funding-paid.ts";
 import { fundingHistory } from "../../lib/funding-history.ts";
 import { getVenueAgreement, agreementFor } from "../../lib/venue-agreement.ts";
 import { liqMapHref, canonicalRedirect } from "../../lib/routes.ts";
+import { renamedTo } from "../../lib/renamed.ts";
 import { qty } from "../../lib/funding.ts";
 import { utcStamp, plural } from "../../lib/freshness.ts";
 import Overview from "../../components/Overview.astro";
@@ -38,6 +39,8 @@ const p = findPerp(snap.perps, wanted);
    duplicate-content split the trailing-slash redirect exists to prevent, so it gets the same
    answer: everything that is not the lower-case form is a 301 to it. */
 if (p && wanted !== p.symbol.toLowerCase()) return canonicalRedirect(`/funding/${p.symbol.toLowerCase()}`, Astro.url.searchParams, ["symbol"]);
+/* A ticker the venue renamed before this site published it — see src/lib/renamed.ts. */
+if (!p && renamedTo(wanted)) return canonicalRedirect(`/funding/${renamedTo(wanted)}`, Astro.url.searchParams, ["symbol"]);
 /* Conditional emission: no entity page below the coverage floor. A thin page is worse than
    none — but an EMPTY 404 body is worse still. A bare `new Response(null, {status: 404})` was
    handed to Astro's stock not-found page: unbranded, no navigation, no explanation, on a URL
