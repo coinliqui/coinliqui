@@ -40,7 +40,7 @@
 // the line carries gitleaks:allow — reviewed 31 October 2026, the same judgement .gitleaksignore
 // records for the IndexNow key. Hosts: eu-assets.i.posthog.com serves the library, eu.i.posthog.com receives events.
 // Both are named in the CSP in src/middleware.ts.
-const TOKEN = "phc_s8RLYXFxEE89DCb3hnRoRdSCDTPauLCTnwJMAt2j9nfR"; // gitleaks:allow — public project token, see above
+const TOKEN = "phc_B5wDvq5GLEoH6h7oUrSXup2KGNV6nquYH4V3eetWKhJr"; // gitleaks:allow — public project token, see above
 
 const bare = (v) => {
   if (typeof v === "string") {
