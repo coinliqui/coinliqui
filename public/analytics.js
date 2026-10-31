@@ -20,7 +20,9 @@
 // THE QUERY STRING DOES NOT LEAVE. The calculators submit as GET, so the figures a reader types are
 // in the page's own URL. Google Analytics sent them until 31 August 2026, and /privacy promises that
 // every counter here sees the origin and the path and nothing else. before_send rewrites every URL in
-// an event (current URL, referrer, the URLs inside web-vitals payloads) to origin + path. utm_source and
+// an event (current URL, referrer, the URLs inside web-vitals payloads, and the page addresses that
+// heatmap data is keyed by — keys, not values, so a value-only rewrite let /tools/…?size=… through)
+// to origin + path. utm_source and
 // the other campaign fields are read from the URL by posthog-js before this runs and travel as their own
 // properties, so where a reader came from is kept and what they typed is not.
 //
@@ -45,7 +47,18 @@ const bare = (v) => {
     if (!/^https?:\/\//i.test(v)) return v;
     try { const u = new URL(v); return u.origin + u.pathname; } catch { return v; }
   }
-  if (v && typeof v === "object" && !(v instanceof Date)) for (const k of Object.keys(v)) v[k] = bare(v[k]);
+  if (v && typeof v === "object" && !(v instanceof Date)) {
+    for (const k of Object.keys(v)) {
+      const key = bare(k);
+      const val = bare(v[k]);
+      if (key === k) v[k] = val;
+      else {
+        delete v[k];
+        // Two heatmap pages that differed only in their query string become one.
+        v[key] = Array.isArray(v[key]) && Array.isArray(val) ? v[key].concat(val) : val;
+      }
+    }
+  }
   return v;
 };
 
