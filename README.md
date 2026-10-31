@@ -81,7 +81,7 @@ moved past — in a paragraph explaining why counts do not belong in this file.
 | `/watchlist` | utility | All contracts server-rendered; pinning is `localStorage`. `noindex, follow` in its own head — crawlable so the directive is seen |
 | `/methodology`, `/methodology/liquidations` | reference | Why quoted rates are not comparable; why no liquidation totals are published |
 | `/data-sources` | reference | Every endpoint, cadence, and what is deliberately absent |
-| `/privacy` | reference | What is collected: no accounts, no payment or personal data, GA4 |
+| `/privacy` | reference | What is collected: no accounts, no payment or personal data, cookieless PostHog |
 | `/status` | operational | Snapshot age, per-venue coverage, canary history. `Disallow`ed |
 | `/robots.txt`, `/sitemap-index.xml`, `/sitemaps/*.xml` | — | One sitemap per template, so Search Console reports an indexation rate per template |
 
@@ -449,7 +449,8 @@ node scripts/wf-collect.mjs --blind    # nine cases: it accepts only the complet
 **Accounts, and any notification channel.** No sign-up, no identity, no email, no wallet
 connection, no bot. The watchlist is `localStorage`, the calculators compute in-page, and
 `/privacy` says what is collected. Analytics is a separate question and the answer is yes —
-GA4 runs; it is operational tooling, not a claim the site makes about itself.
+PostHog runs (EU cloud, cookieless, since 31 October 2026, replacing GA4); it is operational
+tooling, not a claim the site makes about itself.
 
 The `funding_snapshot` cron and its D1 writes stay regardless: they exist for the on-site
 flip feed, and that history cannot be backfilled, which is why ingest runs from day one.
@@ -479,10 +480,11 @@ never appears in any client-side counter. The two sources answer different quest
 neither replaces the other: the beacon measures people, section C measures crawlers.
 
 (That sentence named Google Analytics until 27 August 2026, eight days after GA4 was removed
-from this site. The reader analytics are Cloudflare Web Analytics now — cookieless, no query
-string, one named host in the CSP, all of it measured rather than asserted on `/privacy`. A
-README describing a configuration the repository no longer has is the same defect this project
-keeps finding in its own checks.)
+from this site. GA4 then came back and was removed again on 31 October 2026; the reader
+analytics are Cloudflare Web Analytics and PostHog (`public/analytics.js`) — both cookieless,
+both given origin and path only, two named script hosts in the CSP, all of it measured rather
+than asserted on `/privacy`. A README describing a configuration the repository no longer has
+is the same defect this project keeps finding in its own checks.)
 
 ## Not built yet
 

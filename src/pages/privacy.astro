@@ -1,7 +1,7 @@
 ---
 import Base from "../layouts/Base.astro";
 import Related from "../components/Related.astro";
-import { PINNED_KEY, IDENTITY, GA_MEASUREMENT_ID, STORED_ON_DEVICE, storedCounts, countWords } from "../lib/site.ts";
+import { PINNED_KEY, IDENTITY, STORED_ON_DEVICE, storedCounts, countWords } from "../lib/site.ts";
 
 /**
  * AN ORDINARY PRIVACY POLICY. Deliberately short, deliberately unremarkable.
@@ -50,6 +50,14 @@ import { PINNED_KEY, IDENTITY, GA_MEASUREMENT_ID, STORED_ON_DEVICE, storedCounts
  * it; the ad-hoc curl that produced the page-weight baseline did not, and reported zero. A
  * page describing what a reader receives has to be written from a request shaped like a
  * reader's.
+ *
+ * 31 OCTOBER 2026: GOOGLE ANALYTICS OUT, POSTHOG IN, on the operator's decision. The GA4
+ * section is replaced by a PostHog one, with one sentence saying GA was removed and when — the
+ * same rule as above, a reader who read the old section has no other way to find out. The two
+ * _ga cookies left the table with the tag. What the PostHog section says about its own
+ * collection (EU storage, the daily-salted IP hash, retention, legal basis) is the operator's
+ * configuration of the project; what it says about this site's requests — no cookie, no
+ * storage, origin and path only — was measured on the live site the day it shipped.
  */
 /* WHAT THIS SITE PUTS ON YOUR MACHINE comes from STORED_ON_DEVICE in src/lib/site.ts, which
    /about reads as well — see the note there. The summary below counts the same rows the table
@@ -58,13 +66,15 @@ const { cookies: cookieCount, storage: storageCount } = storedCounts();
 
 const title = "Privacy";
 const description =
-  `What Coinliqui collects: two page-view counters, ${countWords(cookieCount, "cookie", "cookies")} and ` +
-  `${countWords(storageCount, "local-storage key", "local-storage keys")}, each one named and ` +
+  `What Coinliqui collects: two analytics counters that store nothing on your device, ` +
+  `${countWords(cookieCount, "cookie", "cookies")} and ` +
+  `${countWords(storageCount, "local-storage key", "local-storage keys")} of the site's own, each named and ` +
   "explained here — and no payment details, no account and no personal information.";
 /* THE DATE IS THE ONE ON THE MOST RECENT CHANGE TO WHAT THIS PAGE DESCRIBES, not the date of
-   the last edit to the file. Both fall on 27 August 2026: the Cloudflare beacon was permitted
-   and Google Analytics 4 was restored, on the same day. */
-const updated = "27 August 2026";
+   the last edit to the file. 31 October 2026: Google Analytics 4 was removed and PostHog
+   replaced it. (Before that, 27 August 2026: the Cloudflare beacon was permitted and GA4 was
+   restored, on the same day.) */
+const updated = "31 October 2026";
 ---
 
 <Base title={title} description={description}>
@@ -83,14 +93,14 @@ const updated = "27 August 2026";
 
   <h2 class="section">Analytics</h2>
   <p class="prose">
-    <strong>Two counters run in your browser here: Cloudflare Web Analytics and Google Analytics 4.</strong> A third count, on the server and without any script, is described <a class="link" href="#arrival-count">after them</a>.
-    Cloudflare's has been permitted since 27&nbsp;August&nbsp;2026; Google's was installed
-    between 17 and 19&nbsp;August&nbsp;2026, removed, and restored on
-    27&nbsp;August&nbsp;2026. They answer different questions, which is the only reason both
-    are here: Cloudflare's says whether anybody loaded a page, cheaply and without a cookie,
-    and stops there. Google's says which page a reader went to next and how long they stayed —
-    the number that decides which of the fifty contract pages is worth writing more about.
-    Each is described below, separately, including what each one costs you.
+    <strong>Two counters run in your browser here: Cloudflare Web Analytics and PostHog.</strong> A third count, on the server and without any script, is described <a class="link" href="#arrival-count">after them</a>.
+    Cloudflare's has been permitted since 27&nbsp;August&nbsp;2026; PostHog's since
+    31&nbsp;October&nbsp;2026, when it replaced Google Analytics. They answer different
+    questions, which is the only reason both are here: Cloudflare's says whether anybody loaded
+    a page, cheaply and without a cookie, and stops there. PostHog's says which page a reader
+    went to next and what they clicked — the number that decides which of the fifty contract
+    pages is worth writing more about. Neither one sets a cookie or stores anything in your
+    browser. Each is described below, separately.
   </p>
   <h3 class="subsection">Cloudflare Web Analytics</h3>
   <p class="prose">
@@ -126,53 +136,52 @@ const updated = "27 August 2026";
         </tr>
         <tr>
           <td>The data goes to this domain, not a third one</td>
-          <td class="reason">The measurement is posted to <code>/cdn-cgi/rum</code> on this origin, so this counter sends nothing to a third party. The site's <code>connect-src</code> is no longer <code>'self'</code> alone: it also names Google's analytics hosts, because the second counter does. That difference is set out below.</td>
+          <td class="reason">The measurement is posted to <code>/cdn-cgi/rum</code> on this origin, so this counter sends nothing to a third party. The site's <code>connect-src</code> is no longer <code>'self'</code> alone: it also names PostHog's two EU hosts, because the second counter does post off-origin. That difference is set out below.</td>
         </tr>
       </tbody>
     </table>
   </div>
   <p class="section-note" style="margin-top:10px">
     Two hosts are permitted to serve a script here: <code>static.cloudflareinsights.com</code>
-    and <code>www.googletagmanager.com</code>. There is no third — you can read the whole
+    and <code>eu-assets.i.posthog.com</code>. There is no third — you can read the whole
     policy in this page's response headers.
   </p>
-  <h3 class="subsection">Google Analytics 4</h3>
+  <h3 class="subsection">PostHog</h3>
   <p class="prose">
-    <strong>This page said, until 27&nbsp;August&nbsp;2026, that Google Analytics was gone and
-    was not coming back.</strong> It is back, by the site owner's decision on that date, and
-    the sentence is replaced rather than quietly deleted — a privacy page that revises its
-    promises without saying so is worth less than one that never made them.
+    <strong>Google Analytics was removed from this site on 31&nbsp;October&nbsp;2026</strong>, and
+    PostHog took its place.
   </p>
   <p class="prose">
-    What that costs you, stated plainly. GA4 <strong>sets cookies</strong> — <code>_ga</code>
-    and <code>_ga_5Y4ZENWMQJ</code>, both named in the table below — and it sends data to
-    Google, a third party, which the Cloudflare counter does not. Google's own terms and
-    processing govern what happens to it after that; nothing on this page can promise
-    otherwise, so nothing on this page does.
+    PostHog is product analytics made by PostHog&nbsp;Inc., and what it collects here is stored
+    in the EU, in Frankfurt. It <strong>sets no cookies and stores nothing in your
+    browser</strong> — no local storage and no session storage. What it records: the pages you
+    view, clicks on links and buttons, the page that referred you, your browser and device
+    type, your screen size, and how fast the page loaded.
   </p>
   <p class="prose">
-    What is switched off, and it is checkable in this page's own markup:
-    <strong>Google signals is off</strong>, <strong>ad personalisation is off</strong>, and IP
-    anonymisation is on. Those are the advertising features of GA4 — the part that follows a
-    reader between sites — and this site has no ad account, sells nothing and remarkets to
-    nobody, so they are turned off in the configuration call rather than merely unused. Search
-    for <code>allow_google_signals</code> in the source of this page.
+    <strong>Your IP address is not stored.</strong> PostHog hashes it together with your
+    browser's user agent and a salt that changes every day, uses the result only to count
+    unique visitors for that day, and then discards it — so a visit today cannot be linked to a
+    visit tomorrow. There are no session recordings. Nothing here identifies you, nothing is
+    used for advertising, and nothing is sold. What is recorded is kept for up to one year. The
+    legal basis is legitimate interest: knowing which pages are read is how this site decides
+    what to write and what to fix.
   </p>
   <p class="prose">
-    <strong>There is no consent banner here, and that is a position rather than an oversight.</strong>
-    A strict reading of the ePrivacy Directive requires asked-for consent before an analytics
-    cookie is set, and this site does not ask. If you would rather it did not, blocking
-    <code>www.googletagmanager.com</code> stops it completely — every browser-level tracker
-    blocker already does, and nothing else on this site depends on that host. The Cloudflare
-    counter is unaffected either way, and this page will say so if that changes.
+    Two details are this site's own, and both are in <code>/analytics.js</code>, the file that
+    starts it. Every address PostHog is given is cut to the origin and the path before it is
+    sent, so figures in a calculator's URL never reach it. And clicks inside the
+    <a class="link" href="/watchlist">watchlist</a>'s table — its pin buttons and its rows — are
+    left out of click recording, so the coins you pin are not part of what it sends.
   </p>
   <p class="prose">
-    The script is loaded <strong>after the page has finished</strong> — on the first scroll,
-    tap or key you make, or when the browser goes idle, or three seconds in, whichever comes
-    first. That is not a privacy measure; it is a speed one. Measured on this site in August,
-    <code>gtag.js</code> added 145.8&nbsp;KB over the wire and about 419&nbsp;KB of JavaScript
-    to parse, on pages whose own budget is under 70&nbsp;KB. Deferring it keeps the page fast
-    and still counts the visit.
+    The library comes from <code>eu-assets.i.posthog.com</code> and is fetched <strong>after
+    the page has finished</strong> — on your first scroll, tap or key, when the browser goes
+    idle, or three seconds in, whichever comes first — and what it records goes to
+    <code>eu.i.posthog.com</code>. That is a speed measure: the library is about 108&nbsp;KB
+    over the wire, more than most pages here. Blocking either host stops it completely, and
+    nothing else on this site depends on them. There is no consent banner: nothing is stored on
+    your device, and nothing PostHog records identifies you.
   </p>
 
   <h3 class="subsection" id="arrival-count">An arrival count on this site's own server</h3>
@@ -183,8 +192,9 @@ const updated = "27 August 2026";
     the host of the site or the <code>utm_source</code> the link came from, whether the page was
     typed or bookmarked, linked from another site or reached from a page of this one, phone
     or desktop, and the two-letter country Cloudflare reports for the request. No IP address, no browser string and no identifier is written, so a row cannot be
-    tied to a person. It exists because the two counters above sample, depend on JavaScript and
-    hide the referrer, which left a fall in readers unexplained in October.
+    tied to a person. It exists because the counters above depend on JavaScript running in your
+    browser, and in October the two then running — Cloudflare's, which samples and drops the
+    referrer, and Google's — left a fall in readers unexplained.
   </p>
 
   <h2 class="section">Cookies and local storage</h2>
@@ -195,7 +205,7 @@ const updated = "27 August 2026";
         {STORED_ON_DEVICE.map((r) => (
           <tr>
             <td><code set:text={r.name} /></td>
-            <td>{r.kind === "cookie" ? "Cookie" : "Local storage"}{r.by === "Google Analytics" ? " \u00b7 Google Analytics" : ""}</td>
+            <td>{r.kind === "cookie" ? "Cookie" : "Local storage"}</td>
             <td set:html={r.purpose} />
             <td>{r.expires}</td>
           </tr>
@@ -204,10 +214,11 @@ const updated = "27 August 2026";
     </table>
   </div>
   <p class="section-note" style="margin-top:10px">
-    Four entries. The first two are this site's own and hold no identifier; the last two are
-    Google Analytics and do — blocking <code>www.googletagmanager.com</code> prevents both, and
-    the Cloudflare counter still sets nothing either way. Clearing your browser data removes
-    all four and the site behaves the same without them.
+    Two entries, both this site's own, and neither holds an identifier. Neither counter adds
+    anything to this list: the two Google Analytics cookies, <code>_ga</code> and
+    <code>_ga_5Y4ZENWMQJ</code>, went with Google Analytics on 31&nbsp;October&nbsp;2026, and a
+    browser that visited before then may still hold them until they expire or you clear them.
+    Clearing your browser data removes everything here and the site behaves the same without it.
   </p>
 
   <h2 class="section">The calculators</h2>
@@ -219,9 +230,11 @@ const updated = "27 August 2026";
     not appear in a log line, use a representative figure.
   </p>
   <p class="prose">
-    Those request logs are the only place the values go. Both counters rebuild the URL from the
-    origin and the path, so a figure typed into a field named <code>capital</code> is not part of
-    what either one sends. That is a measurement of the two requests, not an assurance.
+    Those request logs are the only place the values go. Both counters are given the origin and
+    the path and nothing else — Cloudflare's rebuilds the URL from those two, and PostHog's
+    loader cuts every address in an event down to them before it is sent — so a figure typed
+    into a field named <code>capital</code> is not part of what either one sends. That is a
+    measurement of the requests, not an assurance.
   </p>
   <p class="prose">
     <strong>It has not always been true, and this page said it had stopped when it had not.</strong>
@@ -249,8 +262,8 @@ const updated = "27 August 2026";
     the host rather than written into this site's source</strong>: it appears in the HTML after
     this site's code has finished with the response, and it does so whenever a client asks for
     the page the way a browser asks for it. It was blocked here until 27&nbsp;August&nbsp;2026
-    and is permitted now. Nothing else off-origin can serve a script, receive a fetch, or load
-    an image on any page here.
+    and is permitted now. Apart from the two counters described above, nothing off-origin can
+    serve a script, receive a fetch, or load an image on any page here.
   </p>
 
   <h2 class="section">Contact</h2>
@@ -271,7 +284,7 @@ const updated = "27 August 2026";
     /* THE ONLY PAGE ON THIS SITE WITH A THIRD HEADING LEVEL, and it earns it: "Analytics" now
        has two counters under it that collect different things and cost the reader different
        amounts, and flattening them to siblings of their own parent would tell a screen reader
-       that Google Analytics is a peer of Analytics rather than a case of it.
+       that PostHog is a peer of Analytics rather than a case of it.
 
        NOT `.sub`, which was the first attempt. src/pages/unlocks.astro already defines .sub as
        a small faint inline label inside table cells; reusing the name for a heading is the

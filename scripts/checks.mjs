@@ -28,6 +28,10 @@ const ENUMS = ["HlPerp", "BinPerp", "BybitPerp"];
  */
 const CLASS_ALLOW = new Set([
   "app", "col", "astro-route-announcer",
+  /* Read by PostHog's autocapture, not by CSS: an element carrying it, and everything inside it,
+     is never recorded. On /watchlist's tbody, so a press of a pin button or a click on a pinned
+     row does not tell the analytics which coins are pinned (31 October 2026). */
+  "ph-no-capture",
 ]);
 
 const strip = (html) =>

@@ -98,12 +98,13 @@ const stored = storedCounts();
           <td class="reason">No sign-up, no login, no password, no email capture. {/* COUNTED FROM THE LIST /privacy
             renders. This sentence said "the one thing stored on your device is a cookie named rail
             … plus a coinliqui.pinned list" and omitted the two Google Analytics cookies the site
-            has set since 27 August — see STORED_ON_DEVICE in src/lib/site.ts. */}What this site
+            set from 27 August — see STORED_ON_DEVICE in src/lib/site.ts. Since 31 October 2026 the
+            list holds only this site's own entries: GA4 left with its cookies, and PostHog, which
+            replaced it, stores nothing on the device. */}What this site
             stores on your device is {countWords(stored.cookies, "cookie", "cookies")} and
             {" "}{countWords(stored.storage, "local-storage key", "local-storage keys")}:
-            {" "}{STORED_ON_DEVICE.filter((i) => i.by === "this site").map((i) => i.name).join(" and ")} are
-            this site's own and are never sent anywhere; {STORED_ON_DEVICE.filter((i) => i.by === "Google Analytics").map((i) => i.name).join(" and ")} are
-            set by Google Analytics. <a href="/privacy">Each one, and what it is for →</a></td>
+            {" "}{STORED_ON_DEVICE.map((i) => i.name).join(" and ")}, this site's own and never
+            sent anywhere. The analytics store nothing on your device. <a href="/privacy">Each one, and what it is for →</a></td>
         </tr>
         <tr>
           <td><strong>No financial advice</strong></td>

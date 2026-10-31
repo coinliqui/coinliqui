@@ -32,7 +32,10 @@ const CHROME = [
   "/usr/bin/google-chrome", "/usr/bin/chromium", "/usr/bin/chromium-browser",
 ].find(existsSync);
 const W = Number(process.argv.find((a) => a.startsWith("--width="))?.slice(8) ?? 320), H = 812;
-const BLOCK = ["*googletagmanager.com*", "*google-analytics.com*", "*cloudflareinsights.com*", "*analytics.google.com*"];
+/* The counters are blocked so this sweep never reaches a reader count: PostHog since
+   31 October 2026 (its library and its events are both on posthog.com), the Cloudflare beacon,
+   and nothing from Google any more, which left with GA4 the same day. */
+const BLOCK = ["*posthog.com*", "*cloudflareinsights.com*"];
 /* States a reader sets, which render different markup from the bare URL. */
 const STATES = ["/liquidations?at=70000", "/open-interest?w=7d", "/open-interest?w=14d", "/funding/btc?tf=15m", "/coins/bitcoin?view=line"];
 

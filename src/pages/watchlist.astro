@@ -3,7 +3,7 @@ import Base from "../layouts/Base.astro";
 import More from "../components/More.astro";
 import { getSnapshot, coldStart } from "../lib/hyperliquid.ts";
 import { pct, usd, paysClass, LEGEND_FUNDING, type Venue } from "../lib/funding.ts";
-import { PINNED_KEY, GA_ENABLED } from "../lib/site.ts";
+import { PINNED_KEY } from "../lib/site.ts";
 import { ageWords, minutesSince } from "../lib/freshness.ts";
 import { coverageRule, coverageToday } from "../lib/coverage.ts";
 // Every covered contract renders server-side, so the page is a complete, useful table for a
@@ -48,11 +48,17 @@ const pinRule = coverageRule();
    /api/live.json. What IS true is narrower, and checked against every script the page loads:
    the only reader of the pinned key is the inline script below, it writes localStorage and never
    fetches, and GA is given origin and path only — so the pins reach no one. The sentence now
-   says that, and the note about the page view is derived from GA_ENABLED, the same switch
-   Base renders the tag from, so it cannot claim a counter that is off or omit one that is on. */
-const visitNote = GA_ENABLED
-  ? " Opening the page is still counted by Google Analytics; the list is not part of what it sends."
-  : "";
+   says that.
+   31 OCTOBER 2026: PostHog replaced GA, and it brought a new way for the pins to leave — its
+   autocapture records clicks on buttons and links with their attributes and their position, and
+   every pin button carries aria-label="Pin BTC" and data-sym, while pinned rows are moved to the
+   top — so a click on a pinned coin's link would say both which coin and that it sits first. The
+   tbody therefore carries ph-no-capture, the class PostHog's autocapture skips for an element and
+   everything inside it, and the note names the counter that is actually in Base. Clicks on the
+   column headers are still recorded; they sort the table and say nothing about the pins. There is
+   no switch to derive the note from any more: the tag is unconditional, and verify-live asserts it
+   is on every page. */
+const visitNote = " Opening the page is counted by PostHog, which records no click inside the list below; the list is not part of what it sends.";
 ---
 
 <Base
@@ -183,7 +189,7 @@ const visitNote = GA_ENABLED
           <th class="num">24h volume <span class="thscope">Hyperliquid</span></th>
         </tr>
       </thead>
-      <tbody>
+      <tbody class="ph-no-capture">
         {snap.perps.map((p) => (
           <tr data-sym={p.symbol}>
             <td>

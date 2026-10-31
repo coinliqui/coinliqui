@@ -279,10 +279,13 @@ console.log("\n4. www");
  * had separate copies of the same regex pair, which is how one of them would eventually learn
  * about a new counter and the other would not.
  *
- * GA4 IS MATCHED ON ITS LOADER URL AND A MEASUREMENT ID, not on gtag.js having executed. The
- * loader is deferred behind idle-or-interaction, so at fetch time the only thing in the
- * document is the inline bootstrap that queues the config call and builds that URL — which is
- * exactly what must be present for the hit to fire later.
+ * POSTHOG IS MATCHED ON ITS LOADER TAG, not on PostHog's library having executed. Since
+ * 31 October 2026 (it replaced GA4, which was matched on gtag's URL and measurement ID) every
+ * page carries one <script type="module" src="/analytics.js?v=…">, and that file inserts the
+ * library after the page settles — so at fetch time the tag is exactly what must be present for
+ * events to fire later. What the file asks PostHog for is checked once, in section 6, because it
+ * is one file rather than a block per page. A PostHog post goes off-origin, so its CSP needs
+ * connect-src as well as script-src; the beacon's posts are same-origin and need neither.
  */
 const COUNTERS = [
   {
@@ -291,17 +294,17 @@ const COUNTERS = [
     host: /script-src[^;]*\bstatic\.cloudflareinsights\.com\b/,
   },
   {
-    name: "google analytics",
-    tag: /googletagmanager\.com\/gtag\/js\?id=/,
-    id: /\bG-[A-Z0-9]{6,15}\b/,
-    host: /script-src[^;]*\bwww\.googletagmanager\.com\b/,
+    name: "posthog",
+    tag: /<script type="module" src="\/analytics\.js\?v=[0-9a-f]{6,}"/,
+    host: /script-src[^;]*\beu-assets\.i\.posthog\.com\b/,
+    connect: /connect-src[^;]*\beu\.i\.posthog\.com\b/,
   },
 ];
 const analyticsGaps = (body, csp) =>
   COUNTERS.flatMap((c) =>
     !c.tag.test(body) ? [`no ${c.name} tag`]
-      : c.id && !c.id.test(body) ? [`${c.name} tag carries no measurement ID`]
       : !c.host.test(csp) ? [`${c.name} blocked by this page's own CSP`]
+      : c.connect && !c.connect.test(csp) ? [`${c.name} cannot post its events under this page's own CSP`]
       : []);
 
 
@@ -644,11 +647,12 @@ console.log("\n5. sitemap");
  * THIS SECTION HAS NOW BEEN REWRITTEN TWICE FOR THE SAME REASON, in opposite directions, and
  * that is the thing worth reading before editing it again. It first asserted script-src was
  * exactly 'self', because /privacy claimed zero third-party scripts. Then the site ran Google
- * Analytics 4 and the assertion failed on correct behaviour, so the allowlist grew. GA4 is now
- * removed and SCRIPT_HOSTS is empty again — so an assertion demanding an analytics host would
- * fail on correct behaviour a second time. A check that encodes a decision has to be edited
- * when the decision is, and the failure looks identical either way: green where it should be
- * red, or red where the site is right.
+ * Analytics 4 and the assertion failed on correct behaviour, so the allowlist grew. GA4 was
+ * then removed and SCRIPT_HOSTS was empty again — so an assertion demanding an analytics host
+ * would have failed on correct behaviour a second time. (It has since held the Cloudflare
+ * beacon and GA4, and from 31 October 2026 the beacon and PostHog.) A check that encodes a
+ * decision has to be edited when the decision is, and the failure looks identical either way:
+ * green where it should be red, or red where the site is right.
  *
  * What survives both rewrites is the half that was always the real value. A CSP is protection
  * against an origin NOBODY CHOSE: a compromised dependency, an injected tag, a rewriting
@@ -679,18 +683,16 @@ console.log("\n5. sitemap");
    and recording nothing — 0 pageloads in 31 days against a live tag. It survives the question
    GA4 failed: what it returns is whether anyone reads the site at all, which Search Console
    cannot answer because it counts only clicks that came from Google. */
-/* www.googletagmanager.com added 27 August 2026 on the operator's instruction, restoring the
-   GA4 property that ran 17-19 August. The record of why it was removed then is still in
-   /privacy and in src/lib/site.ts, and none of it turned out to be wrong — it is expensive and
-   it was unused. What changed is the question: neither the Cloudflare beacon nor Search
-   Console can say which page a reader went to next, and that is the number that decides which
-   of the fifty contract pages is worth writing more about.
+/* eu-assets.i.posthog.com added 31 October 2026 on the operator's instruction, replacing
+   www.googletagmanager.com, which left with Google Analytics 4 the same day. The question it
+   answers is the one GA4 was restored for on 27 August: neither the Cloudflare beacon nor
+   Search Console can say which page a reader went to next, and that is the number that decides
+   which of the fifty contract pages is worth writing more about.
 
-   NAMING THIS HOST PERMITS EVERY GTM CONTAINER, not ours. www.googletagmanager.com serves any
-   container to anyone who asks for one; CSP has no notion of whose tag it is. That is a real
-   widening and it is written here rather than implied, because the list below reads like a
-   list of tags and is in fact a list of hosts. */
-const SCRIPT_HOSTS = ["static.cloudflareinsights.com", "www.googletagmanager.com"];
+   NAMING THIS HOST PERMITS EVERY POSTHOG PROJECT'S LIBRARY, not ours: CSP has no notion of
+   whose script it is. That is a real widening and it is written here rather than implied,
+   because the list below reads like a list of tags and is in fact a list of hosts. */
+const SCRIPT_HOSTS = ["static.cloudflareinsights.com", "eu-assets.i.posthog.com"];
 const REQUIRED_CSP = [
   ["object-src", "'none'"], ["base-uri", "'self'"], ["frame-ancestors", "'none'"],
   ["form-action", "'self'"], ["default-src", "'self'"],
@@ -771,6 +773,39 @@ for (const p of ["/", "/funding/btc"]) {
   missing.length
     ? bad(`${p} lost anti-injection directive(s): ${missing.map(([k, v]) => `${k} ${v}`).join(", ")}`)
     : ok(`${p} object-src, base-uri, frame-ancestors, form-action, default-src all intact`);
+}
+
+/* 6b. WHAT THE ANALYTICS LOADER ASKS POSTHOG FOR, read from the file the live pages load.
+   /privacy states each of these as a fact about the site, so each is asserted on the served,
+   minified file rather than on the source: no cookie and no storage (cookieless_mode "always"),
+   no person profile, no recording, a page view and a page leave, the EU host, and the
+   before_send that cuts every URL to origin and path. A file that lost any one of them would
+   still count readers and nothing on the page would look wrong. */
+console.log("\n6b. the analytics loader's options");
+{
+  const home = await fetchAs("/");
+  const src = /<script type="module" src="(\/analytics\.js\?v=[0-9a-f]{6,})"/.exec(home.body)?.[1];
+  if (!src) bad("/ carries no /analytics.js tag, so the loader's options cannot be read");
+  else {
+    const js = await fetchAs(src, "Mozilla/5.0", "*/*");
+    const want = [
+      ["the public project token", /["']phc_[A-Za-z0-9]{20,}["']/],
+      ["the EU event host", /api_host:\s*["']https:\/\/eu\.i\.posthog\.com["']/],
+      ['cookieless_mode "always"', /cookieless_mode:\s*["']always["']/],
+      ['person_profiles "identified_only"', /person_profiles:\s*["']identified_only["']/],
+      ["session recording off", /disable_session_recording:\s*(?:!0|true)/],
+      ["page views on", /capture_pageview:\s*(?:!0|true)/],
+      ["page leaves on", /capture_pageleave:\s*(?:!0|true)/],
+      ["a before_send that rewrites URLs", /before_send:/],
+    ];
+    const missing = want.filter(([, re]) => !re.test(js.body)).map(([label]) => label);
+    /* identify() would make a person out of a reader; the stub's method LIST names it as a word,
+       so what must be absent is a call. */
+    if (/\.identify\(/.test(js.body)) missing.push("no identify() call (one is present)");
+    js.status !== 200 ? bad(`${src} answered ${js.status}`)
+      : missing.length ? bad(`${src} lost: ${missing.join("; ")}`)
+      : ok(`${src} asks PostHog for every option /privacy states: ${want.length} options present, no identify() call`);
+  }
 }
 
 /* 7. DID THE DOCUMENT FINISH?

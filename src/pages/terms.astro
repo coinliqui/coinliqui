@@ -38,8 +38,9 @@ const description =
         anything from you" (and "holds nothing, receives nothing" in the description) sat on the page
         that points to /privacy, which says serving a page means the host handles your IP address and
         the URL you asked for, that calculator inputs reach request logs, and that Google Analytics
-        sends page views to Google. The claim-vs-table audit of 16 September 2026 confirmed the
-        contradiction. What is structurally true is narrower: no money, no credentials, no account. */}
+        sent page views to Google (PostHog replaced it on 31 October 2026). The claim-vs-table audit
+        of 16 September 2026 confirmed the contradiction. What is structurally true is narrower: no
+        money, no credentials, no account. */}
     This page is short because there is little to agree to. {SITE.name} publishes numbers as
     ordinary web pages. It holds no funds or assets of yours, cannot take a payment or a
     credential from you, and has no account for you to create. What an ordinary page request does
@@ -135,15 +136,19 @@ const description =
     them, and nothing on this page is a representation that they permit it.
   </p>
   <p class="prose">
-    {/* "NO PERSONAL DATA IS COLLECTED" WAS NOT TRUE, AND THIS IS THE LEGAL PAGE. /privacy lists a
-        Google Analytics cookie that is "a random identifier for your browser", says GA4 "sends data
+    {/* "NO PERSONAL DATA IS COLLECTED" WAS NOT TRUE, AND THIS IS THE LEGAL PAGE. /privacy listed a
+        Google Analytics cookie that was "a random identifier for your browser", said GA4 "sends data
         to Google, a third party", and says the host handles your IP address. An identifier and an IP
-        address can be personal data. The sentence now says what the site does not do and sends the
-        reader to the page that states what it does — it does not assert an absence it cannot prove. */}
+        address can be personal data. The sentence says what the site does not do and sends the
+        reader to the page that states what it does — it does not assert an absence it cannot prove.
+        Rewritten 31 October 2026 when PostHog replaced GA4: no identifier is set any more, but the
+        IP address is still processed (by the host, and by PostHog for its daily visitor count), so
+        the sentence still does not claim that nothing is. */}
     There are no accounts, so there is no profile here to return or delete. Some data is processed
     when you use the site: the host handles your IP address and the address of each page you
-    request, and Google Analytics sets an identifier in your browser and sends page views to Google.
-    What each of these is, and how to block the analytics, is set out on{" "}
+    request, and PostHog records the pages viewed and the clicks made, without setting a cookie or
+    storing anything in your browser. What each of these is, and how to block the analytics, is set
+    out on{" "}
     <a class="link" href="/privacy">Privacy</a>.
   </p>
 

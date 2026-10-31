@@ -1,5 +1,5 @@
 ---
-import { SITE, NAV, FOOTER_LINKS, IDENTITY, origin, GA_MEASUREMENT_ID, GA_ENABLED, GA_DEFER, GA_CONFIG } from "../lib/site.ts";
+import { SITE, NAV, FOOTER_LINKS, IDENTITY, origin } from "../lib/site.ts";
 import { ageWords, utcStamp } from "../lib/freshness.ts";
 import { codeStamp } from "../lib/sitemap.ts";
 import { publishedSameAs } from "../lib/corroboration.ts";
@@ -1445,63 +1445,6 @@ const schema = {
       }
     </style>
 
-    {/* =====================================================================================
-        GOOGLE ANALYTICS 4 — ON EVERY PAGE, BECAUSE IT IS IN THE LAYOUT.
-
-        WHY IT LIVES HERE AND NOWHERE ELSE. Every page on this site renders through Base, so a
-        tag in this file is a tag on every page that exists and on every page anybody adds
-        later. The alternative — remembering to include it — is the failure mode the analytics
-        gate in scripts/verify-live.mjs already exists to catch, and it catches it by walking
-        every URL in the sitemaps rather than by trusting this comment.
-
-        RENDERS ONLY WITH A WELL-FORMED MEASUREMENT ID. With no ID there is no tag, no request
-        and no cookie: the "off" state is genuinely off rather than a broken tag pointing at
-        nothing.
-
-        DELIBERATELY NO `preconnect` to googletagmanager.com. A preconnect opens a DNS+TLS
-        connection during the window the page is racing to paint its largest text block, which
-        is the one thing on this site that must not get slower. The loader is deferred anyway,
-        so a warmed connection would be warmed for a request that is not coming yet.
-
-        THE CONFIG CALL CARRIES GA_CONFIG, which turns off Google signals and ad
-        personalisation. See src/lib/site.ts for why those three switches, and for what that
-        does and does not settle about consent.
-        ===================================================================================== */}
-    {GA_ENABLED && !GA_DEFER && (
-      <script async is:inline src={`https://www.googletagmanager.com/gtag/js?id=${GA_MEASUREMENT_ID}`}></script>
-    )}
-    {/* THE QUERY STRING IS STRIPPED BEFORE GA SEES IT, and it was not. Measured on the live site
-        on 31 August 2026: the collect request for
-        /tools/position-size?side=short&entry=78000&stop=200000 carried
-        dl=https%3A%2F%2Fcoinliqui.com%2Ftools%2Fposition-size%3Fside%3Dshort%26entry%3D78000%26stop%3D200000
-        — figures a reader typed into a calculator, sent to Google, on a site whose /privacy page
-        says the Cloudflare beacon rebuilds the URL from origin and path precisely so that cannot
-        happen. One counter kept the promise; the other was never told to.
-
-        page_location is assigned per render rather than set in GA_CONFIG, because a constant
-        there would report every page in the property as one URL. Both counters now see origin
-        and path and nothing else.
-
-        THIS EXPLANATION LIVES OUT HERE, and that is the second lesson. Written inside the
-        script it SHIPS: is:inline means the body is served verbatim to every reader, and the
-        first draft of this comment put /open-interest 73 bytes over its wire budget. The gate
-        caught it. Astro comments are compiled away; script comments are payload.
-
-        TWO MORE HAD STAYED INSIDE, and are out here now (16 September 2026, when /unlocks and
-        /tools/leverage went over their budgets). The queue is safe to fill before gtag.js exists
-        — that is what dataLayer is for — so deferring the LOADER changes when the hit is sent, not
-        whether it is. And the load waits for the page's own load event, not parse: the point is to
-        be behind everything the page needs to become useful — requestIdleCallback where it exists,
-        a timeout where it does not (Safari), and a 3s backstop so a perfectly still reader is
-        still counted.
-
-        THE BODY IS WRITTEN COMPACT for the same reason (15 October 2026): its indentation alone was
-        about a third of its bytes, on every page. In words: queue the js and config calls; if
-        DEFER, load gtag.js once — on the first pointerdown, keydown, scroll or touchstart, or when
-        the page has loaded and is idle (1.2s without requestIdleCallback), or at 3s at the latest. */}
-    {GA_ENABLED && (
-      <script is:inline define:vars={{ GA_ID: GA_MEASUREMENT_ID, DEFER: GA_DEFER, CFG: GA_CONFIG }}>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag("js",new Date());CFG.page_location=location.origin+location.pathname;gtag("config",GA_ID,CFG);if(DEFER){var armed=!1,ev=["pointerdown","keydown","scroll","touchstart"];function load(){if(armed)return;armed=!0;ev.forEach(function(e){removeEventListener(e,load,{passive:!0})});var s=document.createElement("script");s.async=!0;s.src="https://www.googletagmanager.com/gtag/js?id="+GA_ID;document.head.appendChild(s)}ev.forEach(function(e){addEventListener(e,load,{passive:!0,once:!0})});function schedule(){window.requestIdleCallback?requestIdleCallback(load,{timeout:3e3}):setTimeout(load,1200);setTimeout(load,3e3)}document.readyState=="complete"?schedule():addEventListener("load",schedule,{once:!0})}</script>
-    )}
   </head>
   <body>
     <div class="app">
@@ -1632,5 +1575,17 @@ const schema = {
         previous deploy's script against this deploy's markup. */}
     <script type="module" src={`/typeahead.js?v=${ASSETS["/typeahead.js"]}`}></script>
     <script type="module" src={`/interact.js?v=${ASSETS["/interact.js"]}`}></script>
+    {/* READER ANALYTICS — POSTHOG, ON EVERY PAGE BECAUSE IT IS IN THE LAYOUT. It replaced Google
+        Analytics 4 on 31 October 2026. Every page renders through Base, so a tag here is a tag on
+        every page that exists and on every page added later, and scripts/verify-live.mjs walks the
+        sitemaps to prove it rather than trusting this comment.
+
+        ONE TAG AND NO INLINE CODE. The loader, its options and the reasons for each live in
+        public/analytics.js, fetched once and cached under its ?v= hash; a module script never
+        blocks rendering, and the file itself waits for the page to settle before it fetches
+        PostHog's library. No `preconnect` to posthog.com for the same reason gtag.js had none:
+        the connection would be warmed during the paint that must not get slower, for a request
+        that is not coming yet. */}
+    <script type="module" src={`/analytics.js?v=${ASSETS["/analytics.js"]}`}></script>
   </body>
 </html>

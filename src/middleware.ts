@@ -148,20 +148,24 @@ export const onRequest = defineMiddleware(async (ctx, next) => {
   res.headers.set("permissions-policy", "camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()");
 
   /* THE CSP, WITH TWO NAMED SCRIPT HOSTS: static.cloudflareinsights.com and
-   * www.googletagmanager.com.
+   * eu-assets.i.posthog.com.
    *
-   * THIS SECTION HAS NOW BEEN REWRITTEN FOUR TIMES AND THE HISTORY IS THE USEFUL PART. It
+   * THIS SECTION HAS NOW BEEN REWRITTEN FIVE TIMES AND THE HISTORY IS THE USEFUL PART. It
    * began as `script-src 'self'` and nothing else, to make "no third-party scripts" true by
    * force. It was relaxed to run Google Analytics 4 — one named host plus wildcards on three
    * Google domains across img-src and connect-src. GA4 was removed and it went back to 'self'.
-   * It was relaxed again, by one host, for the Cloudflare Web Analytics beacon. And on
-   * 27 August 2026 the operator asked for GA4 back, so the Google entries are back with it.
+   * It was relaxed again, by one host, for the Cloudflare Web Analytics beacon. On 27 August 2026
+   * the operator asked for GA4 back, so the Google entries came back with it. And on 31 October
+   * 2026 GA4 was replaced by PostHog: every Google entry is gone, from img-src and connect-src
+   * as well as script-src, and PostHog's two EU hosts are named in their place.
    *
    * WHAT THE TWO COUNTERS ANSWER, because running both is otherwise just two tags. Cloudflare
    * Web Analytics answers "did anybody load a page", cheaply and without a cookie, and stops
    * there. Search Console answers "who clicked from Google" and nothing about what happened
-   * next. GA4 is here for the question neither can answer: which page a reader went to after
-   * the one they landed on, and which of the fifty contract pages is worth writing more about.
+   * next. PostHog is here for the question neither can answer: which page a reader went to after
+   * the one they landed on, what they clicked, and which of the fifty contract pages is worth
+   * writing more about. It runs cookieless (public/analytics.js), so it adds nothing a shared
+   * cache would have to vary on — see the `Vary: Cookie` note above.
    * If that stops being the reason, this is the paragraph to reread before keeping it.
    *
    * WHY THE PREVIOUS VERSION OF THIS COMMENT WAS WRONG ABOUT THE STATE OF THE WORLD. It said
@@ -182,7 +186,7 @@ export const onRequest = defineMiddleware(async (ctx, next) => {
    * was to allow it: the alternative left us with no reader-side measurement of any kind, on a
    * site whose only feedback loop is Search Console clicks in the single digits.
    *
-   * connect-src IS DELIBERATELY UNCHANGED. Cloudflare's own documentation says beacon data goes
+   * connect-src NAMES NO CLOUDFLARE HOST, DELIBERATELY. Cloudflare's own documentation says beacon data goes
    * to `https://<yourdomain>/cdn-cgi/rum` for a site proxied through Cloudflare, and this site
    * is proxied — so the POST is SAME-ORIGIN and 'self' already permits it. Adding
    * cloudflareinsights.com to connect-src would be punching a second hole for a request that
@@ -207,30 +211,27 @@ export const onRequest = defineMiddleware(async (ctx, next) => {
       "content-security-policy",
       [
         "default-src 'self'",
-        /* ONE NAMED HOST, and the question GA4 failed is answered for it: the decision this
-           returns is whether anybody reads the site. Search Console counts clicks from Google
-           and nothing else — not a direct visit, not a link followed, not which page was read.
-           Every client-side counter this site has had was off, and the number the operator was
-           looking at was zero because nothing was counting. */
-        /* TWO NAMED HOSTS SERVE SCRIPTS HERE, and the second one is back by decision rather
-           than by drift. www.googletagmanager.com will serve any GTM container to anyone who
-           asks for one, so naming it does not permit "our tag" — CSP has no notion of whose
-           tag it is. It permits that host. The narrower alternative is a hash or a nonce per
-           inline block, which is the same work 'unsafe-inline' above is still owed. */
-        "script-src 'self' 'unsafe-inline' https://static.cloudflareinsights.com https://www.googletagmanager.com",
+        /* TWO NAMED HOSTS SERVE SCRIPTS HERE. static.cloudflareinsights.com is the Cloudflare
+           beacon, whose decision is whether anybody reads the site at all — Search Console
+           counts clicks from Google and nothing else. eu-assets.i.posthog.com serves PostHog's
+           library and the extensions it lazy-loads (web vitals, heatmaps); naming it permits
+           that host, not "our project" — CSP has no notion of whose script it is. The narrower
+           alternative is a hash or a nonce per inline block, which is the same work
+           'unsafe-inline' above is still owed. The loader that inserts PostHog's script is
+           /analytics.js on this origin, so 'self' covers it. */
+        "script-src 'self' 'unsafe-inline' https://static.cloudflareinsights.com https://eu-assets.i.posthog.com",
         "style-src 'self' 'unsafe-inline'",
-        /* GA4 falls back to a pixel where fetch/beacon is unavailable, so the image hosts are
-           the same two families the connect hosts are. */
-        "img-src 'self' data: https://www.google-analytics.com https://*.google-analytics.com",
+        /* No off-origin image host: PostHog posts with fetch and sendBeacon, never a pixel, and
+           the Google pixel hosts left with GA4. */
+        "img-src 'self' data:",
         "font-src 'self'",
         /* THE CLOUDFLARE BEACON STILL NEEDS NOTHING HERE. Its data goes to
            `https://<yourdomain>/cdn-cgi/rum` for a proxied site, which is this origin, so
            'self' already covers it and naming cloudflareinsights.com would be a hole punched
-           for a request nobody makes. The Google entries are for GA4, which does post
-           off-origin: region1.google-analytics.com and analytics.google.com among others,
-           which is why these are host wildcards rather than three named hosts that would fail
-           the first time Google added a region. */
-        "connect-src 'self' https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com",
+           for a request nobody makes. The PostHog entries are real off-origin posts:
+           eu.i.posthog.com receives the events and the feature-flag call, and
+           eu-assets.i.posthog.com answers the remote-config fetch. Named hosts, no wildcard. */
+        "connect-src 'self' https://eu.i.posthog.com https://eu-assets.i.posthog.com",
         "form-action 'self'",
         "base-uri 'self'",
         "frame-ancestors 'none'",

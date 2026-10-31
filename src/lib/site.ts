@@ -148,109 +148,20 @@ export const IDENTITY = {
    * this pass. There is nothing to edit here to restore the link: it restores itself. */
 } as const;
 
-/* GOOGLE ANALYTICS 4 WAS HERE, AND IS GONE. Removed 19 August 2026, deliberately and not
-   by accident, so this note stands where the constants did.
+/* GOOGLE ANALYTICS 4 IS GONE, FOR THE SECOND TIME, AND THIS TIME IT WAS REPLACED RATHER THAN
+   DROPPED. It ran 17-19 August 2026, was removed, came back on 27 August on the operator's
+   instruction, and was removed again on 31 October 2026 when the operator moved reader analytics
+   to PostHog. The measurement ID, the deferred gtag loader, its three advertising switches, the two
+   _ga cookies in STORED_ON_DEVICE and the Google hosts in the CSP all went out together, because a
+   half-removed tag is the failure mode the first removal warned about. The GA4 property itself is
+   untouched in Google's console: its history is still read from there.
 
-   THE DECIDING ARGUMENT WAS NOT PRIVACY LAW. It was that in the whole life of the property
-   not one GA4 number was ever used to make a decision. Every call this project has made was
-   made on Search Console coverage, on Cloudflare's own request logs, or on a figure measured
-   directly off the live pages. GA4 answered questions nobody was asking.
+   WHAT REPLACED IT lives in public/analytics.js — PostHog, EU cloud, cookieless_mode "always" — and
+   is described there option by option. It sets nothing on a reader's device, which is why the list
+   below holds only this site's own two entries. The numbers that made gtag.js deferred (419 KB of
+   JavaScript on a 6.5 KB homepage, 85 ms of blocking against 0) are why PostHog's loader waits for
+   the page to settle as well. */
 
-   WHAT IT COST TO ANSWER THEM: 167.8 KB brotli of loader and library, on a homepage that is
-   6.5 KB brotli — 25x the page, to measure the page. Measured on /funding/btc, GA off then
-   on: two long tasks (119 ms + 66 ms), 85 ms total blocking against 0 ms, load event 133 ms
-   -> 668 ms, 419 KB of JavaScript to parse on a site that otherwise ships almost none. This
-   project has spent a written decision moving a budget by 2,600 bytes. There is no version
-   of that standard that also carries this.
-
-   And it removed a pile of law at the same time: the ePrivacy Art 5(3) consent gate we were
-   not honouring, a breach of Google's own Analytics terms (a contract obligation, separate
-   from GDPR), the calculator values that reached Google inside `page_location` on a GET form
-   whose fields include one called `capital`, and most of the pressure toward an Art 27 EU
-   representative. Those were the audit's findings. They were not the reason; they were the
-   confirmation that the reason was pointing the right way.
-
-   IF ANALYTICS COME BACK, they should be server-side and cookieless. Cloudflare's own request
-   logs already answer "which pages are read" without a byte of client JavaScript, and the
-   weekly indexation report already reads them. Do not restore this by pasting a measurement
-   ID back into this file: the loader, the CSP allowances and the /privacy copy were all
-   removed with it, and a half-restored tag is the failure mode worth avoiding. */
-
-
-/**
- * GOOGLE ANALYTICS 4, RESTORED 27 AUGUST 2026 ON THE OPERATOR'S INSTRUCTION.
- *
- * IT WAS HERE BEFORE, 17–19 AUGUST, AND WAS REMOVED. The reasons are still on the record and
- * still true: it cost 167.8 KB of JavaScript on a homepage of about 6.5 KB, and no decision
- * about this site had ever been made from a GA4 number. What has changed is the question being
- * asked. Since then Cloudflare Web Analytics went on, and it answers "did anybody load a page"
- * and very little else; Search Console answers only "who clicked from Google". Neither answers
- * which page a reader went to next, how long they stayed, or which of the fifty contract pages
- * is worth writing more about. That is what this is for.
- *
- * WHAT THE MEASUREMENT ID IS. Public by design: it ships in the HTML of every page and
- * identifies a property, not an account. Not a credential, and it does not belong in a secret
- * store. This is the same property that ran in August, so its history is intact rather than
- * starting from zero.
- *
- * GA_ENABLED is a SHAPE check, not a truthiness check, so a placeholder left in by accident
- * cannot emit a live tag pointing at nothing. Deliberately loose about length — real IDs are
- * G- plus ten characters, but a regex tightened to exactly ten would silently disable analytics
- * if Google ever issues another width, and "silently off" is the worst failure this value has.
- */
-export const GA_MEASUREMENT_ID = "G-5Y4ZENWMQJ";
-export const GA_ENABLED = /^G-[A-Z0-9]{6,15}$/.test(GA_MEASUREMENT_ID);
-
-/**
- * LOAD gtag.js AFTER THE PAGE HAS SETTLED, rather than in parallel with it. Measured on
- * /funding/btc against the local warm build in August, GA off then on:
- *
- *                       GA off      GA on
- *   long tasks          none        119 ms + 66 ms
- *   total blocking      0 ms        85 ms
- *   load event          133 ms      668 ms
- *   off-origin hosts    0           2
- *   transfer            —           +145.8 KB brotli (the whole page is 69 KB)
- *   JS to parse         ~0          +419 KB decoded
- *
- * This site ships almost no JavaScript, so gtag.js is not an increment on the main thread — it
- * IS the main-thread work. Those numbers are the reason the tag is deferred rather than the
- * reason it is absent: deferring the LOADER changes when the hit is sent, not whether it is,
- * because dataLayer queues the config call until gtag.js arrives.
- *
- * THE TRIGGER IS WHICHEVER COMES FIRST of: the browser going idle after load, the first real
- * interaction (scroll, tap, key or pointer), or a 3-second backstop. What is genuinely lost is
- * the visitor who leaves before any of the three, which is the shortest and least informative
- * session there is.
- *
- * Set to false for Google's stock async-in-head behaviour. The numbers above are the argument
- * for the default; if they change, change the default.
- */
-export const GA_DEFER = true;
-
-/**
- * THE THREE SWITCHES THAT DECIDE WHETHER THIS TAG NEEDS A CONSENT BANNER, AND THEY ARE OFF.
- *
- * GA4's advertising features — Google signals, ad personalisation, and the identifiers that
- * feed them — are the part of GA4 that most clearly cannot run on a European reader without
- * asked-for consent. They are also the part this site has no use for: nothing here is sold,
- * nothing is remarketed, and there is no ad account attached to the property.
- *
- * Turning them off does not make GA4 cookieless — it still writes _ga and _ga_<id>, and
- * /privacy names both — but it removes the advertising dimension from what is collected, and
- * that is a claim the privacy page can make honestly rather than a hope.
- *
- * WHAT THIS DOES NOT SETTLE: whether analytics cookies alone need consent where the reader
- * lives. They do under a strict reading of the ePrivacy Directive, and this site currently
- * shows no banner. That is an open decision for the operator, recorded here rather than
- * quietly assumed away — see the Analytics section of /privacy, which states the position
- * plainly instead of implying the question does not exist.
- */
-export const GA_CONFIG = {
-  anonymize_ip: true,
-  allow_google_signals: false,
-  allow_ad_personalization_signals: false,
-} as const;
 
 /** Namespace for anything this site writes to a visitor's own browser. One constant, so
  *  /privacy can document the exact key rather than a copy of it that drifts. */
@@ -263,8 +174,9 @@ export const PINNED_KEY = `${STORE_NS}.pinned`;
    /privacy described "cookieless page-view analytics … one preference cookie" above a table of
    three cookies; that was fixed by deriving its summary from its own rows. The same audit then
    found /about saying "the one thing stored on your device is a cookie named rail … plus a
-   coinliqui.pinned list", which omits both Google Analytics cookies the site has set since GA4
-   came back on 27 August. Two pages, two hand-written accounts of one fact, both understating it.
+   coinliqui.pinned list", which omitted both Google Analytics cookies the site set from 27 August
+   until GA4 was removed on 31 October. Two pages, two hand-written accounts of one fact, both
+   understating it.
 
    So the fact lives here, next to the constants it is built from, and both pages render it. A new
    cookie is one entry in this array and both statements change on the next build. `purpose` is
@@ -273,8 +185,9 @@ export const PINNED_KEY = `${STORE_NS}.pinned`;
 export interface StoredItem {
   name: string;
   kind: "cookie" | "local-storage";
-  /** Who writes it, for readers deciding what to block. */
-  by: "this site" | "Google Analytics";
+  /** Who writes it, for readers deciding what to block. Only this site, since 31 October 2026:
+   *  the two Google Analytics cookies left with the tag, and PostHog runs cookieless. */
+  by: "this site";
   purpose: string;
   expires: string;
 }
@@ -285,16 +198,6 @@ export const STORED_ON_DEVICE: readonly StoredItem[] = [
   { name: PINNED_KEY, kind: "local-storage", by: "this site",
     purpose: 'The coins you pinned on <a href="/watchlist">your watchlist</a>. Never sent anywhere',
     expires: "Until you clear it" },
-  /* THE TWO GOOGLE COOKIES ARE LISTED BECAUSE THEY EXIST. Both are first-party — written by
-     gtag.js on this domain, not by Google's — which changes who can read them and does not change
-     that they identify a returning browser. The second is named after the measurement ID, so it
-     is derived from it and cannot go stale if that changes. */
-  { name: "_ga", kind: "cookie", by: "Google Analytics",
-    purpose: "A random identifier for your browser, so a second visit is counted as the same browser rather than a new one. Set by <code>gtag.js</code> on this domain",
-    expires: "2 years" },
-  { name: `_ga_${GA_MEASUREMENT_ID.slice(2)}`, kind: "cookie", by: "Google Analytics",
-    purpose: "Session state for this specific property — when the current visit started and how many there have been. Named after the measurement ID, so it changes if that does",
-    expires: "2 years" },
 ];
 
 /** "three cookies", "one local-storage key" — counted from the list, never typed. */

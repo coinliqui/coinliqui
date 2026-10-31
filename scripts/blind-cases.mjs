@@ -46,13 +46,14 @@ const cases=[
   ["the allowlisted host itself",        "https://cdn.example-allowed.test/x.js",                    true],
   ["lookalike host, prefix collision",   "https://cdn.example-allowed.test.evil.tld/x.js",           false],
   ["subdomain of the allowed host",      "https://evil.cdn.example-allowed.test/x.js",               false],
-  /* A REAL ANALYTICS LOADER THAT IS NOT ON THIS FIXTURE'S LIST. Both of these hosts are
-     permitted in production as of 27 August 2026; here they are neither, and that is the
-     point — the predicate must reject on the list it was given, not on a host it recognises.
+  /* A REAL ANALYTICS LOADER THAT IS NOT ON THIS FIXTURE'S LIST. The beacon and PostHog hosts
+     are permitted in production (Google's was, 27 August to 31 October 2026); here none is, and
+     that is the point — the predicate must reject on the list it was given, not on a host it recognises.
      The label used to read "the retired GA loader", which stopped being true the day GA came
      back and would have been read as "this host is forbidden" by whoever edited next. */
   ["a real loader, absent from this list", "https://www.googletagmanager.com/gtag/js?id=G-XXXXXXXXXX", false],
   ["the cloudflare beacon",              "https://static.cloudflareinsights.com/beacon.min.js/v123", false],
+  ["the posthog library",                "https://eu-assets.i.posthog.com/static/array.js",          false],
   ["unrelated third party",              "https://cdn.example.net/tracker.js",                       false],
 ];
 let bad=0;
@@ -74,11 +75,12 @@ for(const [name,url,shouldPass] of cases){
    including a lookalike of these hosts, still fails here.
 
    www.googletagmanager.com joined the list on the same day, when the owner asked for Google
-   Analytics 4 back. It is the wider of the two by a distance: that host serves any GTM
-   container to anyone who asks for one, so what the CSP permits is the host and not our tag.
-   Written here as a second deliberate edit precisely because it is the kind of widening that
-   should cost somebody a decision rather than a diff. */
-const EXPECTED_SCRIPT_HOSTS = ["static.cloudflareinsights.com", "www.googletagmanager.com"];
+   Analytics 4 back, and left it on 31 October 2026, when GA4 was replaced by PostHog.
+   eu-assets.i.posthog.com took its place: it serves any PostHog project's library to anyone who
+   asks, so what the CSP permits is the host and not our project. Written here as a second
+   deliberate edit precisely because it is the kind of widening that should cost somebody a
+   decision rather than a diff. */
+const EXPECTED_SCRIPT_HOSTS = ["static.cloudflareinsights.com", "eu-assets.i.posthog.com"];
 {
   const src = readFileSync(new URL("./verify-live.mjs", import.meta.url), "utf8");
   const m = src.match(/const SCRIPT_HOSTS = \[([^\]]*)\]/);
