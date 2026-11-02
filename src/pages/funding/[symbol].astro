@@ -1,30 +1,21 @@
 ---
 import Base from "../../layouts/Base.astro";
-import More from "../../components/More.astro";
-import { getSnapshot, coldStart, findPerp, getLive, currentMark } from "../../lib/hyperliquid.ts";
-import { VENUE_LABEL, pct, usd, rawRate, settlementsPerYear, paysClass, paysLabel, type Venue } from "../../lib/funding.ts";
-import { liquidationPrice, type MarginTable, roomVerdict, tableFor, sortedTiers, maintenanceMarginFraction, capOf } from "../../lib/margin.ts";
-import { oiMoves } from "../../lib/oi-history.ts";
+import { getSnapshot, coldStart, findPerp, getLive } from "../../lib/hyperliquid.ts";
+import { VENUE_LABEL, pct, usd, rawRate, carryCost, settlementsPerYear, nextSettlement, paysClass, paysLabel, type Venue } from "../../lib/funding.ts";
+import { liquidationPrice, type MarginTable, roomVerdict } from "../../lib/margin.ts";
 import { getCandles, getM15, getHourly, getFunding } from "../../lib/candles.ts";
-import PricePanel from "../../components/PricePanel.astro";
-import Versus from "../../components/Versus.astro";
-import { narrowChart, NARROW_W, fundingRegime, TIMEFRAMES, DEFAULT_TF, MIN_CHART_BARS, drawnBars, barSpan, buildPriceChart, buildFundingChart, fundingByBar, timeframeGapNote, shortDate, CHART_H, versusRows } from "../../lib/series.ts";
+import { TIMEFRAMES, DEFAULT_TF, MIN_CHART_BARS, drawnBars, barSpan, buildPriceChart, buildFundingChart, candleStyleNote, timeframeGapNote, shortDate, CHART_H } from "../../lib/series.ts";
 import { CH } from "../../lib/chart.ts";
-import { coinPageFor } from "../../lib/coins.ts";
-import { readFundingPaidFor } from "../../lib/funding-paid.ts";
-import { fundingHistory } from "../../lib/funding-history.ts";
-import { getVenueAgreement, agreementFor } from "../../lib/venue-agreement.ts";
+import tables from "../../data/margin-tables.json";
+import { COINS, isLive } from "../../lib/coins.ts";
 import { liqMapHref, canonicalRedirect } from "../../lib/routes.ts";
-import { renamedTo } from "../../lib/renamed.ts";
 import { qty } from "../../lib/funding.ts";
-import { utcStamp, plural } from "../../lib/freshness.ts";
+import { freshness, ageWords, minutesSince, utcStamp } from "../../lib/freshness.ts";
 import Overview from "../../components/Overview.astro";
 import Figure from "../../components/Figure.astro";
 import { extremeBy, standing } from "../../lib/extreme.ts";
-import { aboutOf, firstSentence } from "../../lib/contracts.ts";
-import { fundingStandingWords, closedDays, daysThatReached, fitAgainst, fitWords } from "../../lib/cohort.ts";
 
-import { priceDp, changeWords, signedPct, weekCarry } from "../../lib/funding.ts";
+import { priceDp, changeWords } from "../../lib/funding.ts";
 const env = (Astro.locals as any)?.runtime?.env;
 const snap = await getSnapshot(env?.SNAPSHOT, import.meta.env.DEV);
 if (!snap.available) return coldStart();
@@ -39,8 +30,6 @@ const p = findPerp(snap.perps, wanted);
    duplicate-content split the trailing-slash redirect exists to prevent, so it gets the same
    answer: everything that is not the lower-case form is a 301 to it. */
 if (p && wanted !== p.symbol.toLowerCase()) return canonicalRedirect(`/funding/${p.symbol.toLowerCase()}`, Astro.url.searchParams, ["symbol"]);
-/* A ticker the venue renamed before this site published it — see src/lib/renamed.ts. */
-if (!p && renamedTo(wanted)) return canonicalRedirect(`/funding/${renamedTo(wanted)}`, Astro.url.searchParams, ["symbol"]);
 /* Conditional emission: no entity page below the coverage floor. A thin page is worse than
    none — but an EMPTY 404 body is worse still. A bare `new Response(null, {status: 404})` was
    handed to Astro's stock not-found page: unbranded, no navigation, no explanation, on a URL
@@ -70,13 +59,14 @@ if (!p) {
    answering 500 on an indexed URL. Not the sibling pages' fallback either: this page is ABOUT
    this symbol, so quietly rendering a different contract under its heading would be the kBONK
    defect again. See pickPerp in src/lib/hyperliquid.ts. */
-const table = tableFor(p);
+const table = (tables as Record<string, MarginTable>)[String(p.marginTableId)];
 if (!table) return Astro.rewrite(`/404?symbol=${encodeURIComponent(wanted)}`);
 /* If this contract also has a published coin page, the two should know about each other. */
-const coin = coinPageFor(p.symbol);
+const coin = COINS.find((c) => c.symbol === p.symbol && isLive(c));
 const ORDER: Venue[] = ["HlPerp", "BinPerp", "BybitPerp"];
 const by = new Map(p.venues.map((v) => [v.venue, v]));
 const hl = by.get("HlPerp");
+const carry7d = hl ? carryCost(10_000, hl.apr, 7) : NaN;
 /* THE LIQUIDATION EXAMPLE WAS DRAWN AT AN ENTRY THE PAGE NEVER PRINTED. It took p.markPx, the
    five-minute snapshot's mark, while the hero shows the one-minute live mark and repaints it every
    pull. Measured 16 September 2026 on https://coinliqui.com/funding/useless (stamped 13:07 UTC):
@@ -87,16 +77,19 @@ const hl = by.get("HlPerp");
    the time it was read. The hero keeps moving after load; the sentence names its own inputs, so a
    repaint cannot make it wrong — it stays a statement about the minute it names. */
 const live = await getLive(env?.SNAPSHOT);
-const { px: markNow, at: markAt } = currentMark(snap, live, p);
-/* Open interest's change, by the hub's rule (oiMoves), so this page and /open-interest agree. */
-const oiMv = await oiMoves(env?.DB, p.symbol, p.oiNotional);
-const oiMvWords = [oiMv.d24 != null ? `24h ${signedPct(oiMv.d24)}` : null, oiMv.d7 != null ? `7d ${signedPct(oiMv.d7)}` : null].filter(Boolean).join(" · ");
+const liveMark = live?.mark?.[p.symbol];
+const markNow = typeof liveMark === "number" && Number.isFinite(liveMark) ? liveMark : p.markPx;
+const markAt = markNow === liveMark && live && Number.isFinite(live.at) ? live.at : snap.fetchedAt;
 /* A STAMP NAMES ITS DAY WHEN IT IS NOT TODAY'S. "the Hyperliquid mark at 15:16 UTC" is exact on a
    live key written a minute ago and ambiguous on one the worker last wrote yesterday — the fallback
    to the snapshot, or a candle store two sweeps behind. The date is added only when it differs from
    the render's, so the ordinary sentence stays short and the stale one cannot pass for today's. */
 /* utcStamp() is in src/lib/freshness.ts, shared with /coins. */
 const liq = liquidationPrice({ entryPrice: markNow, positionSize: 1, leverage: 10, side: "long", table });
+/* Not `new Date(hl.nextFundingTime)`. That field sits in the PAST on every Hyperliquid
+   contract — see nextSettlement() in src/lib/funding.ts — so this card announced a settlement
+   that had already happened, on all 50 contract pages, every hour of every day. */
+const nextSettleAt = hl ? nextSettlement(hl.nextFundingTime, hl.intervalHours) : null;
 
 /* =========================================================================================
    THE ANSWER, IN ONE SENTENCE, AT THE TOP — because this template is what the AI assistants
@@ -141,10 +134,11 @@ const quotable = (() => {
   return {
     head,
     tail: `${interval}${others}. Annualised, because the venues settle on different intervals and their quoted rates are not comparable until they are. Read at `,
-    stamp: utcStamp(snap.fetchedAt),
+    stamp: `${new Date(snap.fetchedAt).toISOString().slice(0, 16).replace("T", " ")} UTC`,
     iso: new Date(snap.fetchedAt).toISOString(),
   };
 })();
+const nextFunding = nextSettleAt ? new Date(nextSettleAt) : null;
 
 const dp = priceDp(p.markPx);
 const px = (v: number) => usd(v, dp);
@@ -165,25 +159,9 @@ const [dayset, hourset, m15set, funding] = await Promise.all([
   getM15(env?.SNAPSHOT, p.symbol, import.meta.env.DEV),
   getFunding(env?.SNAPSHOT, p.symbol, import.meta.env.DEV),
 ]);
-/* Against Bitcoin (Ether on BTC's own page), from the same snapshot and the same daily close in
-   both series — src/components/Versus.astro, shared with /coins/{coin}. */
-const refSymbol = p.symbol === "BTC" ? "ETH" : "BTC";
-const refPerp = findPerp(snap.perps, refSymbol);
-const refDay = refPerp ? await getCandles(env?.SNAPSHOT, refSymbol, import.meta.env.DEV) : null;
-const vsRows = versusRows(p, refPerp, dayset?.d, refDay?.d, snap.fetchedAt);
 /* HOW FAR THE STORED FUNDING SERIES ACTUALLY GOES, read from the series rather than from
    whichever bar of the current panel happens to carry the first funding value. */
 const fundingSeriesFrom = funding && funding.length ? Math.min(...funding.map((f) => f[0])) : null;
-/* WHAT THE RATE COST IN DOLLARS on this contract over 30 days — the figure /funding/paid sums
-   across the book, here for one contract. See src/lib/funding-paid.ts for the method. */
-const paidHere = await readFundingPaidFor(env?.DB, p.symbol, funding, Date.now());
-/* And over everything stored: what a long of constant size paid, beside the price over the same span
-   (src/lib/funding-history.ts, the arithmetic /funding/history tabulates for every contract). */
-const histHere = fundingHistory(p.symbol, funding, dayset?.d ?? null);
-/* And across venues: how often Binance and Bybit quoted the opposite direction to Hyperliquid on this
-   contract over 30 days (worker/venue-agreement.ts). A week of hours before it is stated. */
-const venueAgree = await getVenueAgreement(env?.SNAPSHOT);
-const agreeHere = agreementFor(venueAgree, p.symbol).filter((a) => a.hours >= 24 * 7 && VENUE_LABEL[a.venue as Venue]);
 
 /* ========================================================================================
    WHAT THIS CONTRACT'S FUNDING IS DOING — the page's own subject, stated before its price.
@@ -277,25 +255,8 @@ const standingWords = hlStanding && hlStanding.of >= 24
    same reason the coin pages do: the headline price and the funding beside it should be read off
    one tick. `live` and `markNow` are read near the top now, because the margin-tier example is
    drawn at the same mark — see the note at `liq`. */
-/* THIS CONTRACT AGAINST THE BOOK, AND ITS OWN MONTH AGAINST THE WORKED EXAMPLE — src/lib/cohort.ts.
-   They took the place of explanations every contract page printed word for word (19 October 2026);
-   those are said once on /methodology now. */
-const fundStanding = fundingStandingWords(snap.perps, p.symbol);
-const about = aboutOf(p.symbol);
-const fitRef = fitAgainst(dayset?.d, refDay?.d, snap.fetchedAt);
-const fitNote = fitRef ? fitWords(p.symbol, refSymbol, fitRef) : null;
-const month = closedDays(dayset?.d, snap.fetchedAt);
-const liqDays = month.length >= 10 && Number.isFinite(liq.distancePct) ? daysThatReached(month, liq.distancePct, Infinity).long : null;
-/* WHAT THE QUOTED COLUMN WOULD HAVE TOLD A READER, AGAINST WHAT THE ANNUALISED ONE DOES — the table's
-   whole argument, stated for this contract. Only venues with a usable quoted rate and interval count. */
-const quotedRows = ORDER.map((v) => by.get(v)).filter((f): f is NonNullable<typeof f> => !!f && Number.isFinite(f.rate) && Number.isFinite(f.intervalHours) && Number.isFinite(f.apr));
-const cheapQuoted = extremeBy(quotedRows, (f) => f.rate, "min");
-const cheapApr = extremeBy(quotedRows, (f) => f.apr, "min");
-const nameOf = (e: typeof cheapApr) => e.kind === "unique" ? VENUE_LABEL[e.item.venue as Venue] : e.kind === "tied" ? e.items.map((f) => VENUE_LABEL[f.venue as Venue]).join(" and ") : "";
-const quotedVerdict = quotedRows.length < 2 || cheapQuoted.kind === "none" || cheapApr.kind === "none" ? null
-  : nameOf(cheapQuoted) === nameOf(cheapApr)
-    ? `Quoted or annualised, ${nameOf(cheapApr)} ${cheapApr.kind === "tied" ? "are" : "is"} the cheapest place to hold a long on ${p.symbol} right now.`
-    : `By the quoted rate a long on ${p.symbol} looks cheapest on ${nameOf(cheapQuoted)}; annualised on each venue's own interval, it is cheapest on ${nameOf(cheapApr)}.`;
+const fresh = freshness(live?.at, snap.fetchedAt,
+  "Mark price and funding update every minute.", "Mark price and funding");
 
 /* ONE PANEL IS BUILT, NOT SIX.
  *
@@ -393,24 +354,6 @@ const dayTf = TIMEFRAMES.find((t) => t.key === "1d")!;
 const fundChart = dayset?.d && dayset.d.length >= MIN_CHART_BARS
   ? buildFundingChart(dayset.d.slice(-FUND_DAYS), funding, dayTf)
   : null;
-/* This contract's own account of the window drawn — see fundingRegime in src/lib/series.ts. */
-const regime = fundChart && dayset?.d ? fundingRegime(dayset.d.slice(-FUND_DAYS), funding, dayTf) : null;
-/* THE TWO DAYS AT THE ENDS OF THE DRAWN SERIES, AND WHAT PRICE DID ON EACH — read from the same daily
-   means the figure draws (fundingByBar), so the sentence names two points a reader can find on it. */
-const fundEnds = (() => {
-  if (!fundChart || !dayset?.d || !funding) return null;
-  const bars = dayset.d.slice(-FUND_DAYS);
-  const by = fundingByBar(bars, funding, dayTf.hours * 3_600_000);
-  const pts = bars.map((c) => ({ c, a: by.get(c[0]) })).filter((x): x is { c: typeof bars[number]; a: number } => Number.isFinite(x.a));
-  if (pts.length < 7) return null;
-  const hi = pts.reduce((m, x) => (x.a > m.a ? x : m)), lo = pts.reduce((m, x) => (x.a < m.a ? x : m));
-  const mv = (x: { c: number[] }) => signedPct(x.c[4] / x.c[1] - 1);
-  return `Its dearest day for longs was ${shortDate(hi.c[0])}, at ${pct(hi.a)} a year, a day ${p.symbol} moved ${mv(hi)} open to close; ${lo.a < 0
-    ? `the day shorts paid the most was ${shortDate(lo.c[0])}, at ${pct(-lo.a)}, a day of ${mv(lo)}.`
-    : `its cheapest was ${shortDate(lo.c[0])}, at ${pct(lo.a)} and still paid by longs, a day of ${mv(lo)}.`}`;
-})();
-/* The same bars in a phone-width box; CSS shows one (Base.astro, .fxw / .fxn). */
-const fundChartN = fundChart && dayset?.d ? buildFundingChart(dayset.d.slice(-FUND_DAYS), funding, dayTf, NARROW_W) : null;
 /* THE DAY COUNT TAKES ITS NOUN FROM THE COUNT, as the band note below learned to. fundChart.bars is
    the number of days CARRYING funding, not the window: buildFundingChart keeps a figure whose
    coverage clears 6% of at least MIN_CHART_BARS days, so a contract with 6–16 daily bars and one day
@@ -420,6 +363,10 @@ const fundChartN = fundChart && dayset?.d ? buildFundingChart(dayset.d.slice(-FU
    is why it is decided here once rather than left to be met. */
 const fundDays = fundChart ? `${fundChart.bars} ${fundChart.bars === 1 ? "day" : "days"}` : "";
 const hasChart = Boolean(active);
+/* WHETHER THE PRICE CHART DREW A FUNDING BAND, read off the chart's own aria-label — which
+   buildPriceChart words from the same fundOn that decides the drawing — rather than restated here
+   from the band:false above plus a copy of its coverage threshold. See the legend. */
+const bandDrawn = Boolean(active?.chart.svg.includes('aria-label="Price, volume and funding history"'));
 const fundedBars = active ? active.chart.points.filter((q) => Number.isFinite(q[7])).length : 0;
 const tfGapNote = timeframeGapNote(TIMEFRAMES.filter((tf) => !offered.some((o) => o.key === tf.key)).map((tf) => ({ tf, baseBars: baseFor(tf)?.length ?? 0 })));
 /* THE TOKEN-QUANTITY RULE WAS IMPLEMENTED INLINE HERE — a third copy, and the one interact.js
@@ -434,14 +381,7 @@ const tfGapNote = timeframeGapNote(TIMEFRAMES.filter((tf) => !offered.some((o) =
 const stat = (_fn: (c: { tf: (typeof TIMEFRAMES)[number]; chart: NonNullable<typeof activeChart> }) => string) => ({});
 
 const rows = active ? active.chart.points.slice(-200) : [];
-/* THE NAME PEOPLE SEARCH, where the registry holds one. Search Console, 17.09–14.10.2026: "bitcoin
-   funding rate perpetual", "bitcoin perpetual funding rate current", "bitcoin perpetual futures
-   funding rate" all reached /funding/btc, whose title and heading said only "BTC" — the word
-   "Bitcoin" was on the page once, inside a link. Names come from src/lib/coins.ts alone, the ten
-   coins whose identity was checked when their /coins page shipped; a ticker with no entry there
-   keeps its ticker, because guessing a name from a ticker is how a page says the wrong thing. */
-const named = coin && coin.name !== p.symbol ? `${coin.name} (${p.symbol})` : p.symbol;
-const title = `${named} funding rate, perpetual price and margin tiers`;
+const title = `${p.symbol} funding rate, perpetual price and margin tiers`;
 /* THE DESCRIPTION NAMED THREE VENUES ON PAGES THAT RENDER ONE. HYPE and PURR trade on
    Hyperliquid alone, PUMP and CASHCAT on two — and all four told a search result they compared
    "Hyperliquid, Binance and Bybit annualised side by side". A meta description is the one piece
@@ -459,13 +399,13 @@ const tfSpan = offered.length ? `${offered[0].label} to ${offered[offered.length
    today — was cut off every time, leaving fifty snippets that differed only by a ticker. Moved
    to the front. The sentence is still longer than the snippet; that is fine, because what gets
    dropped now is the generic tail rather than the distinguishing number. */
-const description = `What the ${p.symbol} perpetual costs to hold, against ${usd(p.oiNotional)} of open interest: ${venuePhrase}, the price chart from ${tfSpan}, and the published margin tiers.`;
+const description = `What a ${p.symbol} perpetual costs to hold, against ${usd(p.oiNotional)} of open interest: ${venuePhrase}, the price chart from ${tfSpan}, and the published margin tiers.`;
 ---
 
 <Base title={title} description={description} fetchedAt={snap.fetchedAt} crumb={{ href: "/funding", label: "Funding", current: p.symbol }}>
   <div class="page-head">
     <p class="crumb"><a href="/funding">Funding</a> › {p.symbol}</p>
-    <h1>{named} perpetual</h1>
+    <h1>{p.symbol} perpetual</h1>
     {/* DIRECTION, MAGNITUDE, CONTEXT, COST — then the price. The extractor gate at
         scripts/verify-live.mjs asks this URL's first 700 characters for the word funding, a rate
         as a percentage, the venue it belongs to and a UTC timestamp; all four are below. */}
@@ -482,12 +422,10 @@ const description = `What the ${p.symbol} perpetual costs to hold, against ${usd
             drops a whitespace-only run between an expression and the next node, so these read
             "long costs$21.00" and "from 5.76%on Binance to 10.95%on Hyperliquid" (measured 16 September
             2026 on http://localhost:4322/funding/btc). A literal cannot be dropped. */}
-        {hl && Number.isFinite(hl.apr) && (weekCarry(hl.apr).nil
-          ? <>{" "}Holding $10,000 long costs <b>next to nothing</b> at this rate — under a cent a week.</>
-          : <>{" "}Holding $10,000 long {weekCarry(hl.apr).verb}{" "}<b>{weekCarry(hl.apr).text}</b> a week at this rate.</>)}
+        {Number.isFinite(carry7d) && <>{" "}Holding $10,000 long {carry7d < 0 ? "pays you" : "costs"}{" "}<b>{usd(Math.abs(carry7d), 2)}</b> a week at this rate.</>}
         {venueSpan?.kind === "range" && <>{" "}Across venues it runs from {pct(venueSpan.lo)}{" "}{venueSpan.loOn} to{" "}{pct(venueSpan.hi)}{" "}{venueSpan.hiOn}, annualised so the different settlement intervals are comparable.</>}
         {venueSpan?.kind === "same" && <>{" "}All {venueSpan.n} venues publish the same annualised rate right now.</>}
-        {" "}Read at <time datetime={new Date(snap.fetchedAt).toISOString()}>{utcStamp(snap.fetchedAt)}</time>.
+        {" "}Read at <time datetime={new Date(snap.fetchedAt).toISOString()}>{new Date(snap.fetchedAt).toISOString().slice(0, 16).replace("T", " ")} UTC</time>.
       </Overview>
     )}
     {quotable && !(hl && Number.isFinite(hl.apr)) && (
@@ -512,30 +450,23 @@ const description = `What the ${p.symbol} perpetual costs to hold, against ${usd
         ? `${paysLabel(hl.apr)} right now \u00b7 ${fundDays} drawn`
         : `${fundDays} drawn`}
       fetchedAt={snap.fetchedAt}>
-      <Fragment set:html={fundChart.svg.replace("<svg ", '<svg class="fxw" ')} />
-      {fundChartN && <Fragment set:html={fundChartN.svg.replace("<svg ", '<svg class="fxn" ')} />}
-      {regime && (
-        <p class="fregime">
-          Over the {regime.days} days drawn, longs paid on <b>{regime.longsPaid}</b> and shorts on <b>{regime.shortsPaid}</b>{regime.atBase > 0 && <>, and {p.symbol} sat at Hyperliquid's base rate on {plural(regime.atBase, "day", "days")}</>}.
-          {" "}The current run is <b>{plural(regime.run.days, "day", "days")} of {regime.run.side === "long" ? "longs" : "shorts"} paying</b>, since {shortDate(regime.run.since)}{(regime.below <= regime.days * 0.1 || regime.below >= regime.days * 0.9)
-            ? <>; the latest day's average is above {regime.below} of the {regime.days}.</>
-            : "."}
-          {fundEnds && <>{" "}{fundEnds}</>}
-        </p>
-      )}
-      <Fragment slot="note">
-      <p>
+      <Fragment set:html={fundChart.svg} />
+      <p slot="note">
         Amber above the line is <b>longs paying shorts</b>, cyan below is <b>shorts paying longs</b>;
-        the line itself is zero, where neither side pays.
+        the line itself is zero, where neither side pays. Each point is the mean of one day, from
+        Hyperliquid's own hourly settlements.{fundChart.bars === 1
+          ? <>{" "}On the 1 day drawn the rate was <b>{pct(fundChart.hi)}</b> a year.</>
+          : <>{" "}Over these {fundChart.bars} days the rate ran from <b>{pct(fundChart.lo)}</b> to <b>{pct(fundChart.hi)}</b> a year.</>}
+        {/* THE CLIP IS DESCRIBED ONLY WHEN IT CLIPPED. On a young contract the 96th percentile and the
+            maximum are the same reading, and the note printed "±100.45%, the 96th percentile rather
+            than the maximum" beside "ran from … to 100.45%" — found on /funding/useless by the
+            audit's completeness critic. */}
+        {fundChart.clipped > 0
+          ? <>{" "}The axis is drawn to &plusmn;{pct(fundChart.max)}, the 96th percentile rather than
+            the extreme, because one spike otherwise flattens the whole shape onto the line &mdash;
+            {" "}<b>{fundChart.clipped}</b>{fundChart.clipped === 1 ? " day sits beyond it and is" : " days sit beyond it and are"} drawn at the edge.</>
+          : <>{" "}The axis is drawn to &plusmn;{pct(fundChart.max)}, which reaches every day shown.</>}
       </p>
-      <p>
-        {fundChart.bars === 1
-          ? <>On the 1 day drawn the rate was <b>{pct(fundChart.hi)}</b> a year.</>
-          : <>Over these {fundChart.bars} days the daily mean ran from <b>{pct(fundChart.lo)}</b> to <b>{pct(fundChart.hi)}</b> a year.</>}
-        {fundChart.clipped > 0 && <>{" "}<b>{fundChart.clipped}</b>{fundChart.clipped === 1 ? " day lies beyond the axis and is" : " days lie beyond the axis and are"} drawn at its edge.</>}
-        {" "}<a class="link" href="/methodology#charts">How it is drawn →</a>
-      </p>
-      </Fragment>
     </Figure>
   )}
 
@@ -573,8 +504,8 @@ const description = `What the ${p.symbol} perpetual costs to hold, against ${usd
     <div>Period low<b data-tfstat="low" data-group="px" {...stat((c) => px(c.chart!.low))}>{active ? px(active.chart.low) : "—"}</b></div>
     <div>Period volume<b data-tfstat="volume" data-group="px" {...stat((c) => qty(c.chart!.volume) + " " + p.symbol)}>{active ? qty(active.chart.volume) + " " + p.symbol : "—"}</b></div>
     <div>Oracle index <span class="scope">Hyperliquid</span><b>{p.oraclePx > 0 ? px(p.oraclePx) : "—"}</b></div>
-    <div>Open interest <span class="scope">Hyperliquid</span><b>{usd(p.oiNotional)}</b>{oiMvWords && <span class="scope"><a class="link" href="/open-interest?w=7d">{oiMvWords}</a></span>}</div>
-    <div>Max leverage<b>{capOf(p)}×</b></div>
+    <div>Open interest <span class="scope">Hyperliquid</span><b>{usd(p.oiNotional)}</b></div>
+    <div>Max leverage<b>{p.maxLeverage}×</b></div>
   </div>
   {/* THREE CLOCKS, NOT TWO. This sentence put "open interest, volume and the period figures"
       on one clock — the five-minute snapshot. Open interest and 24-hour volume do come from
@@ -598,11 +529,13 @@ const description = `What the ${p.symbol} perpetual costs to hold, against ${usd
       http://localhost:4322/funding/mon, where `offered` is empty. It now says why the figures are
       dashes: no timeframe reaches MIN_CHART_BARS, which is the very condition that empties `offered`,
       so the words and the dashes are decided by one test. See `candleCadence` for the charted branch. */}
-  <p class="datanote clock">
+  <p class="clock">
+    {fresh.note} The oracle index, open interest and max leverage come from the
+    snapshot taken <b><time data-fresh={snap.fetchedAt} data-clock="snapAt">{ageWords(minutesSince(snap.fetchedAt))}</time></b>.
     {active
-      ? <>Period figures: the candle series behind the chart, collected <span data-tfstat="cadence" data-group="px">{candleCadence}</span>, last written <b data-tfstat="written" data-group="px">{candleWritten}</b>.</>
-      : <>No timeframe has enough bars to chart yet, so the period figures are blank.</>}
-    {" "}<a class="link" href="/methodology#clocks">Every figure's clock →</a>
+      ? <>The period change, high, low and volume are read from the candle series behind the chart, collected <span data-tfstat="cadence" data-group="px">{candleCadence}</span> and last written at <b data-tfstat="written" data-group="px">{candleWritten}</b>;</>
+      : <>The period high, low and volume come from the candle series, which has not yet given this page enough bars to chart;</>}
+    {" "}margin tiers are published by the venue and change only when it changes them.
   </p>
 
   {hasChart ? (
@@ -614,21 +547,71 @@ const description = `What the ${p.symbol} perpetual costs to hold, against ${usd
           ))}
         </div>
         <span class="tfbar__note">
+          Real traded candles only — Hyperliquid's pre-launch backfill carries zero volume and is excluded.
           {/* Why a timeframe is missing is timeframeGapNote() in src/lib/series.ts, shared with /coins. */}
           {tfGapNote}
         </span>
       </form>
 
-      {/* The panel, its crosshair islands and the phone-width chart: src/components/PricePanel.astro. */}
-      <PricePanel chart={active!.chart} narrow={narrowChart(drawnBars(baseFor(active!.tf), active!.tf), funding, active!.tf, "candle")} tf={active!.tf}
-                  unit={p.symbol} ptsPrefix="pts" panel={active!.tf.key} group="px" on={true} />
+      {[active!].map(({ tf, chart }) => (
+        <div data-tfpanel={tf.key} data-group="px" data-on="" class="chart chart--price"
+             style={`--chartRatio: ${CH.w} / ${CHART_H}`}>
+          <Fragment set:html={chart.svg.replace("<svg ",
+            `<svg data-xhair="pts-${tf.key}" data-feed="mark" data-plot="${chart.plot.join(",")}" data-prange="${chart.range[0]},${chart.range[1]}" ` +
+            `data-axx="${chart.axisX}" data-slot="${chart.slot.toFixed(2)}" data-taxisy="${CHART_H - 27}" data-unit="${p.symbol}" data-dp="${chart.dp}" data-intraday="${tf.hours < 24 ? 1 : 0}" `)} />
+          <script type="application/json" id={`pts-${tf.key}`} set:html={JSON.stringify(chart.points)} />
+        </div>
+      ))}
 
+      {/* "THE UP CANDLES ARE HOLLOW" WAS SAID OF EVERY TIMEFRAME, AND BARS TOO SHORT TO OUTLINE ARE SOLID.
+          /coins/[coin] counted them on 16 September 2026 (30 of 99 green candles on 4H) and worded its
+          legend from the drawn chart; this page, drawing the same bars through the same builder, kept the
+          flat claim (production, 17 September 2026). candleStyleNote() is now the one sentence, and it is
+          a [data-tfstat] so a timeframe switch replaces it with the panel. */}
       <p class="legend">
-        Candles are green where a bar closed at or above its open, red where it closed below.
-        {" "}{fundedBars > 0
-          ? <>Hovering a candle reads that bar's funding, and the table below carries it as a column.</>
-          : <>No bar in this window has a funding reading.</>}
-        {fundingSeriesFrom && <>{" "}The stored funding series begins {shortDate(fundingSeriesFrom)}.</>}
+        <span data-tfstat="style" data-group="px">{candleStyleNote(active!.chart, "candle")}</span>
+        {" "}Hollow is the older convention and the one that matters here: simulated for protanopia the two
+        candle colours separate by very little, so an outlined body carries the direction when the hue cannot.
+        {/* THE LEGEND DESCRIBED A BAND THIS CHART NO LONGER DRAWS. The price chart is built with
+            band:false since funding got its own figure above, and the legend went on explaining "the
+            band under the volume histogram", its shading and its scale — measured 16 September 2026
+            on http://localhost:4322/funding/trx?tf=1w: the svg labelled "Price and volume history",
+            no polygon or polyline in it, and the legend reading "1 bar exceeds it and is drawn at the
+            edge" about a band that is not there. The branch now follows the chart's own label, which
+            series.ts derives from the same fundOn that decides whether the band is drawn, so the
+            words cannot outlive the picture in either direction. */}
+        {bandDrawn ? (
+          <> The band under the volume histogram is a different language and a different pair —
+          <b class="pays-l">amber where longs pay shorts</b> and <b class="pays-s">cyan where shorts
+          pay longs</b>, deliberately not the candle colours, so one screen never says two things with
+          one pair. It sits on the same time axis as the price, and it is the reason this chart is not
+          the one everybody else draws.</>
+        ) : (
+          <> Funding is not drawn on this chart{fundChart ? " — it has its own figure above, on the daily series" : ""}.{fundedBars > 0
+            ? " Hovering a candle reads that bar's funding, and the table below carries it as a column."
+            : " No bar in this window has a funding reading."}</>
+        )}
+        {/* "THIS SERIES REACHES BACK TO X" WAS A CLAIM ABOUT THE STORE AND X CAME FROM THE WINDOW.
+            chart.fundingFrom is candles[cov[0]][T] — the first bar OF THE PANEL BEING DRAWN that
+            carries funding — which is the right value for placing the shading and the wrong one
+            for stating how far the series goes. On any window funding covers completely, cov[0]
+            is 0, so the 15m panel said the series reached back two days while the store holds it
+            from 18 May. Two facts, one date, and the sentence claimed the one it did not have.
+            The depth now comes from the stored series; the shading is described in words, so it
+            needs no second date to be wrong with. */}
+        {fundingSeriesFrom && (bandDrawn
+          ? <> Hyperliquid publishes its own funding hourly; the stored series begins {shortDate(fundingSeriesFrom)},
+            and where a window reaches back further than that the band is shaded to mark the part
+            with no funding to show.</>
+          : <> Hyperliquid publishes its own funding hourly; the stored series begins {shortDate(fundingSeriesFrom)},
+            and a bar older than that has no funding reading.</>)}
+        {/* THE VERBS FOLLOW THE COUNT TOO. Only the noun did: "1 bar exceed it and are drawn at the
+            edge", measured 16 September 2026 on https://coinliqui.com/funding/useless?tf=4h. The
+            clause is now one expression per count, so noun and verbs cannot be chosen apart. */}
+        {bandDrawn && active!.chart.fundingClipped > 0 && (
+          <> The band is scaled to ±{(active!.chart.fundingMax * 100).toFixed(0)}% APR, the 96th percentile —
+          {" "}{active!.chart.fundingClipped === 1 ? "1 bar exceeds it and is" : `${active!.chart.fundingClipped} bars exceed it and are`} drawn at the edge; hover reads the true figure.</>
+        )}
       </p>
 
       {/* The rows are rebuilt from the panel's own pts-* JSON when the timeframe is switched
@@ -670,21 +653,17 @@ const description = `What the ${p.symbol} perpetual costs to hold, against ${usd
     <div class="empty">
       <div class="empty__body">
         <p class="empty__title">Candles not collected yet</p>
-        <p class="empty__text">A contract that has just entered coverage is fetched within five minutes. Funding, the venue comparison and the margin tiers below come from the snapshot and are unaffected.</p>
+        <p class="empty__text">A contract that has just entered coverage is fetched within five minutes, rather than waiting hours for the ordinary refresh, so this fills in shortly. Everything below is unaffected — funding, venue comparison and margin tiers all come from the snapshot, not from the stored candles.</p>
       </div>
     </div>
   )}
 
-  <Versus symbol={p.symbol} refSymbol={refSymbol} refHref={`/funding/${refSymbol.toLowerCase()}`} rows={vsRows} at={snap.fetchedAt} fit={fitNote} />
-
-  <h2 class="section">{p.symbol} funding now</h2>
-  {fundStanding && <p class="section-note">{fundStanding}</p>}
+  <h2 class="section">Funding</h2>
   <div class="cards">
     <div class="card">
       <div class="card__label">Hyperliquid funding</div>
-      {/* Repainted with the venue table beside it, so a live pull cannot leave the card on the old rate. */}
-      <div class:list={["card__value", hl && paysClass(hl.apr)]} data-repaint={hl ? "apr" : undefined} data-sym={p.symbol} data-venue="HlPerp">{hl ? pct(hl.apr) : "—"}</div>
-      <div class="card__meta" data-repaint={hl ? "dir" : undefined} data-sym={p.symbol} data-venue="HlPerp" data-pay="longs pay shorts" data-recv="shorts pay longs">{hl ? paysLabel(hl.apr) : "—"}</div>
+      <div class:list={["card__value", hl && paysClass(hl.apr)]}>{hl ? pct(hl.apr) : "—"}</div>
+      <div class="card__meta">{hl ? paysLabel(hl.apr) : "—"}</div>
     </div>
     <div class="card">
       <div class="card__label">Spread between venues</div>
@@ -693,37 +672,19 @@ const description = `What the ${p.symbol} perpetual costs to hold, against ${usd
       <div class="card__value" data-repaint={p.aprSpread != null ? "spread" : undefined} data-sym={p.symbol}>{p.aprSpread != null ? pct(p.aprSpread) : "—"}</div>
       <div class="card__meta">annualised difference</div>
     </div>
+    <div class="card">
+      <div class="card__label">Cost to hold $10,000 long</div>
+      <div class="card__value">{Number.isFinite(carry7d) ? usd(Math.abs(carry7d), 2) : "—"}</div>
+      <div class="card__meta">over 7 days at the current rate{hl ? ` · ${hl.apr >= 0 ? "you pay" : "you receive"}` : ""}</div>
+    </div>
+    <div class="card">
+      <div class="card__label">Next settlement</div>
+      <div class="card__value" style="font-size:20px">{nextFunding ? nextFunding.toISOString().slice(11, 16) : "—"}</div>
+      <div class="card__meta">{nextFunding ? "UTC · Hyperliquid, hourly" : "—"}</div>
+    </div>
   </div>
 
-  {paidHere && (
-    <p class="section-note" style="margin:0 0 20px;max-width:74ch">
-      Over the {Math.round(paidHere.paid.span / 24)} days to {shortDate(paidHere.paid.last)},
-      {paidHere.row.net >= 0
-        ? <> longs paid shorts a net <b>{usd(paidHere.row.net)}</b></>
-        : <> shorts paid longs a net <b>{usd(-paidHere.row.net)}</b></>} in funding on {p.symbol} on Hyperliquid,
-      from {paidHere.row.hours} hourly settlements times the open interest held at each.
-      At the base rate alone it would have been {usd(paidHere.row.base)}.
-      {" "}<a class="link" href="/funding/paid">Every contract, and how it is counted →</a>
-    </p>
-  )}
-  {histHere && histHere.hours >= 24 * 30 && (
-    <p class="section-note" style="margin:0 0 20px;max-width:74ch">
-      Since {shortDate(histHere.from)}, a long of constant size on {p.symbol}
-      {histHere.paid >= 0 ? <> paid <b>{pct(histHere.paid)}</b> of its size</> : <> was paid <b>{pct(-histHere.paid)}</b> of its size</>} in funding
-      over {histHere.hours.toLocaleString("en-US")} settled hours{Number.isFinite(histHere.price) && <>, while the price moved {signedPct(histHere.price)}</>}.
-      {" "}<a class="link" href="/funding/history">Every contract over the same span →</a>
-    </p>
-  )}
-  {agreeHere.length > 0 && venueAgree && (
-    <p class="section-note" style="margin:0 0 20px;max-width:74ch">
-      Over the 30 days to {shortDate(venueAgree.at)}, {agreeHere.map((a) => VENUE_LABEL[a.venue as Venue]).join(" and ")} quoted {p.symbol}&rsquo;s
-      funding in the opposite direction to Hyperliquid in {agreeHere.map((a, i) => <>{i > 0 && " and "}<b>{pct(a.opposite / a.hours, 1)}</b></>)} of
-      {" "}{agreeHere.length > 1 ? "their" : "its"} hours{agreeHere.length > 1 ? " respectively" : ""}, out of {Math.max(...agreeHere.map((a) => a.hours))} compared.
-      {" "}<a class="link" href="/funding/venues">Every contract →</a>
-    </p>
-  )}
-
-  <h2 class="section">{p.symbol} funding by venue</h2>
+  <h2 class="section">Funding by venue</h2>
   {/* THE CALCULATOR FOR THE THING THESE FIFTY PAGES ARE ABOUT, AND NOT ONE OF THEM LINKED TO IT.
       Measured across the live surface on 20 August: /tools/funding-cost had exactly one inbound
       link in the whole site — the tools hub — while its three siblings had two or three, and the
@@ -733,9 +694,20 @@ const description = `What the ${p.symbol} perpetual costs to hold, against ${usd
       same reason /liquidations?symbol= does — arriving on the contract you were already reading
       is the difference between a link and a detour. */}
   <p class="section-note">
-    {quotedVerdict ?? "The quoted column is what each venue publishes; only the annualised column compares."}
-    {" "}<a class="link" href="/learn/funding-rate">What a funding rate is →</a>
-    {" "}· <a class="link" href={`/tools/funding-cost?symbol=${p.symbol}`}>Cost of holding {p.symbol}, at your size and horizon →</a>
+    The quoted column is what each venue publishes. Those numbers are not comparable to each other; the annualised column is.
+    {/* THE PAGE ASSUMES THE READER KNOWS WHAT THE COLUMN IS. Fifty pages carry this sentence and
+        none of them says what a funding rate IS — the reader who does not know is offered two
+        calculators and a table, which answer a question they have not got to yet. */}
+    {" "}<a class="link" href="/learn/funding-rate">What a funding rate is, and who pays it →</a>
+    {/* SEPARATED, BECAUSE TWO OFFERS RAN TOGETHER AS ONE. At 375px both links wrap and the pair
+        reads as a single run of blue with an arrow in the middle. The dot is the separator this
+        site already uses between distinct items. */}
+    {" "}<a class="link" href={`/tools/funding-cost?symbol=${p.symbol}`}>Cost of holding {p.symbol}, at your size and horizon →</a>
+    {/* A second question arising from the same table, not a second link for its own sake: the
+        annualised column is what makes venues comparable, and whether the difference between
+        them is worth anything is the next thing a reader asks. ONLY WHERE THERE IS A SPREAD: on a
+        contract only Hyperliquid quotes, the table shows dashes and the spread card a dash, and the
+        link offered to trade "the spread between them" (/funding/purr, 16 September 2026). */}
     {venueRates.length > 1 && <> · <a class="link" href={`/tools/funding-arbitrage?symbol=${p.symbol}`}>Whether the spread between them is worth trading →</a></>}
   </p>
   <div class="panel">
@@ -767,7 +739,7 @@ const description = `What the ${p.symbol} perpetual costs to hold, against ${usd
     </table>
   </div>
 
-  <h2 class="section">{p.symbol} margin tiers</h2>
+  <h2 class="section">Margin tiers</h2>
   {/* THE LABEL MUST BE THE LEVERAGE THAT WAS ACTUALLY USED. This asked margin.ts for 10× and
       printed "At 10× long" — but margin.ts clamps the request to the tier maximum and says so
       in `leverageClamped`, which nothing here read. On the twenty contracts whose tier caps at
@@ -782,10 +754,9 @@ const description = `What the ${p.symbol} perpetual costs to hold, against ${usd
       quantify the error in the common formula, quantifying it as nothing, on fourteen pages.
       Worst case was 8.9% of the price displayed as zero. Both now use px(), and the relative
       figure leads, because a percentage survives every price magnitude. */}
-  <More label={`A worked liquidation example, and ${p.symbol}'s margin tiers in full`}>
   <p class="section-note">
     {/* THE ENTRY IS PRINTED, WITH THE MINUTE IT WAS READ — see the note at `liq`. */}
-    At {liq.effectiveLeverage}× long
+    Maintenance margin is half the initial margin at the tier's max leverage. At {liq.effectiveLeverage}× long
     with 1 {p.symbol} entered at <strong style="color:var(--text)">{px(markNow)}</strong>, the Hyperliquid mark at <time datetime={new Date(markAt).toISOString()}>{utcStamp(markAt)}</time>{liq.leverageClamped
       ? <> — {liq.effectiveLeverage}× being this contract's tier maximum, so 10× cannot be opened on it at all — </>
       : ", "}the tier-correct liquidation price is <strong style="color:var(--text)">{px(liq.liquidationPrice)}</strong> —
@@ -799,7 +770,6 @@ const description = `What the ${p.symbol} perpetual costs to hold, against ${usd
       : roomVerdict(liq) === "more-capped" ? <>{px(liq.differenceAbs)} more room than the formula shows, because the tier caps the leverage at {liq.effectiveLeverage}×.</>
       : roomVerdict(liq) === "more" ? <>{px(liq.differenceAbs)} more room than the formula shows.</>
       : <>the same room the formula shows.</>}
-    {liqDays != null && <>{" "}{liqDays === 0 ? "None" : liqDays} of {p.symbol}'s last {month.length} days would have closed that long, had it been opened at the day's open.</>}
     {/* THE SAME DEFECT AS THE SIBLING BLOCK, ONE LEVEL UP. Measured on the live surface after the
         contract pages were cross-linked: /tools/funding-cost went to 51 inbound editorial links
         and the other three calculators sat at 2, 2 and 3 — /tools/leverage and
@@ -818,33 +788,30 @@ const description = `What the ${p.symbol} perpetual costs to hold, against ${usd
         contract's map had no address of its own. */}
     {" "}<a class="link" href={liqMapHref(p.symbol)}>Every {p.symbol} liquidation level, mapped →</a>
   </p>
-  <div class="panel">
+  <div class="panel" style="max-width:620px">
     <table class="tbl">
       <thead><tr><th>Tier</th><th class="num">Notional from</th><th class="num">Max leverage</th><th class="num">Maintenance margin</th></tr></thead>
       <tbody>
-        {sortedTiers(table).map((t, i) => (
+        {table.marginTiers.map((t, i) => (
           <tr>
             <td>{i + 1}</td>
             <td class="num">{usd(t.lowerBound)}</td>
             <td class="num">{t.maxLeverage}×</td>
-            <td class="num">{pct(maintenanceMarginFraction(t.maxLeverage), 3)}</td>
+            <td class="num">{pct(1 / (2 * t.maxLeverage), 3)}</td>
           </tr>
         ))}
       </tbody>
     </table>
   </div>
-  <p class="section-note">A position's tier is set by its notional. <a class="link" href="/methodology#levels">How the levels are worked out →</a></p>
-  </More>
 
-
-  {about && (
-    <section id="about">
-      <h2 class="section">What {about.name} is</h2>
-      {coin
-        ? <p class="prose">{firstSentence(about.about)} <a class="link" href={`/coins/${coin.slug}`}>More on {coin.name} →</a></p>
-        : <p class="prose">{about.about}</p>}
-    </section>
-  )}
+  <div class="banner">
+    <div>
+      <div class="banner__title">Where these levels sit across the modelled positions</div>
+      <div class="banner__sub">The modelled liquidation density for {p.symbol}, built from these same tiers, over the real candles.</div>
+    </div>
+    {/* liqMapHref, as the paragraph link above already was: /liquidations?symbol= answers 301. */}
+    <a class="btn btn--primary" href={liqMapHref(p.symbol)}>Open the map</a>
+  </div>
 
   <h2 class="section">Funding rates for other coins</h2>
   {/* EVERY SIBLING, BECAUSE slice(0, 24) OFF A VOLUME-ORDERED LIST IS THE SAME 24 ON ALL FIFTY
@@ -895,9 +862,7 @@ const description = `What the ${p.symbol} perpetual costs to hold, against ${usd
     .tfbar__note { font-size: var(--fs-xs); color: var(--text-faint); }
     /* The box is reserved from the viewBox ratio before paint, so switching timeframe or
        loading the script cannot move a single pixel of the page. */
-    .fregime { margin: 10px 0 0; font-size: var(--fs-sm); line-height: 1.55; color: var(--text-dim); max-width: 74ch; }
-    .chart--price :global(svg.pxw) { aspect-ratio: var(--chartRatio); }
-    .chart--price :global(svg.pxn) { aspect-ratio: var(--chartRatioN); }
+    .chart--price :global(svg) { aspect-ratio: var(--chartRatio); }
     .legend { max-width: 88ch; line-height: 1.6; margin-top: 12px; }
     .src { margin-top: 12px; }
     .src summary { font-size: var(--fs-sm); color: var(--text-dim); cursor: pointer; padding: 8px 0; }

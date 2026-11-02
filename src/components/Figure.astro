@@ -19,7 +19,6 @@
    it was drawn from, and cannot disagree with the sentence beside it.
    ========================================================================================= */
 import { SITE } from "../lib/site.ts";
-import { utcStamp } from "../lib/freshness.ts";
 
 interface Props {
   /** What is being measured. Shown at the top of the card and used as the accessible name. */
@@ -39,7 +38,7 @@ interface Props {
 }
 const { title, lead, leadNote, fetchedAt, modelled = false, class: cls, id } = Astro.props;
 const stamp = Number.isFinite(fetchedAt)
-  ? utcStamp(fetchedAt!)
+  ? new Date(fetchedAt!).toISOString().slice(0, 16).replace("T", " ") + " UTC"
   : null;
 ---
 
@@ -73,7 +72,7 @@ const stamp = Number.isFinite(fetchedAt)
        gate's undefinedVars check caught it on the first run, which is what it is for. A figure
        and a table beside it are two objects of one system or they are two designs. */
     background: var(--surface-2); border: 1px solid var(--border-soft); border-radius: var(--r-md);
-    /* No max-width (15 October 2026): a figure takes the column like a table does. */
+    max-width: 720px;
   }
   .fig__head { display: block; margin: 0 0 var(--gap-block); }
   .fig__title { display: block; font-size: var(--fs-sm); color: var(--text-dim); }

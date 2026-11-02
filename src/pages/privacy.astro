@@ -93,7 +93,7 @@ const updated = "31 October 2026";
 
   <h2 class="section">Analytics</h2>
   <p class="prose">
-    <strong>Two counters run in your browser here: Cloudflare Web Analytics and PostHog.</strong> A third count, on the server and without any script, is described <a class="link" href="#arrival-count">after them</a>.
+    <strong>Two counters run in your browser here: Cloudflare Web Analytics and PostHog.</strong>
     Cloudflare's has been permitted since 27&nbsp;August&nbsp;2026; PostHog's since
     31&nbsp;October&nbsp;2026, when it replaced Google Analytics. They answer different
     questions, which is the only reason both are here: Cloudflare's says whether anybody loaded
@@ -118,7 +118,7 @@ const updated = "31 October 2026";
     Those are their words. These are measurements, made on 27&nbsp;August&nbsp;2026 and
     repeatable by anyone:
   </p>
-  <div class="panel">
+  <div class="panel" style="max-width:860px">
     <table class="tbl">
       <thead><tr><th>Claim</th><th>How it was checked, and how you can</th></tr></thead>
       <tbody>
@@ -184,21 +184,8 @@ const updated = "31 October 2026";
     your device, and nothing PostHog records identifies you.
   </p>
 
-  <h3 class="subsection" id="arrival-count">An arrival count on this site's own server</h3>
-  <p class="prose">
-    Since 28&nbsp;October&nbsp;2026 the server that answers each page also adds one to a daily
-    tally when a browser opens a page because a person asked it to. It runs no script in your
-    browser, sets no cookie and stores nothing about you: a row in the tally is a date, the page,
-    the host of the site or the <code>utm_source</code> the link came from, whether the page was
-    typed or bookmarked, linked from another site or reached from a page of this one, phone
-    or desktop, and the two-letter country Cloudflare reports for the request. No IP address, no browser string and no identifier is written, so a row cannot be
-    tied to a person. It exists because the counters above depend on JavaScript running in your
-    browser, and in October the two then running — Cloudflare's, which samples and drops the
-    referrer, and Google's — left a fall in readers unexplained.
-  </p>
-
   <h2 class="section">Cookies and local storage</h2>
-  <div class="panel">
+  <div class="panel" style="max-width:860px">
     <table class="tbl">
       <thead><tr><th>Name</th><th>Kind</th><th>Purpose</th><th>Expires</th></tr></thead>
       <tbody>
@@ -275,7 +262,6 @@ const updated = "31 October 2026";
   <Related items={[
     { href: "/about", label: "About", note: "Who operates this site and what it is for." },
     { href: "/data-sources", label: "Data sources", note: "Every endpoint behind every number here." },
-    { href: "/corrections", label: "Corrections", note: "Including what this page once said wrongly, and when it was fixed." },
     { href: "/methodology", label: "Methodology", note: "How the numbers are produced." },
     { href: "/watchlist", label: "Watchlist", note: "The one feature that stores anything, and it stores it in your browser." },
   ]} />

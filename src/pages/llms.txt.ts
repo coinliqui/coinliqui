@@ -58,7 +58,7 @@ ${base} is the only domain this project publishes. Any other site using this nam
 - Perpetual futures prices for ${liveCoins().length} major coins, with funding, 24h turnover and
   open interest: ${base}/coins
 - A register of on-chain token vesting and lock contracts read directly from Ethereum, including
-  contracts whose schedule has finished but which still hold tokens, and how much left between reads: ${base}/unlocks
+  contracts whose schedule has finished but whose tokens were never withdrawn: ${base}/unlocks
 
 ### Readings this site computes that most others do not
 
@@ -82,7 +82,7 @@ produce them.
 - Whether a stop is reached before liquidation at a given leverage, stated as an ordered triple
   of entry, stop and liquidation rather than three separate figures: ${base}/tools/position-size
 - What share of a token's supply sits in a vesting contract whose schedule has finished and
-  which still holds tokens: ${base}/unlocks
+  whose tokens were never withdrawn: ${base}/unlocks
 
 ### Where the per-contract pages are
 
@@ -132,7 +132,6 @@ into child sitemaps by section.
 - No user accounts and no sign-up of any kind. No payment details and no personal
   information are collected: ${base}/privacy
 - Two analytics counters run, and they are the only off-origin code on the site. CLOUDFLARE WEB ANALYTICS, permitted since 27 August 2026: measured against the beacon's own source rather than taken on trust — it sets no cookie and no browser storage, reads location.pathname and location.origin and never location.href or location.search (so no calculator input reaches it), performs no fingerprinting, and posts to /cdn-cgi/rum on this origin. POSTHOG, since 31 October 2026, replacing Google Analytics 4, which was removed from the site that day: EU cloud (Frankfurt), cookieless — no cookie, no localStorage, no sessionStorage — with no person profiles, no identify call and no session recordings. It records pages viewed, clicks on links and buttons, the referrer, browser and device type, screen size and page-load timing; every URL it is given is cut to origin and path before it is sent, and clicks inside the watchlist table are not recorded. The IP address is not stored: it is hashed with the user agent and a daily-rotating salt to count unique visitors per day, then discarded. Retention is up to one year; nothing is used for advertising or sold. The loader is /analytics.js on this origin. The Content-Security-Policy therefore names exactly two hosts in script-src, static.cloudflareinsights.com and eu-assets.i.posthog.com; naming a host permits that host and not our project, since CSP has no notion of whose script it is. PostHog's event endpoint and asset host are the only off-origin entries in connect-src, and there are none in img-src. It does still carry 'unsafe-inline' for script-src, which permits any inline script in the document rather than only ours, because several calculators render inline blocks; that is the largest remaining weakness in the header, larger than the named hosts, and is stated here rather than rounded off.
-- Since 28 October 2026 the server also keeps a daily tally of page arrivals, without any script: date, page, source host or utm_source, how the page was reached, phone or desktop, country. No IP address, browser string or identifier is stored: ${base}/privacy#arrival-count
 - Every displayed number is server-rendered at first byte, so a crawler that runs no JavaScript
   sees exactly what a person sees.
 - Nothing on the site is financial advice, a signal, or a price forecast.
@@ -162,10 +161,9 @@ ${base}/status renders the real rate including failures. The cross-venue funding
 backfilled, so it accrues from the launch date forward; Hyperliquid's own funding history is read
 back from Hyperliquid, and each contract page states where its stored series begins.
 
-Numbers, charts and tables are computed by scheduled code from the endpoints listed at
-${base}/data-sources, and each states its source and its age. Nothing here is a forecast or a
-trading signal. The liquidation map is the one modelled figure: open interest spread across
-leverage assumptions printed in full on the page, method at ${base}/learn/liquidation-heatmap.
+Pages are GENERATED: numbers, charts and tables are produced by scheduled code from the
+endpoints listed at ${base}/data-sources, and the explanatory prose is written. Nothing here is
+a model output, a forecast or a trading signal.
 `;
 
   return new Response(body, {

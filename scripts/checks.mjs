@@ -1,5 +1,4 @@
 import { brotliCompressSync, constants as zlibConstants } from "node:zlib";
-import { compact, cumulativeAt, atReading, parsePrice } from "../public/shared.js";
 const brotli = (html) => {
   try {
     return brotliCompressSync(Buffer.from(html), { params: { [zlibConstants.BROTLI_PARAM_QUALITY]: 5 } }).length;
@@ -597,32 +596,11 @@ const LADDER = [
  * in the naming: each entry is a rule that has already drifted or that renders on both sides of
  * hydration, and adding to the list is a decision somebody makes on purpose.
  */
-const SHARED_RULES = ["paysClass", "paysLabel", "carryCost", "aprSpread", "pct",
+const SHARED_RULES = ["paysClass", "paysLabel", "paysArrow", "carryCost", "aprSpread", "pct",
                       "changeWords", "ageWords", "minutesSince", "nf", "qty", "compact", "usd",
                       /* 17 September 2026: two templates, two stamp formats, one job. */
-                      "utcStamp", "timeframeGapNote", "slotBars", "drawnBars", "barSpan",
-                      "timeTicks", "widestSpread", "settlementWords", "venueReachWords",
-                      /* 15 October 2026: five signed-percent copies with three rules for zero, five
-                         month tables, two staleness limits, the map's sum on two sides of hydration. */
-                      "signedPct", "moveCounts", "shortDate", "dateTimeUtc", "isStale",
-                      "cumulativeAt", "atReading", "parsePrice", "spanWords", "mapModel", "maintenanceMarginFraction",
-                      "moneyAt", "printedMoney", "nearPrinted", "fitDecimals", "exactUsd", "fineNum", "dayEarlierCut", "readOiAt", "numberWord", "sparkDaysOf", "plural", "coinPageFor", "currentMark", "tableFor", "xhairAttrs", "narrowChart", "weekCarry", "oiMoves", "fundingRegime", "sortedTiers", "capOf"];
-
-/* THE SHAPE OF A RULE WRITTEN INLINE, which a definition count cannot see because it has no name.
-   Each is a shape that shipped as a copy and disagreed with the shared rule; `only` names the one
-   file allowed to carry it. */
-const INLINE_SHAPES = [
-  { what: "a month table", re: /["']Jan["'],\s*["']Feb["'],\s*["']Mar["']/, only: "public/shared.js", use: "MONTHS / shortDate" },
-  { what: "a direct read of the live mark", re: /live\??\.mark\??\.\[/, only: "src/lib/hyperliquid.ts", use: "currentMark from src/lib/hyperliquid.ts" },
-  { what: "a tier table sorted by hand", re: /marginTiers\]\.sort\(/, only: "public/shared.js", use: "sortedTiers" },
-  { what: "maintenance margin written out", re: /1 \/ \(2 \* /, only: "public/shared.js", use: "maintenanceMarginFraction" },
-  { what: "a table of number words", re: /["'](no|zero)["'],\s*["']one["'],\s*["']two["']/, only: "public/shared.js", use: "numberWord" },
-  { what: "toLocaleDateString with a short month (prints \"Sept\")", re: /month:\s*["']short["']/, only: null, use: "shortDate" },
-  /* a sign ternary with a percent sign after it on the same line — a signed COUNT ("+3 indexed")
-     is not this rule */
-  { what: "a percentage formatted by hand", re: /\* 100\)\.toFixed\(\d\)\}?%/, only: "public/shared.js", use: "pct / signedPct" },
-  { what: "a hand-made sign for a percentage", re: /\?\s*["']\+["']\s*:\s*["'](\u2212|\\u2212|-)["'][^\n]{0,80}%/, only: "public/shared.js", use: "signedPct" },
-];
+                      "utcStamp", "candleStyleNote", "timeframeGapNote", "slotBars", "drawnBars", "barSpan",
+                      "timeTicks", "widestSpread", "settlementWords", "venueReachWords"];
 
 /* Constants with the same standing. HL_BASE_APR was a const in three templates on 17 September
    2026, and the one without the home page's base-rate test called the base rate "the dearest". */
@@ -630,14 +608,6 @@ const SHARED_CONSTANTS = ["HL_BASE_APR"];
 
 export function duplicateRuleImplementations(sources) {
   const out = [];
-  for (const shape of INLINE_SHAPES) {
-    for (const [file, src] of sources) {
-      if (shape.only && file.endsWith(shape.only)) continue;
-      /* comments may quote the shape they replaced */
-      const code = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
-      if (shape.re.test(code)) out.push(`${file} carries ${shape.what} — use ${shape.use} from public/shared.js`);
-    }
-  }
   for (const name of SHARED_CONSTANTS) {
     const defs = [...sources].filter(([, src]) => new RegExp(`\\b(const|let|var)\\s+${name}\\s*=`).test(src)).map(([file]) => file);
     if (defs.length !== 1) out.push(defs.length ? `${name} is defined ${defs.length} times — ${defs.join(", ")}. One constant, one definition; see src/lib/funding.ts` : `${name} is not defined anywhere — the shared source has lost a constant this check guards`);
@@ -1664,11 +1634,6 @@ export function hiddenFromEveryone(html) {
   for (const m of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
     if (!/(^|;)\s*(display\s*:\s*none|visibility\s*:\s*hidden)\s*(;|$)/i.test(m[2])) continue;
     for (const sel of m[1].split(",")) {
-      /* A PSEUDO-ELEMENT RULE HIDES THE PSEUDO-ELEMENT, NOT THE ELEMENT'S TEXT. The first fold on
-         this site (src/components/More.astro, 15 October 2026) hides the native disclosure
-         triangle with `.more__sum::-webkit-details-marker { display: none }`, and this read it as
-         hiding every summary label on /liquidations — a heading every reader sees. */
-      if (/::/.test(sel)) continue;
       const classes = [...sel.matchAll(/\.([a-zA-Z][\w-]*)/g)].map((c) => c[1]);
       if (classes.length) hidingClasses.add(classes[classes.length - 1]);
     }
@@ -1701,113 +1666,6 @@ export function hiddenFromEveryone(html) {
     );
   }
   return [...new Set(out)];
-}
-
-/**
- * "SEE MORE" TEXT SHIPS IN THE FIRST RESPONSE, FOLDED BY MARKUP — NEVER FETCHED ON OPEN.
- *
- * The product rule of 15 October 2026: a page leads with its picture, figures and conclusion, and
- * puts method and long explanation under src/components/More.astro, a native <details> closed by
- * default. The text has to be in the HTML at first byte. A block converted to load on click is
- * text a crawler, an extractor and a reader without JavaScript never receive, and it would pass
- * every other check here, because the page still renders and returns 200.
- *
- * So, for every details.more in the rendered page: its body carries real text, and nothing in
- * it — or on it — waits for a request (data-src, hx-get, data-fetch, data-load, <template>).
- * And because the easiest regression is to replace the <details> with a button and leave nothing
- * to inspect, a route registered in MORE_ROUTES must carry at least one such block.
- */
-export const MORE_ROUTES = [
-  /^\/liquidations$/, /^\/liquidations\/(?!sweep$|survival$)[a-z0-9]+$/i,
-  /^\/funding$/, /^\/funding\/[a-z0-9]+$/i, /^\/unlocks$/,
-  /* 15 October 2026, second pass: every page with explanation gets its fold */
-  /^\/$/, /^\/coins$/, /^\/open-interest$/, /^\/watchlist$/, /^\/liquidations\/(sweep|survival)$/,
-  /^\/tools(\/(leverage|funding-cost|funding-arbitrage|position-size))?$/,
-];
-const LAZY = /\b(data-src|hx-get|hx-post|hx-trigger|data-fetch|data-load|data-lazy)\s*=|<template\b/i;
-export function collapsedTextShipped(html, { expect = false } = {}) {
-  const out = [];
-  const opens = [...html.matchAll(/<details\b([^>]*)>/gi)].filter((m) => /\bclass="[^"]*\bmore\b/.test(m[1]));
-  for (const m of opens) {
-    /* The body runs to the MATCHING </details>, counting nested ones, so a block holding a
-       <details class="src"> table toggle is read whole. */
-    let depth = 1, end = -1;
-    const start = m.index + m[0].length;
-    const re = /<(\/?)details\b[^>]*>/gi;
-    re.lastIndex = start;
-    for (let t; (t = re.exec(html)); ) {
-      depth += t[1] ? -1 : 1;
-      if (depth === 0) { end = t.index; break; }
-    }
-    const inner = end > 0 ? html.slice(start, end) : "";
-    const label = (inner.match(/<summary\b[\s\S]*?<\/summary>/i)?.[0] ?? "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() || "(no summary)";
-    if (LAZY.test(m[1]) || LAZY.test(inner)) out.push(`"${label}" waits for a request instead of shipping its text — collapsed text must be in the first response`);
-    const text = inner.replace(/<summary\b[\s\S]*?<\/summary>/i, "").replace(/<(script|style)\b[\s\S]*?<\/\1>/gi, "")
-      .replace(/<[^>]+>/g, " ").replace(/&[a-z#0-9]+;/gi, " ").replace(/\s+/g, " ").trim();
-    if (text.length < 40) out.push(`"${label}" is collapsed but carries ${text.length} characters of text — an empty fold is a placeholder for something fetched later`);
-  }
-  if (expect && opens.length === 0) out.push("this route is registered as carrying collapsed explanation (MORE_ROUTES) and ships no details.more at all");
-  return out;
-}
-
-/**
- * THE LIQUIDATION MAP'S FIGURES ARE THE ROWS IT PUBLISHES, SUMMED BY THE ONE SHARED FUNCTION.
- *
- * The map publishes its rows (data-levels) so the reader's own price can be read in the browser,
- * and the server prints eight standard moves and any ?at= reading from the same rows. That only
- * holds while the server's figures are exactly what cumulativeAt()/atReading() in public/shared.js
- * give on the published curve — the moment a template sums differently (the display bins, say,
- * which on 15 October 2026 moved BTC's −1% from $837K to $5.2M with the bin size), the figure in
- * the table and the figure under the cursor would disagree on the same page. So each table row is
- * recomputed from the published curve, the † past-the-range marker must sit on exactly the rows
- * whose price lies outside it, and a printed reading must be the shared sentence for the value in
- * the field.
- */
-export function levelsAgree(html) {
-  const out = [];
-  const m = html.match(/\bdata-levels="([^"]*)"/);
-  if (!m) return out;
-  let d;
-  try { d = JSON.parse(m[1].replace(/&quot;/g, '"').replace(/&#34;/g, '"').replace(/&amp;/g, "&")); }
-  catch { return ["data-levels is not JSON — the page's script cannot read the rows the figures came from"]; }
-  const strip = (x) => x.replace(/<[^>]+>/g, "").replace(/&[a-z#0-9]+;/gi, " ").replace(/\s+/g, " ").trim();
-  /* Scoped styles put an attribute on every element, so no tag here is matched bare. */
-  const tbody = html.match(/class="tbl levels__tbl"[\s\S]*?<tbody\b[^>]*>([\s\S]*?)<\/tbody>/)?.[1] ?? "";
-  for (const row of tbody.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/g)) {
-    const cells = [...row[1].matchAll(/<td\b[^>]*>([\s\S]*?)<\/td>/g)].map((c) => c[1]);
-    if (cells.length < 3) continue;
-    const move = strip(cells[0]);
-    const k = Number(move.replace("\u2212", "-").replace(/[+%]/g, "")) / 100;
-    if (!Number.isFinite(k)) { out.push(`move "${move}" is not a percentage`); continue; }
-    const price = d.mark * (1 + k);
-    const want = compact(cumulativeAt(d.curve, d.mark, price).notional);
-    const got = strip(cells[2]).replace("\u2020", "").trim();
-    if (got !== want) out.push(`${move}: the table prints ${got}, the published rows give ${want}`);
-    const past = price < d.lo || price > d.hi;
-    if (past !== cells[2].includes("\u2020")) out.push(`${move}: ${past ? "lands past the drawn range and carries no †" : "is inside the drawn range and is marked † as past it"}`);
-    /* And no move the table prints may land past it at all: the axis is widened to reach them
-       (LADDER_REACH in src/lib/liqmap.ts). A † is honest, but it is not an answer — ETH's −5% and
-       −10% once both read $206.3M, every long in the range. */
-    else if (past) out.push(`${move} lands past the drawn range (${d.lo}–${d.hi}) — the axis must reach every move the table prints`);
-    /* The day-earlier column, when the page has one, is the published day-earlier rows summed the
-       same way. */
-    if (d.then) {
-      if (cells.length < 4) out.push(`${move}: the page publishes a day-earlier run and the row has no column for it`);
-      else {
-        const was = compact(cumulativeAt(d.then, d.mark, price).notional);
-        if (strip(cells[3]) !== was) out.push(`${move}: a day earlier the table prints ${strip(cells[3])}, the published day-earlier rows give ${was}`);
-      }
-    }
-  }
-  const field = html.match(/<input\b[^>]*\bdata-at-input\b[^>]*>/)?.[0] ?? "";
-  const value = field.match(/\bvalue="([^"]*)"/)?.[1] ?? "";
-  const said = strip(html.match(/<p\b[^>]*\bdata-at-out\b[^>]*>([\s\S]*?)<\/p>/)?.[1] ?? "");
-  const price = parsePrice(value.replace(/&amp;/g, "&"));
-  if (price !== null) {
-    const want = atReading(d.curve, d.mark, price, d.lo, d.hi, d.dp, d.then ?? null);
-    if (said !== want) out.push(`the reading for ${value} says "${said}" where the shared sentence on the published rows is "${want}"`);
-  }
-  return out;
 }
 
 /**
@@ -2617,7 +2475,6 @@ export const PROSE_ROUTES = {
   "/data-sources": "a register of upstreams and their terms, not of readings",
   "/privacy": "legal text",
   "/terms": "legal text",
-  "/corrections": "a register of errors fixed on this site, not of readings",
   "/learn/liquidation-heatmap": "explains a method; commit-dated for that reason",
   "/learn/liquidation-price": "explains a method; commit-dated for that reason",
   "/status": "operational, addressed to whoever runs the ingest, and in no sitemap",
@@ -2755,49 +2612,4 @@ export function typographyFaults(html, selectorClass = "overview") {
     if (/\s—\s?[.,]/.test(t)) faults.push("a dash followed by punctuation");
   }
   return faults;
-}
-
-/**
- * AN ARTICLE THAT DOES NOT MATCH THE SOUND AFTER IT. Google's helpful-content questions ask
- * whether a page is "free of spelling and stylistic problems" and looks carefully produced, and a
- * template is where one slip becomes thirty: on 16 October 2026 the description of every
- * /funding/{coin} page said "What a ETH perpetual", "a XRP", "a AAVE" — 29 pages, invisible on
- * /funding/btc, which is the one page the typography check reads.
- *
- * ONLY THE UNAMBIGUOUS CASES. A ticker is read either as letters ("an LTC") or as a word
- * ("a LINK"), and which one is a convention this check cannot know, so it flags only tickers
- * whose first sound is a vowel either way (A, E, I, O, and X, which is always "ex") and numbers
- * that are spoken with a vowel (8…, 11, 18), plus the mirror: "an" before a ticker or number that
- * cannot start with a vowel sound. "a UNI" is right ("you-nee") and is not flagged.
- */
-export function wrongArticles(text) {
-  const t = String(text ?? "");
-  const faults = [];
-  for (const m of t.matchAll(/\b([Aa]n?) ((?:[A-Z][A-Z0-9]{1,6})|\d[\d,.]*)(?=[\s×%\-–—.,;:)]|$)/g)) {
-    const [, art, w] = m;
-    const vowel = /^[AEIOX]/.test(w) || /^8/.test(w) || /^1[18](?![\d.,]*\d)/.test(w) || /^1[18](?=[.,]\d)/.test(w);
-    const consonant = /^[BCDGJKPQTVWZ]/.test(w) || (/^\d/.test(w) && !vowel);
-    if (art.toLowerCase() === "a" && vowel) faults.push(`"${art} ${w}" should be "an ${w}"`);
-    else if (art.toLowerCase() === "an" && consonant) faults.push(`"${art} ${w}" should be "a ${w}"`);
-  }
-  return [...new Set(faults)];
-}
-
-/**
- * THE VESTING REGISTER IS READ BY HAND, SO ITS AGE IS A FINDING. /unlocks dates every claim to the
- * block it was read at, and on 15 October 2026 that block was two months old: the ENS lock the page
- * called untouched had released 100,001 ENS since, and nothing said the read was due. The page
- * stays honest at any age — it prints the date — but a register nobody re-reads stops being a
- * register. Past `maxDays` this fires, and the fix is `node scripts/probe-vesting.mjs --json`.
- *
- *   verifiedAt  the register's verifiedAt (ISO)
- *   now         epoch ms
- */
-export function registerAge(verifiedAt, now, maxDays = 45) {
-  const at = Date.parse(verifiedAt);
-  if (!Number.isFinite(at)) return [`the vesting register's verifiedAt "${verifiedAt}" is not a date`];
-  const days = (now - at) / 86_400_000;
-  return days > maxDays
-    ? [`the vesting register was last read ${Math.floor(days)} days ago (${verifiedAt}), past the ${maxDays}-day limit — re-read it with scripts/probe-vesting.mjs`]
-    : [];
 }

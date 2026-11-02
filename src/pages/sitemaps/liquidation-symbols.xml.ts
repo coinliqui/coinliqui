@@ -3,7 +3,8 @@ import { xml, dataStamp } from "../../lib/sitemap.ts";
 import { origin } from "../../lib/site.ts";
 import { getSnapshot } from "../../lib/hyperliquid.ts";
 import { liqMapPaths } from "../../lib/routes.ts";
-import { type MarginTable, tableFor } from "../../lib/margin.ts";
+import { type MarginTable } from "../../lib/margin.ts";
+import tables from "../../data/margin-tables.json";
 
 /**
  * ONE MAP PER CONTRACT, AND ITS OWN SITEMAP FILE.
@@ -26,8 +27,9 @@ import { type MarginTable, tableFor } from "../../lib/margin.ts";
 export const GET: APIRoute = async ({ locals, site }) => {
   const snap = await getSnapshot((locals as any)?.runtime?.env?.SNAPSHOT, import.meta.env.DEV);
   const lastmod = dataStamp(snap.fetchedAt);
+  const TABLES = tables as Record<string, MarginTable>;
   const symbols = snap.perps
-    .filter((p) => tableFor(p) !== undefined)
+    .filter((p) => Object.prototype.hasOwnProperty.call(TABLES, String(p.marginTableId)))
     .map((p) => p.symbol);
   return xml(liqMapPaths(symbols).map((path) => ({ path, lastmod })), origin(site));
 };

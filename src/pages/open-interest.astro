@@ -1,15 +1,11 @@
 ---
 import Base from "../layouts/Base.astro";
 import { getSnapshot, coldStart } from "../lib/hyperliquid.ts";
-import { pct, signedPct, usd } from "../lib/funding.ts";
+import { pct, usd } from "../lib/funding.ts";
 import Figure from "../components/Figure.astro";
-import More from "../components/More.astro";
 import Overview from "../components/Overview.astro";
 import { extremeBy } from "../lib/extreme.ts";
-import { readOiHistory, oiChange, readOiSeries } from "../lib/oi-history.ts";
-import { shortDate, plural } from "../../public/shared.js";
-import { capOf } from "../lib/margin.ts";
-import { compact } from "../lib/chart.ts";
+import { readOiHistory, oiChange } from "../lib/oi-history.ts";
 const snap = await getSnapshot((Astro.locals as any)?.runtime?.env?.SNAPSHOT, import.meta.env.DEV);
 // Cold store: 503 + Retry-After rather than a page rendered from nothing.
 if (!snap.available) return coldStart();
@@ -41,16 +37,7 @@ const total = rows.reduce((s, p) => s + p.oiNotional, 0);
    So the hours, the band and the instant are constants HERE, passed to the reader rather than
    left to its defaults, and every window below is arithmetic on those three and on `since`, the
    reading actually used. Nothing on this page prints a duration it did not subtract. */
-/* THE WINDOW IS THE READER'S. A change over 24 hours is the one figure every aggregator prints; over a
-   week or two it is the build-up a chat answer cannot quote, because nobody published it. The store
-   keeps 720 hours, so 14 days is the longest window whose baseline band is always inside it. */
-const OI_WINDOWS = [
-  { key: "24h", hours: 24, label: "24 hours" },
-  { key: "7d", hours: 168, label: "7 days" },
-  { key: "14d", hours: 336, label: "14 days" },
-] as const;
-const oiWin = OI_WINDOWS.find((w) => w.key === Astro.url.searchParams.get("w")) ?? OI_WINDOWS[0];
-const OI_HOURS = oiWin.hours;
+const OI_HOURS = 24;
 const OI_BAND_HOURS = 3;
 const HOUR_MS = 3_600_000;
 const oiNow = Date.now();
@@ -71,57 +58,6 @@ const oiReady = oiHist.status === "ready" ? oiHist : null;
    there: one time is printed. Any missing: the span they were all drawn from is printed instead,
    which is true whichever contracts took the older rows. */
 const oiAtSince = oiReady ? await readOiHistory(oiDb, oiReady.since + OI_HOURS * HOUR_MS, OI_HOURS, 0) : null;
-/* THE BOOK OVER 30 DAYS, from today's covered contracts only, so the line moves with open interest and
-   not with contracts entering or leaving coverage. A contract without a reading in every bucket is left
-   out and the share of today's book the line covers is printed, rather than summing a set that changes
-   along the line. The chart carries levels and dates, not a change figure: the change is the table's,
-   from hourly readings, and a second change from bucket averages would disagree with it. */
-/* Eight-hour steps: ninety points over thirty days reads the same at 180px tall as one hundred and
-   eighty, at half the bytes — the line at four hours put the page 377 bytes over its budget. */
-const BOOK_STEP_H = 8;
-const oiSeries = await readOiSeries(oiDb, oiNow, 30, BOOK_STEP_H);
-const book = (() => {
-  if (!oiSeries) return null;
-  const n = oiSeries.buckets.length;
-  /* A contract counts if it has a reading in nine steps of ten. A step where any counted contract has
-     none is not summed — it is a GAP in the line, drawn as one, rather than a dip: the store holds two
-     empty 4-hour steps (28–29 September 2026, a collection outage) and an every-step rule left no
-     contract at all, so the first deploy drew nothing. */
-  const full = rows.filter((p) => { const v = oiSeries.bySymbol.get(p.symbol); return v && v.filter((x) => Number.isFinite(x)).length >= n * 0.9; });
-  if (full.length < 2) return null;
-  const pts = oiSeries.buckets.map((t, i) => {
-    const vs = full.map((p) => oiSeries.bySymbol.get(p.symbol)![i]);
-    return [t, vs.every((x) => Number.isFinite(x)) ? vs.reduce((a, b) => a + b, 0) : NaN] as const;
-  });
-  const vals = pts.map(([, v]) => v).filter(Number.isFinite);
-  if (vals.length < 2) return null;
-  const lo = Math.min(...vals), hi = Math.max(...vals);
-  const pad = (hi - lo) * 0.08 || hi * 0.02;
-  const y0 = lo - pad, y1 = hi + pad;
-  const t0 = pts[0][0], t1 = pts[pts.length - 1][0];
-  const X = (t: number) => ((t - t0) / Math.max(1, t1 - t0)) * 1000;
-  const Y = (v: number) => 200 - ((v - y0) / (y1 - y0)) * 200;
-  /* Runs of drawn steps, each its own segment, so a gap is visibly a gap. */
-  const runs: (readonly [number, number])[][] = [];
-  for (const pt of pts) {
-    if (!Number.isFinite(pt[1])) { if (runs.length && runs[runs.length - 1].length) runs.push([]); continue; }
-    if (!runs.length) runs.push([]);
-    runs[runs.length - 1].push(pt as readonly [number, number]);
-  }
-  const segs = runs.filter((r) => r.length > 0);
-  /* Whole units of a 1000×200 box: a tenth of a unit is invisible at any width this draws at, and the
-     decimals were most of the page's 851 bytes over budget. The line alone — an area fill under it
-     repeated every coordinate. */
-  const line = segs.map((r) => r.map(([t, v], k) => `${k ? "L" : "M"}${Math.round(X(t))},${Math.round(Y(v))}`).join("")).join("");
-  const gaps = pts.filter(([, v]) => !Number.isFinite(v)).length;
-  const winX = X(Math.max(t0, oiNow - OI_HOURS * HOUR_MS));
-  return {
-    line, winX, gaps,
-    hi, lo, hiPct: (Y(hi) / 200) * 100, loPct: (Y(lo) / 200) * 100,
-    from: t0, to: t1, count: full.length,
-    share: full.reduce((a, p) => a + p.oiNotional, 0) / Math.max(1, total),
-  };
-})();
 const bandTo = oiNow - OI_HOURS * HOUR_MS;
 const bandFrom = bandTo - OI_BAND_HOURS * HOUR_MS;
 
@@ -173,13 +109,6 @@ const stripTurn = total > 0 ? stripVol / total : NaN;
 const topOi = rows.slice(0, 10);
 const topShare = total > 0 ? topOi.reduce((s, p) => s + p.oiNotional, 0) / total : 0;
 const maxOi = topOi.length ? topOi[0].oiNotional : 1;
-/* NO WEEK LINE BESIDE EACH BAR, MEASURED (15 October 2026). Ten 7-day lines from the book series,
-   with the hub's 7-day change beside each, shipped as f3ef4f9 and put this page 481 bytes over its
-   9,000 wire budget on the deploy's own check. Re-encoded at the cheapest that still reads as a
-   line — daily points, relative moves, no per-line label — they still cost 215 bytes against a
-   page that sits at 8,650–8,900 on data alone. The budget is not raised (verify-live.mjs), so the
-   lines would have to displace something on the page, and nothing here is worth less. The weekly
-   change per contract is one click away at ?w=7d. */
 
 /* ========================================================================================
    IS THE BOOK GROWING — the half of this page's question that was only ever in a column.
@@ -254,7 +183,7 @@ const oiSpanHours = oneTick && oiReady && snap.fetchedAt > oiReady.since ? (snap
 const oiWindowLead = !oiReady || !sinceAt
   ? ""
   : oneTick
-    ? `${oiSpanHours != null ? `Over the ${oiSpanHours >= 48 ? `${(oiSpanHours / 24).toFixed(1)} days` : `${oiSpanHours.toFixed(1)} hours`} since` : "Since"} the stored reading at ${hm(sinceAt)} UTC on ${dayOf(sinceAt)},`
+    ? `${oiSpanHours != null ? `Over the ${oiSpanHours.toFixed(1)} hours since` : "Since"} the stored reading at ${hm(sinceAt)} UTC on ${dayOf(sinceAt)},`
     : `Against stored readings taken ${utcSpan(bandFrom, oiReady.since, true)},`;
 /* The column's scope in the same shapes, short: one reading time; the span the measured contracts
    were drawn from; or, when no contract on the page was measured, the band searched — "since" a
@@ -337,11 +266,7 @@ const noChangeReason = oiHist.status === "no-store"
           above it is long — correctly long, it is the page's most important sentence. Two
           important sentences compete for one window, so the one an extractor would QUOTE goes
           first and the one it must not omit follows immediately. */}
-      Every figure here is <strong>Hyperliquid's book alone</strong>, not the market's.
-    </p>
-    <More label="Why this page covers one venue only">
-    <p>
-      It is
+      Every figure here is <strong>Hyperliquid's book alone</strong>, not the market's. It is
       the venue this site collects from directly, and the only one whose open interest it
       collects, so it cannot say how this book compares with the rest of the market; a total that
       adds other venues' books is larger by construction.
@@ -354,39 +279,8 @@ const noChangeReason = oiHist.status === "no-store"
       {" "}<a class="link" href="/funding">funding</a> compares three venues and this page
       cannot. <a class="link" href="/data-sources">What is collected, and what is not →</a>
     </p>
-    </More>
   </div>
-
-  {/* THE WINDOW SWITCH: links, so each window is a URL a reader can send, under the same canonical. */}
-  <nav class="oiwin" aria-label="Change window">
-    <span class="oiwin__label">Change over</span>
-    {OI_WINDOWS.map((w) => (
-      <a class:list={["oiwin__opt", w === oiWin && "is-on"]} href={w.key === "24h" ? "/open-interest" : `/open-interest?w=${w.key}`} aria-current={w === oiWin ? "true" : undefined}>{w.label}</a>
-    ))}
-  </nav>
-
-  {book && (
-    <figure class="oibook">
-      <figcaption class="oibook__cap">
-        <b>The book over 30 days</b> — {book.count} of today's {rows.length} contracts, those with a reading in at least
-        nine {BOOK_STEP_H}-hour steps in ten ({pct(book.share)} of today's open interest).{book.gaps > 0 && <> The line breaks where the store holds no reading for one of them ({plural(book.gaps, "step", "steps")}).</>} Shaded: the {oiWin.label} the change below is taken over.
-      </figcaption>
-      <div class="oibook__plot">
-        <svg viewBox="0 0 1000 200" preserveAspectRatio="none" role="img" aria-label={`Open interest of ${book.count} contracts from ${shortDate(book.from)} to ${shortDate(book.to)}, between ${compact(book.lo)} and ${compact(book.hi)}`}>
-          <rect x={book.winX} y="0" width={1000 - book.winX} height="200" fill="currentColor" opacity="0.07" />
-          <path d={book.line} fill="none" stroke="currentColor" stroke-width="2" vector-effect="non-scaling-stroke" />
-        </svg>
-        <span class="oibook__y" style={`top:${book.hiPct.toFixed(1)}%`}>{compact(book.hi)}</span>
-        <span class="oibook__y" style={`top:${book.loPct.toFixed(1)}%`}>{compact(book.lo)}</span>
-      </div>
-      <div class="oibook__x"><span>{shortDate(book.from)}</span><span>{shortDate(book.to)}</span></div>
-    </figure>
-  )}
-
-  <p class="section-note" style="margin:0 0 20px;max-width:74ch">Across the book, 24-hour volume of {usd(stripVol)} is {Number.isFinite(stripTurn) ? `${stripTurn.toFixed(2)}\u00d7` : "\u2014"} the open interest.</p>
-  <More label="What the turnover column means">
-    <p class="section-note" style="margin:0;max-width:74ch">The turnover column is that ratio per contract: a high number means the position base is churning rather than accumulating. <a class="link" href="/learn/open-interest">What open interest does and does not tell you →</a></p>
-  </More>
+  <p class="section-note" style="margin:0 0 20px;max-width:74ch">Across the book, 24-hour volume of {usd(stripVol)} is {Number.isFinite(stripTurn) ? `${stripTurn.toFixed(2)}\u00d7` : "\u2014"} the open interest. The turnover column is that ratio per contract: a high number means the position base is churning rather than accumulating. <a class="link" href="/learn/open-interest">What open interest does and does not tell you →</a></p>
   {oiHist.status === "warming" && (
     <p class="clock" style="margin:0 0 12px">
       {oiGap
@@ -412,13 +306,11 @@ const noChangeReason = oiHist.status === "no-store"
           </>
         ))}
       </div>
-      <More slot="note" label="How the bars are scaled">
-        <p>
-          Open interest is one venue&rsquo;s book, not the market&rsquo;s: these are Hyperliquid&rsquo;s
-          positions only. Bars are scaled to the largest, {usd(maxOi)}, and the percentage beside each
-          is its share of the whole book.
-        </p>
-      </More>
+      <p slot="note">
+        Open interest is one venue&rsquo;s book, not the market&rsquo;s: these are Hyperliquid&rsquo;s
+        positions only. Bars are scaled to the largest, {usd(maxOi)}, and the percentage beside each
+        is its share of the whole book.
+      </p>
     </Figure>
   )}
 
@@ -427,50 +319,35 @@ const noChangeReason = oiHist.status === "no-store"
       A dash in the Change column is a contract with no usable stored reading {oiBandSpan}, the window each change is taken from &mdash; {dashWho} here. That is an absence, not a change of zero{bookChange != null ? `, so ${unmeasured.length === 1 ? "it is" : "they are"} left out of the book's change above` : ""}.
     </p>
   )}
-  <div class="panel"><table class="tbl oitbl" data-sortable>
+  <div class="panel"><table class="tbl" data-sortable>
     <thead><tr><th>Coin</th><th class="num">Open interest <span class="thscope">Hyperliquid</span></th>{oiReady && <th class="num">Change <span class="thscope">{oiColScope}</span></th>}<th class="num">24h volume <span class="thscope">Hyperliquid</span></th><th class="num">Turnover (24h volume ÷ OI)</th><th class="num">Max leverage</th></tr></thead>
     <tbody>
       {rows.map((p) => (
         <tr>
           <td><a href={`/funding/${p.symbol.toLowerCase()}`}>{p.symbol}</a></td>
-          <td>{usd(p.oiNotional)}</td>
+          <td class="num">{usd(p.oiNotional)}</td>
           {oiReady && (() => {
             const d = changeOf(p);
             /* AN ABSENCE, NOT A ZERO. A contract listed since the stored reading has no history,
                and printing 0.00% for it would claim it had not moved. The legend above the table
                says so in words; the title repeats it where a sorted table has put the dash. */
             return d === null
-              ? <td><span class="faint" title={`No usable stored reading ${oiBandSpan}`}>—</span></td>
+              ? <td class="num"><span class="faint" title={`No usable stored reading ${oiBandSpan}`}>—</span></td>
               /* NEUTRAL, AND THE GATE WAS RIGHT TO REFUSE THE FIRST VERSION. It used the funding
                  pair, and colourLegend pointed out that this page never says what amber and cyan
                  encode — because they encode who PAYS whom, and a book growing is not a payment.
                  This site keeps exactly two colour languages and both are spoken for: amber and
                  cyan are the funding direction, green and red are the candles'. A third quantity
                  does not get to borrow one; the sign carries the sign. */
-              : <td>{signedPct(d)}</td>;
+              : <td class="num">{d >= 0 ? "+" : "\u2212"}{pct(Math.abs(d))}</td>;
           })()}
-          <td>{usd(p.dayNtlVlm)}</td>
-          <td>{p.oiNotional > 0 ? (p.dayNtlVlm / p.oiNotional).toFixed(2) + "×" : "—"}</td>
-          <td>{capOf(p)}×</td>
+          <td class="num">{usd(p.dayNtlVlm)}</td>
+          <td class="num">{p.oiNotional > 0 ? (p.dayNtlVlm / p.oiNotional).toFixed(2) + "×" : "—"}</td>
+          <td class="num">{p.maxLeverage}×</td>
         </tr>
       ))}
     </tbody>
   </table></div>
-  {/* GLOBAL, NOT SCOPED: scoping stamped a data-astro-cid on 549 elements, 13 KB raw, which is where
-      the book line's bytes were found instead of in a raised budget. Every class here is prefixed
-      oiwin/oibook and used nowhere else. */}
-  <style is:global>
-    /* Every column after the coin is a figure: one rule here instead of class="num" on 280 cells. */
-    .oitbl td + td { font-family: var(--mono); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
-    .oiwin { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 0 0 16px; }
-  .oiwin__label { font-size: var(--fs-sm); color: var(--text-dim); margin-right: 4px; }
-  .oiwin__opt { padding: 6px 12px; border-radius: 999px; font-size: var(--fs-sm); color: var(--text-dim); text-decoration: none; border: 1px solid var(--border-soft); }
-  .oiwin__opt.is-on { color: var(--text); background: var(--surface-3); border-color: var(--border); }
-  .oibook { margin: 0 0 20px; }
-  .oibook__cap { font-size: var(--fs-sm); color: var(--text-dim); margin: 0 0 8px; max-width: 74ch; line-height: 1.5; }
-  .oibook__plot { position: relative; height: 180px; color: var(--text-dim); background: var(--surface-1); border-radius: 12px; overflow: hidden; }
-  .oibook__plot svg { display: block; width: 100%; height: 100%; }
-  .oibook__y { position: absolute; left: 10px; transform: translateY(-50%); font: 11.5px var(--mono); color: var(--text-dim); background: var(--surface-1); padding: 0 4px; }
-  .oibook__x { display: flex; justify-content: space-between; font: 11.5px var(--mono); color: var(--text-faint); margin-top: 4px; }
-</style>
+  <style>
+  </style>
 </Base>

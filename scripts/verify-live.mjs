@@ -12,11 +12,7 @@
    — this runs against production and its whole claim is that it asserts what a client on the
    open internet receives. underLinked() decides nothing about the site; it turns a count into
    a sentence, and it lives in checks.mjs so it is covered by the gate's own fixture suite. */
-/* /funding/paid sits under /funding/ and is not a contract page; the contract checks skip it. */
-import { STATIC_ROUTES } from "../src/lib/routes.ts";
-const STATIC_PATHS = new Set(STATIC_ROUTES);
-import { underLinked, duplicateHeadMetadata, leadsWithItsSubject, llmsHostsAgree, registerAge, openingFigure, PROSE_ROUTES, advertisedReadingsExist, typographyFaults, wrongArticles, renderedText } from "./checks.mjs";
-import { readFileSync as readFile } from "node:fs";
+import { underLinked, duplicateHeadMetadata, leadsWithItsSubject, llmsHostsAgree, openingFigure, PROSE_ROUTES, advertisedReadingsExist, typographyFaults } from "./checks.mjs";
 
 const ORIGIN = process.argv[2] || "https://coinliqui.com";
 const CRAWLERS = [
@@ -439,7 +435,7 @@ console.log("\n5. sitemap");
       else beaconOk++;
     }
     if (
-      /\/funding\/[a-z0-9]/i.test(u) && !STATIC_PATHS.has(new URL(u, ORIGIN).pathname) && r.status === 200 &&
+      /\/funding\/[a-z0-9]/i.test(u) && r.status === 200 &&
       !/data-tfpanel="[^"]+" [^>]*data-on/.test(r.body) &&
       !/Candles not collected yet/.test(r.body)
     ) {
@@ -543,23 +539,6 @@ console.log("\n5. sitemap");
       : ok(`the stated situation on ${ROUTES.length} templates renders without a gap before punctuation, a welded figure or an unresolved value`);
   }
 
-  /* ARTICLES BEFORE TICKERS AND NUMBERS, in the visible text and the description a search
-     result shows. Read on the symbols whose first sound is a vowel, because the template is right
-     on BTC: "What a ETH perpetual" reached 29 descriptions while the BTC page read correctly. */
-  {
-    const ROUTES = ["/funding/eth", "/funding/xrp", "/liquidations/eth", "/coins/ethereum", "/tools/funding-cost?symbol=ETH&days=8", "/learn/liquidation-price", "/unlocks"];
-    const found = [];
-    for (const r of ROUTES) {
-      const res = await fetchAs(r, "Mozilla/5.0");
-      const desc = (res.body.match(/<meta name="description" content="([^"]*)"/) || [])[1] ?? "";
-      const faults = wrongArticles(renderedText(res.body) + " " + desc);
-      if (faults.length) found.push(`${r} — ${faults.slice(0, 2).join(", ")}`);
-    }
-    found.length
-      ? bad(`an article does not match the sound after it on ${found.length} page(s): ${found.join("; ")}`)
-      : ok(`articles before tickers and numbers read right on ${ROUTES.length} pages, descriptions included`);
-  }
-
   /* THE SAME ASSERTION FOR THE MAP HUB, which is the second-most-fetched page on the site.
      /liquidations opened with sixty words about what a model is and no number at all, while
      taking 20 verified ChatGPT-User fetches a day and 15 from Applebot. It carries the extra
@@ -592,7 +571,7 @@ console.log("\n5. sitemap");
     ] },
     { path: "/unlocks", want: [
       { label: "the largest lock's share of supply", re: /\d+(\.\d+)?% of supply/ },
-      { label: "the token it belongs to", re: /[A-Z]{2,6} lock (holds|held)/ },
+      { label: "the token it belongs to", re: /[A-Z]{2,6} lock holds/ },
     ] },
   ]) {
     const lead = await fetchAs(t.path, "GPTBot/1.1");
@@ -611,12 +590,6 @@ console.log("\n5. sitemap");
     const drift = llmsHostsAgree(llms.body, scriptSrc);
     drift.length ? bad(`llms.txt and the live Content-Security-Policy disagree:\n          ${drift.join("\n          ")}`)
       : ok("llms.txt names exactly the script hosts the live header permits — the file's claim about the site is the site");
-  }
-
-  {
-    const reg = JSON.parse(readFile(new URL("../src/data/vesting-contracts.json", import.meta.url), "utf8"));
-    const old = registerAge(reg.verifiedAt, Date.now());
-    old.length ? bad(old.join("; ")) : ok(`the vesting register was read ${reg.verifiedAt}, inside its 45-day limit`);
   }
 
   const dupHeads = duplicateHeadMetadata(heads);
@@ -864,10 +837,6 @@ for (const p of ["/funding/btc", "/funding/eth", "/funding/sol", "/funding/kpepe
   const renderedAt = new Date();   // within a second of when the server rendered it
   const card = /Next settlement<\/div>\s*<div[^>]*>([^<]*)</.exec(r.body)?.[1]?.trim();
   const stampStr = /<time datetime="([^"]+)"/.exec(r.body)?.[1];
-  /* THE CARD WAS REMOVED ON 19 OCTOBER 2026. Every covered contract settles hourly, so it read the
-     same hour on every contract page and told a reader nothing that page alone could. Absent is
-     correct now; if a card comes back, everything below still holds it to the next sixty minutes. */
-  if (!/Next settlement/.test(r.body)) { ok(`${p.padEnd(16)} no next-settlement card (removed 19 Oct 2026; hourly on every contract)`); continue; }
   if (!card || !stampStr) { bad(`${p} has no readable "Next settlement" card or render stamp`); continue; }
   if (card === "—") { ok(`${p.padEnd(16)} no next settlement published — dash, not a guess`); continue; }
   const m = /^(\d{2}):(\d{2})$/.exec(card);
@@ -885,13 +854,9 @@ for (const p of ["/funding/btc", "/funding/eth", "/funding/sol", "/funding/kpepe
   const stamp = new Date(stampStr);
   const cand = new Date(renderedAt); cand.setUTCHours(Number(m[1]), Number(m[2]), 0, 0);
   if (cand <= renderedAt) cand.setUTCDate(cand.getUTCDate() + 1);
-  /* IN MILLISECONDS, NOT ROUNDED MINUTES. A page rendered at 10:59:50 that said "Next settlement
-     11:00" was right and failed as "0 min from render time" (15 October 2026, four pages on a deploy
-     that finished at the top of the hour): rounding made ten seconds ahead read as not ahead. */
-  const aheadMs = cand - renderedAt;
-  const aheadMin = Math.round(aheadMs / 60000);
+  const aheadMin = Math.round((cand - renderedAt) / 60000);
   const lagMin = Math.round((renderedAt - stamp) / 60000);
-  aheadMs > 0 && aheadMs <= 3_600_000
+  aheadMin > 0 && aheadMin <= 60
     ? ok(`${p.padEnd(16)} ${card} UTC, ${aheadMin} min ahead of render (snapshot ${lagMin} min behind)`)
     : bad(`${p} "Next settlement ${card}" is ${aheadMin} min from render time — an hourly contract settles within 60, so this time is in the past or too far out`);
 }
@@ -1034,15 +999,6 @@ console.log("\n11. page weight on the wire");
        morning. That was the whole complaint. 18,000 is the observed 14,537 plus the quarter of
        headroom this list is specified to carry, not a round number picked to stop the alarm. */
     ["/funding", 18_000], ["/funding/btc", 92_000], ["/coins/bitcoin", 72_000],
-    /* SET FROM THE FIRST MEASUREMENT, 16 October 2026: 7,121b brotli for 55 rows. The usual quarter
-       of headroom; the table grows only when a contract joins coverage. */
-    ["/funding/paid", 9_000],
-    /* SET FROM THE FIRST MEASUREMENT, 16 October 2026: 7,037b brotli for 55 rows, plus the usual quarter. */
-    ["/funding/history", 9_000],
-    /* SET FROM THE FIRST MEASUREMENT, 16 October 2026: 6,613b brotli, plus the usual quarter. */
-    ["/funding/venues", 8_500],
-    /* FROZEN, set from the first measurement, 16 October 2026: 7,716b brotli, plus the usual quarter. */
-    ["/funding/august-2026", 9_600],
     /* RAISED 6,500 -> 9,000 ON 2 SEPTEMBER, on purpose, in a diff, with the reason. The page
        gained the ranked-bar figure — the ten largest books with their share of the total — and
        came in at 7,011b, 511 over. The ratchet is doing exactly what the paragraph above says it
@@ -1052,15 +1008,7 @@ console.log("\n11. page weight on the wire");
        and 511b over the wire buys the one thing a sorted table cannot say — that the top ten are
        most of the book. The new ceiling is the observed size plus the usual quarter of headroom,
        not a round number picked to stop the alarm. */
-    /* NOT RAISED (15 October 2026). The book line and change window came in 851b over; the bytes were
-       found on the page — whole-unit coordinates, no repeated area path, eight-hour steps, and the
-       scope attributes on 549 table elements — not in the ceiling. */
     ["/open-interest", 9_000], ["/liquidations", 60_000], ["/liquidations/survival", 30_000],
-    /* NOT RAISED FOR THE FOLDS (15 October 2026). /unlocks and /tools/leverage went 318b and 239b
-       over when their explanations moved under "see more", and both budgets were raised the same
-       day. Reversed: this measures what a reader downloads, folded text included, so the growth was
-       the signal. It came from the fold's own scoped styles — an inline <style> per page and a
-       data-astro-cid on five elements per fold — which now live in the cached global sheet. */
     ["/unlocks", 14_000], ["/watchlist", 12_000], ["/tools/leverage", 8_000],
     /* RAISED 8,000 -> 10,600 ON 19 AUGUST, on purpose, in a diff, with the reason — which is what
        the paragraph above demands of anyone who touches these numbers. The ratchet did its job: it
@@ -1072,7 +1020,6 @@ console.log("\n11. page weight on the wire");
        8,489 plus the quarter of headroom this list is specified to carry, not a round number
        chosen to stop the alarm. */
     ["/about", 10_600],
-    ["/corrections", 13_500],
   ];
   for (const [path, budget] of BUDGET) {
     const { wire, enc } = await wireSize(path);
@@ -1558,40 +1505,6 @@ console.log("\n17. the URLs this site publishes about itself resolve to a signed
         ? bad(`${broken.length} published URL(s) do not resolve:\n         ` + broken.join("\n         "))
         : ok(`all ${found.size} external URL(s) published on this site resolve, or are refused by an anti-bot edge rather than gone`);
     }
-  }
-}
-
-/* THE SERVER-SIDE ARRIVAL COUNT COUNTS, AND COUNTS ONCE. One navigation shaped exactly as a
-   browser sends it, carrying utm_source=coinliqui-selfcheck, must raise today's selfcheck tally in
-   D1 by one — and a fetch without the browser's Sec-Fetch headers, made a moment later, must not.
-   The selfcheck source is excluded from scripts/entries.mjs, so this check never inflates the
-   figures it guards. See src/lib/entries.ts. */
-console.log("\nA. the server-side arrival count");
-{
-  const { execFileSync } = await import("node:child_process");
-  const day = new Date().toISOString().slice(0, 10);
-  const read = () => {
-    const raw = execFileSync("npx", ["wrangler", "d1", "execute", "coinliqui", "--remote", "--json", "--command",
-      `SELECT COALESCE(SUM(n),0) AS n FROM entry_day WHERE day='${day}' AND src='coinliqui-selfcheck'`], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
-    return Number(JSON.parse(raw.slice(raw.indexOf("[")))[0].results[0].n);
-  };
-  try {
-    const before = read();
-    const headers = { "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
-      "sec-fetch-mode": "navigate", "sec-fetch-dest": "document", "sec-fetch-site": "cross-site" };
-    /* curl, not fetch: Node's fetch sets sec-fetch-mode: cors itself and overrides the header,
-       so the navigation it sends is not the one a browser sends (found on the first run). */
-    const curl = (hs) => execFileSync("curl", ["-s", "-o", "/dev/null", ...Object.entries(hs).flatMap(([k, v]) => ["-H", `${k}: ${v}`]),
-      `${ORIGIN}/liquidations?utm_source=coinliqui-selfcheck`]);
-    curl(headers);
-    curl({ "user-agent": headers["user-agent"] });
-    await new Promise((r) => setTimeout(r, 4000));
-    const after = read();
-    after - before === 1
-      ? ok(`one browser navigation counted once (${before} → ${after}); the same fetch without Sec-Fetch headers was not counted`)
-      : bad(`the arrival count moved by ${after - before} for one browser navigation and one header-less fetch (expected exactly 1)`);
-  } catch (e) {
-    bad(`could not read entry_day: ${String(e?.message ?? e).slice(0, 160)}`);
   }
 }
 

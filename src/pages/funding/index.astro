@@ -1,8 +1,7 @@
 ---
-import More from "../../components/More.astro";
 import Base from "../../layouts/Base.astro";
 import { getSnapshot, coldStart, getLive } from "../../lib/hyperliquid.ts";
-import { VENUE_LABEL, pct, usd, rawRate, paysClass, paysLabel, LEGEND_PAYS, settlementWords, venueReachWords, HL_BASE_APR, isHlBaseApr, type Venue } from "../../lib/funding.ts";
+import { VENUE_LABEL, pct, usd, rawRate, paysClass, paysLabel, LEGEND_FUNDING, settlementWords, venueReachWords, HL_BASE_APR, isHlBaseApr, type Venue } from "../../lib/funding.ts";
 
 import { freshness, ageWords, minutesSince } from "../../lib/freshness.ts";
 import Figure from "../../components/Figure.astro";
@@ -10,7 +9,7 @@ import Overview from "../../components/Overview.astro";
 import { heatScale, heatStep as heatStepOf, signedBar, type HeatScale } from "../../lib/viz.ts";
 import { extremeBy, widestSpread } from "../../lib/extreme.ts";
 import Spark from "../../components/Spark.astro";
-import { readSparks, sparkScale, sparkDaysOf } from "../../lib/sparks.ts";
+import { readSparks, sparkScale, SPARK_POINTS, SPARK_STEP_MS } from "../../lib/sparks.ts";
 import { coverageRule, coverageToday } from "../../lib/coverage.ts";
 const env = (Astro.locals as any)?.runtime?.env;
 const snap = await getSnapshot(env?.SNAPSHOT, import.meta.env.DEV);
@@ -203,7 +202,9 @@ const sparkOf = (sym: string) => (sparks.status === "ready" ? sparks.map.series[
 const sparkScaleAll = sparks.status === "ready"
   ? sparkScale(rows.map(({ p }) => sparkOf(p.symbol)).filter((v): v is number[] => Array.isArray(v) && v.length > 1))
   : null;
-const sparkDays = sparkDaysOf(sparks);
+const sparkDays = sparks.status === "ready"
+  ? Math.max(1, Math.round((Math.min(sparks.covered, SPARK_POINTS) * SPARK_STEP_MS) / 86_400_000))
+  : 0;
 /* THE EXTREME THE CLIP EXISTS FOR, NAMED FROM THE DATA. The note under the table said "one
    contract at −60% would otherwise flatten the other forty-nine" — a number and a count typed in on
    the day the column was built. The audit on 16 September found 49 contracts drawn and no −60%
@@ -223,13 +224,7 @@ const sparkRows = sparks.status === "ready"
   : 0;
 
 
-/* THE VENUES IN THE TITLE, because they are what the page is and what readers ask for. Search
-   Console, 17.09–14.10.2026: "hyperliquid funding rates" was shown 25 times across SIX of our URLs
-   (/funding/hype, /funding, /funding/pump, /funding/sol, /funding/btc, /funding/ltc) at positions
-   80–97 — no page claimed the query, and this one answers it. Google's title-link guidance asks for
-   a title that describes the page accurately; "normalised to APR" described the method. Re-read the
-   query's position after 30 October 2026 (two weeks of data delay). */
-const title = "Funding rates on Hyperliquid, Binance and Bybit, annualised";
+const title = "Crypto funding rates, normalised to APR";
 const description =
   /* THE FRAMING, NOT THE FIGURE. The count changes every tick and a description that moves every
      five minutes reads as unstable; the QUESTION it answers does not move, and it is the one hook
@@ -296,11 +291,8 @@ const description =
         ))}
       </div>
     </div>
-    <Fragment slot="note">
-    <p>{LEGEND_PAYS}.</p>
-    <More label="How to read these bars, and the contracts not drawn">
-    <p>
-      Each bar runs from zero to its own rate, so which side of the line it
+    <p slot="note">
+      {LEGEND_FUNDING}. Each bar runs from zero to its own rate, so which side of the line it
       falls on is the side that is paying; the dotted rule is Hyperliquid&rsquo;s
       {modalIsBase ? " base rate" : " most common rate"} at {pct(modalApr)}, which is what
       &ldquo;priced away from&rdquo; is measured against.
@@ -320,15 +312,12 @@ const description =
       any of them</>}. A contract only leaves it when the premium between mark and oracle is wide
       enough to move it.
     </p>
-    </More>
-    </Fragment>
   </Figure>
 
   {/* THE METHOD, DEMOTED RATHER THAN DELETED. This used to be the first thing on the page; it is
       the reason the numbers above are comparable and it still has to be here, in the body copy
       colour, after the evidence rather than in front of it. The two learn links travel with it —
       a reader who wants the definition wants it at this point, not before the answer. */}
-  <More label="How rates from different venues are made comparable">
   <p class="section-note" style="margin:0 0 12px">
     {snap.perps.length} perpetual contracts, each venue's rate annualised; {venueReachWords(snap.perps)}.
     {" "}{settlementWords(snap.perps)} &mdash; so comparing the quoted numbers
@@ -339,8 +328,6 @@ const description =
     <a class="link" href="/learn/funding-rate"> What a funding rate is &rarr;</a>
     <a class="link" href="/methodology"> How it is computed &rarr;</a>
   </p>
-  </More>
-  <p class="section-note" style="margin:0 0 12px"><a class="link" href="/funding/paid">What these rates cost in dollars over 30 days &rarr;</a> · <a class="link" href="/funding/history">What they took from a long over seven months &rarr;</a> · <a class="link" href="/funding/venues">How often venues disagree about who pays &rarr;</a> · <a class="link" href="/funding/august-2026">The August 2026 spike &rarr;</a></p>
 
   <p class="clock" style="margin:0 0 12px">
     {fresh.note} Open interest and 24-hour volume come from the snapshot taken
@@ -399,7 +386,6 @@ const description =
     </table>
   </div>
 
-  <More label="How the shape column is drawn, and which coins are covered">
   {sparkScaleAll && (
     <p class="section-note" style="margin-top:12px">
       {/* THE AXIS, STATED. A column of sparklines whose scale is not written down is a column a
@@ -423,7 +409,6 @@ const description =
         "N of 234" counted 56 delisted markets as listed (audit, 16 September 2026). */}
     {coverageToday(snap)} {coverageRule()} A coin below the floor is left out rather than published with sparse data, and the retained band means a published URL does not appear and vanish on ordinary noise.
   </p>
-  </More>
 
   <style>
     .raw { display: block; font-size: 11px; color: var(--text-faint); font-weight: 400; }

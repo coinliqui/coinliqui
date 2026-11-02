@@ -1,6 +1,4 @@
 import { type Candle, type FundingPoint, T, O, H, L, C, V } from "./candles.ts";
-import { axisDp, shortDate, signedPct } from "../../public/shared.js";
-import { HOURS_PER_YEAR, isHlBaseApr } from "./funding.ts";
 import { U, CH, INK, SANS, MONO, niceTicks, timeTicks, xTick, text, rect, line, fint, crosshair, n2, FS_AXIS, FS_MICRO, PILL_H, PILL_R, PILL_GAP } from "./chart.ts";
 
 /* =========================================================================================
@@ -180,6 +178,38 @@ export interface PriceChart {
   dp: number; bars: number;
 }
 
+/* THE CANDLE SENTENCE DESCRIBED CANDLES ON THE LINE VIEW. It was one server string for both chart
+   styles, and the client swap never touched it: /coins/bnb?tf=1m&view=line, on production on 16
+   September 2026, drew one neutral close line (stroke #e8ecf1) and no candle bodies at all under
+   "Candles are green for up and red for down, with the up candles hollow". All 26 line variants
+   fetched that day said it.
+   It was also not true of every candle on the Candles view. buildPriceChart outlines an up body
+   only when it is tall enough to outline, and draws the rest solid: counted on the local render
+   of /coins/bitcoin the same day, 30 of the 99 green candles on 4H and 33 of 154 on 30m were
+   solid — the ones whose direction can be read only from colour.
+   So the sentence is chosen by the style that was drawn, and the solid bodies are COUNTED FROM
+   THE DRAWN SVG: every hollow body is the only <rect fill="none"> the price chart emits, and
+   every green candle is a point whose close is at or above its open (the same `c >= o` that picks
+   the colour). No threshold is copied out of series.ts, so if that one moves this count follows
+   it. The sentence is a [data-tfstat] so the client swaps it with the panel — see the note on the
+   legend below.
+   MOVED HERE ON 17 SEPTEMBER 2026 because the contract page kept the sentence this replaced: its
+   legend said "The up candles are hollow" under the same buildPriceChart bars, on every timeframe
+   of /funding/{symbol}. */
+export function candleStyleNote(chart: PriceChart, mode: ChartMode): string {
+  if (mode === "line") {
+    return "The line joins each bar's close instead of drawing candles, so a bar's high and low are not on it and the period high and low can sit beyond it; the volume bars beneath are green where a bar closed at or above its open and red where it closed below.";
+  }
+  const green = chart.points.filter((p) => p[5] >= p[2]).length;
+  const hollow = (chart.svg.match(/<rect\b[^>]*\bfill="none"/g) ?? []).length;
+  const solid = Math.max(0, green - hollow);
+  const lead = "Candles and the volume bars beneath them are green where a bar closed at or above its open and red where it closed below";
+  if (green === 0) return `${lead}.`;
+  if (solid === 0) return `${lead}, and every green body is hollow, so direction reads without relying on colour.`;
+  if (hollow === 0) return `${lead}. Every green body here is too short to outline and is drawn solid, so on this view direction is carried by colour alone.`;
+  return `${lead}, and green bodies are hollow so direction reads without relying on colour — except ${solid} of the ${green} green candles, whose ${solid === 1 ? "body is" : "bodies are"} too short to outline and drawn solid.`;
+}
+
 /** Candles or a close line. The line is a presentation of the same array, not a second series. */
 export type ChartMode = "candle" | "line";
 
@@ -194,42 +224,6 @@ export type ChartMode = "candle" | "line";
  * `end` is the NEXT candle's timestamp rather than start + barMs, so the short leading bar that
  * aggregate() emits when the source does not divide evenly is closed correctly too.
  */
-/* =========================================================================================
-   ONE CONTRACT'S FUNDING, DESCRIBED FROM ITS OWN SERIES.
-
-   Measured 15 October 2026: the prose of /funding/btc and /funding/eth was 91% the same five-word
-   phrases — the template's — and only the figures differed. This is a short account no sibling can
-   share, read from the same daily averages the funding figure draws (fundingByBar), so the words and
-   the picture describe one series: how many days each side paid, the run the contract is in now and
-   when it began, where the latest day sits among the window's days, and how many days it rested at
-   the venue's base rate.
-   ========================================================================================= */
-export interface FundingRegime {
-  days: number; longsPaid: number; shortsPaid: number; atBase: number;
-  /** the current run: which side, how many consecutive days, and the day it began */
-  run: { side: "long" | "short"; days: number; since: number };
-  /** days in the window whose daily average was below the latest day's */
-  below: number;
-}
-export function fundingRegime(candles: Candle[], funding: FundingPoint[] | null, tf: Timeframe): FundingRegime | null {
-  if (!funding || funding.length < 5 || candles.length < 7) return null;
-  const by = fundingByBar(candles, funding, tf.hours * 3_600_000);
-  const pts = candles.map((c) => [c[T], by.get(c[T])] as const).filter((x): x is readonly [number, number] => Number.isFinite(x[1]));
-  if (pts.length < 7) return null;
-  const side = (a: number) => (a >= 0 ? "long" : "short") as "long" | "short";
-  const last = pts[pts.length - 1];
-  let k = pts.length - 1;
-  while (k > 0 && side(pts[k - 1][1]) === side(last[1])) k--;
-  return {
-    days: pts.length,
-    longsPaid: pts.filter(([, a]) => a > 0).length,
-    shortsPaid: pts.filter(([, a]) => a < 0).length,
-    atBase: pts.filter(([, a]) => isHlBaseApr(a)).length,
-    run: { side: side(last[1]), days: pts.length - k, since: pts[k][0] },
-    below: pts.filter(([, a]) => a < last[1]).length,
-  };
-}
-
 export function fundingByBar(
   candles: Candle[],
   funding: FundingPoint[],
@@ -243,8 +237,8 @@ export function fundingByBar(
     const end = ci + 1 < candles.length ? candles[ci + 1][T] : start + barMs;
     while (i < sorted.length && sorted[i][0] < start) i++;
     let sum = 0, cnt = 0, j = i;
-    while (j < sorted.length && sorted[j][0] < end) { sum += sorted[j][1] * HOURS_PER_YEAR; cnt++; j++; }
-    if (cnt) out.set(start, sum / cnt);   // HL settles hourly: APR = rate x HOURS_PER_YEAR
+    while (j < sorted.length && sorted[j][0] < end) { sum += sorted[j][1] * 8760; cnt++; j++; }
+    if (cnt) out.set(start, sum / cnt);   // HL settles hourly: APR = rate x 8760
     i = j;
   }
   return out;
@@ -261,19 +255,13 @@ export function buildPriceChart(
      (An earlier version of this note said the coin pages keep the strip. They do not: /coins/{coin}
      passes no funding series at all, so its chart has never drawn one — a comment asserting what
      the code does not do, caught by a verifier on 16 September.) */
-  opts: { band?: boolean; width?: number } = {},
+  opts: { band?: boolean } = {},
 ): PriceChart | null {
-  /* The viewBox width. The narrow variant (narrowChart) draws fewer bars into a phone-shaped box so
-     its axis fits the bars a phone shows and its labels stay legible without sideways scrolling. */
-  const W = opts.width ?? CH.w;
   const gid = `f${tf.key}`;
   if (candles.length < 3) return null;
   const px = candles[candles.length - 1][C];
-  /* axisDp, not a ladder of its own: this one stopped at four decimals, so a coin at $0.00001234
-     read "0.0000" down its whole axis — the defect public/shared.js records as fixed for the
-     heatmap — and DOGE's price chart showed four decimals beside its heatmap's five. */
-  const dp = axisDp(px);
-  const plotX = CH.padL, plotW = W - CH.padL - CH.padR;
+  const dp = px >= 100 ? 0 : px >= 1 ? 2 : 4;
+  const plotX = CH.padL, plotW = CH.w - CH.padL - CH.padR;
   const axisX = plotX + plotW;
 
   /* Funding coverage decides whether the band is drawn at all. A panel covering 3% of the
@@ -340,15 +328,14 @@ export function buildPriceChart(
   const clampF = (a: number) => Math.max(-fmax, Math.min(fmax, a));
 
   const s: string[] = [];
-  s.push(rect(0, 0, W, LY.h, INK.well, ` rx="${CH.radius}"`));
+  s.push(rect(0, 0, CH.w, LY.h, INK.well, ` rx="${CH.radius}"`));
 
   const lastY = yOf(px);
   /* Axis labels live in one group so the interaction layer can fade them while the crosshair
      is on. Without that the live pill lands on top of a static tick and both stay half
      readable, which is the single ugliest thing a crosshair can do. */
   const yLabels: string[] = [];
-  /* A taller, narrower box takes more ticks, or the one near the live pill leaves a single label. */
-  for (const v of niceTicks(lo, hi, W < 800 ? 8 : 5)) {
+  for (const v of niceTicks(lo, hi, 5)) {
     const y = yOf(v);
     s.push(line(plotX, y, axisX, y, INK.hair));
     if (Math.abs(y - lastY) > 16) yLabels.push(text(axisX + PILL_GAP, y + 3.5, dp ? v.toFixed(dp) : fint(v), INK.dim, FS_AXIS));
@@ -435,8 +422,8 @@ export function buildPriceChart(
       s.push(`<polyline points="${pts}" fill="none" stroke="${side > 0 ? INK.paysL : INK.paysS}" stroke-width="1.1" stroke-linejoin="round" opacity=".9"/>`);
     }
     s.push(line(plotX, fz, axisX, fz, INK.zero));
-    s.push(text(axisX + PILL_GAP, fundY + 11, `${signedPct(fmax, 0)} APR`, INK.faint, FS_MICRO));
-    s.push(text(axisX + PILL_GAP, fundY + fundH - 2, signedPct(-fmax, 0), INK.faint, FS_MICRO));
+    s.push(text(axisX + PILL_GAP, fundY + 11, `+${(fmax * 100).toFixed(0)}% APR`, INK.faint, FS_MICRO));
+    s.push(text(axisX + PILL_GAP, fundY + fundH - 2, `−${(fmax * 100).toFixed(0)}%`, INK.faint, FS_MICRO));
   }
 
   /* THE LAST-PRICE MARKER IS TAGGED so the live layer can move it.
@@ -449,7 +436,7 @@ export function buildPriceChart(
   s.push(rect(axisX + PILL_GAP, lastY - PILL_H / 2, 74, PILL_H, INK.acc, ` rx="${PILL_R}" data-live="pill"`));
   s.push(text(axisX + PILL_GAP + 37, lastY + 4, "$" + (dp ? px.toFixed(dp) : fint(px)), INK.accInk, 11.5, "middle", 600, MONO, ` data-live="txt"`));
 
-  s.push(`<g data-ax="x">${timeTicks(candles.map((c) => c[T]), W < 800 ? 4 : 8)
+  s.push(`<g data-ax="x">${timeTicks(candles.map((c) => c[T]), 8)
     .map(({ i, label }) => xTick(xOf(i), LY.h - 9, label)).join("")}</g>`);
   s.push(crosshair(plotX, priceY, plotW, LY.h - CH.padB - priceY, axisX, { dot: true }));
 
@@ -461,7 +448,7 @@ export function buildPriceChart(
        about a panel that is not in the picture. A name asserting what its expression does not
        compute is the defect this codebase keeps finding in itself; it is the same fault whether
        the reader is a person or an extractor. */
-    svg: `<svg viewBox="0 0 ${W} ${LY.h}" width="100%" role="img" aria-label="${fundOn ? "Price, volume and funding history" : "Price and volume history"}">${s.join("")}</svg>`,
+    svg: `<svg viewBox="0 0 ${CH.w} ${LY.h}" width="100%" role="img" aria-label="${fundOn ? "Price, volume and funding history" : "Price and volume history"}">${s.join("")}</svg>`,
     points: candles.map((c, i) => [
       +xOf(i).toFixed(2), c[T], c[O], c[H], c[L], c[C], c[V],
       aprAt.has(c[T]) ? +aprAt.get(c[T])!.toFixed(6) : NaN, +yOf(c[C]).toFixed(2),
@@ -479,29 +466,8 @@ export function buildPriceChart(
   };
 }
 
-/* =========================================================================================
-   THE PRICE CHART ON A PHONE, DRAWN FOR A PHONE.
-
-   Below 760px the full chart scrolls sideways at a legible size and opens on its newest bars —
-   but its price axis is fitted to every bar, so on /funding/btc (15 October 2026) the sixty days a
-   phone showed, all above $74,000, sat in the top third of a box scaled to the 200-day low of
-   $57,768, with sixty per cent of the height empty. This is the same builder on the newest bars,
-   in a narrower box, so the axis fits what is on screen. The wide chart is unchanged and is the one
-   shown from 760px up; CSS picks one (Base.astro, .chart--price).
-   ========================================================================================= */
-export const NARROW_W = 380;
-export const NARROW_BARS = 60;
-export function narrowChart(candles: Candle[], funding: FundingPoint[] | null, tf: Timeframe, mode: ChartMode = "candle"): PriceChart | null {
-  return buildPriceChart(candles.slice(-NARROW_BARS), funding, tf, mode, { band: false, width: NARROW_W });
-}
-
-/** The crosshair's attributes for a price chart's svg, once for both pages and both widths. */
-export function xhairAttrs(chart: PriceChart, ptsId: string, unit: string, tf: Timeframe): string {
-  return `data-xhair="${ptsId}" data-feed="mark" data-plot="${chart.plot.join(",")}" data-prange="${chart.range[0]},${chart.range[1]}" ` +
-    `data-axx="${chart.axisX}" data-slot="${chart.slot.toFixed(2)}" data-taxisy="${CHART_H - 27}" data-unit="${unit}" data-dp="${chart.dp}" data-intraday="${tf.hours < 24 ? 1 : 0}" `;
-}
-
-export { shortDate } from "../../public/shared.js";
+const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+export const shortDate = (t: number) => { const d = new Date(t); return `${d.getUTCDate()} ${MON[d.getUTCMonth()]} ${d.getUTCFullYear()}`; };
 export const CHART_H = LY.h;
 
 /* =========================================================================================
@@ -531,8 +497,8 @@ export interface FundingChart {
   coverage: number;
   /** First bar with a reading, or null when none has one. */
   from: number | null;
-  /** The drawn range, annualised: the axis runs −down..+up, each side to its own 96th percentile. */
-  up: number; down: number;
+  /** Half-height of the drawn range: the axis runs −max..+max, annualised. */
+  max: number;
   /** Readings beyond that range, pinned to the edge and disclosed rather than hidden. */
   clipped: number;
   /** Highest and lowest annualised readings actually present, whatever the axis shows. */
@@ -544,11 +510,7 @@ export interface FundingChart {
  *  much that a page about a rate becomes a page about a picture. */
 const FUND_H = 200;
 
-export function buildFundingChart(candles: Candle[], funding: FundingPoint[] | null, tf: Timeframe, width: number = CH.w): FundingChart | null {
-  /* `width` is the viewBox width. At 1260 a 375px phone drew this — the page's own subject — as a
-     strip 283×45 with five-pixel labels (15 October 2026); the page also renders it at NARROW_W for
-     phones, every bar kept, so "90 days drawn" stays true at both widths. */
-  const W = width;
+export function buildFundingChart(candles: Candle[], funding: FundingPoint[] | null, tf: Timeframe): FundingChart | null {
   if (candles.length < MIN_CHART_BARS || !funding || funding.length < 5) return null;
   const barMs = tf.hours * 3_600_000;
   const aprAt = fundingByBar(candles, funding, barMs);
@@ -558,27 +520,18 @@ export function buildFundingChart(candles: Candle[], funding: FundingPoint[] | n
      right edge that reads as a rendering fault rather than as data. */
   if (cov.length / candles.length < 0.06) return null;
 
-  const plotX = CH.padL, plotW = W - CH.padL - CH.padR;
+  const plotX = CH.padL, plotW = CH.w - CH.padL - CH.padR;
   const axisX = plotX + plotW;
   const top = CH.padT, h = FUND_H - CH.padT - CH.padB;
+  const zeroY = top + h / 2;
   const n = candles.length;
   const xOf = (i: number) => plotX + (plotW / n) * (i + 0.5);
 
-  /* EACH SIDE TO ITS OWN RANGE. The axis was ±(96th percentile of |APR|), so BTC — longs paying on
-     88 of 90 days — drew its whole history in the top half over an empty bottom half, at half the
-     height it could have had (seen at 375px on /funding/btc, 15 October 2026). Each side now runs to
-     its own 96th percentile, and either side keeps at least an eighth of the larger one, so zero is
-     never the edge and two short-paying days still have somewhere to show. */
+  const mags = [...aprAt.values()].map(Math.abs).sort((a, b) => a - b);
+  const max = Math.max(0.01, mags.length ? mags[Math.floor(mags.length * 0.96)] : 0.01);
+  const clipped = mags.filter((m) => m > max).length;
   const vals = [...aprAt.values()];
-  const q96 = (xs: number[]) => (xs.length ? xs.sort((a, b) => a - b)[Math.min(xs.length - 1, Math.floor(xs.length * 0.96))] : 0);
-  const rawUp = q96(vals.filter((v) => v > 0)), rawDown = q96(vals.filter((v) => v < 0).map((v) => -v));
-  const span = Math.max(0.01, rawUp, rawDown);
-  const up = Math.max(rawUp, span / 8), down = Math.max(rawDown, span / 8);
-  const clipped = vals.filter((v) => v > up || -v > down).length;
-  const zeroY = top + (h * up) / (up + down);
-  const yOf = (a: number) => a >= 0
-    ? zeroY - (Math.min(a, up) / up) * (zeroY - top)
-    : zeroY + (Math.min(-a, down) / down) * (top + h - zeroY);
+  const yOf = (a: number) => zeroY - (Math.max(-max, Math.min(max, a)) / max) * (h / 2);
 
   const s: string[] = [];
   const gid = `fc${tf.key}`;
@@ -605,63 +558,18 @@ export function buildFundingChart(candles: Candle[], funding: FundingPoint[] | n
     s.push(`<polyline points="${pts}" fill="none" stroke="${side > 0 ? INK.paysL : INK.paysS}" stroke-width="1.4" stroke-linejoin="round" opacity=".95"/>`);
   }
   s.push(line(plotX, zeroY, axisX, zeroY, INK.zero));
-  s.push(text(axisX + PILL_GAP, top + 11, `${signedPct(up, 0)} APR`, INK.faint, FS_MICRO));
-  /* Zero's label sits above its line when the band below is too thin to hold it and the bottom
-     label apart — on BTC the two read as one "0% −2%" (15 October 2026). */
-  s.push(text(axisX + PILL_GAP, top + h - zeroY < 24 ? zeroY - 3 : zeroY + 4, "0%", INK.dim, FS_MICRO));
-  s.push(text(axisX + PILL_GAP, top + h - 2, signedPct(-down, 0), INK.faint, FS_MICRO));
-  s.push(`<g data-ax="x">${timeTicks(candles.map((c) => c[T]), W < 800 ? 4 : 8)
+  s.push(text(axisX + PILL_GAP, top + 11, `+${(max * 100).toFixed(0)}% APR`, INK.faint, FS_MICRO));
+  s.push(text(axisX + PILL_GAP, zeroY + 4, "0%", INK.dim, FS_MICRO));
+  s.push(text(axisX + PILL_GAP, top + h - 2, `−${(max * 100).toFixed(0)}%`, INK.faint, FS_MICRO));
+  s.push(`<g data-ax="x">${timeTicks(candles.map((c) => c[T]), 8)
     .map(({ i, label }) => xTick(xOf(i), FUND_H - 9, label)).join("")}</g>`);
 
   return {
-    svg: `<svg viewBox="0 0 ${W} ${FUND_H}" width="100%" role="img" aria-label="Funding rate history, annualised, with the side paying shown by colour">${s.join("")}</svg>`,
+    svg: `<svg viewBox="0 0 ${CH.w} ${FUND_H}" width="100%" role="img" aria-label="Funding rate history, annualised, with the side paying shown by colour">${s.join("")}</svg>`,
     coverage: cov.length / candles.length,
     from: candles[cov[0]][T],
-    up, down, clipped,
+    max, clipped,
     hi: Math.max(...vals), lo: Math.min(...vals),
     bars: cov.length,
   };
-}
-
-/**
- * THE DAILY CLOSE A "SINCE N DAYS AGO" IS MEASURED FROM: the last daily bar that had closed by `at`.
- * Its close time is returned with it, so a page prints the instant it measured from and two coins are
- * compared only when both series hold that same close.
- */
-export function dailyCloseBy(candles: Candle[] | null | undefined, at: number): { close: number; at: number } | null {
-  if (!candles?.length) return null;
-  const DAY = 86_400_000;
-  for (let i = candles.length - 1; i >= 0; i--) {
-    const end = candles[i][T] + DAY;
-    if (end <= at) return Number.isFinite(candles[i][C]) && candles[i][C] > 0 ? { close: candles[i][C], at: end } : null;
-  }
-  return null;
-}
-
-/**
- * ONE CONTRACT'S MOVE AGAINST ANOTHER'S, over 24 hours, 7 and 30 days — the rows coin pages and
- * contract pages both print (src/components/Versus.astro). Both "now" figures are marks from one
- * snapshot; 7 and 30 days run from the same daily close in both series (dailyCloseBy), and a
- * window whose two closes differ is left out rather than compared across different starts.
- */
-export interface VersusRow { label: string; own: number; ref: number; from: number | null }
-export function versusRows(
-  own: { markPx: number; change24h: number } | null | undefined,
-  ref: { markPx: number; change24h: number } | null | undefined,
-  ownDaily: Candle[] | null | undefined,
-  refDaily: Candle[] | null | undefined,
-  at: number,
-): VersusRow[] {
-  if (!own || !ref) return [];
-  const rows: (VersusRow | null)[] = [
-    { label: "24 hours", own: own.change24h, ref: ref.change24h, from: null },
-    ...[7, 30].map((days) => {
-      const a = dailyCloseBy(ownDaily, at - days * 86_400_000);
-      const b = dailyCloseBy(refDaily, at - days * 86_400_000);
-      return a && b && a.at === b.at
-        ? { label: `${days} days`, own: own.markPx / a.close - 1, ref: ref.markPx / b.close - 1, from: a.at }
-        : null;
-    }),
-  ];
-  return rows.filter((r): r is VersusRow => r != null && Number.isFinite(r.own) && Number.isFinite(r.ref));
 }

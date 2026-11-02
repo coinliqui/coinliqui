@@ -1,6 +1,5 @@
 ---
 import Base from "../layouts/Base.astro";
-import More from "../components/More.astro";
 import { getSnapshot, coldStart } from "../lib/hyperliquid.ts";
 import { pct, usd, paysClass, LEGEND_FUNDING, type Venue } from "../lib/funding.ts";
 import { PINNED_KEY } from "../lib/site.ts";
@@ -214,7 +213,6 @@ const visitNote = " Opening the page is counted by PostHog, which records no cli
   </div>
 
   <h2 class="section">Why there is no login</h2>
-  <More label="Why your pins stay in this browser">
   <p class="prose">
     A pinned list is four ticker symbols. Storing that on a server would mean an account, a
     credential store, a reset flow and a row with your name on it — all so a table could sort
@@ -226,7 +224,6 @@ const visitNote = " Opening the page is counted by PostHog, which records no cli
     survive clearing your browser data. That is the entire cost, and it buys a feature that
     needs no account at all.
   </p>
-  </More>
 
   <p class="section-note" style="margin-top:20px">
     <a class="link" href="/funding">All coins with per-venue detail →</a>
@@ -377,7 +374,7 @@ const visitNote = " Opening the page is counted by PostHog, which records no cli
     .wl-off[hidden] { display: none; }
     .wl-clear { margin-left: auto; height: 32px; padding: 0 12px; font-size: 13px; }
     /* The direction mark follows the class the overlay flips with the sign — see the note above
-       the clock line. Same threshold as paysClass(): pays-l is apr >= 0. */
+       the clock line. Same threshold as paysArrow(): pays-l is apr >= 0. */
     #wl td.pays-l[data-repaint="apr"]::before { content: "\25B2\00A0"; }
     #wl td.pays-s[data-repaint="apr"]::before { content: "\25BC\00A0"; }
     .pin {

@@ -1,5 +1,5 @@
 import { toApr, type Venue, type VenueFunding } from "./funding.ts";
-import { tableFor, type MarginTable } from "./margin.ts";
+import type { MarginTable } from "./margin.ts";
 import { MAP_DEFAULT } from "./routes.ts";
 
 const INFO = "https://api.hyperliquid.xyz/info";
@@ -76,8 +76,6 @@ export interface Snapshot {
   universeCount: number;
   /** Published contracts kept although outranked past SYMBOL_CAP (see SYMBOL_RETAIN_EXTRA). */
   keptPastCap?: number;
-  /** Contracts above the floor held back because no tier table is committed for them. */
-  heldBack?: string[];
   /**
    * False only before the ingest worker has ever written to KV. Pages must check this
    * and return a 503 rather than render with an empty perps array — see coldStart().
@@ -232,17 +230,12 @@ export async function fetchSnapshot(published: string[] = []): Promise<Snapshot>
   });
 
   const live = new Set(published);
-  const aboveFloor = (p: Perp) =>
-    Number.isFinite(p.oiNotional) &&
-    (p.oiNotional >= OI_NOTIONAL_FLOOR || (live.has(p.symbol) && p.oiNotional >= OI_RETIRE_FLOOR));
-  /* A CONTRACT IS COVERED ONLY IF THIS SITE CAN BUILD ITS PAGES. Without a committed tier table there
-     is no maintenance margin, corridor or liquidation price, and /funding/{symbol} answers 404 — so a
-     contract above the floor with an uncommitted table is held back, named in `heldBack` for /status,
-     until a deploy commits its table (gen-margin-tables --check reads the full universe and stops the
-     deploy until it does). See tableFor in src/lib/margin.ts. */
-  const heldBack = all.filter((p) => aboveFloor(p) && !tableFor(p)).map((p) => p.symbol);
   const eligible = all
-    .filter((p) => aboveFloor(p) && tableFor(p) !== undefined)
+    .filter(
+      (p) =>
+        Number.isFinite(p.oiNotional) &&
+        (p.oiNotional >= OI_NOTIONAL_FLOOR || (live.has(p.symbol) && p.oiNotional >= OI_RETIRE_FLOOR)),
+    )
     .sort((a, b) => b.oiNotional - a.oiNotional);
   /* The largest SYMBOL_CAP, then incumbents the rank alone would have evicted — see
      SYMBOL_RETAIN_EXTRA. Largest first within the retained band too, so the bound cuts the
@@ -265,7 +258,6 @@ export async function fetchSnapshot(published: string[] = []): Promise<Snapshot>
     eligibleCount: all.filter((p) => Number.isFinite(p.oiNotional) && p.oiNotional >= OI_NOTIONAL_FLOOR).length,
     universeCount: listed,
     keptPastCap: kept.length,
-    heldBack,
   };
 }
 
@@ -346,21 +338,6 @@ export async function getLive(kv: KVNamespace | undefined): Promise<LiveSet | nu
     if (v?.mark && Object.keys(v.mark).length) return v;
   } catch { /* fall through */ }
   return null;
-}
-
-/**
- * THE MARK A PAGE COMPUTES FROM, AND WHEN IT WAS READ — one rule for every page. The one-minute live
- * mark when the live key holds a finite one for the symbol, else the five-minute snapshot's. On
- * 15 October 2026 /funding/btc and /coins/bitcoin used the live mark while /liquidations and the
- * calculators used the snapshot's and called it live: a 10× long liquidated at $73,807.29 on one and
- * $73,767.19 on the other, the funding page linking "size a position against this liquidation price"
- * to a tool that showed the second. `live` says which clock it came from.
- */
-export function currentMark(snap: Snapshot, live: LiveSet | null, perp: Perp): { px: number; at: number; live: boolean } {
-  const m = live?.mark?.[perp.symbol];
-  return typeof m === "number" && Number.isFinite(m) && m > 0 && live && Number.isFinite(live.at)
-    ? { px: m, at: live.at, live: true }
-    : { px: perp.markPx, at: snap.fetchedAt, live: false };
 }
 
 /** Margin tables change rarely; fetched at build time and committed. */

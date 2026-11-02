@@ -1,5 +1,4 @@
 import { defineMiddleware } from "astro:middleware";
-import { classifyEntry, ENTRY_UPSERT } from "./lib/entries.ts";
 
 /**
  * Two jobs, both about what the edge is allowed to tell the outside world.
@@ -106,21 +105,6 @@ export const onRequest = defineMiddleware(async (ctx, next) => {
        be trading the site's one distinguishing claim for 4% of an allowance nobody is near.
        ===================================================================================== */
     res.headers.set("cache-control", "public, max-age=0, must-revalidate");
-  }
-
-  /* 3. ARRIVALS, COUNTED ON THE SERVER — see src/lib/entries.ts. After the response is decided,
-     off the critical path: waitUntil lets the write finish after the page has gone, and a failed
-     write costs a count, never a page. */
-  if (canonical) {
-    const rt = (ctx.locals as any)?.runtime;
-    const country = String((ctx.request as any).cf?.country ?? rt?.cf?.country ?? "??");
-    const entry = classifyEntry(ctx.request, { status: res.status, contentType: res.headers.get("content-type") ?? "" }, canonical, Date.now(), country);
-    const db = rt?.env?.DB;
-    if (entry && db && rt?.ctx?.waitUntil) {
-      rt.ctx.waitUntil(
-        db.prepare(ENTRY_UPSERT).bind(entry.day, entry.path, entry.src, entry.how, entry.device, entry.country).run().catch(() => {}),
-      );
-    }
   }
 
   // The rail toggle sets a cookie and redirects; a shared cache must never hold that.

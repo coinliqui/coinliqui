@@ -36,6 +36,7 @@
    repeated five times is a sign convention waiting to be inverted in one of them. */
 export const paysClass = (apr) => (apr >= 0 ? "pays-l" : "pays-s");
 export const paysLabel = (apr) => (apr >= 0 ? "longs pay shorts" : "shorts pay longs");
+export const paysArrow = (apr) => (apr >= 0 ? "▲" : "▼");
 
 /** Cost of holding a notional position for N days at a given APR. Sign follows the APR. */
 export const carryCost = (notionalUsd, apr, days) => notionalUsd * apr * (days / 365);
@@ -53,161 +54,14 @@ export function spreadOf(aprs) {
  *  what every table cell shows for an absent figure, on both sides. */
 export function pct(x, decimals = 2) {
   if (!Number.isFinite(x)) return "—";
-  /* A negative rate takes U+2212, the minus signedPct prints, and a value that rounds to zero takes
-     none — pct printed "-1.23%" and "-0.00%" with an ASCII hyphen beside signedPct's "−1.23%". */
-  const printed = (Math.abs(x) * 100).toFixed(decimals);
-  return `${x < 0 && Number(printed) !== 0 ? "\u2212" : ""}${printed}%`;
-}
-
-/* THE FUNDING-COST CALCULATOR'S MONEY, once for its server render and its script. Both carried their
-   own moneyAt, printed-figure parser, tolerance test and decimal search, the script's on one line
-   each, and the notional it printed three ways on one page (15 October 2026). */
-/** usd(a, 2), or two significant digits under half a cent; e extra decimals, own zeros dropped. */
-export function moneyAt(a, e = 0) {
-  const m = Math.abs(a);
-  if (!Number.isFinite(a) || m >= 1e15) return "—";
-  const sub = a > 0 && a < 0.005;
-  const u = sub || m < 1e6 ? 1 : m < 1e9 ? 1e6 : 1e9;
-  const d0 = sub ? Math.min(12, 1 - Math.floor(Math.log10(a))) : 2;
-  const d = Math.min(20, d0 + e);
-  let s = sub || u > 1 ? (a / u).toFixed(d) : a.toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d });
-  while (s.endsWith("0") && s.length - s.indexOf(".") - 1 > d0) s = s.slice(0, -1);
-  return `$${s}${u === 1e9 ? "B" : u === 1e6 ? "M" : ""}`;
-}
-/** The number a printed money figure stands for: "$1.23M" -> 1230000. */
-export function printedMoney(s) {
-  const m = /\$([\d,]*\.?\d+)([MB]?)/.exec(s);
-  return m ? Number(m[1].replace(/,/g, "")) * (m[2] === "B" ? 1e9 : m[2] === "M" ? 1e6 : 1) : NaN;
-}
-/** Whether x rounds to the printed text (money, or a percentage when pctText). */
-export function nearPrinted(x, text, pctText = false) {
-  const m = pctText ? /([-\u2212]?\d*)(?:\.(\d+))?%/.exec(text) : /\$([\d,]*)(?:\.(\d+))?([MB]?)/.exec(text);
-  if (!m) return false;
-  const half = 0.5 * 10 ** -(m[2] ?? "").length * (m[3] === "B" ? 1e9 : m[3] === "M" ? 1e6 : 1);
-  return Math.abs(x - (pctText ? Number(text.slice(0, -1).replace("\u2212", "-")) : printedMoney(text))) <= half * (1 + 1e-9);
-}
-/** The fewest extra decimals at which a check on the printed figures holds; 12 if none does. */
-export function fitDecimals(ok) {
-  for (let e = 0; e < 12; e++) if (ok(e)) return e;
-  return 12;
-}
-/** An amount exactly as typed: "$2,500,000", "$1.125". */
-export const exactUsd = (x) => `$${x.toLocaleString("en-US", { minimumFractionDigits: Number.isInteger(x) ? 0 : 2, maximumFractionDigits: 6 })}`;
-/** A count or quantity as typed, up to six decimals. */
-export const fineNum = (x) => x.toLocaleString("en-US", { maximumFractionDigits: 6 });
-
-/** "3 queries", "1 query" — the count and the right noun. */
-export const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
-
-/** A small count in words — one to ten spelled out, larger as digits. `zero` is the caller's word
- *  for nothing: "no" before a noun ("no venues"), "zero" on its own. Six tables did this with limits
- *  of three, six, eight, ten and fourteen, so four venues read "four" on one page and "4" on the next. */
-const NUMBER_WORDS = ["", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"];
-export const numberWord = (n, zero = "no") => (n === 0 ? zero : NUMBER_WORDS[n] ?? String(n));
-
-/** Hyperliquid's maintenance margin: half the initial margin at the tier's max leverage. Here so
- *  the calculators' scripts read the server's rule instead of writing 1 / (2 * L) again. */
-export const maintenanceMarginFraction = (maxLeverage) => 1 / (2 * maxLeverage);
-/** A tier table's tiers, lowest notional first — the order every reader of one assumes. Twelve
- *  places sorted it themselves and /funding/{symbol} printed it in file order (15 October 2026). */
-export const sortedTiers = (table) => [...table.marginTiers].sort((a, b) => a.lowerBound - b.lowerBound);
-
-/** MONTHS AND THE SHORT DATE, once. Five files carried their own month table, and two pages used
- *  toLocaleDateString("en-GB", {month: "short"}) instead — which prints "Sept" for September, so a
- *  date read "16 Sept 2026" on /unlocks and "16 Sep 2026" on every chart (15 October 2026). */
-export const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-const p2 = (n) => String(n).padStart(2, "0");
-/** "16 Sep 2026", in UTC. */
-export function shortDate(t) {
-  const d = new Date(t);
-  return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
-}
-/** "16 Sep 2026, 15:00 UTC" — a bar or an event at a minute, always with its zone. */
-export function dateTimeUtc(t) {
-  const d = new Date(t);
-  return `${shortDate(t)}, ${p2(d.getUTCHours())}:${p2(d.getUTCMinutes())} UTC`;
-}
-
-/** A signed percentage: U+2212 for a fall, "+" for a rise, and NO sign on a figure whose printed
- *  digits are zero. Five copies of this existed on 15 October 2026 with three rules between them —
- *  two printed "+0.00%" for a flat value, one printed an ASCII hyphen, two never read the digits at
- *  all — so a candle that closed where it opened read "+0.00%" in one table and "0.00%" beside it. */
-export function signedPct(x, decimals = 2) {
-  if (!Number.isFinite(x)) return "—";
-  const printed = (Math.abs(x) * 100).toFixed(decimals);
-  return `${Number(printed) === 0 ? "" : x > 0 ? "+" : "−"}${printed}%`;
-}
-
-/**
- * THE LIQUIDATION MAP'S "A MOVE TO HERE CLOSES", for any price, from the model's own rows.
- *
- * `curve` is what src/lib/liqmap.ts levelsCurve() publishes: the top of the drawn range, the row
- * height, and the standing notional per row (row 0 is the HIGHEST price) on each side, in whole
- * dollars. A move down from the mark reaches every long level whose row centre is at or above the
- * target; a move up reaches every short level at or below it. The server prints its eight standard
- * moves and a reader's own ?at= price with this function, and the page's script calls the same
- * function on the same published curve when the reader drags, so the figure under the cursor
- * cannot disagree with the one in the table. It counts only rows inside the drawn range — a price
- * beyond it gets the whole of that side, and the page says what lies past the edge.
- */
-export function cumulativeAt(curve, mark, price) {
-  let n = 0;
-  const below = price <= mark;
-  const rows = below ? curve.long : curve.short;
-  for (let r = 0; r < rows.length; r++) {
-    const mid = curve.hi - (r + 0.5) * curve.band;
-    if (below ? mid >= price : mid <= price) n += rows[r];
-  }
-  return { side: below ? "long" : "short", notional: n };
-}
-
-/** A price a reader typed: "78500", "78,500", "$78,500.5". Anything else is null, never a guess. */
-export function parsePrice(s) {
-  if (typeof s !== "string") return null;
-  const t = s.replace(/[\s,$]/g, "");
-  if (!/^\d*\.?\d+$/.test(t)) return null;
-  const v = Number(t);
-  return Number.isFinite(v) && v > 0 && v < 1e15 ? v : null;
-}
-
-/**
- * THE READER'S OWN PRICE, AS ONE SENTENCE — printed by the server for ?at= and rewritten by the
- * page's script while the reader drags, from this one function, so the two cannot word it apart.
- * Beyond the drawn range it does not pretend to know what stands past the edge: it gives the whole
- * of that side inside the range and says the rest is not counted.
- */
-export function atReading(curve, mark, price, lo, hi, dp, then = null) {
-  const { side, notional } = cumulativeAt(curve, mark, price);
-  const who = side === "long" ? "longs" : "shorts";
-  const where = `${usd(price, dp)} (${signedPct((price - mark) / mark)})`;
-  /* With the day-earlier rows, the same move a day earlier: how the reader's own price has changed
-     since yesterday is the one reading no published figure can carry. */
-  const was = then ? ` A day earlier the same move would have closed ${compact(cumulativeAt(then, mark, price).notional)}.` : "";
-  if (price < lo || price > hi) {
-    return `${where} is ${price < lo ? "below" : "above"} the drawn range, which ends at ${usd(price < lo ? lo : hi, dp)}. ` +
-      `A move there would close all ${compact(notional)} of modelled ${who} inside the range; what stands past its edge is not counted.${was}`;
-  }
-  return `A move to ${where} closes ${compact(notional)} of modelled ${who} on the way.${was}`;
-}
-
-/** How many changes are up and down, BY THE ARROW changeWords() PRINTS — so "31 up, 22 down" counts
- *  exactly the ▲ and ▼ a reader can see, and a +0.001% that prints "0.00%" with no arrow is flat.
- *  The home page and /coins each counted raw signs with their own filter. */
-export function moveCounts(fractions) {
-  const shown = fractions.filter(Number.isFinite).map((f) => Number((f * 100).toFixed(2)));
-  return { up: shown.filter((v) => v > 0).length, down: shown.filter((v) => v < 0).length, n: shown.length };
+  return `${(x * 100).toFixed(decimals)}%`;
 }
 
 /** Signed percentage change, arrow included — the 24-hour cell, rendered identically either
  *  side of hydration. */
 export function changeWords(fraction) {
   if (!Number.isFinite(fraction)) return "—";
-  /* No arrow on a change whose printed digits are zero — the signedPct rule. "▲ 0.00%" claimed a
-     direction for a flat candle that signedPct, on the next table, printed as "0.00%". */
-  const printed = (Math.abs(fraction) * 100).toFixed(2);
-  /* ▲▼ here are PRICE direction, drawn by their own rule: they went through paysArrow, the funding
-     helper, so one glyph's two meanings were one function away from being changed together. */
-  return Number(printed) === 0 ? `${printed}%` : `${fraction >= 0 ? "\u25b2" : "\u25bc"} ${printed}%`;
+  return `${paysArrow(fraction)} ${(Math.abs(fraction) * 100).toFixed(2)}%`;
 }
 
 /**
@@ -253,7 +107,6 @@ export function qty(n) {
  * same cell read "$29.65M". They are separate functions because they are separate rules.
  */
 export function compact(v) {
-  if (v < 0) return "\u2212" + compact(-v);
   const a = Math.abs(v);
   if (a >= 1e9) return `$${(v / 1e9).toFixed(2)}B`;
   if (a >= 1e6) return `$${(v / 1e6).toFixed(1)}M`;
@@ -269,10 +122,6 @@ export function compact(v) {
  */
 export function usd(x, decimals = 0) {
   if (!Number.isFinite(x)) return "—";
-  /* A loss is "−$5.00": the sign before the currency, as U+2212. It printed "$-5.00" here while
-     /learn/funding-rate wrote "-$5.00" and the arbitrage tool "−$5.00" (15 October 2026). */
-  if (x < 0 && Math.abs(x) < 1e15 && Number(Math.abs(x).toFixed(decimals)) !== 0) return "\u2212" + usd(-x, decimals);
-  if (x < 0 && Math.abs(x) < 1e15) x = 0;
   const abs = Math.abs(x);
   if (abs >= 1e15) return "—";
   if (abs >= 1e9) return `$${(x / 1e9).toFixed(2)}B`;

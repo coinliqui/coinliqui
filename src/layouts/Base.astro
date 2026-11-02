@@ -1,6 +1,6 @@
 ---
 import { SITE, NAV, FOOTER_LINKS, IDENTITY, origin } from "../lib/site.ts";
-import { ageWords, utcStamp } from "../lib/freshness.ts";
+import { ageWords } from "../lib/freshness.ts";
 import { codeStamp } from "../lib/sitemap.ts";
 import { publishedSameAs } from "../lib/corroboration.ts";
 import ASSETS from "../data/assets.json";
@@ -56,9 +56,7 @@ const { title, description, fetchedAt, noindex, frozen, crumb, namesFounder, mod
    reach — so the link comes back on its own when the block on it lifts, and goes away on its own
    if it breaks again, neither of which should wait on somebody remembering. */
 const sameAs = await publishedSameAs((Astro.locals as any)?.runtime?.env?.SNAPSHOT);
-/* The brand once, not twice: "About Coinliqui — … | Coinliqui" spent ten characters of a title link
-   on a name it had already given. Google's title guidance asks for concise branding. */
-const fullTitle = titleMode === "exact" || title.includes(SITE.name) ? title : `${title} | ${SITE.name}`;
+const fullTitle = titleMode === "exact" ? title : `${title} | ${SITE.name}`;
 const path = Astro.url.pathname;
 // Canonical origin comes from the build-time SITE_URL via Astro.site — never a literal,
 // and never the request host, which may be a *.pages.dev preview.
@@ -249,15 +247,17 @@ const schema = {
         not persist visually. That is a cosmetic preference, and the alternative was a document
         that no shared cache can reuse across visitors. Nothing about the DATA depends on this
         script; every number is already in the HTML. */}
-    {/* Written compact because is:inline ships it verbatim on every page. The try: a rail that will
-        not collapse is not a reason to break a page. */}
-    <script is:inline>try{if(document.cookie.split(";").some(function(c){return c.trim()=="rail=0"}))document.documentElement.classList.add("is-collapsed")}catch(e){}</script>
+    <script is:inline>
+      try {
+        if (document.cookie.split(";").some(function (c) { return c.trim() === "rail=0"; })) {
+          document.documentElement.classList.add("is-collapsed");
+        }
+      } catch (e) { /* a rail that will not collapse is not a reason to break a page */ }
+    </script>
     <title>{fullTitle}</title>
     <meta name="description" content={description} />
     {noindex && <meta name="robots" content="noindex, follow" />}
-    {/* Only on a page that answers 200. A 404 or 410 naming itself, or naming /retired, as the
-        canonical is a preference stated for a URL that does not exist. */}
-    {Astro.response.status === 200 && <link rel="canonical" href={new URL(path, base).href} />}
+    <link rel="canonical" href={new URL(path, base).href} />
     {/* There was no favicon and no social card at all, and then the card was an SVG, which is
         the same thing with extra steps: no social platform renders SVG — not Facebook, X,
         LinkedIn, Slack, Discord or iMessage — so under twitter:card="summary_large_image" every
@@ -553,13 +553,10 @@ const schema = {
       /* The one surface on the page: a single large rounded card holding all content.
          The topbar keeps a fill matching the page background so scrolled content cannot
          run under it — visually no fill, functionally still an occluder. */
-      /* NO MAX-WIDTH (15 October 2026): capped at 1320px the card stopped short of the right edge on
-         a wide screen and left a dead band beside it. Prose keeps its own measure in ch; tables and
-         charts take the column. */
       .page {
         background: var(--surface-1); border: 1px solid var(--border-soft);
         border-radius: var(--r-md); margin: 0 24px 24px; padding: 24px;
-        min-height: calc(100vh - var(--topbar-h) - 24px);
+        max-width: 1320px; min-height: calc(100vh - var(--topbar-h) - 24px);
       }
 
       /* --- page header: spacious chrome --- */
@@ -597,8 +594,6 @@ const schema = {
 
       h2.section { font-size: 16px; font-weight: 600; letter-spacing: -.01em; margin: var(--gap-section) 0 var(--gap-tight); }
       .section-note { font-size: var(--fs-sm); color: var(--text-faint); margin: 0 0 var(--gap-block); max-width: 80ch; }
-      /* One line of provenance under a figure, with the link to where its method is set out once. */
-      .datanote { font-size: var(--fs-sm); color: var(--text-faint); margin: 10px 0 var(--gap-block); max-width: 80ch; }
       /* THE OPENING STATEMENT OF A PROSE PAGE, defined once here rather than per page.
          It arrives from src/pages/methodology/liquidations.astro, which had it as a local
          `.lede`. That name was already taken by a completely different treatment on the
@@ -635,8 +630,7 @@ const schema = {
       .prose { max-width: 72ch; color: var(--text-dim); }
       .prose strong { color: var(--text); font-weight: 600; }
       .prose a, .link { color: var(--accent); }
-      /* A long URL or table name in code breaks at a 320px phone rather than widening the page. */
-      code { background: var(--surface-2); border-radius: var(--r-xs); padding: 1px 6px; font: var(--fs-sm)/1 var(--mono); overflow-wrap: anywhere; }
+      code { background: var(--surface-2); border-radius: var(--r-xs); padding: 1px 6px; font: var(--fs-sm)/1 var(--mono); }
 
       /* --- cards --- */
       .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px,1fr)); gap: 12px; }
@@ -690,39 +684,7 @@ const schema = {
         border-radius: var(--r-md); padding: var(--inset-panel);
       }
       .calc label { display: grid; gap: var(--gap-tight); font-size: var(--fs-sm); color: var(--text-dim); }
-      /* A chart's own switches: the same controls without the panel, sitting on the chart's heading. */
-      .calc--chart { background: none; border: 0; padding: 0; margin: 0 0 12px; }
-      /* .field is the same control outside a .calc row — the liquidation map's own-price box —
-         so a form that cannot take .calc's layout still takes its field, not a second one. */
-      /* --- heatmap intensity scale (src/lib/heatmap.ts legendSvg, injected markup) ------ */
-      .hscale { width: min(560px, 100%); flex: 0 1 560px; }
-      .hscale__bar { height: 12px; border-radius: 2px; }
-      .hscale__labels { position: relative; height: 18px; margin-top: 4px; font: 11.5px var(--mono); color: var(--text-dim); }
-      .hscale__labels > span { position: absolute; top: 0; white-space: nowrap; }
-      .hscale__tick { transform: translateX(-50%); }
-      .hscale__end { left: 0; color: var(--text-faint); }
-      .hscale__end--r { left: auto; right: 0; color: var(--text-dim); }
-      /* --- "see more" fold (src/components/More.astro) ----------------------------- */
-      /* THIRD PLAN, ON PURPOSE. These folds hold method and text written for search; the reader came
-         for the picture and the figures. The first version was too faint to find (15 October 2026,
-         "I see none"), the second an accent pill that competed with the chart for the eye. Now: one
-         quiet line in the faint text colour, smaller than body text, no box, a small triangle that
-         turns when open — found by someone looking for it, ignored by someone who is not. */
-      .more { margin: 6px 0; }
-      .more + .more { margin-top: 2px; }
-      .more__sum {
-        cursor: pointer; list-style: none; display: inline-flex; align-items: baseline; gap: 6px;
-        padding: 4px 0; font-size: 13px; font-weight: 400; color: var(--text-faint);
-      }
-      .more__sum::-webkit-details-marker { display: none; }
-      .more__sum::before { content: "\25B8"; font-size: 10px; transition: transform .15s var(--ease); }
-      .more[open] > .more__sum::before { transform: rotate(90deg); }
-      .more__sum:hover .more__label { color: var(--text-dim); text-decoration: underline; text-underline-offset: 3px; }
-      .more__sum:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
-      .more__label { min-width: 0; }
-      .more__body { padding: 8px 0 12px 16px; border-left: 1px solid var(--border-soft); margin-left: 4px; }
-      .more__body > :first-child { margin-top: 0; }
-      .calc input, .calc select, .field {
+      .calc input, .calc select {
         /* appearance:none so a select matches the number inputs beside it instead of keeping
            Safari's native menulist chrome — but that also removes the disclosure arrow, and a
            select with no arrow is a text field that will not accept typing. So the arrow is
@@ -738,7 +700,7 @@ const schema = {
         background-repeat: no-repeat;
         background-position: right 12px center;
       }
-      .calc input:focus, .calc select:focus, .field:focus { outline: 0; border-color: var(--accent); }
+      .calc input:focus, .calc select:focus { outline: 0; border-color: var(--accent); }
       .card--lead { border-color: var(--accent); }
       .card--lead .card__value { color: var(--accent); }
       .tbl .is-active { background: var(--surface-3); }
@@ -922,12 +884,9 @@ const schema = {
          renders 236px tall — a mostly empty well with twenty small bars adrift in it, and every
          geometry inside it scaled to twice the size it was drawn at. 720px keeps the scale range
          between 0.53 on a phone and 1.2 on a desktop, which is the band these were drawn for. */
-      .viz { display: block; margin: 0 0 var(--gap-block); }
+      .viz { display: block; margin: 0 0 var(--gap-block); max-width: 720px; }
       .viz > svg { display: block; width: 100%; height: auto; }
-      .fig svg.dist, .viz svg.dist { display: block; width: 100%; height: 140px; }
-      svg.dist * { vector-effect: non-scaling-stroke; }
       .viz__axis { position: relative; display: flex; justify-content: space-between; font: 500 var(--fs-xs)/1 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--text-faint); margin-top: 6px; }
-      .viz__counts { display: grid; text-align: center; font: 500 var(--fs-xs)/1 var(--mono); color: var(--text-dim); margin-top: 4px; }
       .viz__zero { position: absolute; transform: translateX(-50%); color: var(--text-dim); }
       .viz figcaption { font-size: var(--fs-sm); color: var(--text-faint); margin-top: var(--gap-pair); max-width: 84ch; line-height: 1.55; }
 
@@ -1129,19 +1088,6 @@ const schema = {
         .chart > svg, .chart > figure > svg, figure.chart > svg { min-width: 1140px; }
       }
       .chart > svg, .chart > figure > svg, .chart__scroll > svg { display: block; width: 100%; height: auto; }
-      /* THE PRICE CHART PICKS ITS WIDTH. From 760px the wide chart; below it the phone-shaped one
-         (narrowChart, src/components/PricePanel.astro), whose axis fits the bars it shows, so the
-         panel stops scrolling sideways and loses its edge fade. */
-      .chart--price > svg.pxn { display: none; }
-      /* The funding figure the same way: wide from 760px, its phone-width draw below. */
-      /* Qualified by .fig__plot so they outrank Figure's own `.fig__plot > svg { display: block }`. */
-      .fig__plot > svg.fxn { display: none; }
-      @media (max-width: 760px) { .fig__plot > svg.fxw { display: none; } .fig__plot > svg.fxn { display: block; } }
-      @media (max-width: 760px) {
-        .chart.chart--price { overflow-x: visible; -webkit-mask-image: none; mask-image: none; }
-        .chart--price > svg.pxw { display: none; }
-        .chart--price > svg.pxn { display: block; min-width: 0; }
-      }
       figure.chart > figcaption { font-size: var(--fs-sm); color: var(--text-faint); margin-top: var(--gap-block); max-width: 84ch; line-height: 1.55; }
 
       /* --- table rows respond, and the magnitude bar responds with them --- */
@@ -1424,12 +1370,7 @@ const schema = {
            minimum. Only the mobile geometry changes — the desktop pills stay compact,
            because a pointer does not need the padding and the row would look inflated. */
         .tf button { padding: 0 16px; min-height: 44px; }
-        /* Eight 44px pills do not fit a phone's row, and wrapped inside one pill they read as five
-           and a stray three (seen at 375px on /funding/btc, 15 October 2026). Four even columns
-           make the two rows deliberate; the well's corners stop being a pill to hold them. Only a
-           group long enough to wrap: the two-button chart style switch stays a pill. */
         .tf { padding: 2px; }
-        .tf:has(> :nth-child(5)) { display: grid; grid-template-columns: repeat(4, 1fr); border-radius: var(--r-md); }
         .chip-link { padding: 12px 16px; }
         .btn { height: 44px; }
         /* A stacked form is a column, so its controls should share one edge rather than
@@ -1439,9 +1380,6 @@ const schema = {
         .calc label { width: 100%; }
         .calc input, .calc select { width: 100%; }
         .calc .btn, .calc button { width: 100%; }
-        /* A chart's switches stay one row on a phone: three narrow selects, not a stack of three. */
-        .calc--chart { display: grid; grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); gap: 8px; }
-        .calc--chart select { min-width: 0; padding-left: 10px; padding-right: 28px; }
       }
     </style>
 
@@ -1562,7 +1500,7 @@ const schema = {
               Data via Hyperliquid (derivatives, including the Binance and Bybit funding rates it
               republishes) and Ethereum JSON-RPC (on-chain). <a href="/data-sources">Which endpoint feeds which
               figure →</a> <a href="/terms">Not investment advice →</a>
-              {fetchedAt ? <> Figures as of <time datetime={new Date(fetchedAt).toISOString()}>{utcStamp(fetchedAt)}</time>.</> : null}
+              {fetchedAt ? <> Figures as of <time datetime={new Date(fetchedAt).toISOString()}>{new Date(fetchedAt).toISOString().replace("T", " ").slice(0, 16)} UTC</time>.</> : null}
             </p>
           </footer>
         </main>

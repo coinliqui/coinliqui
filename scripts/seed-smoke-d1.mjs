@@ -116,17 +116,6 @@ for (let i = 1; i <= 24; i++) {
    rather than a change of zero — is rendered too. */
 const oiAgo = (h) => now - h * 3_600_000;
 const oiRows = [];
-/* AND BTC FOR 120 DAYS BACK, every three hours. The liquidation map's day-earlier run reads open
-   interest at the moment its candles end (dayEarlierCut), and the warm store's candles are a fixture
-   from mid-September, so the reading has to exist at that date for the gate to render the run. If
-   the fixture ever ages past this span, the smoke check that requires the run fails and says so. */
-/* WITH A HOLE, as production has one (28–29 September 2026, eight hours without a reading): the book
-   line on /open-interest must draw through a gap, and the first version drew nothing at all. */
-const outage = (h) => h > 300 && h <= 309;
-for (let h = 120 * 24; h > 26; h -= 3) if (!outage(h)) oiRows.push(["BTC", 2_550_000_000 * (1 + Math.sin(h / 40) * 0.05), oiAgo(h)]);
-/* ETH too, so /open-interest has two contracts with a reading in every 4-hour step and draws its
-   30-day book line in the gate. */
-for (let h = 120 * 24; h > 26; h -= 3) if (!outage(h)) oiRows.push(["ETH", 1_080_000_000 * (1 + Math.cos(h / 55) * 0.04), oiAgo(h)]);
 for (let h = 26; h >= 1; h--) {
   oiRows.push(["BTC", 2_600_000_000 * (1 + (26 - h) * 0.002), oiAgo(h)]);
   oiRows.push(["ETH", 1_100_000_000 * (1 - (26 - h) * 0.001), oiAgo(h)]);
@@ -135,7 +124,6 @@ for (let h = 26; h >= 1; h--) {
 
 const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS oi_snapshot (symbol TEXT NOT NULL, oi REAL NOT NULL, at INTEGER NOT NULL)`,
-  `CREATE TABLE IF NOT EXISTS entry_day (day TEXT NOT NULL, path TEXT NOT NULL, src TEXT NOT NULL, how TEXT NOT NULL, device TEXT NOT NULL, country TEXT NOT NULL, n INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (day, path, src, how, device, country))`,
   `CREATE TABLE IF NOT EXISTS funding_snapshot (symbol TEXT NOT NULL, venue TEXT NOT NULL, apr REAL NOT NULL, at INTEGER NOT NULL)`,
   `CREATE TABLE IF NOT EXISTS upstream_check (at INTEGER NOT NULL, source TEXT NOT NULL, status INTEGER NOT NULL, ms INTEGER NOT NULL, ok INTEGER NOT NULL, note TEXT)`,
 ];

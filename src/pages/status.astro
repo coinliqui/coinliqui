@@ -5,8 +5,6 @@ import { getSnapshot } from "../lib/hyperliquid.ts";
 import { reachRows } from "../lib/corroboration.ts";
 import { EXPECTED_WORKER_BUILD } from "../lib/version.ts";
 import { VENUE_LABEL, ageWords, type Venue } from "../lib/funding.ts";
-import { isStale, minutesSince, SNAP_STALE_MIN, plural } from "../lib/freshness.ts";
-import { numberWord } from "../../public/shared.js";
 /* The Worker owns the endpoint list, the key name and the label rule. This page reads them
    rather than restating them — src/pages/[key].txt.ts already imports from the same module. */
 import { ENDPOINTS, STATE_KEY, endpointLabel } from "../../worker/indexnow.ts";
@@ -76,9 +74,11 @@ try {
 }
 
 const now = Date.now();
-/* The site's own staleness test and age, not a copy: see isStale in src/lib/freshness.ts. */
-const ageMin = snap.fetchedAt ? minutesSince(snap.fetchedAt, now) : null;
-const stale = !snap.fetchedAt || isStale(snap.fetchedAt, SNAP_STALE_MIN, now);
+const ageMin = snap.fetchedAt ? Math.round((now - snap.fetchedAt) / 60000) : null;
+// Cron runs every 5 minutes. Three consecutive misses is the point at which this is a
+// fault rather than a slow tick.
+const STALE_MIN = 15;
+const stale = ageMin === null || ageMin > STALE_MIN;
 
 /* THE ONE-MINUTE PATH. Sixty minutes is the window the "updates every minute" claim is about.
  *
@@ -172,6 +172,7 @@ const CARD = { last: "Last ingest", minute: "Minute tick, last hour", fails: "Fa
 const VENUE_HEAD = "Per-venue coverage, last run";
 const RUNS_HEAD = "Recent runs";
 const NO_COUNT = "—";
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
 /* THE INTRO AND ROW 1 CONTRADICTED EACH OTHER, AND ROW 2 POINTED AT THE WRONG TABLE.
    Measured 16 September 2026 on https://coinliqui.com/status: the intro said these were "the
@@ -201,7 +202,8 @@ const bindings = [
 const checkRows = bindings.length + 1;
 const loudChecks = bindings.filter((b) => b.loud);
 const quietChecks = checkRows - loudChecks.length;
-const word = (n: number) => numberWord(n);
+const WORDS = ["no", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"];
+const word = (n: number) => WORDS[n] ?? String(n);
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 /* "SO THEY ARE CHECKED HERE" READ AS IF ONLY THE QUIET ONES WERE. The first version of this
    intro (16 September 2026) said the other two fail quietly "so they are checked here", directly
@@ -285,7 +287,7 @@ const utc = (ms: number) => new Date(ms).toISOString().slice(0, 16).replace("T",
   <div class="cards">
     <div class="card">
       <div class="card__label">Snapshot age</div>
-      <div class:list={["card__value", stale && "is-bad"]}>{ageMin === null ? "—" : ageWords(ageMin)}</div>
+      <div class:list={["card__value", stale && "is-bad"]}>{ageMin === null ? "—" : ageMin === 0 ? "under 1 min" : `${ageMin} min`}</div>
       <div class="card__meta">{snap.fetchedAt ? utc(snap.fetchedAt) : "never written"}</div>
     </div>
     <div class="card">
@@ -325,7 +327,7 @@ const utc = (ms: number) => new Date(ms).toISOString().slice(0, 16).replace("T",
   <p class="section-note">
     {bindingsIntro}
   </p>
-  <div class="panel">
+  <div class="panel" style="max-width:760px">
     <table class="tbl">
       <thead><tr><th>Check</th><th>State</th><th>What a wrong value means</th></tr></thead>
       <tbody>
@@ -362,20 +364,6 @@ const utc = (ms: number) => new Date(ms).toISOString().slice(0, 16).replace("T",
     </div>
   )}
 
-  {/* HELD BACK, SAID ALOUD. A contract above the floor whose tier table is not committed is not
-      covered (src/lib/hyperliquid.ts) — otherwise every list would link it to a 404. Coverage that
-      shrinks silently is the next defect, so the names are printed here until a deploy commits them. */}
-  {(snap.heldBack?.length ?? 0) > 0 && (
-    <div class="verdict verdict--warn">
-      <div>
-        <b>{plural(snap.heldBack!.length, "contract is", "contracts are")} held back</b>: {snap.heldBack!.join(", ")}
-        {" "}clear{snap.heldBack!.length === 1 ? "s" : ""} the open-interest floor, but no margin tier table is committed for
-        {snap.heldBack!.length === 1 ? " it" : " them"}, so the site cannot compute a liquidation price and does not publish
-        {snap.heldBack!.length === 1 ? " its page" : " their pages"}. The next deploy stops until <code>npm run gen:margin</code> commits the table.
-      </div>
-    </div>
-  )}
-
   {/* THE ONE CLAIM ON THIS SITE THAT POINTS SOMEWHERE WE DO NOT CONTROL, and the only one whose
       failure is invisible from here. It published a 404 on every page for days. The worker checks
       it daily; this row is where a probe that has stopped, or is being refused, becomes visible —
@@ -386,7 +374,7 @@ const utc = (ms: number) => new Date(ms).toISOString().slice(0, 16).replace("T",
     about itself. It is published only while this says <b>published</b>: a link that does not
     resolve is worse corroboration than none, and nothing here has to be edited either way.
   </p>
-  <div class="panel">
+  <div class="panel" style="max-width:860px">
     <table class="tbl">
       <thead><tr><th>URL</th><th>State</th><th>Last anonymous GET</th></tr></thead>
       <tbody>
@@ -407,7 +395,7 @@ const utc = (ms: number) => new Date(ms).toISOString().slice(0, 16).replace("T",
     simply absent, every other figure is fine, and nothing above this line would notice. The
     counts are against the {covered.length} contracts currently published.
   </p>
-  <div class="panel">
+  <div class="panel" style="max-width:860px">
     <table class="tbl">
       <thead><tr><th>Series</th><th class="num">Covered</th><th>Refresh interval</th><th>Missing or stale</th></tr></thead>
       <tbody>
@@ -454,7 +442,7 @@ const utc = (ms: number) => new Date(ms).toISOString().slice(0, 16).replace("T",
     A venue silently dropping out of the upstream response looks like success: the run still writes
     rows, just fewer. A count at zero here is that failure.{venueNote ? ` ${venueNote}` : ""}
   </p>
-  <div class="panel">
+  <div class="panel" style="max-width:520px">
     <table class="tbl">
       <thead><tr><th>Venue</th><th class="num">Rows last run</th></tr></thead>
       <tbody>
@@ -539,7 +527,7 @@ const utc = (ms: number) => new Date(ms).toISOString().slice(0, 16).replace("T",
   </p>
   {announce ? (
     <>
-      <div class="panel">
+      <div class="panel" style="max-width:760px">
         <table class="tbl">
           <thead><tr><th>Endpoint</th><th class="num">URLs owed</th><th class="num">Consecutive refusals</th><th>Next attempt</th></tr></thead>
           <tbody>

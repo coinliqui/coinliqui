@@ -38,7 +38,7 @@ import { readdirSync, readFileSync } from "node:fs";
 /* Source is read as CODE by default — see scripts/lib/source.mjs. The two checks below that
    want the prose say so at their call site, with the reason. */
 import { readSource, readRaw } from "./lib/source.mjs";
-import { cssFor, undefinedClasses, undefinedVars, rawEnums, searchIndexGaps, unnamedUpstreams, duplicateRuleImplementations, uncoveredRoutes, unreadableText, chartAgreement, requestedLeverageLabels, inlineScriptSyntax, flipTableColour, colourPalettes, colourLanguageDrift, colourLegend, publishesAPerson, fixtureGaps, staleDerivedCells, basisSelfConsistent, sitemapLastmodHonesty, breadcrumbAgreement, founderAgreement, readmeCounts, botPolicyReasons, contradictoryStates, hiddenFromEveryone, pageWeight, weightFaults, dateModifiedAgreement, phantomInlineElements, malformedAttributes, uncitedPermissionClaims, unconditionalCadenceClaims, typedVenueFacts, handComputedAges, staleCalculatorFigures, controlGroupOverflow, stampSurfacesAgree, symbolAddressing, computedFigureFloor, COMPUTED_FIGURES, openingFigure, PROSE_ROUTES, handRolledLegends, collapsedStateEscapesMobile, leadReachesTheOpening, collapsedTextShipped, MORE_ROUTES, levelsAgree} from "./checks.mjs";
+import { cssFor, undefinedClasses, undefinedVars, rawEnums, searchIndexGaps, unnamedUpstreams, duplicateRuleImplementations, uncoveredRoutes, unreadableText, chartAgreement, requestedLeverageLabels, inlineScriptSyntax, flipTableColour, colourPalettes, colourLanguageDrift, colourLegend, publishesAPerson, fixtureGaps, staleDerivedCells, basisSelfConsistent, sitemapLastmodHonesty, breadcrumbAgreement, founderAgreement, readmeCounts, botPolicyReasons, contradictoryStates, hiddenFromEveryone, pageWeight, weightFaults, dateModifiedAgreement, phantomInlineElements, malformedAttributes, uncitedPermissionClaims, unconditionalCadenceClaims, typedVenueFacts, handComputedAges, staleCalculatorFigures, controlGroupOverflow, stampSurfacesAgree, symbolAddressing, computedFigureFloor, COMPUTED_FIGURES, openingFigure, PROSE_ROUTES, handRolledLegends, collapsedStateEscapesMobile, leadReachesTheOpening} from "./checks.mjs";
 
 /* The SERVER side of each duplicated formatter, transcribed from the file that owns it and
    named here so the pairing is explicit. Transcription is the honest cost of having no bundler:
@@ -86,18 +86,16 @@ if (PORT !== BASE_PORT) console.log(`  smoke: ${BASE_PORT} is in use by somethin
 const PAGE_STAMPS = new Map();
 
 const ROUTES = [
-  "/", "/coins", "/coins/bitcoin", "/funding", "/funding/paid", "/funding/history", "/funding/venues", "/funding/august-2026", "/funding/btc", "/funding/kpepe",
-  "/open-interest", "/open-interest?w=7d", "/open-interest?w=14d", "/liquidations", "/liquidations/survival", "/liquidations/sweep",
+  "/", "/coins", "/coins/bitcoin", "/funding", "/funding/btc", "/funding/kpepe",
+  "/open-interest", "/liquidations", "/liquidations/survival", "/liquidations/sweep",
   /* THE PER-CONTRACT MAPS, both branches. /liquidations/eth is the template; /liquidations/btc
      is the pinned default's alias and must answer 301 to /liquidations, because the default
      keeps the URL Google already indexed. A template covered only by its happy path is how the
      404-vs-410 pair went unnoticed. */
-  "/liquidations/eth", "/liquidations/btc", "/liquidations/notacoin", "/funding/ton", "/liquidations/ton",
-  /* the reader's own price: one inside the range, one far past it, one unreadable */
-  "/liquidations/sol?at=1", "/liquidations/eth?at=999999999", "/liquidations/eth?at=abc&profile=aggressive",
+  "/liquidations/eth", "/liquidations/btc", "/liquidations/notacoin",
   "/unlocks", "/tools", "/tools/position-size", "/tools/leverage", "/tools/funding-cost",
   "/tools/funding-arbitrage", "/tools/liquidation-price", "/methodology",
-  "/methodology/liquidations", "/data-sources", "/privacy", "/about", "/terms", "/corrections", "/llms.txt",
+  "/methodology/liquidations", "/data-sources", "/privacy", "/about", "/terms", "/llms.txt",
   /* THE EXPLAINERS. Two of them read the live store and return 503 on a cold one, which is the
      behaviour every market page here has; the warm fixture covers that. The other two are prose
      over committed data and cannot 503, so a failure in either is a real render fault. */
@@ -132,7 +130,7 @@ const ROUTES = [
   /* EVERY sitemap, not a sample. Six of these were never requested by anything until the
      coverage check below started comparing this list against the build manifest — so a 500 in
      one of them would have shipped green and been served to Googlebot. */
-  "/sitemaps/coins.xml", "/sitemaps/funding-symbols.xml", "/sitemaps/funding-hub.xml", "/sitemaps/funding-paid.xml", "/sitemaps/funding-history.xml", "/sitemaps/funding-venues.xml", "/sitemaps/funding-events.xml",
+  "/sitemaps/coins.xml", "/sitemaps/funding-symbols.xml", "/sitemaps/funding-hub.xml",
   "/sitemaps/liquidations.xml", "/sitemaps/open-interest.xml", "/sitemaps/pages.xml",
   "/sitemaps/tools.xml", "/sitemaps/unlocks.xml", "/sitemaps/learn.xml",
   "/sitemaps/liquidation-symbols.xml",
@@ -151,9 +149,7 @@ const EXPECT = { "/tools/liquidation-price": 410, "/404": 404, "/rail": 404, "/s
   "/tools/leverage?symbol=NOTACOIN": 404, "/tools/position-size?symbol=NOTACOIN": 404,
   /* The default's map is at /liquidations, so its own slug is an alias and answers 301.
      A contract that was never covered answers 404, the same as /funding/notacoin. */
-  "/liquidations/btc": 301, "/liquidations/notacoin": 404,
-  /* renamed by the venue before this site published it: sent to the successor (src/lib/renamed.ts) */
-  "/funding/ton": 301, "/liquidations/ton": 301 };
+  "/liquidations/btc": 301, "/liquidations/notacoin": 404 };
 
 const warmDir = process.argv.includes("--warm") ? process.argv[process.argv.indexOf("--warm") + 1] : null;
 const MODES = warmDir ? [{ name: "cold", args: [] }, { name: "warm", args: ["--kv", "SNAPSHOT", "--d1", "DB", "--persist-to", warmDir] }]
@@ -432,20 +428,6 @@ for (const path of ROUTES) {
     for (const d of founderAgreement(body)) content.push(`the founder claim disagrees with itself: ${d}`);
     for (const d of contradictoryStates(body)) content.push(`two states, one hidden: ${d}`);
     for (const d of hiddenFromEveryone(body)) content.push(`text nobody receives: ${d}`);
-    /* Collapsed explanation ships in the first response — see collapsedTextShipped. Asked of every
-       warm route; the registered ones must carry at least one fold, so replacing it with a
-       click-to-load button cannot pass by leaving nothing to inspect. */
-    {
-      const route = path.split("?")[0];
-      for (const d of collapsedTextShipped(body, { expect: status === 200 && MORE_ROUTES.some((r) => r.test(route)) })) content.push(`collapsed text: ${d}`);
-    }
-    /* The liquidation map's figures are its published rows summed by the shared function. */
-    for (const d of levelsAgree(body)) content.push(`liquidation map: ${d}`);
-    /* The seeded store carries 26 hours of open interest, so the hub's map must render its
-       day-earlier run; a page that silently drops it would otherwise pass. */
-    if (path === "/liquidations" && status === 200 && !body.includes('class="levels__day')) content.push("liquidation map: the seeded store holds a day of open interest and the map shows no day-earlier run");
-    /* And thirty days of BTC and ETH, so /open-interest must draw its book line. */
-    if (path === "/open-interest" && status === 200 && !body.includes('class="oibook')) content.push("open interest: the seeded store holds 30 days for two contracts and the page draws no book line");
     for (const d of dateModifiedAgreement(body)) content.push(`the stated age disagrees with itself: ${d}`);
     /* Recorded, not asserted here: the counterpart claim lives in a sitemap this loop has not
        fetched yet. Query strings are stripped because a sitemap lists the bare URL. */
@@ -873,10 +855,7 @@ for (const path of ROUTES) {
       }
       /* The symbols come from what the sitemap itself published, so this tests the STATIC half
          and the wiring rather than re-deriving the contract set from the same snapshot twice. */
-      /* /funding/paid lives under /funding/ and is not a contract: a static route there would be
-         read as a symbol called "paid" and announce /liquidations/paid. */
-      const { STATIC_ROUTES } = await import("../src/lib/routes.ts");
-      const symbols = [...listed].filter((u) => u.startsWith("/funding/") && !STATIC_ROUTES.includes(u)).map((u) => u.slice("/funding/".length));
+      const symbols = [...listed].filter((u) => u.startsWith("/funding/")).map((u) => u.slice("/funding/".length));
       /* Called exactly as the worker calls it — two arguments, no third to get wrong. The
          first version of this check passed the coin slugs itself, so it validated the function
          while the CALL SITE stayed broken, and fault-injecting the original `[]` did not fail

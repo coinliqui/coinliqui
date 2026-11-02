@@ -1,25 +1,19 @@
 ---
 import Base from "../../layouts/Base.astro";
-import { getSnapshot, coldStart, findPerp, getLive, oldestStamp, currentMark } from "../../lib/hyperliquid.ts";
+import { getSnapshot, coldStart, findPerp, getLive, oldestStamp } from "../../lib/hyperliquid.ts";
 import { usd, pct, VENUE_LABEL, paysClass, paysLabel, carryCost, type Venue } from "../../lib/funding.ts";
-import { maintenanceMarginFraction, corridorAt, type MarginTable, tableFor, sortedTiers } from "../../lib/margin.ts";
-import { oiMoves } from "../../lib/oi-history.ts";
-import { findCoin, isLive, liveCoins, coinPageFor } from "../../lib/coins.ts";
+import { maintenanceMarginFraction, corridorAt, type MarginTable } from "../../lib/margin.ts";
+import tables from "../../data/margin-tables.json";
+import { findCoin, isLive, liveCoins } from "../../lib/coins.ts";
 import { liqMapHref, canonicalRedirect } from "../../lib/routes.ts";
 import { countWords } from "../../lib/site.ts";
 import { getCandles, getHourly, getM15, type Candle } from "../../lib/candles.ts";
-import { utcStamp } from "../../lib/freshness.ts";
+import { freshness, ageWords, minutesSince, utcStamp } from "../../lib/freshness.ts";
 import Overview from "../../components/Overview.astro";
-import PricePanel from "../../components/PricePanel.astro";
-import Versus from "../../components/Versus.astro";
-import { narrowChart, TIMEFRAMES, DEFAULT_TF, MIN_CHART_BARS, drawnBars, barSpan, buildPriceChart, timeframeGapNote, CHART_H, versusRows, type ChartMode } from "../../lib/series.ts";
-import { bookWords, fundingStandingWords, closedDays, daysThatReached, rungDaysWords, dayProfile, dayProfileWords, fitAgainst, fitWords } from "../../lib/cohort.ts";
-import DayMoves from "../../components/DayMoves.astro";
-import { aboutOf } from "../../lib/contracts.ts";
-import { extremeBy } from "../../lib/extreme.ts";
+import { TIMEFRAMES, DEFAULT_TF, MIN_CHART_BARS, drawnBars, barSpan, buildPriceChart, candleStyleNote, timeframeGapNote, CHART_H, type ChartMode } from "../../lib/series.ts";
 import { CH } from "../../lib/chart.ts";
 
-import { priceDp, changeWords, signedPct, weekCarry } from "../../lib/funding.ts";
+import { priceDp } from "../../lib/funding.ts";
 /* =========================================================================================
    ONE COIN.
 
@@ -77,22 +71,7 @@ const perp = findPerp(snap.perps, coin.symbol);
 /* THE ONE CLOCK THAT MATTERS HERE. `live` is written by the one-minute cron; the snapshot is
    five-minutely. Preferring live.mark puts the headline price and the funding beside it on the
    same tick, and the fallback keeps a just-deployed page working one clock slower. */
-const cur = perp ? currentMark(snap, live, perp) : null;
-const markNow = cur ? cur.px : NaN;
-/* Open interest's change, by the hub's rule (oiMoves), so this page and /open-interest agree. */
-const oiMv = perp ? await oiMoves(env?.DB, perp.symbol, perp.oiNotional) : { d24: null, d7: null };
-const oiMvWords = [oiMv.d24 != null ? `24h ${signedPct(oiMv.d24)}` : null, oiMv.d7 != null ? `7d ${signedPct(oiMv.d7)}` : null].filter(Boolean).join(" · ");
-
-/* AGAINST BITCOIN — the comparison a price page leaves to the reader, and the one a chat answer
-   cannot give without two lookups and a subtraction. Bitcoin's own page is set against Ether. Both
-   sides use the same snapshot's marks, so "now" is one instant; 7 and 30 days are measured from the
-   same daily close in both series (dailyCloseBy), and a window where the two closes differ is left
-   out rather than compared across different starts. */
-const refSymbol = coin.symbol === "BTC" ? "ETH" : "BTC";
-const refPerp = findPerp(snap.perps, refSymbol);
-const refDay = refPerp ? await getCandles(env?.SNAPSHOT, refSymbol, import.meta.env.DEV) : null;
-const refCoin = coinPageFor(refSymbol);
-const vsRows = versusRows(perp, refPerp, dayset?.d, refDay?.d, snap.fetchedAt);
+const markNow = live?.mark?.[coin.symbol] ?? perp?.markPx ?? NaN;
 const price = markNow;
 const dp = priceDp(price);
 const px = (v: number) => usd(v, dp);
@@ -141,8 +120,8 @@ const week = (apr: number) => carryCost(10_000, apr, 7);
    no money — funding at 0.00%, or close enough that the week is under a cent — was "a cost"
    of "$0.00"; it is decided from the same formatted figure the sentence would print, so the
    words cannot call a sum a cost that the digits show as nothing. */
-const carryWeek = hl && Number.isFinite(hl.apr) ? weekCarry(hl.apr).text : "—";
-const carryNil = hl && Number.isFinite(hl.apr) ? weekCarry(hl.apr).nil : false;
+const carryWeek = hl && Number.isFinite(hl.apr) ? usd(Math.abs(week(hl.apr)), 2) : "—";
+const carryNil = carryWeek === usd(0, 2);
 /* ONE ROW PER VENUE IN ORDER, WITH WHAT IT CAN PRINT decided here, once, so the venue table and
    the sentences about it read the same two flags instead of each re-deriving them. The table
    renders every ORDER venue unconditionally; a venue with no usable interval and no usable rate
@@ -174,6 +153,9 @@ const andList = (xs: string[]) =>
 const secondHand = venueRows.filter((r) => r.v !== "HlPerp" && (r.ok || r.hasInterval)).map((r) => VENUE_LABEL[r.v]);
 const exceptRows = secondHand.length
   ? ` except the ${andList(secondHand)} ${secondHand.length === 1 ? "row" : "rows"} of the per-venue table above`
+  : "";
+const exceptNote = secondHand.length
+  ? ` ${secondHand.length === 1 ? `That row is worked from ${secondHand[0]}'s` : "Those rows are worked from each venue's"} own funding rate and settlement interval, which reach this site only because Hyperliquid republishes them in that feed.`
   : "";
 /* THE VENUE COUNT IS COUNTED, NOT TYPED. Three sentences said "three" — the note over the table
    ("all three"), the link to the funding page ("across three venues") and the meta description —
@@ -207,8 +189,8 @@ const fundingReach = rated.length > 1
    over the published tier and the live mark. Nothing on this page assumes a position
    distribution — that is the map, and it is linked rather than imitated.
    ========================================================================================= */
-const marginTable = perp ? tableFor(perp) : undefined;
-const tier1 = marginTable ? sortedTiers(marginTable)[0] : undefined;
+const marginTable = perp ? (tables as Record<string, MarginTable>)[String(perp.marginTableId)] : undefined;
+const tier1 = marginTable ? [...marginTable.marginTiers].sort((a, b) => a.lowerBound - b.lowerBound)[0] : undefined;
 /* The cap, then three rungs beneath it. A general-audience page does not need the seven the
    liquidation map draws; it needs the shape, and the shape is legible in four rows. */
 /* THE SAME MARK AS THE HEADLINE, AND THE MOMENT IT WAS TAKEN, NAMED. These rungs were worked
@@ -221,7 +203,7 @@ const tier1 = marginTable ? sortedTiers(marginTable)[0] : undefined;
    the top is repainted every 30 seconds by public/interact.js, and these are server arithmetic —
    so the sentence names the mark and its UTC time instead of calling it "a mark", and says that
    the price above moves on without it. `markAt` is the clock `markNow` actually came from. */
-const markAt = cur ? cur.at : snap.fetchedAt;
+const markAt = live?.mark?.[coin.symbol] != null ? live!.at : snap.fetchedAt;
 const markClock = Number.isFinite(markAt) && markAt > 0 ? utcStamp(markAt) : null;
 const rungs = tier1 && perp && Number.isFinite(markNow) && markNow > 0
   ? [...new Set([1, 0.6, 0.4, 0.25].map((f) => Math.max(2, Math.round(tier1.maxLeverage * f))))]
@@ -295,26 +277,15 @@ const panels = active ? [active] : [];
 const hasChart = Boolean(active);
 /* The legend's bar count and unit come from barSpan() in src/lib/series.ts, shared with the contract
    page — which still called thirty-day bars "monthly" after this page stopped. */
+const arrow = (n: number) => (n >= 0 ? "▲" : "▼");
+/* The candle sentence is candleStyleNote() in src/lib/series.ts, shared with the contract page. */
+const styleNote = activeChart ? candleStyleNote(activeChart, activeMode.key) : "";
 
-/* THIS CONTRACT AMONG THE OTHERS, AND WHAT ITS OWN MONTH DID TO EACH LEVERAGE — src/lib/cohort.ts.
-   These replaced paragraphs every coin page carried word for word (19 October 2026). */
-const book = bookWords(snap.perps, coin.symbol);
-const fundStanding = fundingStandingWords(snap.perps, coin.symbol);
-const month = closedDays(dayset?.d, snap.fetchedAt);
-const rungDays = rungs.map((r) => ({ L: r.L, ...daysThatReached(month, r.longDist, r.shortDist) }));
-const rungNote = rungDaysWords(coin.symbol, rungDays);
-const profile = dayProfile(month);
-const about = aboutOf(coin.symbol);
-const fitRef = fitAgainst(dayset?.d, refDay?.d, snap.fetchedAt);
-const fitNote = fitRef ? fitWords(coin.symbol, refSymbol, fitRef) : null;
-/* THE VENUE TABLE'S SENTENCE IS ITS RESULT: which venue is cheapest for the same long, tie-aware. */
-const weekRows = venueRows.filter((r) => r.ok).map((r) => ({ name: VENUE_LABEL[r.v], cost: week(r.f!.apr) }));
-const cheapest = extremeBy(weekRows, (r) => r.cost, "min", 0.005);
-const dearest = extremeBy(weekRows, (r) => r.cost, "max", 0.005);
-const venueVerdict = weekRows.length < 2 || cheapest.kind === "none" || dearest.kind === "none" ? null
-  : Math.abs(dearest.value - cheapest.value) < 0.005
-    ? `All ${weekRows.length} venues charge the same week on a $10,000 long right now.`
-    : `${cheapest.kind === "unique" ? cheapest.item.name : cheapest.items.map((x) => x.name).join(" and ")} ${cheapest.value < 0 ? `pays the long the most, ${usd(-cheapest.value, 2)} a week` : `is the cheapest place to hold it, ${usd(cheapest.value, 2)} a week`}; ${dearest.kind === "unique" ? dearest.item.name : dearest.items.map((x) => x.name).join(" and ")} ${dearest.value < 0 ? `pays the least, ${usd(-dearest.value, 2)}` : `charges the most, ${usd(dearest.value, 2)}`}.`;
+/* THE SENTENCE IS CONDITIONAL NOW — see src/lib/freshness.ts. It used to assert "update every
+   minute" whatever the clocks said, which is a promise a single-sourced site cannot keep on its
+   own word. */
+const fresh = freshness(live?.at, snap.fetchedAt,
+  "The mark and the funding update every minute.", "The mark and the funding");
 
 const others = liveCoins().filter((c) => c.slug !== coin.slug);
 const title = `${coin.name} price — ${coin.symbol} perpetual, and what leverage costs`;
@@ -374,7 +345,7 @@ const description = `Live ${coin.name} (${coin.symbol}) perpetual price from Hyp
         check reads overlay behaviour; it was found by watching a live page for two pulls. */}
     <span class="hero__price" data-repaint="mark" data-sym={coin.symbol} data-dp={dp}>{Number.isFinite(price) ? px(price) : "—"}</span>
     <span class:list={["hero__chg"]} data-repaint="chgmark" data-sym={coin.symbol} data-prev={perp?.prevDayPx}>
-      {changeWords(chg24)}
+      {Number.isFinite(chg24) ? `${arrow(chg24)} ${(Math.abs(chg24) * 100).toFixed(2)}%` : "—"}
     </span>
     <span class="hero__span">24-hour change · Hyperliquid perpetual</span>
   </div>
@@ -386,9 +357,24 @@ const description = `Live ${coin.name} (${coin.symbol}) perpetual price from Hyp
     <div>Oracle index <span class="scope">Hyperliquid</span><b>{perp && perp.oraclePx > 0 ? px(perp.oraclePx) : "—"}</b></div>
     <div>Open interest <span class="scope">Hyperliquid</span><b>{perp ? usd(perp.oiNotional) : "—"}</b></div>
   </div>
-  <p class="datanote">
-    24-hour high and low: the hourly series{hourset?.u ? <>, written <b>{utcStamp(hourset.u)}</b></> : null}.
-    {" "}<a class="link" href="/methodology#clocks">Every figure's clock →</a>
+  {/* THREE CLOCKS, NOT TWO — the same correction the contract template already carries, which
+      had never been applied here. This sentence put "the 24-hour figures and open interest" on
+      one clock, the five-minute snapshot. Open interest and 24-hour volume do come from there.
+      The 24-hour HIGH and LOW do not: they are the extremes of the last 24 closed bars of the
+      hourly candle store, swept every two hours, so this page could print "taken 2 min ago"
+      over a low that was set up to two hours before the last sweep and had not been collected
+      yet. The figures were right; the sentence explaining where they came from was not, on a
+      template whose whole argument is that it names its sources. */}
+  <p class="clock">
+    {fresh.note} Open interest and 24-hour volume come from the snapshot taken
+    <b><time data-fresh={snap.fetchedAt} data-clock="snapAt">{ageWords(minutesSince(snap.fetchedAt))}</time></b>.
+    {/* "THE SAME CANDLE SERIES THE CHART IS DRAWN FROM" was true only on 1H, 4H and 12H: the default 1D,
+        1W and 1M draw from the daily store and 15m/30m from the fifteen-minute one. And "last written 117
+        min ago" was an age that never ticked (production, 17 September 2026); the contract page had
+        already moved to a stamp. It is utcStamp() now, and the series is named. */}
+    The 24-hour high and low are the extremes of the last 24 bars of the hourly candle series
+    — the newest of them still open when it was collected —
+    collected every 2 hours{hourset?.u ? <> and last written at <b>{utcStamp(hourset.u)}</b></> : null}.
   </p>
 
   {hasChart ? (
@@ -419,28 +405,58 @@ const description = `Live ${coin.name} (${coin.symbol}) perpetual price from Hyp
         </span>
       </form>
 
-      {/* The panel, its crosshair islands and the phone-width chart: src/components/PricePanel.astro. */}
-      <PricePanel chart={active!.chart} narrow={narrowChart(activeCandles, null, active!.tf, active!.mode.key)} tf={active!.tf}
-                  unit={coin.symbol} ptsPrefix="cpts" panel={`${active!.tf.key}.${active!.mode.key}`} group="cx" on={true} />
+      {[active!].map(({ tf, mode, chart }) => (
+        <div data-tfpanel={`${tf.key}.${mode.key}`} data-group="cx"
+             data-on={tf.key === active!.tf.key && mode.key === active!.mode.key ? "" : undefined}
+             class="chart chart--price" style={`--chartRatio: ${CH.w} / ${CHART_H}`}>
+          <Fragment set:html={chart!.svg.replace("<svg ",
+            `<svg data-xhair="cpts-${tf.key}" data-feed="mark" data-plot="${chart!.plot.join(",")}" data-prange="${chart!.range[0]},${chart!.range[1]}" ` +
+            `data-axx="${chart!.axisX}" data-slot="${chart!.slot.toFixed(2)}" data-taxisy="${CHART_H - 27}" data-unit="${coin.symbol}" data-dp="${chart!.dp}" data-intraday="${tf.hours < 24 ? 1 : 0}" `)} />
+          {/* INSIDE THE PANEL, because only the panel is fetched.
+              public/interact.js copies `[data-tfpanel][data-group]` out of the response and
+              nothing else. This block sat NEXT to the panel, so switching a timeframe on a coin
+              page brought the chart across and left its crosshair payload behind: the new svg
+              asked for `cpts-4h` and the document still held only `cpts-1d`. The tooltip then
+              failed silently — getElementById returns null, JSON.parse throws, the handler
+              returns. Measured on the live page: after switching, jsonIds was still `cpts-1d`.
+              The contract template already had it inside, which is why only this one broke. */}
+          <script type="application/json" id={`cpts-${tf.key}`}
+                  set:html={JSON.stringify(chart!.points)} />
+        </div>
+      ))}
 
+      {/* THE REASON FOR NO BAND WAS WRITTEN FOR A SPOT CHART and outlived it. It read "funding is
+          a property of the perpetual, not of spot" — true when this chart was Coinbase spot, and
+          self-contradicting since 19 August 2026, when the chart became Hyperliquid perpetual
+          candles: the note above it says so, and so does "Where the numbers come from". Found on
+          16 September 2026 on /coins/chainlink, where the 220-bar series the page ships carries
+          no funding in any bar because the chart is built with `null` for funding. The sentence
+          now gives the reason that is true of this page whatever the chart is drawn from: the
+          rate is quoted where it stands, and its history is drawn on the funding page. */}
+      {/* EVERY FIGURE AND SENTENCE THAT BELONGS TO ONE PANEL IS A [data-tfstat], and
+          public/interact.js files each under the panel it was rendered with (timeframe AND
+          style), so a switch repaints all of them together — including a switch back to the
+          panel this page was served with, which used to find nothing filed for it and kept the
+          previous timeframe's figures. `legend__style` is display:inline so a whole sentence
+          does not become the inline-block the swap transition gives short figures. */}
       <p class="legend">
         Period high <b data-tfstat="high" data-group="cx">{px(active!.chart!.high)}</b>,
         low <b data-tfstat="low" data-group="cx">{px(active!.chart!.low)}</b>,
         over <b data-tfstat="bars" data-group="cx">{barSpan(active!.tf, active!.chart!.bars)}</b>.
-        Candles are green where a bar closed at or above its open, red where it closed below.
-        {" "}<a class="link" href="/methodology#charts">How the chart is drawn →</a>
+        {" "}<span class="legend__style" data-tfstat="style" data-group="cx">{styleNote}</span>
+        {" "}No funding band on this chart: the funding rate is quoted at
+        its current value in the cards and the per-venue table below, and its history has
+        {" "}<a class="link" href={`/funding/${coin.symbol.toLowerCase()}`}>its own chart</a>.
       </p>
     </>
   ) : (
     <div class="empty">
       <div class="empty__body">
         <p class="empty__title">Candles not collected yet</p>
-        <p class="empty__text">A missing series is filled on the next five-minute tick. Every figure above and below is unaffected.</p>
+        <p class="empty__text">Hyperliquid candles are refreshed every two hours, and a series that is missing entirely is filled on the next five-minute tick rather than waiting for that. Every figure above and below is unaffected.</p>
       </div>
     </div>
   )}
-
-  <Versus symbol={coin.symbol} refSymbol={refSymbol} refHref={refCoin ? `/coins/${refCoin.slug}` : null} rows={vsRows} at={snap.fetchedAt} fit={fitNote} />
 
   {/* THIS HEADING SAID "Spot against the perpetual" AND THE SECTION HAD NO SPOT IN IT. The cards
       beneath were re-based when Coinbase was removed and the heading above them was not — a
@@ -448,12 +464,12 @@ const description = `Live ${coin.name} (${coin.symbol}) perpetual price from Hyp
       the two page families side by side rather than by reading the file. The lesson is the one
       the uncited-claims sweep already taught: a sentence deleted in one place has copies, and
       the copies are not always sentences. */}
-  <h2 class="section">What holding {coin.symbol} costs</h2>
-  {(fundStanding || book) && (
-    <p class="section-note">
-      {hl && Number.isFinite(hl.apr) && <>Hyperliquid funding on {coin.symbol} is <b>{pct(hl.apr)}</b>. </>}{fundStanding}{book && <>{" "}{book}</>}
-    </p>
-  )}
+  <h2 class="section">What the position costs</h2>
+  <p class="section-note">
+    The number a price page usually leaves out. A perpetual has no expiry, so nothing pulls it
+    back toward the underlying except the funding payment — which means the rate is not a fee on
+    the side, it is the mechanism, and it is what holding this exposure actually costs.
+  </p>
   <div class="cards">
     {/* THIS CARD WAS THE BASIS and there is deliberately nothing in its place pretending to be
         it. The nearest available number is the mark against Hyperliquid's oraclePx, and that is
@@ -462,13 +478,18 @@ const description = `Live ${coin.name} (${coin.symbol}) perpetual price from Hyp
     <div class="card card--lead">
       <div class="card__label">Open interest <span class="card__scope">Hyperliquid</span></div>
       <div class="card__value">{perp ? usd(perp.oiNotional) : "—"}</div>
-      <div class="card__meta">notional currently open{oiMvWords && <> · <a class="link" href="/open-interest?w=7d">{oiMvWords}</a></>}</div>
+      <div class="card__meta">notional currently open</div>
     </div>
     <div class="card">
       <div class="card__label">Hyperliquid funding</div>
-      {/* Repainted with the venue table beside it, so a live pull cannot leave the card on the old rate. */}
-      <div class:list={["card__value", hl && paysClass(hl.apr)]} data-repaint={hl ? "apr" : undefined} data-sym={coin.symbol} data-venue="HlPerp">{hl ? pct(hl.apr) : "—"}</div>
-      <div class="card__meta" data-repaint={hl ? "dir" : undefined} data-sym={coin.symbol} data-venue="HlPerp" data-pay="longs pay shorts" data-recv="shorts pay longs">{hl ? paysLabel(hl.apr) : "—"}</div>
+      <div class:list={["card__value", hl && paysClass(hl.apr)]}>{hl ? pct(hl.apr) : "—"}</div>
+      <div class="card__meta">{hl ? paysLabel(hl.apr) : "—"}</div>
+    </div>
+    <div class="card">
+      <div class="card__label">Cost to hold $10,000 long</div>
+      <div class="card__value" data-repaint={hl ? "carry" : undefined} data-sym={coin.symbol} data-venue="HlPerp"
+           data-notional="10000" data-days="7">{hl ? usd(Math.abs(week(hl.apr)), 2) : "—"}</div>
+      <div class="card__meta">{hl ? `per week · ${hl.apr >= 0 ? "you pay" : "you receive"}` : "—"}</div>
     </div>
     <div class="card">
       <div class="card__label">Open interest ÷ 24h volume <span class="card__scope">Hyperliquid</span></div>
@@ -477,10 +498,10 @@ const description = `Live ${coin.name} (${coin.symbol}) perpetual price from Hyp
     </div>
   </div>
 
-  <h2 class="section">{coin.symbol} carry, per venue</h2>
+  <h2 class="section">What leverage costs, per venue</h2>
   <p class="section-note">
-    {venueVerdict ?? `The same $10,000 long on ${allRows}, a week at the current rate.`}
-    {" "}<a class="link" href="/methodology">Why the quoted rates cannot be compared →</a>
+    Each venue settles funding on its own interval, so the quoted numbers are not comparable to
+    each other. The weekly column is, because it is the same $10,000 position on {allRows}.
   </p>
   <div class="panel">
     <table class="tbl">
@@ -512,12 +533,15 @@ const description = `Live ${coin.name} (${coin.symbol}) perpetual price from Hyp
     <>
       <h2 class="section">How far {coin.symbol} can move before each leverage closes you</h2>
       <p class="section-note" style="max-width:88ch">
-        From the mark of {px(markNow)}{markClock ? ` at ${markClock}` : ""} and {coin.name}'s first margin tier, {tier1.maxLeverage}× at most.
-        {profile && <>{" "}{dayProfileWords(coin.symbol, profile)}</>}
-        {rungNote && <>{" "}{rungNote}</>}
-        {" "}<a class="link" href="/methodology#levels">How these are worked out →</a>
+        No model and no assumption about who holds what. Given {coin.name}'s published margin
+        tier — {tier1.maxLeverage}× maximum, {pct(maintenanceMarginFraction(tier1.maxLeverage), 3)} maintenance
+        margin — and the mark of {px(markNow)}{markClock ? ` at ${markClock}` : ""}, the price
+        this page opened with, these prices are arithmetic. If the price at the top of the page has
+        moved since, these levels have not moved with it; reload to rework them from a newer mark.
+        The corridor is the whole width a position survives: cross either end and it is closed,
+        whatever the funding was doing.
       </p>
-      <div class="panel">
+      <div class="panel" style="max-width:720px">
         <table class="tbl">
           <thead>
             <tr>
@@ -526,30 +550,42 @@ const description = `Live ${coin.name} (${coin.symbol}) perpetual price from Hyp
               <th class="num">Move down</th>
               <th class="num">Short closed at</th>
               <th class="num">Corridor width</th>
-              {month.length >= 10 && <th class="num">Days that closed it, long · short</th>}
             </tr>
           </thead>
           <tbody>
-            {rungs.map((r, i) => (
+            {rungs.map((r) => (
               <tr class={r.L === tier1.maxLeverage ? "is-active" : undefined}>
                 <td class="num">{r.L}×{r.L === tier1.maxLeverage ? " · max" : ""}</td>
                 <td class="num">{usd(r.longLiq, dp)}</td>
-                <td class="num">{signedPct(-r.longDist)}</td>
+                <td class="num">−{(r.longDist * 100).toFixed(2)}%</td>
                 <td class="num">{usd(r.shortLiq, dp)}</td>
-                <td class="num">{pct(r.corridor)}</td>
-                {month.length >= 10 && <td class="num">{rungDays[i].long} · {rungDays[i].short} of {rungDays[i].of}</td>}
+                <td class="num">{(r.corridor * 100).toFixed(2)}%</td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-      <DayMoves days={month} rungs={rungs} symbol={coin.symbol} />
+      <p class="section-note">
+        These are the levels for one position. Where the market's levels sit — modelled, with the
+        assumptions printed beside them — is the
+        {" "}<a class="link" href={liqMapHref(coin.symbol)}>{coin.symbol} liquidation map</a>.
+      </p>
     </>
   )}
 
-  <p class="datanote">
-    Every figure here is Hyperliquid's{exceptRows}; the price is the perpetual contract's, not spot.
-    {" "}<a class="link" href="/data-sources">Every endpoint behind it →</a>
+  <h2 class="section">Where the numbers come from</h2>
+  <p class="prose">
+    Every figure on this page is <strong>Hyperliquid</strong>{exceptRows}: the mark price, the
+    24-hour figures, the candles, Hyperliquid's own funding rate and the open interest, all from
+    the same feed the rest of the site reads.{exceptNote} The price is a perpetual futures price,
+    not a spot price — the contract, not the coin — and the two can diverge.
+  </p>
+  <p class="prose">
+    Until 19 August 2026 this page led with a spot price from a third-party exchange, and showed
+    the basis between that price and the perpetual. Both are gone: the terms governing that data
+    forbid displaying it or anything derived from it, so it was removed rather than kept while
+    the question was argued. <a class="link" href="/data-sources">Data sources</a> lists every
+    endpoint behind every number here, and what is deliberately absent.
   </p>
 
   <p style="margin-top:24px">
@@ -557,13 +593,6 @@ const description = `Live ${coin.name} (${coin.symbol}) perpetual price from Hyp
     · <a class="link" href={liqMapHref(coin.symbol)}>Where {coin.symbol} leverage breaks →</a>
     · <a class="link" href={`/liquidations/survival?symbol=${coin.symbol}`}>What the rules did to past positions →</a>
   </p>
-
-  {about && (
-    <section id="about">
-      <h2 class="section">What {about.name} is</h2>
-      <p class="prose">{about.about}</p>
-    </section>
-  )}
 
   <h2 class="section">Other coins</h2>
   <p class="related">
@@ -574,8 +603,7 @@ const description = `Live ${coin.name} (${coin.symbol}) perpetual price from Hyp
     .hero__span { font-size: var(--fs-sm); color: var(--text-faint); }
     .tfbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: var(--inset-panel) 0 var(--gap-block); }
     .tfbar__note { font-size: var(--fs-xs); color: var(--text-faint); }
-    .chart--price :global(svg.pxw) { aspect-ratio: var(--chartRatio); }
-    .chart--price :global(svg.pxn) { aspect-ratio: var(--chartRatioN); }
+    .chart--price :global(svg) { aspect-ratio: var(--chartRatio); }
     .legend { max-width: 88ch; line-height: 1.6; margin-top: 12px; }
     .legend__style { display: inline; }
     .related { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; }

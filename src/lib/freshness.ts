@@ -47,15 +47,6 @@ export const LIVE_STALE_MIN = 4;
 /** The five-minute ingest, at three misses. */
 export const SNAP_STALE_MIN = 15;
 
-/** THE STALENESS TEST, once: past the clock's limit, or stamped in the future — a future stamp is a
- *  broken clock somewhere, not freshness, and must not read as healthy. /status had its own copy
- *  (`ageMin > 15`, no skew test, so a stamp 3 minutes ahead printed "-3 min" as healthy) and the
- *  flip feed its own limit of 20 minutes against this 15. */
-const SKEW_MS = 60_000;
-export function isStale(at: number, limitMin: number, now = Date.now()): boolean {
-  return at - now > SKEW_MS || Math.max(0, Math.round((now - at) / 60_000)) > limitMin;
-}
-
 /**
  * THE AGE LADDER, IN ONE PLACE, BECAUSE IT WAS IN THREE AND THEY DISAGREED.
  *
@@ -79,7 +70,6 @@ export function isStale(at: number, limitMin: number, now = Date.now()): boolean
    minutes — and the split only showed when the data was old, which is the failure mode this
    single-sourced site is most exposed to. One file now, imported by all of them. */
 export { ageWords, minutesSince } from "../../public/shared.js";
-import { shortDate, plural } from "../../public/shared.js";
 
 /**
  * A MOMENT, IN UTC, THAT NAMES ITS DAY WHEN IT IS NOT TODAY'S. "15:16 UTC" is exact on a key written a
@@ -88,10 +78,11 @@ import { shortDate, plural } from "../../public/shared.js";
  * /funding/[symbol] and /coins/[coin] each had their own — "2026-09-16 15:16 UTC" and "15:16 UTC on
  * 16 Sep 2026" — for the same job; this is the one.
  */
+const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 export function utcStamp(t: number, now = Date.now()): string {
   const d = new Date(t);
   const sameDay = d.toISOString().slice(0, 10) === new Date(now).toISOString().slice(0, 10);
-  return `${d.toISOString().slice(11, 16)} UTC${sameDay ? "" : ` on ${shortDate(t)}`}`;
+  return `${d.toISOString().slice(11, 16)} UTC${sameDay ? "" : ` on ${d.getUTCDate()} ${MON[d.getUTCMonth()]} ${d.getUTCFullYear()}`}`;
 }
 
 export interface Freshness {
@@ -102,16 +93,12 @@ export interface Freshness {
   note: string;
 }
 
-export { plural } from "../../public/shared.js";
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
 /** PROSE form of the same ladder — "5 days", not "5 d ago" — for use mid-sentence. Deliberately
  *  a separate function rather than a second ladder: the thresholds below must match ageWords in
  *  public/shared.js, and scripts/freshness-cases.mjs asserts they agree at every boundary. */
 export function readableAge(min: number): string {
-  /* Rounded and floored like ageWords, so a fractional or zero age cannot print "59.6 minutes" or
-     "0 minutes old" where the pill beside it says "just now". */
-  min = Math.max(0, Math.round(min));
-  if (min === 0) return "under a minute";
   if (min < 60) return plural(min, "minute", "minutes");
   if (min < 48 * 60) return plural(Math.round(min / 60), "hour", "hours");
   return plural(Math.round(min / 1440), "day", "days");
@@ -145,8 +132,9 @@ export function freshness(
      old, while the 24-hour change, the open interest and the venue table beside it were a
      minute old. The verdict was right; the sentence describing it was not. */
   const otherAgeMin = hasLive ? Math.max(0, Math.round((now - snapAt) / 60_000)) : undefined;
-  const skewed = judged - now > SKEW_MS;
-  const stale = isStale(judged, limit, now);
+  /* A future stamp is a broken clock somewhere, not freshness, and must not read as healthy. */
+  const skewed = judged - now > 60_000;
+  const stale = skewed || ageMin > limit;
   return {
     ageMin,
     stale,

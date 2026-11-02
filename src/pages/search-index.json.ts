@@ -64,10 +64,6 @@ export const GET: APIRoute = async ({ locals }) => {
     // "funding rate explained" inside a site, they type "funding rate" and expect both the
     // table and the explanation to be offered.
     { label: "What a funding rate is", alt: "funding rate explained", href: "/learn/funding-rate", kind: "reference" },
-    { label: "Funding paid on Hyperliquid, 30 days", alt: "funding paid longs shorts dollars", href: "/funding/paid", kind: "reference" },
-    { label: "What funding took from a long, seven months", alt: "funding history cost of holding long", href: "/funding/history", kind: "reference" },
-    { label: "When venues disagree about who pays", alt: "funding direction binance bybit hyperliquid", href: "/funding/venues", kind: "reference" },
-    { label: "The August 2026 funding spike", alt: "funding spike august 2026 hyperliquid", href: "/funding/august-2026", kind: "reference" },
     { label: "What a liquidation heatmap shows", alt: "liquidation heatmap explained", href: "/learn/liquidation-heatmap", kind: "reference" },
     { label: "How a liquidation price is calculated", alt: "liquidation price formula", href: "/learn/liquidation-price", kind: "reference" },
     { label: "What open interest tells you", alt: "open interest explained", href: "/learn/open-interest", kind: "reference" },
@@ -79,7 +75,6 @@ export const GET: APIRoute = async ({ locals }) => {
     { label: "Why we don't publish liquidation totals", href: "/methodology/liquidations", kind: "reference" },
     { label: "Data sources", href: "/data-sources", kind: "reference" },
     { label: "About", alt: "who runs this", href: "/about", kind: "reference" },
-    { label: "Corrections", alt: "errors fixed errata", href: "/corrections", kind: "reference" },
     { label: "Privacy", href: "/privacy", kind: "reference" },
     { label: "Terms and disclaimer", alt: "no financial service, no custody, no advice", href: "/terms", kind: "reference" },
   ];

@@ -11,7 +11,7 @@
    changes whenever either does, and passing it along keeps the two halves of one deploy
    together. */
 const __v = new URL(import.meta.url).searchParams.get("v");
-const { paysClass, paysLabel, carryCost, spreadOf, pct, changeWords, ageWords, nf, qty, compact: compactUsd, usd, visiblePanel, cumulativeAt, atReading, parsePrice, shortDate, dateTimeUtc } =
+const { paysClass, paysLabel, carryCost, spreadOf, pct, changeWords, ageWords, nf, qty, compact: compactUsd, usd, visiblePanel } =
   await import("./shared.js" + (__v ? `?v=${__v}` : ""));
 
 /* =========================================================================================
@@ -42,12 +42,18 @@ const { paysClass, paysLabel, carryCost, spreadOf, pct, changeWords, ageWords, n
 (() => {
   "use strict";
   const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const p2 = (n) => String(n).padStart(2, "0");
   /* nf, qty and compactUsd ALL CAME FROM public/shared.js NOW. They were three separate
      implementations of rules the server also implements, kept in step by a magnitude sweep in
      scripts/checks.mjs — and two of them had already drifted in production before that sweep
      existed. The sweep stays as a guard against a fourth copy appearing; it no longer has two
      implementations to compare, because there are not two. */
-  const stamp = (t, withTime) => (withTime ? dateTimeUtc(t).replace(/ UTC$/, "") : shortDate(t));
+  const stamp = (t, withTime) => {
+    const d = new Date(t);
+    return `${d.getUTCDate()} ${MON[d.getUTCMonth()]} ${d.getUTCFullYear()}` +
+      (withTime ? `, ${p2(d.getUTCHours())}:${p2(d.getUTCMinutes())}` : "");
+  };
 
   /* ------------------------------------------------------------------------- tooltip */
   let tip, tipRaf = 0, tipNext = null;
@@ -198,7 +204,7 @@ const { paysClass, paysLabel, carryCost, spreadOf, pct, changeWords, ageWords, n
       else py.setAttribute("opacity", "0");
       setPill(tx, a[0], axisY || plotY + plotH + 5, stamp(a[1], withTime), plotX, axisX);
 
-      const apr = a[7];
+      const up = a[5] >= a[2], apr = a[7];
       showTip(
         `<div class="tip__h">${stamp(a[1], withTime)}${withTime ? " UTC" : ""}</div>` +
         `<div class="tip__g">` +
@@ -208,7 +214,7 @@ const { paysClass, paysLabel, carryCost, spreadOf, pct, changeWords, ageWords, n
         `<span>Close</span><b>$${nf(a[5], dp)}</b>` +
         `<span>Volume</span><b>${qty(a[6])} ${unit}</b>` +
         (Number.isFinite(apr) ? `<span>Funding</span><b class="${paysClass(apr)}">${pct(apr)} APR</b>` : "") +
-        `</div><div class="tip__f">${changeWords((a[5] - a[2]) / (a[2] || 1))} on the bar` +
+        `</div><div class="tip__f">${up ? "▲" : "▼"} ${nf(Math.abs((a[5] - a[2]) / (a[2] || 1)) * 100, 2)}% on the bar` +
         (Number.isFinite(apr) ? ` · ${paysLabel(apr)}` : "") + `</div>`,
         cx, cy, touch,
       );
@@ -333,52 +339,6 @@ const { paysClass, paysLabel, carryCost, spreadOf, pct, changeWords, ageWords, n
     svg.addEventListener("pointerleave", hideTip);
   });
 
-  /* ----------------------------------------- the reader's own price on the liquidation map
-     The server already answered ?at= in the HTML; this only lets the reader move it. Every figure
-     comes from the rows the server published in data-levels, read by the same cumulativeAt() and
-     worded by the same atReading() the server printed with (public/shared.js), and the address
-     follows the line, so what is on screen is a link. A tap places the line; a mouse can drag it.
-     Touch does not drag, because a finger on the ladder is usually a finger scrolling the page. */
-  document.querySelectorAll("[data-levels]").forEach((fig) => {
-    let d;
-    try { d = JSON.parse(fig.dataset.levels); } catch { return; }
-    const svg = fig.querySelector("svg");
-    const line = svg && svg.querySelector("[data-at-line]");
-    const label = fig.querySelector("[data-at-label]");
-    const pill = fig.querySelector("[data-at-pill]");
-    const form = document.querySelector("[data-at-form]");
-    const input = form && form.querySelector("[data-at-input]");
-    const out = form && form.querySelector("[data-at-out]");
-    if (!line || !label || !pill || !input || !out) return;
-    const place = (price, typed) => {
-      const yv = Math.min(d.y0 + d.h, Math.max(d.y0, d.y0 + ((d.top - price) / (d.top - d.bottom)) * d.h));
-      line.setAttribute("transform", `translate(0 ${yv})`);
-      line.removeAttribute("display");
-      pill.style.top = `${yv}px`;
-      pill.hidden = false;
-      const c = cumulativeAt(d.curve, d.mark, price);
-      label.textContent = `${usd(price, d.dp)} → ${compactUsd(c.notional)} ${c.side === "long" ? "longs" : "shorts"}`;
-      out.textContent = atReading(d.curve, d.mark, price, d.lo, d.hi, d.dp, d.then);
-      if (!typed) input.value = String(price);
-      const u = new URL(location.href);
-      u.searchParams.set("at", String(price));
-      history.replaceState(null, "", u);
-    };
-    const fromPointer = (e) => {
-      const m = svg.getScreenCTM();
-      if (!m) return null;
-      const v = new DOMPoint(e.clientX, e.clientY).matrixTransform(m.inverse());
-      const price = Number((d.top - ((v.y - d.y0) / d.h) * (d.top - d.bottom)).toFixed(d.dp));
-      return price > 0 ? price : null;
-    };
-    let dragging = false;
-    svg.addEventListener("click", (e) => { const p = fromPointer(e); if (p) place(p, false); });
-    svg.addEventListener("pointerdown", (e) => { if (e.pointerType === "mouse") dragging = true; });
-    svg.addEventListener("pointermove", (e) => { if (dragging) { const p = fromPointer(e); if (p) place(p, false); } });
-    addEventListener("pointerup", () => { dragging = false; });
-    input.addEventListener("input", () => { const p = parsePrice(input.value); if (p) place(p, true); });
-  });
-
   /* ------------------------------------------------------------- timeframe switcher */
   /* ------------------------------------------------- timeframe + chart-style groups
      TWO AXES, ONE MECHANISM. A contract page switches timeframe only; a coin page switches
@@ -425,7 +385,7 @@ const { paysClass, paysLabel, carryCost, spreadOf, pct, changeWords, ageWords, n
       let pts;
       try { pts = JSON.parse(src.textContent).slice(-200); } catch { return; }
       const dp = +table.dataset.dp || 2;
-      const money = (v) => usd(v, dp);
+      const money = (v) => "$" + nf(v, dp);
       body.innerHTML = pts.map((q) => {
         const f = Number.isFinite(q[7]);
         return "<tr>" +
@@ -682,8 +642,7 @@ const { paysClass, paysLabel, carryCost, spreadOf, pct, changeWords, ageWords, n
 const liveEls = [...document.querySelectorAll("[data-repaint]")];
   if (liveEls.length) {
     const dpOf = (el) => +(el.dataset.dp || 2);
-    /* usd(), the server's own formatter for these cells — "$" + nf() agreed only below $1M. */
-    const money = (v, dp) => usd(v, dp);
+    const money = (v, dp) => "$" + nf(v, dp);
     let last = {};
 
     /* THE SPOT FREEZE MACHINERY IS GONE WITH THE SPOT BRANCHES. It suppressed `mark` on any page
@@ -780,7 +739,7 @@ const liveEls = [...document.querySelectorAll("[data-repaint]")];
                   const notional = +el.dataset.notional || 10000;
                   const days = +el.dataset.days || 7;
                   const v = Math.abs(carryCost(notional, a, days));
-                  next = usd(v, 2);
+                  next = "$" + v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                 }
               }
             }
@@ -978,10 +937,3 @@ const liveEls = [...document.querySelectorAll("[data-repaint]")];
     });
   }
 }
-
-/* A form of selects only redraws as soon as one changes (form[data-autosubmit]); its submit button
-   is in <noscript>, for a browser that will not run this. */
-document.addEventListener("change", (e) => {
-  const f = e.target instanceof HTMLSelectElement ? e.target.closest("form[data-autosubmit]") : null;
-  if (f) f.requestSubmit ? f.requestSubmit() : f.submit();
-});

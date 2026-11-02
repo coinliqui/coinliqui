@@ -1,10 +1,8 @@
 // public/shared.js
 function pct(x, decimals = 2) {
   if (!Number.isFinite(x)) return "\u2014";
-  const printed = (Math.abs(x) * 100).toFixed(decimals);
-  return `${x < 0 && Number(printed) !== 0 ? "\u2212" : ""}${printed}%`;
+  return `${(x * 100).toFixed(decimals)}%`;
 }
-var plural = (n2, one, many) => `${n2} ${n2 === 1 ? one : many}`;
 
 // src/lib/funding.ts
 var HOURS_PER_YEAR = 24 * 365;
@@ -16,144 +14,15 @@ function toApr(ratePerInterval, intervalHours) {
   return ratePerInterval * (HOURS_PER_YEAR / intervalHours);
 }
 
-// src/data/margin-tables.json
-var margin_tables_default = {
-  "3": {
-    description: "",
-    marginTiers: [
-      {
-        lowerBound: 0,
-        maxLeverage: 3
-      }
-    ]
-  },
-  "5": {
-    description: "",
-    marginTiers: [
-      {
-        lowerBound: 0,
-        maxLeverage: 5
-      }
-    ]
-  },
-  "10": {
-    description: "",
-    marginTiers: [
-      {
-        lowerBound: 0,
-        maxLeverage: 10
-      }
-    ]
-  },
-  "20": {
-    description: "",
-    marginTiers: [
-      {
-        lowerBound: 0,
-        maxLeverage: 20
-      }
-    ]
-  },
-  "51": {
-    description: "tiered 10x",
-    marginTiers: [
-      {
-        lowerBound: 0,
-        maxLeverage: 10
-      },
-      {
-        lowerBound: 3e6,
-        maxLeverage: 5
-      }
-    ]
-  },
-  "52": {
-    description: "tiered 10x (2)",
-    marginTiers: [
-      {
-        lowerBound: 0,
-        maxLeverage: 10
-      },
-      {
-        lowerBound: 2e7,
-        maxLeverage: 5
-      }
-    ]
-  },
-  "53": {
-    description: "tiered 20x",
-    marginTiers: [
-      {
-        lowerBound: 0,
-        maxLeverage: 20
-      },
-      {
-        lowerBound: 4e7,
-        maxLeverage: 10
-      }
-    ]
-  },
-  "54": {
-    description: "tiered 20x (2)",
-    marginTiers: [
-      {
-        lowerBound: 0,
-        maxLeverage: 20
-      },
-      {
-        lowerBound: 7e7,
-        maxLeverage: 10
-      }
-    ]
-  },
-  "55": {
-    description: "tiered 25x",
-    marginTiers: [
-      {
-        lowerBound: 0,
-        maxLeverage: 25
-      },
-      {
-        lowerBound: 1e8,
-        maxLeverage: 15
-      }
-    ]
-  },
-  "56": {
-    description: "tiered 40x",
-    marginTiers: [
-      {
-        lowerBound: 0,
-        maxLeverage: 40
-      },
-      {
-        lowerBound: 15e7,
-        maxLeverage: 20
-      }
-    ]
-  }
-};
-
-// src/lib/margin.ts
-var TABLES = margin_tables_default;
-function tableFor(p) {
-  const k = String(p.marginTableId);
-  return Object.prototype.hasOwnProperty.call(TABLES, k) ? TABLES[k] : void 0;
-}
-
 // src/lib/routes.ts
 var PAGES_DATA = ["/", "/methodology", "/about"];
-var PAGES_CODE = ["/methodology/liquidations", "/data-sources", "/privacy", "/terms", "/corrections"];
+var PAGES_CODE = ["/methodology/liquidations", "/data-sources", "/privacy", "/terms"];
 var TOOLS = ["/tools", "/tools/position-size", "/tools/leverage", "/tools/funding-cost", "/tools/funding-arbitrage"];
 var LIQUIDATIONS = ["/liquidations", "/liquidations/sweep", "/liquidations/survival"];
 var LEARN_DATA = ["/learn", "/learn/funding-rate", "/learn/open-interest"];
 var LEARN_CODE = ["/learn/liquidation-heatmap", "/learn/liquidation-price"];
 var LEARN = [...LEARN_DATA, ...LEARN_CODE];
 var FUNDING_HUB = ["/funding"];
-var FUNDING_PAID = ["/funding/paid"];
-var FUNDING_HISTORY = ["/funding/history"];
-var FUNDING_VENUES = ["/funding/venues"];
-var FUNDING_EVENTS = ["/funding/august-2026"];
 var OPEN_INTEREST = ["/open-interest"];
 var UNLOCKS = ["/unlocks"];
 var COINS_HUB = ["/coins"];
@@ -162,10 +31,6 @@ var STATIC_ROUTES = [
   ...PAGES_CODE,
   ...COINS_HUB,
   ...FUNDING_HUB,
-  ...FUNDING_PAID,
-  ...FUNDING_HISTORY,
-  ...FUNDING_VENUES,
-  ...FUNDING_EVENTS,
   ...OPEN_INTEREST,
   ...TOOLS,
   ...LIQUIDATIONS,
@@ -271,9 +136,9 @@ async function fetchSnapshot(published = []) {
     };
   });
   const live = new Set(published);
-  const aboveFloor = (p) => Number.isFinite(p.oiNotional) && (p.oiNotional >= OI_NOTIONAL_FLOOR || live.has(p.symbol) && p.oiNotional >= OI_RETIRE_FLOOR);
-  const heldBack = all.filter((p) => aboveFloor(p) && !tableFor(p)).map((p) => p.symbol);
-  const eligible = all.filter((p) => aboveFloor(p) && tableFor(p) !== void 0).sort((a, b) => b.oiNotional - a.oiNotional);
+  const eligible = all.filter(
+    (p) => Number.isFinite(p.oiNotional) && (p.oiNotional >= OI_NOTIONAL_FLOOR || live.has(p.symbol) && p.oiNotional >= OI_RETIRE_FLOOR)
+  ).sort((a, b) => b.oiNotional - a.oiNotional);
   const inCap = eligible.slice(0, SYMBOL_CAP);
   const kept = eligible.slice(SYMBOL_CAP).filter((p) => live.has(p.symbol)).slice(0, SYMBOL_RETAIN_EXTRA);
   const perps = [...inCap, ...kept].sort((a, b) => b.oiNotional - a.oiNotional);
@@ -286,8 +151,7 @@ async function fetchSnapshot(published = []) {
     // a number inflated by contracts kept alive on hysteresis would not match its own label.
     eligibleCount: all.filter((p) => Number.isFinite(p.oiNotional) && p.oiNotional >= OI_NOTIONAL_FLOOR).length,
     universeCount: listed,
-    keptPastCap: kept.length,
-    heldBack
+    keptPastCap: kept.length
   };
 }
 async function fetchLive(symbols) {
@@ -640,6 +504,7 @@ async function readFlipEvents(db, hours = 24, now = Date.now()) {
   }
 }
 var FLIPS_KEY = "flips:24h";
+var FLIPS_MAX_AGE_MS = 20 * 60 * 1e3;
 async function writeCachedFlips(kv, result, now) {
   await kv.put(FLIPS_KEY, JSON.stringify({ computedAt: now, result }));
 }
@@ -754,6 +619,7 @@ function extremeBy(items, value, dir = "max", eps = 1e-9) {
 }
 
 // worker/report.ts
+var plural = (n2, one, many) => `${n2} ${n2 === 1 ? one : many}`;
 var REPORT_FORMAT = 2;
 var SEARCH_LAG_DAYS = 2;
 var SEARCH_WINDOW_DAYS = 8;
@@ -1637,7 +1503,7 @@ async function stepVenueAgreement(env, now = Date.now()) {
 }
 
 // worker/build-stamp.ts
-var WORKER_BUILD = "2f814d91bed7";
+var WORKER_BUILD = "9a6441648add";
 
 // worker/ingest.ts
 var RETAIN_HOURS = 720;

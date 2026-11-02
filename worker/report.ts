@@ -26,7 +26,9 @@
 
 import TERMS from "../src/data/terms-baseline.json" with { type: "json" };
 import { extremeBy } from "../src/lib/extreme.ts";
-import { pct, plural } from "../public/shared.js";
+import { pct } from "../public/shared.js";
+/* Local while the site is rolled back to 13 October 2026: that public/shared.js has no plural(). */
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
 /* THE SHAPE OF THE STORED DOC, SO A PAGE CAN TELL WHICH WORDING IT IS READING.
    The report is written once a week and read for the seven days after, so a correction to its

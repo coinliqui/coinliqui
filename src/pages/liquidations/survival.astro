@@ -2,15 +2,13 @@
 import Base from "../../layouts/Base.astro";
 import { getSnapshot, coldStart, requestedPerp } from "../../lib/hyperliquid.ts";
 import { usd, pct, nf, axisDp } from "../../lib/funding.ts";
-import { maintenanceMarginFraction, type MarginTable, sortedTiers } from "../../lib/margin.ts";
+import { maintenanceMarginFraction, type MarginTable } from "../../lib/margin.ts";
 import { getCandles, survivalGrid, gridLevels } from "../../lib/candles.ts";
 import { CH, INK, RAMP, text, rect, timeTicks, xTick, niceTicks, fint, SANS, FS_AXIS, FS_MICRO } from "../../lib/chart.ts";
 import tables from "../../data/margin-tables.json";
 
 import Advisory from "../../components/Advisory.astro";
-import More from "../../components/More.astro";
 import { priceDp } from "../../lib/funding.ts";
-import { shortDate } from "../../../public/shared.js";
 const env = (Astro.locals as any)?.runtime?.env;
 const snap = await getSnapshot(env?.SNAPSHOT, import.meta.env.DEV);
 if (!snap.available) return coldStart();
@@ -25,7 +23,7 @@ const picked = requestedPerp(snap.perps, wantedSymbol, tables as Record<string, 
 if (picked === null) return coldStart();
 if (picked === "unknown") return Astro.rewrite(`/404?symbol=${encodeURIComponent(wantedSymbol!)}`);
 const { perp, table } = picked;
-const tier1 = sortedTiers(table)[0];
+const tier1 = [...table.marginTiers].sort((a, b) => a.lowerBound - b.lowerBound)[0];
 const mark = perp.markPx;
 const mmf = maintenanceMarginFraction(tier1.maxLeverage);
 const dp = priceDp(mark);
@@ -57,7 +55,7 @@ const grid =
    read "Entry days 26 Apr to 24 Jul" — fine beside a live page, useless in a search snippet or
    in anything that lifted the sentence, and every other date formatter in this repository passes
    year. */
-const dayLabel = shortDate;
+const dayLabel = (ms: number) => new Date(ms).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
 
 /* THE MEDIAN COLUMN PRINTED THE UPPER MIDDLE. LevelResult.medianDays in src/lib/candles.ts was
    `days[Math.floor(days.length / 2)]` (the field is now removed), the median only for an odd count; for an even
@@ -305,11 +303,7 @@ const feesVsFunding = mapSide === "long" ? "the same sign as the funding a long 
     <h1>{perp.symbol} leverage survival</h1>
     <p>
       {survivalLede && <><strong>{survivalLede}</strong>{" "}</>}
-      <strong>The prices are real; the closing rule is a model.</strong>
-    </p>
-    <More label="What each cell tests, and where the data comes from">
-    <p>
-      Both come from
+      <strong>The prices are real; the closing rule is a model.</strong> Both come from
       <strong>Hyperliquid</strong> — its candles, and its margin table. {cellsAsk} one
       checkable question about an observed price path — a <strong>{mapSide}</strong> opened at
       that day's close, at that leverage, held {hold} days: did the maintenance-margin threshold
@@ -319,7 +313,6 @@ const feesVsFunding = mapSide === "long" ? "the same sign as the funding a long 
       {" "}<a class="link" href="/liquidations">the density map</a> needs, which is the honest
       version of the claim this paragraph used to make.
     </p>
-    </More>
     <Advisory />
   </div>
 
@@ -369,7 +362,7 @@ const feesVsFunding = mapSide === "long" ? "the same sign as the funding a long 
                 <td class="num">{lv.tested}</td>
                 <td class="num">{lv.liquidated}</td>
                 <td class="num">{lv.tested - lv.liquidated}</td>
-                <td class="num">{pct(1 - lv.liquidated / Math.max(1, lv.tested), 1)}</td>
+                <td class="num">{((1 - lv.liquidated / Math.max(1, lv.tested)) * 100).toFixed(1)}%</td>
                 <td class="num">{medianClosure(lv) ?? "—"}</td>
               </tr>
             ))}
@@ -418,10 +411,8 @@ const feesVsFunding = mapSide === "long" ? "the same sign as the funding a long 
           use. The count each way depends on the side: for longs three rows read too kind and
           two too harsh; for shorts funding changes sides, so it is two and three. */}
       <h2 class="section">What the closing rule assumes</h2>
-      <More label="Which way these assumptions bend the grid">
-        <p class="section-note">{assumptionsNote}</p>
-      </More>
       <p class="section-note">
+        {assumptionsNote}
         {/* THE SIBLING TEST, WHICH THIS PAGE NEVER POINTED AT. Both pages ask whether the model
             survives contact with a real market and neither linked the other: /liquidations/sweep
             had two inbound editorial links in the whole site and is one of the URLs Search

@@ -1,16 +1,13 @@
 ---
-import { moneyAt, printedMoney as printed, nearPrinted as near, fitDecimals as fit, exactUsd, fineNum as num, numberWord } from "../../../public/shared.js";
-import { capOf } from "../../lib/margin.ts";
 import ASSETS from "../../data/assets.json";
 import Base from "../../layouts/Base.astro";
-import { getSnapshot, coldStart, findPerp, getLive, currentMark } from "../../lib/hyperliquid.ts";
+import { getSnapshot, coldStart, findPerp } from "../../lib/hyperliquid.ts";
 import { usd, pct, rawRate, toApr, VENUE_LABEL, paysClass, type Venue, type VenueFunding, paymentDirection, LEGEND_PAYS, priceDp } from "../../lib/funding.ts";
 import { extremeBy, type Extreme } from "../../lib/extreme.ts";
 
 import Advisory from "../../components/Advisory.astro";
 import Figure from "../../components/Figure.astro";
 import Interests from "../../components/Interests.astro";
-import More from "../../components/More.astro";
 const snap = await getSnapshot((Astro.locals as any)?.runtime?.env?.SNAPSHOT, import.meta.env.DEV);
 // Cold store: 503 + Retry-After rather than a page rendered from nothing.
 if (!snap.available) return coldStart();
@@ -33,13 +30,11 @@ const q = Astro.url.searchParams;
    bound cannot drift from its control, because the control prints the same constant. */
 const notices: string[] = [];
 const clip = (s: string) => (s.length > 24 ? s.slice(0, 24) + "…" : s);
+const num = (x: number) => x.toLocaleString("en-US", { maximumFractionDigits: 6 });
 
 const askedSymbol = (q.get("symbol") ?? "").trim();
 const foundPerp = findPerp(snap.perps, askedSymbol);
 const perp = foundPerp ?? snap.perps[0];
-/* The mark the page computes from: the live one when there is one, as on the funding page that
-   links here (currentMark). */
-const markNow = currentMark(snap, await getLive((Astro.locals as any)?.runtime?.env?.SNAPSHOT), perp);
 if (askedSymbol && !foundPerp) notices.push(`There is no “${clip(askedSymbol)}” perpetual in these figures, so the page shows ${perp.symbol}.`);
 
 const askedVenue = (q.get("venue") ?? "").trim();
@@ -65,8 +60,8 @@ const DAYS_MAX = 3650;
    at "5× · margin $2,000". perp.maxLeverage is Hyperliquid's meta field, so it caps the calculator only
    when Hyperliquid is the venue priced; Binance and Bybit limits are not in these figures, so for them
    the bound is the calculator's own and the notice says so rather than naming a venue. */
-const hlCap = f.venue === "HlPerp" && Number.isFinite(capOf(perp)) && capOf(perp) >= 1;
-const LEV_MAX = hlCap ? capOf(perp) : 1000;
+const hlCap = f.venue === "HlPerp" && Number.isFinite(perp.maxLeverage) && perp.maxLeverage >= 1;
+const LEV_MAX = hlCap ? perp.maxLeverage : 1000;
 const levWhy = hlCap ? ` Hyperliquid lists for ${perp.symbol}` : " this calculator takes";
 const read = (key: string, label: string, fallback: number, min: number, max: number, show: (n: number) => string, maxWhy = "", bound = show) => {
   const raw = q.get(key);
@@ -81,16 +76,13 @@ const read = (key: string, label: string, fallback: number, min: number, max: nu
   if (n > max) { notices.push(`${label} of ${clip(t)} is above the ${bound(max)} maximum${maxWhy}, so the figures use ${show(max)}.`); return max; }
   return n;
 };
-const notional = read("notional", "Position notional", 10_000, NOTIONAL_MIN, NOTIONAL_MAX, exactUsd);
+const wholeUsd = (x: number) => usd(x, Number.isInteger(x) ? 0 : 2);
+const notional = read("notional", "Position notional", 10_000, NOTIONAL_MIN, NOTIONAL_MAX, (n) => `$${n.toLocaleString("en-US", { maximumFractionDigits: 2 })}`);
 const days = read("days", "Days held", 30, 0, DAYS_MAX, (n) => `${num(n)} ${n === 1 ? "day" : "days"}`, "", (n) => `${num(n)}-day`);
 const leverage = read("leverage", "Leverage", Math.min(10, LEV_MAX), 1, LEV_MAX, (n) => `${num(n)}×`, levWhy);
 
-/* The notional as the reader typed it, in every sentence and card — it read "$2.50M" in the prose
-   and "$2,500,000" in the card beside it (15 October 2026). */
-const notionalText = exactUsd(notional);
+const notionalText = wholeUsd(notional);
 const daysText = num(days);
-/* "an 8-day hold", "an 11-day hold": the article follows the sound of the number the reader typed. */
-const aDays = /^(8|1[18](?![\d.,]))/.test(daysText) ? "an" : "a";
 const dayWord = days === 1 ? "day" : "days";
 const settlementsWord = (k: number) => `${k.toLocaleString("en-US")} settlement${k === 1 ? "" : "s"}`;
 
@@ -115,11 +107,36 @@ const holdSec = Math.round(days * 86_400);
    moneyAt(a, 0) is exactly that figure — usd(a, 2), or two significant digits under half a cent —
    and moneyAt(a, e) is the same figure e decimals finer, zeros past its own precision dropped, so
    "$0.25" stays "$0.25" at any e and "$0.01" becomes "$0.0125" once a check needs it. */
+const moneyAt = (a: number, e = 0) => {
+  const m = Math.abs(a);
+  if (!Number.isFinite(a) || m >= 1e15) return "—";
+  const sub = a > 0 && a < 0.005;
+  const u = sub || m < 1e6 ? 1 : m < 1e9 ? 1e6 : 1e9;
+  const d0 = sub ? Math.min(12, 1 - Math.floor(Math.log10(a))) : 2;
+  const d = Math.min(20, d0 + e);
+  let s = sub || u > 1 ? (a / u).toFixed(d) : a.toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d });
+  while (s.endsWith("0") && s.length - s.indexOf(".") - 1 > d0) s = s.slice(0, -1);
+  return `$${s}${u === 1e9 ? "B" : u === 1e6 ? "M" : ""}`;
+};
 const money = (a: number) => moneyAt(a, 0);
+const printed = (s: string) => {
+  const m = /\$([\d,]*\.?\d+)([MB]?)/.exec(s);
+  return m ? Number(m[1].replace(/,/g, "")) * (m[2] === "B" ? 1e9 : m[2] === "M" ? 1e6 : 1) : NaN;
+};
 /* A figure agrees with a printed one when it lies within that text's rounding — the test a reader
    multiplying or dividing the figures on screen can make, and the one float rounding cannot trip at a
    half-cent boundary the way comparing two formatted strings did. */
+const near = (x: number, text: string, pctText = false) => {
+  const m = pctText ? /(-?\d*)(?:\.(\d+))?%/.exec(text) : /\$([\d,]*)(?:\.(\d+))?([MB]?)/.exec(text);
+  if (!m) return false;
+  const half = 0.5 * 10 ** -(m[2] ?? "").length * (m[3] === "B" ? 1e9 : m[3] === "M" ? 1e6 : 1);
+  return Math.abs(x - (pctText ? Number(text.slice(0, -1)) : printed(text))) <= half * (1 + 1e-9);
+};
 /* The fewest extra decimals at which a check on the printed figures holds; 12 if none does. */
+const fit = (ok: (e: number) => boolean) => {
+  for (let e = 0; e < 12; e++) if (ok(e)) return e;
+  return 12;
+};
 
 const price = (v: VenueFunding) => {
   const stepSec = v.intervalHours * 3600;
@@ -184,6 +201,7 @@ const naiveCard = moneyAt(naiveAmt, eCard);
 const perAmt = notional * Math.abs(f.rate);
 const ePer = fit((e) => !(mine.k > 0) || near(printed(moneyAt(perAmt, e)) * mine.k, costCard));
 const perCard = moneyAt(perAmt, ePer);
+const exactUsd = (x: number) => `$${x.toLocaleString("en-US", { minimumFractionDigits: Number.isInteger(x) ? 0 : 2, maximumFractionDigits: 6 })}`;
 const rateOf = (r: Priced, extra: (s: number) => boolean) => {
   const base = rawRate(r.rate, r.v);
   if (!Number.isFinite(r.rate)) return base;
@@ -231,9 +249,10 @@ const names = (g: readonly Priced[]) =>
   g.length <= 1 ? (g[0]?.label ?? "") : `${g.slice(0, -1).map((r) => r.label).join(", ")} and ${g[g.length - 1].label}`;
 const onNames = (g: readonly Priced[]) => (g.length === 2 ? `on both ${names(g)}` : g.length > 2 ? `on each of ${names(g)}` : `on ${names(g)}`);
 const allTied = rows.length > 1 && dear.kind === "tied" && dear.items.length === rows.length;
+const COUNT_WORD = ["no", "one", "two", "three", "four", "five", "six"];
 /* "All three venues" counts the venues that were priced; when the table carries a venue whose rate is
    unusable (its row prints "—"), the phrase says so rather than letting "all" include a dash. */
-const allVenues = (rows.length === 2 ? "both venues" : `all ${numberWord(rows.length)} venues`) + (rows.length < table.length ? " with a usable rate" : "");
+const allVenues = (rows.length === 2 ? "both venues" : `all ${COUNT_WORD[rows.length] ?? rows.length} venues`) + (rows.length < table.length ? " with a usable rate" : "");
 const verbOf = (r: Priced) => (flow(r) === "pay" ? "costs " : flow(r) === "receive" ? "pays you " : "costs nothing");
 const amtOf = (r: Priced) => (flow(r) === "none" ? "" : r.text);
 
@@ -247,7 +266,7 @@ if (!rows.length) {
 } else if (rows.length === 1) {
   introPre = `${hold} ${verbOf(rows[0])}`;
   introAmt = amtOf(rows[0]);
-  introPost = ` on ${rows[0].label}, the only venue with a rate for ${perp.symbol} in these figures${certain}.`;
+  introPost = ` on ${rows[0].label}, the only venue with a ${perp.symbol} rate in these figures${certain}.`;
 } else if (allTied) {
   introPre = `${hold} ${verbOf(rows[0])}`;
   introAmt = amtOf(rows[0]);
@@ -387,7 +406,7 @@ const mineLabel =
   f.rate === 0 ? "No funding either way"
     : mine.k === 0 ? (mine.more ? "No settlement for certain" : "No settlement")
       : mine.dir === "pay" ? "You pay" : mine.dir === "receive" ? "You receive" : "Funding";
-const mineMeta = `on ${notionalText} over ${daysText} ${dayWord} · ${settlementsWord(mine.k)}${mine.more ? `, or ${(mine.k + 1).toLocaleString("en-US")}` : ""}`;
+const mineMeta = `on ${exactUsd(notional)} over ${daysText} ${dayWord} · ${settlementsWord(mine.k)}${mine.more ? `, or ${(mine.k + 1).toLocaleString("en-US")}` : ""}`;
 const marginText = marginAt(eCard);
 
 /* THE PROSE SAYS "COST" ONLY FOR A COST, AND ITS RATIO COMES FROM THE SAME TWO AMOUNTS AS THE CARD.
@@ -404,9 +423,9 @@ const dur = (sec: number) => {
 };
 let crossPre = "", crossNum = "", crossPost = "";
 if (holdSec === 0) {
-  crossPre = `so ${aDays} ${daysText}-day hold crosses no settlement.`;
+  crossPre = `so a ${daysText}-day hold crosses no settlement.`;
 } else {
-  crossPre = `so ${aDays} ${daysText}-day hold crosses `;
+  crossPre = `so a ${daysText}-day hold crosses `;
   crossNum = mine.k.toLocaleString("en-US");
   crossPost = mine.more
     ? ` settlement${mine.k === 1 ? "" : "s"} for certain, or ${(mine.k + 1).toLocaleString("en-US")} if the next is due within ${dur(mine.remSec)} of opening.`
@@ -453,10 +472,10 @@ const verdictTail =
    republishes. markPx comes from Hyperliquid's context for every venue choice, so the venue in the
    price clause is a constant and the chosen venue is named separately. Decimals follow priceDp, as
    on every other price, so TRX is not "$0.33". */
-const markText = usd(markNow.px, priceDp(markNow.px));
+const markText = usd(perp.markPx, priceDp(perp.markPx));
 
 const title = `Funding cost calculator — what it costs to hold ${perp.symbol}`;
-const description = `What holding the ${perp.symbol} perpetual actually costs in funding, using each venue's real settlement interval rather than treating the quoted rate as a daily number.`;
+const description = `What holding a ${perp.symbol} perpetual actually costs in funding, using each venue's real settlement interval rather than treating the quoted rate as a daily number.`;
 ---
 
 <Base title={title} description={description} fetchedAt={snap.fetchedAt} crumb={{ href: "/tools", label: "Tools", current: "Funding cost" }}>
@@ -556,7 +575,7 @@ const description = `What holding the ${perp.symbol} perpetual actually costs in
     <div class="card">
       <div class="card__label">Per settlement</div>
       <div class="card__value" style="font-size:20px" id="out-per">{perCard}</div>
-      <div class="card__meta">on <span id="out-per-n">{notionalText}</span> every {f.intervalHours}h at <span id="out-rate">{cardRate}</span></div>
+      <div class="card__meta">on <span id="out-per-n">{exactUsd(notional)}</span> every {f.intervalHours}h at <span id="out-rate">{cardRate}</span></div>
     </div>
   </div>
 
@@ -570,14 +589,12 @@ const description = `What holding the ${perp.symbol} perpetual actually costs in
     </div>
   </div>
 
-  <More label="Why reading the rate as daily gets the cost wrong">
   <h2 class="section">Where the daily reading goes wrong</h2>
   <p class="prose">
     Venues quote funding <strong>per settlement</strong>, not per day. {VENUE_LABEL[f.venue]} settles
     every {f.intervalHours} hour{f.intervalHours === 1 ? "" : "s"}, {crossPre}{crossNum && <strong>{crossNum}</strong>}{crossPost}
     {readPre}{readNum && <strong>{readNum}</strong>}{readPost}
   </p>
-  </More>
 
   <h2 class="section">Same position, every venue</h2>
   <p class="section-note">The same {notionalText} {side} over {daysText} {dayWord} on {table.length > 1 ? "each venue" : VENUE_LABEL[f.venue]}. Cost is the funding you pay; a minus means funding paid to you.{orderSentence}{remainderSentence} {LEGEND_PAYS}.</p>
@@ -631,10 +648,15 @@ const description = `What holding the ${perp.symbol} perpetual actually costs in
   <script is:inline type="module" define:vars={{ sharedV: ASSETS["/shared.js"], rate: f.rate, hours: f.intervalHours, isLong: side === "long", perYear: toApr(1, f.intervalHours), aprWant: pct(f.apr), keepApr: cardKeepApr, rateD: rateDecimals, drawn: { N: notional, D: days, L: leverage }, bounds: { nMin: NOTIONAL_MIN, nMax: NOTIONAL_MAX, dMax: DAYS_MAX, lMax: LEV_MAX, lWhy: levWhy } }}>
     const form = document.querySelector(".calc");
     if (form) {
-      /* The server's formatters and printed-figure tests, from the one file both sides read. */
-      const { pct, moneyAt: at, printedMoney: pr, nearPrinted: near, fitDecimals: fit, exactUsd: usdX, fineNum: num } = await import("/shared.js" + (sharedV ? `?v=${sharedV}` : ""));
+      const { pct } = await import("/shared.js" + (sharedV ? `?v=${sharedV}` : ""));
+      const at = (a, e) => { const m = Math.abs(a); if (!Number.isFinite(a) || m >= 1e15) return "—"; const sub = a > 0 && a < 0.005, u = sub || m < 1e6 ? 1 : m < 1e9 ? 1e6 : 1e9, d0 = sub ? Math.min(12, 1 - Math.floor(Math.log10(a))) : 2, d = Math.min(20, d0 + e); let s = sub || u > 1 ? (a / u).toFixed(d) : a.toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d }); while (s.endsWith("0") && s.length - s.indexOf(".") - 1 > d0) s = s.slice(0, -1); return "$" + s + (u === 1e9 ? "B" : u === 1e6 ? "M" : ""); };
+      const pr = (s) => { const m = /\$([\d,]*\.?\d+)([MB]?)/.exec(s); return m ? Number(m[1].replace(/,/g, "")) * (m[2] === "B" ? 1e9 : m[2] === "M" ? 1e6 : 1) : NaN; };
+      const fit = (ok) => { for (let e = 0; e < 12; e++) if (ok(e)) return e; return 12; };
+      const near = (x, t, p) => { const m = p ? /(-?\d*)(?:\.(\d+))?%/.exec(t) : /\$([\d,]*)(?:\.(\d+))?([MB]?)/.exec(t); return !!m && Math.abs(x - (p ? Number(t.slice(0, -1)) : pr(t))) <= 0.5 * 10 ** -(m[2] ?? "").length * (m[3] === "B" ? 1e9 : m[3] === "M" ? 1e6 : 1) * (1 + 1e-9); };
+      const num = (x) => x.toLocaleString("en-US", { maximumFractionDigits: 6 });
       const big = (p, q) => p > q ? p / q : q / p;
       const mult = (x) => x < 1.05 ? "slightly" : num(Math.round(x * 10) / 10) + "×";
+      const usdX = (x) => "$" + x.toLocaleString("en-US", { minimumFractionDigits: Number.isInteger(x) ? 0 : 2, maximumFractionDigits: 6 });
       const trim = (d) => rate.toFixed(d).replace(/0+$/, "").replace(/\.$/, "");
       const set = (id, t) => { const el = document.getElementById(id); if (el) el.textContent = t; };
       const hold = (s) => `${usdX(s.N)} over ${num(s.D)} ${s.D === 1 ? "day" : "days"} at ${num(s.L)}×`;

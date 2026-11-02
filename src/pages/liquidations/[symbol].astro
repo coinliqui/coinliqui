@@ -34,15 +34,12 @@
    ========================================================================================= */
 import Base from "../../layouts/Base.astro";
 import LiqMap from "../../components/LiqMap.astro";
-import { getSnapshot, coldStart, findPerp, requestedPerp, getLive, currentMark } from "../../lib/hyperliquid.ts";
-import { maintenanceMarginFraction, type MarginTable, tableFor, sortedTiers } from "../../lib/margin.ts";
+import { getSnapshot, coldStart, findPerp, requestedPerp } from "../../lib/hyperliquid.ts";
+import { type MarginTable } from "../../lib/margin.ts";
 import { getHourly } from "../../lib/candles.ts";
-import { utcStamp } from "../../lib/freshness.ts";
-import { readOiAt } from "../../lib/oi-history.ts";
-import { mapTitle, mapDescription, mapState, resolveWindow, mapModel, dayEarlierCut, ladderQuery, sameView } from "../../lib/liqmap.ts";
+import { mapTitle, mapDescription, mapState, resolveWindow } from "../../lib/liqmap.ts";
 import tables from "../../data/margin-tables.json";
 import { canonicalRedirect } from "../../lib/routes.ts";
-import { renamedTo } from "../../lib/renamed.ts";
 
 const env = (Astro.locals as any)?.runtime?.env;
 const wanted = (Astro.params.symbol ?? "").trim();
@@ -71,8 +68,6 @@ const carriedQs = carried.toString() ? `?${carried.toString()}` : "";
    same reason: a canonical tag built from the requested path cannot deduplicate two paths
    that each declare themselves canonical. */
 if (p && wanted !== p.symbol.toLowerCase()) return canonicalRedirect(`/liquidations/${p.symbol.toLowerCase()}`, Astro.url.searchParams, ["symbol"]);
-/* A ticker the venue renamed before this site published it — see src/lib/renamed.ts. */
-if (!p && renamedTo(wanted)) return canonicalRedirect(`/liquidations/${renamedTo(wanted)}`, Astro.url.searchParams, ["symbol"]);
 
 if (!p) {
   const retiredAt = await (async () => {
@@ -104,7 +99,7 @@ if (def.perp.symbol === p.symbol) {
 
 /* THE COVERAGE-FLOOR RULE AGAIN. Without a tier table there is no maintenance margin, no
    corridor and no liquidation price, which is most of this page — see pickPerp. */
-const table = tableFor(p);
+const table = TABLES[String(p.marginTableId)];
 if (!table) return Astro.rewrite(`/404?symbol=${encodeURIComponent(wanted)}`);
 
 /* THE HOURLY SERIES IS READ HERE, NOT IN THE COMPONENT, because the description below has to know
@@ -112,19 +107,10 @@ if (!table) return Astro.rewrite(`/404?symbol=${encodeURIComponent(wanted)}`);
    redirect and 404 above, so none of those pays for it. */
 const hourly = await getHourly(env?.SNAPSHOT, p.symbol, import.meta.env.DEV);
 const win = resolveWindow(Astro.url.searchParams);
-const cap = sortedTiers(table)[0].maxLeverage;
+const cap = [...table.marginTiers].sort((a, b) => a.lowerBound - b.lowerBound)[0].maxLeverage;
 const state = mapState(hourly?.d, win);
 const title = mapTitle(p.symbol, state);
-/* The model runs here, once, so the description can carry a ?at= reading — see mapModel. */
-/* Open interest at the moment the day-earlier run's candles end (dayEarlierCut), for mapModel. */
-const lq = ladderQuery(Astro.url.searchParams);
-const cut = dayEarlierCut(hourly, lq);
-const oiThen = cut === null ? null : await readOiAt((Astro.locals as any)?.runtime?.env?.DB, p.symbol, cut);
-/* One mark for the model and every figure on the page, with its time — see currentMark. */
-const markNow = currentMark(snap, await getLive(env?.SNAPSHOT), p);
-const ladder = mapModel({ hourly, q: lq, mark: markNow.px, oiNotional: p.oiNotional, maxLeverage: cap, mmf: maintenanceMarginFraction(cap), oiThen });
-const model = sameView(Astro.url.searchParams, lq) ? ladder : mapModel({ hourly, q: Astro.url.searchParams, mark: markNow.px, oiNotional: p.oiNotional, maxLeverage: cap, mmf: maintenanceMarginFraction(cap), oiThen: null });
-const description = mapDescription(p.symbol, { state, maxLeverage: cap, days: win.days, reading: ladder.reading, asOf: utcStamp(snap.fetchedAt, 0) });
+const description = mapDescription(p.symbol, { state, maxLeverage: cap, days: win.days });
 ---
 
 <Base
@@ -133,6 +119,12 @@ const description = mapDescription(p.symbol, { state, maxLeverage: cap, days: wi
   fetchedAt={snap.fetchedAt}
   crumb={{ href: "/liquidations", label: "Liquidation maps", current: p.symbol }}
 >
-  <LiqMap perp={p} table={table} snap={snap} hourly={hourly} model={model} ladder={ladder} markNow={markNow} params={Astro.url.searchParams} crumb={{ href: "/liquidations", label: "Liquidation maps", current: p.symbol }} />
+  <LiqMap perp={p} table={table} snap={snap} hourly={hourly} params={Astro.url.searchParams} crumb={{ href: "/liquidations", label: "Liquidation maps", current: p.symbol }} />
 
+  <p style="margin-top:24px">
+    {/* Not "every covered contract's map": a contract with too little history has none. */}
+    <a class="link" href="/liquidations">Liquidation maps by contract →</a>
+    · <a class="link" href={`/funding/${p.symbol.toLowerCase()}`}>{p.symbol} funding and margin tiers →</a>
+    · <a class="link" href="/learn/liquidation-heatmap">What a liquidation heatmap actually shows →</a>
+  </p>
 </Base>

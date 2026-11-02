@@ -1,9 +1,7 @@
 ---
 import Base from "../../layouts/Base.astro";
 import { usd, pct } from "../../lib/funding.ts";
-import { maintenanceMarginFraction } from "../../lib/margin.ts";
-import { MONTHS } from "../../../public/shared.js";
-import { buildLiqMap, PROFILES, spanWords } from "../../lib/liqmap.ts";
+import { buildLiqMap, PROFILES } from "../../lib/liqmap.ts";
 import { paintHeatMap } from "../../lib/heatmap.ts";
 import { RAMP, CH, compact } from "../../lib/chart.ts";
 import { slotBars } from "../../lib/series.ts";
@@ -11,7 +9,6 @@ import type { Candle } from "../../lib/candles.ts";
 import frozen from "../../data/sweep-2026-02.json";
 
 import Advisory from "../../components/Advisory.astro";
-import More from "../../components/More.astro";
 /* =========================================================================================
    THE DEMONSTRATION CASE.
 
@@ -25,14 +22,14 @@ import More from "../../components/More.astro";
    already established why any number offered for it is wrong by an unknown factor.
    ========================================================================================= */
 
-const MON = MONTHS;
+const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const fmtT = (t: number) => {
   const d = new Date(t);
   return `${d.getUTCDate()} ${MON[d.getUTCMonth()]}, ${String(d.getUTCHours()).padStart(2, "0")}:00`;
 };
 
 const hourly = (frozen.candles as number[][]) as Candle[];
-const mmf = maintenanceMarginFraction(frozen.maxLeverage);
+const mmf = 1 / (2 * frozen.maxLeverage);
 const profile = PROFILES.find((p) => p.key === Astro.url.searchParams.get("profile")) ?? PROFILES[1];
 
 const FACTOR = 2;                                   // 2-hour bars: 138 columns, candles still candles
@@ -47,7 +44,7 @@ const ageBars = (POSITION_LIFE_DAYS * 24) / FACTOR;
 
 const map = buildLiqMap({
   candles: series, start, cols, mmf, maxLeverage: frozen.maxLeverage,
-  oiNotional: frozen.oiNotional, profile, rows: 150, ageBars,
+  oiNotional: frozen.oiNotional, profile, rows: 150, ageBars, minSpan: 0.16,
 });
 const WICK_AT = Date.parse("2026-02-06T00:00:00Z");
 /* The bar to point at is the one whose window CONTAINS the wick. Bars were chunked back from the
@@ -179,7 +176,7 @@ const description =
 
   <div class="reads">
     <div><b>{px(dayOpen)} → {px(dayLow)}</b><span>observed, {eventDays}</span></div>
-    <div><b>{pct(drawdown, 1)}</b><span>{drawdownLabel}</span></div>
+    <div><b>{(drawdown * 100).toFixed(1)}%</b><span>{drawdownLabel}</span></div>
     <div><b>{(biggestHour[5] / medVol).toFixed(0)}×</b><span>the busiest hour against the prior median</span></div>
     <div><b>{compact(sweptTotal)}</b><span>modelled notional price traded through</span></div>
   </div>
@@ -195,34 +192,24 @@ const description =
     <Fragment set:html={paint.legend} />
     <p class="scalebar__note">
       1–12 February 2026, two-hour bars. Brighter is more modelled notional standing at that price
-      at that moment; the most crowded spot holds {compact(map.peak)}.
-    </p>
-  </div>
-  <More label="How a band ends on the picture">
-    <p class="section-note">
-      A band ends one of two ways: price trades
+      at that moment; the most crowded spot holds {compact(map.peak)}. A band ends one of two ways: price trades
       through it, which is why the picture goes dark behind the candles, or the positions behind
       it age past the {POSITION_LIFE_DAYS}-day position life and it fades out in four steps.
     </p>
-  </More>
+  </div>
 
   <h2 class="section">What the picture actually claims</h2>
   <div class="verdict">
     <div>
-      <b>Price traded through where the model places levels.</b> <b>The claim is not</b> that {compact(sweptTotal)} of positions were
-      liquidated.
-    </div>
-  </div>
-  <More label="Why only the levels are claimed, not the amount liquidated">
-    <p class="prose">
-      That claim is checkable: the
+      <b>Price traded through where the model places levels.</b> That claim is checkable: the
       candles are Hyperliquid's own, the level arithmetic is on the published margin tiers, and
-      both are printed below. No venue publishes a complete liquidation feed — Binance throttles to one event
+      both are printed below. <b>The claim is not</b> that {compact(sweptTotal)} of positions were
+      liquidated. No venue publishes a complete liquidation feed — Binance throttles to one event
       per symbol per second, and Hyperliquid's block data carries no liquidation-typed action at
       all, which <a class="link" href="/methodology/liquidations">we checked directly</a>. What is
       modelled is where the levels were. What is observed is that price went there.
-    </p>
-  </More>
+    </div>
+  </div>
 
   <h2 class="section">The six bars that cleared the most</h2>
   <p class="section-note">
@@ -266,22 +253,17 @@ const description =
       Nor does the slide fill the window: 24 bars fall into the wick and six recover after it.
       Both counts are now indices into `event`. */}
   <p class="prose">
-    The slide across the first {slideHours} hours of this {event.length}-hour window is the setup; the payoff is a single bar.
-  </p>
-  <More label="The wick hour, figure by figure, and why its shape points to forced selling">
-  <p class="prose">
-    At
+    The slide across the first {slideHours} hours of this {event.length}-hour window is the setup; the payoff is a single bar. At
     <strong>{fmtT(wick[0])} UTC</strong> BTC opened at {px(wick[1])}, printed a low of
     <strong>{px(wick[3])}</strong>, and closed back at {px(wick[4])} — a
-    {pct((wick[1] - wick[3]) / wick[1], 1)} excursion recovered inside sixty minutes,
+    {(((wick[1] - wick[3]) / wick[1]) * 100).toFixed(1)}% excursion recovered inside sixty minutes,
     on {btc(wick[5])} BTC of volume against a prior hourly median of {btc(medVol)}. A wick with
     no close behind it is the shape a forced-seller cascade leaves: the sells are not discretionary,
     so they take whatever bid is there, and the price snaps back once they stop. The model puts a
     dense band exactly in the path of that wick, and afterwards the band is gone.
   </p>
-  </More>
 
-  <More label="How this window was chosen">
+  <h2 class="section">How this window was chosen</h2>
   <p class="prose">
     Not from memory. The model was run forward over the full hourly series Hyperliquid publishes
     for BTC, accumulating the modelled notional each bar's range crossed, and the windows were
@@ -291,10 +273,9 @@ const description =
     have been drawn; this one shows the most. The {hourly.length.toLocaleString("en-US")} bars
     needed to redraw it are frozen in this repository.
   </p>
-  </More>
 
   <h2 class="section">Inputs, frozen</h2>
-  <div class="panel">
+  <div class="panel" style="max-width:900px">
     <table class="tbl">
       <thead><tr><th>Input</th><th>Value</th><th class="num">Observed?</th></tr></thead>
       <tbody>
@@ -304,16 +285,16 @@ const description =
         <tr><td>Maintenance margin</td><td>{pct(mmf, 3)}, from Hyperliquid's tier 1 at {frozen.maxLeverage}× max leverage</td><td class="num">observed</td></tr>
         <tr class="is-active"><td>Modelled open positions</td><td>{usd(frozen.oiNotional)} — open interest when this file was frozen on {fetched}. Historical open interest is not published, so this sets the model's <em>scale</em>, not its shape.</td><td class="num">assumed</td></tr>
         <tr><td>Leverage mix</td><td><strong>{profile.label}</strong> — {profile.note}</td><td class="num">assumed</td></tr>
-        <tr><td>Drawn price range</td><td>{px(map.loPrice)} – {px(map.hiPrice)}. {spanWords(map, px)} {pct(map.clipped)} of modelled notional liquidates outside it.</td><td class="num">observed</td></tr>
+        <tr><td>Drawn price range</td><td>{px(map.loPrice)} – {px(map.hiPrice)}, set by {map.spanRule === "traded" ? "the traded range" : "the ±8% minimum, the traded range being narrower"}. {pct(map.clipped)} of modelled notional liquidates outside it.</td><td class="num">observed</td></tr>
       </tbody>
     </table>
   </div>
 
-  <form method="GET" class="calc" style="margin-top:16px" data-autosubmit>
+  <form method="GET" class="calc" style="margin-top:16px">
     <label>Assumed leverage mix
       <select name="profile">{PROFILES.map((p) => <option value={p.key} selected={p.key === profile.key}>{p.label}</option>)}</select>
     </label>
-    <noscript><button class="btn btn--primary" type="submit">Redraw the map</button></noscript>
+    <button class="btn btn--primary" type="submit">Redraw the map</button>
   </form>
   <p class="section-note">
     Change it and the bands move. That is the point of printing the assumption rather than hiding
@@ -330,15 +311,10 @@ const description =
       is a useful thing to publish and a different claim to make. */}
   <p class="section-note">
     Hyperliquid's own candles from 5 February 00:00 to 6 February 06:00 UTC, unmodified — the
-    event itself, hour by hour.
+    event itself, hour by hour. The chart above covers a wider window (1–12 February, in
+    two-hour bars), so these rows are the part of its input that matters most rather than all
+    of it.
   </p>
-  <More label="How these hourly rows relate to the chart above">
-    <p class="section-note">
-      The chart above covers a wider window (1–12 February, in
-      two-hour bars), so these rows are the part of its input that matters most rather than all
-      of it.
-    </p>
-  </More>
   <div class="panel">
     <table class="tbl">
       <thead><tr><th>Hour (UTC)</th><th class="num">Open</th><th class="num">High</th><th class="num">Low</th><th class="num">Close</th><th class="num">Volume (BTC)</th><th class="num">vs prior hourly median</th></tr></thead>
@@ -362,7 +338,6 @@ const description =
     <a class="link" href="/liquidations">The live liquidation map →</a>
     · <a class="link" href="/liquidations/survival">Leverage survival — real candles, one stated rule →</a>
     · <a class="link" href="/funding/btc">BTC funding and price →</a>
-    · <a class="link" href="/funding/august-2026">The August 2026 funding spike →</a>
   </p>
 
   <style>

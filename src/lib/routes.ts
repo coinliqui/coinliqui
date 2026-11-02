@@ -29,7 +29,7 @@
    refused it within one run. Its own structured data had been taking a data stamp from
    `fetchedAt` the whole time, so the two surfaces disagreed until now. */
 export const PAGES_DATA = ["/", "/methodology", "/about"] as const;
-export const PAGES_CODE = ["/methodology/liquidations", "/data-sources", "/privacy", "/terms", "/corrections"] as const;
+export const PAGES_CODE = ["/methodology/liquidations", "/data-sources", "/privacy", "/terms"] as const;
 
 /** The calculators. /tools/liquidation-price is deliberately absent: it serves 410 Gone. */
 export const TOOLS = ["/tools", "/tools/position-size", "/tools/leverage", "/tools/funding-cost", "/tools/funding-arbitrage"] as const;
@@ -54,15 +54,6 @@ export const LEARN = [...LEARN_DATA, ...LEARN_CODE] as const;
 
 /** One-page templates, each its own sitemap so its indexation rate is separately observable. */
 export const FUNDING_HUB = ["/funding"] as const;
-/** What funding cost in dollars over the open-interest store's 30 days. Its own sitemap, like
- *  every one-page template, so its indexation is readable on its own. */
-export const FUNDING_PAID = ["/funding/paid"] as const;
-/** What funding took from a long over the whole stored history, per contract. */
-export const FUNDING_HISTORY = ["/funding/history"] as const;
-/** How often Binance and Bybit quoted the opposite direction to Hyperliquid, over 30 days. */
-export const FUNDING_VENUES = ["/funding/venues"] as const;
-/** Frozen funding events, dated by commit like /liquidations/sweep. */
-export const FUNDING_EVENTS = ["/funding/august-2026"] as const;
 export const OPEN_INTEREST = ["/open-interest"] as const;
 export const UNLOCKS = ["/unlocks"] as const;
 export const COINS_HUB = ["/coins"] as const;
@@ -78,7 +69,7 @@ export const COINS_HUB = ["/coins"] as const;
  */
 export const STATIC_ROUTES: readonly string[] = [
   ...PAGES_DATA, ...PAGES_CODE,
-  ...COINS_HUB, ...FUNDING_HUB, ...FUNDING_PAID, ...FUNDING_HISTORY, ...FUNDING_VENUES, ...FUNDING_EVENTS, ...OPEN_INTEREST,
+  ...COINS_HUB, ...FUNDING_HUB, ...OPEN_INTEREST,
   ...TOOLS, ...LIQUIDATIONS, ...UNLOCKS,
   ...LEARN,
 ];

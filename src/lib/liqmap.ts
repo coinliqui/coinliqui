@@ -1,22 +1,5 @@
 import type { Candle } from "./candles.ts";
 import { slotBars } from "./series.ts";
-import { cumulativeAt, parsePrice, atReading, priceDp } from "../../public/shared.js";
-
-/** The narrowest drawn span, as a fraction of the last price: ±8% either side. */
-export const MIN_SPAN = 0.16;
-/** How far either side of the live mark the axis must reach: the largest printed move (10%) plus a
- *  margin, so the −10% row lands inside a row of the picture rather than on its frame. */
-export const LADDER_REACH = 0.11;
-
-/** Row 8's sentence — how the drawn range was set — once, for every page that draws a map. */
-export function spanWords(m: { spanRule: "traded" | "minSpan"; reached: boolean; tradedLo: number; tradedHi: number; loPrice: number; hiPrice: number }, fmt: (v: number) => string): string {
-  const base = m.spanRule === "traded"
-    ? `Fitted to the traded range, ${fmt(m.tradedLo)}–${fmt(m.tradedHi)}, plus headroom`
-    : `The traded range was quieter than the ±${Math.round(MIN_SPAN * 50)}% minimum, so the minimum set the axis — not the traded range`;
-  return m.reached
-    ? `${base}, then widened to ${fmt(m.loPrice)}–${fmt(m.hiPrice)} so a ${Math.round(Math.max(...MOVE_STEPS) * 100)}% move either way from the live mark stays on the picture.`
-    : `${base}.`;
-}
 
 /* =========================================================================================
    MODELLED LIQUIDATION DENSITY — price on Y, time on X.
@@ -129,15 +112,8 @@ export interface LiqMap {
   ageBars: number;
   /** which rule set the drawn price span */
   spanRule: "traded" | "minSpan";
-  /** the axis was widened past that rule so the live mark's ±10% moves stay on the picture */
-  reached: boolean;
   /** bars of warm-up modelled before the first drawn column; short of ageBars means partial */
   warmBars: number;
-  /** The notional STILL STANDING at the right-hand edge, per price row, split by side and by
-   *  leverage rung (indexes into `levs`). The same set the clusters are summed from — a level
-   *  that price has traded through or that has aged out is not in it — so the liquidation map
-   *  drawn from this and the cluster table cannot disagree. */
-  standing: { long: number[][]; short: number[][]; levs: number[] };
 }
 
 /**
@@ -250,11 +226,6 @@ export function buildLiqMap(opts: {
   ageBars?: number;
   /** minimum drawn price span, as a fraction of last price */
   minSpan?: number;
-  /** a live price the axis must reach LADDER_REACH either side of — see the note at the range */
-  reach?: number;
-  /** draw on exactly this axis instead of fitting one: the 24-hours-ago map uses today's, so the
-   *  two are compared row for row at the same prices */
-  axis?: { lo: number; hi: number };
 }): LiqMap {
   const rows = opts.rows ?? 150;
   const ageBars = opts.ageBars ?? 84;
@@ -285,27 +256,14 @@ export function buildLiqMap(opts: {
   const tradedHi = Math.max(...disp.map((c) => c[2]));
   const last = disp[disp.length - 1][4];
   const fromTraded = (tradedHi - tradedLo) * 1.14;
-  const fromMinSpan = last * (opts.minSpan ?? MIN_SPAN);
+  const fromMinSpan = last * (opts.minSpan ?? 0.16);
   /* Which rule won matters to the reader, so it is reported rather than assumed. In a quiet
      window the minimum span wins and the axis is NOT fitted to the traded range — saying it is would
      be a false statement on a page whose whole argument is that its inputs are stated. */
   const spanRule: "traded" | "minSpan" = fromTraded >= fromMinSpan ? "traded" : "minSpan";
   const span = Math.max(fromTraded, fromMinSpan) * 1.06;
   const mid = (tradedHi + tradedLo) / 2;
-  let hiPrice = mid + span / 2, loPrice = Math.max(0, mid - span / 2);
-  /* THE AXIS REACHES THE MOVES THE PAGE PRINTS. Fitted to the traded range alone, ETH's axis ended
-     4.6% under the live mark (15 October 2026), so the map's −5% and −10% rows both read "every long
-     inside the range", $206.3M, the same figure twice — an honest mark on a question the page did
-     not answer. So when a live price is given the axis is widened, never narrowed, to LADDER_REACH
-     either side of it. Widening only adds rows of price the model already places levels in; it
-     takes resolution from the picture, which is the price of answering. */
-  const reached = opts.reach !== undefined &&
-    (opts.reach * (1 + LADDER_REACH) > hiPrice || opts.reach * (1 - LADDER_REACH) < loPrice);
-  if (opts.reach !== undefined) {
-    hiPrice = Math.max(hiPrice, opts.reach * (1 + LADDER_REACH));
-    loPrice = Math.max(0, Math.min(loPrice, opts.reach * (1 - LADDER_REACH)));
-  }
-  if (opts.axis) { hiPrice = opts.axis.hi; loPrice = opts.axis.lo; }
+  const hiPrice = mid + span / 2, loPrice = Math.max(0, mid - span / 2);
   const band = (hiPrice - loPrice) / rows;
 
   /* For each price row, the first future bar that trades through it. Quantising the level to
@@ -331,16 +289,13 @@ export function buildLiqMap(opts: {
   const clearedAll: Float64Array[] = Array.from({ length: rows }, () => new Float64Array(NC));
   const swept = new Float64Array(NC);
   const clusterAcc = new Map<string, Cluster>();
-  const standLong = Array.from({ length: rows }, () => new Array<number>(lev.length).fill(0));
-  const standShort = Array.from({ length: rows }, () => new Array<number>(lev.length).fill(0));
   let clipped = 0, placed = 0;
 
   for (let i = 0; i < NC; i++) {
     const base = (opts.oiNotional * vol[i]) / Math.max(1e-9, trail[i]) / LIFE;
     if (!(base > 0)) continue;
     const close = all[i][4];
-    for (let li = 0; li < lev.length; li++) {
-      const { L: Lv, share: w } = lev[li];
+    for (const { L: Lv, share: w } of lev) {
       const longLiq = (close * (1 - 1 / Lv)) / (1 - opts.mmf);
       const shortLiq = (close * (1 + 1 / Lv)) / (1 + opts.mmf);
       for (const [price, isLong] of [[longLiq, true], [shortLiq, false]] as [number, boolean][]) {
@@ -361,7 +316,6 @@ export function buildLiqMap(opts: {
             diff[r][end] -= share;
             if (swAt < expire && swAt < NC) { swept[swAt] += share; clearedAll[r][swAt] += share; }
             if (end === NC) {
-              (isLong ? standLong : standShort)[r][li] += share;
               const key = `${r}:${isLong ? "l" : "s"}`;
               const prev = clusterAcc.get(key);
               if (prev) prev.notional += share;
@@ -418,95 +372,7 @@ export function buildLiqMap(opts: {
     clipped: clipped / Math.max(1e-9, clipped + placed),
     tradedLo, tradedHi,
     totalNotional: opts.oiNotional,
-    ageBars, spanRule, reached, warmBars: warm,
-    standing: { long: standLong, short: standShort, levs: lev.map((x) => x.L) },
-  };
-}
-
-/* =========================================================================================
-   THE LIQUIDATION MAP: WHAT IS STANDING NOW, BY PRICE, AND WHAT A MOVE WOULD TAKE.
-
-   The heatmap answers "where did levels sit, and which did price clear" across a window. The
-   question a trader opens a liquidation map with is narrower and more urgent: if price goes to
-   X from here, how much gets closed on the way? That is a cumulative sum outward from the mark
-   over the standing set — longs below, shorts above — and it is the whole of this function.
-
-   Everything here is the model's standing set re-binned, so every figure carries the model's
-   assumptions and nothing new. A level outside the drawn price range is not in the set (it is
-   in `clipped`), so a cumulative figure is "within the drawn range" and says so where printed.
-   ========================================================================================= */
-export interface LevelBin {
-  lo: number; hi: number; mid: number;
-  /** standing notional per leverage rung (same order as `levs`) */
-  long: number[]; short: number[];
-  longSum: number; shortSum: number;
-}
-export interface LevelsView {
-  bins: LevelBin[];
-  levs: number[];
-  mark: number;
-  /** cumulative notional liquidated by a move from the mark to a price, for any price */
-  cumAt: (price: number) => { side: "long" | "short"; notional: number };
-  /** the rows cumAt reads, published on the page so the reader's own price is read by the same
-   *  function in the browser — see cumulativeAt() in public/shared.js */
-  curve: LevelsCurve;
-  /** the drawn range: a price outside it is read with every row of its side, and no more */
-  lo: number; hi: number;
-  /** the standard reads: a move of ±k% from the mark */
-  moves: { pct: number; price: number; side: "long" | "short"; notional: number; beyond: boolean }[];
-  totalLong: number; totalShort: number;
-  peakBin: number;
-}
-
-export interface LevelsCurve { hi: number; band: number; long: number[]; short: number[] }
-
-export const MOVE_STEPS = [0.01, 0.02, 0.05, 0.1];
-
-export function levelsView(m: LiqMap, mark: number, binRows = 2): LevelsView {
-  const levs = m.standing.levs;
-  const bins: LevelBin[] = [];
-  /* Row 0 is the HIGHEST price; bins are built low to high so they read left to right. */
-  for (let r = m.rows - 1; r >= 0; r -= binRows) {
-    const rs = Array.from({ length: binRows }, (_, k) => r - k).filter((x) => x >= 0);
-    const lo = m.hiPrice - (rs[rs.length - 1] + 1) * m.band;
-    const hi = m.hiPrice - rs[0] * m.band;
-    const long = levs.map((_, li) => rs.reduce((a, x) => a + m.standing.long[x][li], 0));
-    const short = levs.map((_, li) => rs.reduce((a, x) => a + m.standing.short[x][li], 0));
-    bins.push({
-      lo: Math.min(lo, hi), hi: Math.max(lo, hi), mid: (lo + hi) / 2,
-      long, short,
-      longSum: long.reduce((a, b) => a + b, 0), shortSum: short.reduce((a, b) => a + b, 0),
-    });
-  }
-  /* THE CUMULATIVE FIGURES ARE READ FROM THE MODEL'S OWN ROWS, NOT FROM THE DRAWN BINS. The first
-     version summed the display bins, and changing the bin size from two rows to three moved the
-     "−1%" figure from $837K to $5.2M on the same data (BTC, 15 October 2026): a bin straddling the
-     line was counted whole. A row is the finest price the model resolves, so the reading no longer
-     depends on how the picture is cut.
-
-     A LONG level above the mark (or a short below it) can stand only between the last drawn close
-     and the live mark: price has not traded through it on the hourly series yet. It is still a
-     level a move from the mark reaches at once, so it is counted from the first step. */
-  /* Whole dollars, because the curve is published in the page and the server reads the SAME
-     rounded rows it publishes: a figure printed here and a figure read from the curve by the
-     page's script are then one sum, not two that agree to within rounding. */
-  const rowSums = (side: number[][]) => side.map((xs) => Math.round(xs.reduce((a, b) => a + b, 0)));
-  const curve: LevelsCurve = { hi: m.hiPrice, band: m.band, long: rowSums(m.standing.long), short: rowSums(m.standing.short) };
-  const cumAt = (price: number) => cumulativeAt(curve, mark, price) as { side: "long" | "short"; notional: number };
-  /* A STANDARD MOVE CAN LAND PAST THE DRAWN RANGE — BTC's −10% sat at $73,149 under a range ending
-     at $73,593 (15 October 2026) — and its figure is then every level of that side INSIDE the range,
-     not the move's total. `beyond` lets the table say so, as atReading() does for a reader's price. */
-  const beyond = (p: number) => p < m.loPrice || p > m.hiPrice;
-  const moves = MOVE_STEPS.flatMap((k) => [
-    { pct: -k, price: mark * (1 - k), ...cumAt(mark * (1 - k)), beyond: beyond(mark * (1 - k)) },
-    { pct: k, price: mark * (1 + k), ...cumAt(mark * (1 + k)), beyond: beyond(mark * (1 + k)) },
-  ]);
-  return {
-    bins, levs, mark, cumAt, moves, curve,
-    lo: m.loPrice, hi: m.hiPrice,
-    totalLong: bins.reduce((a, b) => a + b.longSum, 0),
-    totalShort: bins.reduce((a, b) => a + b.shortSum, 0),
-    peakBin: Math.max(1, ...bins.map((b) => b.longSum + b.shortSum)),
+    ageBars, spanRule, warmBars: warm,
   };
 }
 
@@ -537,112 +403,7 @@ export const mapTitle = (symbol: string, state: MapState) =>
    from mapState() and the cap from the same tier-1 row the page charts, so each clause is stated
    only in the state where it holds — and "too little history" only when a series was read and
    found short (see MapState for the PAXG render that said it about a failed read). */
-export const mapDescription = (symbol: string, at: { state: MapState; maxLeverage: number; days: number; reading?: string | null; asOf: string }) =>
-  /* A shared ?at= link unfurls as its own answer. The canonical is the bare path, so this text is
-     what a chat preview shows, not a second indexed description. */
-  at.state === "drawn" && at.reading
-    /* WITH ITS MOMENT, ALWAYS DATED. A chat caches an unfurl, so the figure is read hours or days
-       after it was true; without a stamp yesterday's sum reads as today's. */
-    ? `${symbol} at ${at.asOf}: ${at.reading} Modelled from Hyperliquid's price path and open interest, every assumption printed on the page.`
-    : at.state === "drawn"
+export const mapDescription = (symbol: string, at: { state: MapState; maxLeverage: number; days: number }) =>
+  at.state === "drawn"
     ? `Where ${symbol} liquidation levels sit on Hyperliquid and which ones price has already cleared — a modelled heatmap with every assumption printed on the page${profilesCoincide(at.maxLeverage) ? "" : " and the leverage mix switchable"}, beside the liquidation prices derived from the published margin tiers.`
     : `Liquidation prices for ${symbol} on Hyperliquid, derived from the published margin tiers and the live mark. The modelled ${at.days}-day heatmap is not drawn ${at.state === "short" ? `yet: ${symbol} has too little hourly price history for it` : `on this page: no hourly price history for ${symbol} could be read`}.`;
-
-/* =========================================================================================
-   THE MAP FOR ONE PAGE VIEW, COMPUTED ONCE, BY THE ROUTE.
-
-   It lived inside src/components/LiqMap.astro, which is rendered after the <head>. So the head
-   could not know what the page answered: a link to /liquidations?at=78000 sent to a chat unfurled
-   as the generic page description, and the one thing that link carries — what a move to 78,000
-   closes — was missing exactly where its recipient sees it. The routes now call this, put the
-   reading in the description, and hand the same object to the component, so the model still runs
-   once per request and the head and the body read one result.
-   ========================================================================================= */
-/** Position life: how long a modelled position stays open before it is assumed closed. */
-export const POSITION_LIFE_DAYS = 14;
-export const DEFAULT_PROFILE = PROFILES[1];
-
-/** When the day-earlier run's candles end, for a view: the route reads that contract's open interest
- *  at this moment, so the earlier run's positions and its price path are of one time (they were two
- *  hours apart on the first deploy, 15 October 2026). Null when there is no such cut. */
-export function dayEarlierCut(hourly: { d: Candle[] } | null | undefined, q: URLSearchParams): number | null {
-  const win = resolveWindow(q);
-  const series = slotBars(hourly?.d, 60, win.factor);
-  const shift = Math.round(24 / win.factor);
-  return series.length > shift ? series[series.length - shift][0] : null;
-}
-
-export function mapModel(o: {
-  hourly: { d: Candle[] } | null | undefined;
-  q: URLSearchParams;
-  mark: number; oiNotional: number; maxLeverage: number; mmf: number;
-  /** this contract's open interest about a day ago, from the hourly oi_snapshot; null when the
-   *  store has none — then the page shows no change rather than an invented one */
-  oiThen?: { oi: number; at: number } | null;
-}) {
-  const win = resolveWindow(o.q);
-  const profile = resolveProfile(o.q);
-  const ageBars = Math.round((POSITION_LIFE_DAYS * 24) / win.factor);
-  /* Columns sit on fixed 2- and 4-hour slots (slotBars), so they do not move with the render hour. */
-  const series: Candle[] = slotBars(o.hourly?.d, 60, win.factor);
-  const start = series.length - win.cols;
-  const map = canDrawMap(series, win)
-    ? buildLiqMap({
-        candles: series, start, cols: win.cols, mmf: o.mmf, maxLeverage: o.maxLeverage,
-        oiNotional: o.oiNotional, profile, rows: 150, ageBars, reach: o.mark,
-      })
-    : null;
-  const levels = map ? levelsView(map, o.mark, 3) : null;
-  /* THE READER'S OWN PRICE (?at=), parsed by the one parser the script also uses. An unreadable
-     value is kept as typed so the page can say it could not read it, rather than show nothing. */
-  const atRaw = o.q.get("at");
-  const at = atRaw === null ? null : parsePrice(atRaw);
-  /* Prices in words and tables at price precision (priceDp), as the index row and the funding page
-     print them; axis precision is for axis labels only. */
-  const dp = priceDp(o.mark);
-  /* THE SAME MAP A DAY AGO, ON TODAY'S AXIS. The same model, the same profile and window, run on the
-     candles that had closed 24 hours earlier and on the open interest recorded then — and drawn on
-     today's price rows, so a row is the same prices in both and the difference is the change. What it
-     is not: a record of what stood yesterday. It is what this model said yesterday, which is the
-     only thing a comparison of two model runs can honestly be. */
-  const shift = Math.round(24 / win.factor);
-  const prior = series.slice(0, Math.max(0, series.length - shift));
-  const then = map && o.oiThen && o.oiThen.oi > 0 && canDrawMap(prior, win)
-    ? (() => {
-        const m = buildLiqMap({
-          candles: prior, start: prior.length - win.cols, cols: win.cols, mmf: o.mmf, maxLeverage: o.maxLeverage,
-          oiNotional: o.oiThen!.oi, profile, rows: 150, ageBars, axis: { lo: map.loPrice, hi: map.hiPrice },
-        });
-        return {
-          levels: levelsView(m, o.mark, 3),
-          /** when the earlier run's last candle closed, and when its open interest was read */
-          candlesTo: dayEarlierCut(o.hourly, o.q)!, oiAt: o.oiThen!.at,
-          /** modelled notional price traded through in the day between the two runs */
-          cleared: map.swept.slice(-shift).reduce((a, b) => a + b, 0),
-        };
-      })()
-    : null;
-  const reading = levels && at !== null ? atReading(levels.curve, o.mark, at, levels.lo, levels.hi, dp, then ? then.levels.curve : null) as string : null;
-  return { win, profile, ageBars, map, levels, at, atRaw, dp, reading, then };
-}
-export type MapModel = ReturnType<typeof mapModel>;
-
-/* =========================================================================================
-   THE LADDER AND THE HEATMAP ARE SWITCHED SEPARATELY (15 October 2026, the owner's call): each
-   chart has its own leverage mix and window. The heatmap keeps ?profile= and ?win=, so every link
-   already published still draws the same history; the ladder reads ?lmix= and ?lwin=, with its own
-   defaults. ladderQuery() turns the page's query into the one mapModel() reads for the ladder, and
-   sameView() says when the two are one model, so the work is done once.
-   ========================================================================================= */
-export const LADDER_PARAMS = { profile: "lmix", win: "lwin" } as const;
-export function ladderQuery(q: URLSearchParams): URLSearchParams {
-  const l = new URLSearchParams();
-  const mix = q.get(LADDER_PARAMS.profile), win = q.get(LADDER_PARAMS.win), at = q.get("at");
-  if (mix !== null) l.set("profile", mix);
-  if (win !== null) l.set("win", win);
-  if (at !== null) l.set("at", at);
-  return l;
-}
-export const resolveProfile = (q: URLSearchParams) => PROFILES.find((p) => p.key === q.get("profile")) ?? DEFAULT_PROFILE;
-export const sameView = (a: URLSearchParams, b: URLSearchParams) =>
-  resolveWindow(a) === resolveWindow(b) && resolveProfile(a) === resolveProfile(b);

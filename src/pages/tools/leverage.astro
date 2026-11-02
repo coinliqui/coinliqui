@@ -1,15 +1,14 @@
 ---
 import Base from "../../layouts/Base.astro";
-import { getSnapshot, coldStart, requestedPerp, getLive, currentMark } from "../../lib/hyperliquid.ts";
-import { usd, pct, compact, queryNum } from "../../lib/funding.ts";
-import { corridorAt, tierFor, maintenanceMarginFraction, type MarginTable, type Side, sortedTiers } from "../../lib/margin.ts";
+import { getSnapshot, coldStart, requestedPerp } from "../../lib/hyperliquid.ts";
+import { usd, pct, queryNum } from "../../lib/funding.ts";
+import { corridorAt, tierFor, maintenanceMarginFraction, type MarginTable, type Side } from "../../lib/margin.ts";
 import { extremeBy } from "../../lib/extreme.ts";
 import tables from "../../data/margin-tables.json";
 
 import Advisory from "../../components/Advisory.astro";
 import Figure from "../../components/Figure.astro";
 import Interests from "../../components/Interests.astro";
-import More from "../../components/More.astro";
 import { priceDp } from "../../lib/funding.ts";
 import ASSETS from "../../data/assets.json";
 const snap = await getSnapshot((Astro.locals as any)?.runtime?.env?.SNAPSHOT, import.meta.env.DEV);
@@ -26,14 +25,11 @@ const picked = requestedPerp(snap.perps, wantedSymbol, tables as Record<string, 
 if (picked === null) return coldStart();
 if (picked === "unknown") return Astro.rewrite(`/404?symbol=${encodeURIComponent(wantedSymbol!)}`);
 const { perp, table } = picked;
-/* The mark the page computes from: the live one when there is one, as on the funding page that
-   links here (currentMark). */
-const markNow = currentMark(snap, await getLive((Astro.locals as any)?.runtime?.env?.SNAPSHOT), perp);
 const side = (q.get("side") === "short" ? "short" : "long") as Side;
 
 // A notional large enough to land past the first tier boundary by default, so the page opens
 // on the case the headline number gets wrong rather than on the case where it happens to hold.
-const boundary = sortedTiers(table)[1]?.lowerBound;
+const boundary = [...table.marginTiers].sort((a, b) => a.lowerBound - b.lowerBound)[1]?.lowerBound;
 const defaultNotional = boundary ? Math.round(boundary * 1.2) : 250_000;
 /* ONE SET OF BOUNDS FOR THE PARSER, THE FORM AND THE SENTENCE THAT OWNS UP TO A REPLACEMENT.
    Measured 16 September 2026: /tools/leverage?symbol=BTC&side=long&notional=0&leverage=10 answered
@@ -58,7 +54,7 @@ const ignoredLine = (what: string, raw: string, range: string, used: string) =>
    (src/pages/funding/[symbol].astro). usd(x, 2) annihilates anything under half a cent, so
    /tools/leverage?symbol=PUMP rendered "Liquidation falls at $0.00, 5.26% from the mark" —
    two statements that cannot both be true, server-side, at first byte. */
-const pdp = priceDp(markNow.px);
+const pdp = priceDp(perp.markPx);
 const px = (v: number) => usd(v, pdp);
 const { tier, index } = tierFor(table, notional);
 const permitted = tier.maxLeverage;
@@ -76,7 +72,7 @@ const maintenanceMargin = notional * mmf;
    where the cap is 5×" and price liquidation at tier 1's maintenance margin. corridorAt takes the
    maintenance fraction directly — the same one the cards print — and is the formula the script
    below repeats, so the server and a keystroke cannot differ on it either. */
-const corridor = corridorAt(markNow.px, effective, mmf);
+const corridor = corridorAt(perp.markPx, effective, mmf);
 const liq = side === "long" ? corridor.longLiq : corridor.shortLiq;
 const liqDist = side === "long" ? corridor.longDist : corridor.shortDist;
 
@@ -164,6 +160,7 @@ const tierRows = ladder.map((t) => ({
   available: t.max <= permitted,
   margin: notional / t.max,
 }));
+const compactUsd = (v: number) => (v >= 1e6 ? `$${(v / 1e6).toFixed(v >= 1e7 ? 0 : 1)}M` : v >= 1e3 ? `$${Math.round(v / 1e3)}K` : `$${Math.round(v)}`);
 
 /* A SIZE IS PRINTED SO THAT READING IT BACK LANDS IN THE SAME TIER. Measured 16 September 2026 on
    /tools/leverage?symbol=XPL&side=long&notional=2999999&leverage=10: "Your notional of $3.00M is
@@ -179,9 +176,7 @@ const sided = (fmt: (v: number) => string) => (v: number) => {
   return Number.isFinite(back) && tierFor(table, back).index !== tierFor(table, v).index ? `$${Math.floor(v).toLocaleString("en-US")}` : s;
 };
 const money = sided((v) => usd(v));
-/* compact() from public/shared.js, not a page copy: the copy dropped decimals from $10M up and had
-   no B rung, so $15.4M read "$15M" and $1.5B "$1500M" beside money() printing "$15.40M". */
-const brief = sided(compact);
+const brief = sided(compactUsd);
 /* HALF-OPEN RANGES, LABELLED AS HALF-OPEN. The bars read "$0–$150M" and "$150M+", so exactly $150M
    fit both labels, and the page put it in tier 2 (measured 16 September 2026 on
    ?symbol=BTC&side=long&notional=150000000&leverage=40; the same on ETH at $100M). tierFor counts a
@@ -237,7 +232,7 @@ const description = capCount > 1
     <p class="crumb"><a href="/tools">Tools</a> › Leverage</p>
     <h1>Leverage calculator</h1>
     <p>
-      {reachLine} Opens on {perp.symbol} at {px(markNow.px)}; this shows what the tier table really
+      {reachLine} Opens on {perp.symbol} at {px(perp.markPx)}; this shows what the tier table really
       allows at <strong>your</strong> notional, and what it costs in margin.
     </p>
     <Advisory />
@@ -352,7 +347,6 @@ const description = capCount > 1
     </div>
   </div>
 
-  <More label="Why the advertised leverage and the tier cap differ">
   <h2 class="section">{whyHeading}</h2>
   {reach === "every" ? (
     <p class="prose">
@@ -387,14 +381,13 @@ const description = capCount > 1
       boundary changes the terms of the position already open.
     </p>
   )}
-  </More>
 
   <h2 class="section">Every tier on {perp.symbol}</h2>
   <p class="section-note">
     Contract table <code>{perp.marginTableId}</code>{table.description ? ` — ${table.description}` : ""}.
     Your notional of <strong style="color:var(--text)" id="out-tbl-notional">{money(notional)}</strong> is in tier <span id="out-tbl-tier">{index + 1}</span>.
   </p>
-  <div class="panel">
+  <div class="panel" style="max-width:720px">
     <table class="tbl" id="tier-table">
       <thead><tr><th>Tier</th><th class="num">Notional from</th><th class="num">Max leverage</th><th class="num">Maintenance margin</th><th class="num">Initial margin at the cap</th></tr></thead>
       <tbody>
@@ -412,7 +405,7 @@ const description = capCount > 1
   </div>
 
   <p style="margin-top:24px">
-    <a class="link" href={`/tools/position-size?symbol=${perp.symbol}`}>Size it against a stop →</a> · <a class="link" href={`/funding/${perp.symbol.toLowerCase()}`}>{perp.symbol} funding and liquidation price →</a>
+    <a class="link" href="/tools/position-size">Size it against a stop →</a>
     · <a class="link" href="/methodology">How these numbers are produced →</a>
   </p>
 
@@ -457,11 +450,11 @@ const description = capCount > 1
         previews exactly what Calculate would send. It is also shorter than the four comparisons.
       Paid for by the local `pc` (pct replaces it), the null checks on ids and on the form that
       this page always renders, the per-branch className string and the forEach tier search. */}
-  <script is:inline type="module" define:vars={{ table, markPx: markNow.px, sharedV: ASSETS["/shared.js"] }}>
-    const { usd, pct, priceDp, maintenanceMarginFraction, sortedTiers } = await import("/shared.js" + (sharedV ? `?v=${sharedV}` : ""));
+  <script is:inline type="module" define:vars={{ table, markPx: perp.markPx, sharedV: ASSETS["/shared.js"] }}>
+    const { usd, pct, priceDp } = await import("/shared.js" + (sharedV ? `?v=${sharedV}` : ""));
     const form = document.querySelector(".calc");
     const set = (id, v) => document.getElementById(id).textContent = v;
-    const tiers = sortedTiers(table);
+    const tiers = [...table.marginTiers].sort((a, b) => a.lowerBound - b.lowerBound);
     const top = Math.max(...tiers.map((t) => t.maxLeverage));
     const ix = (v) => tiers.reduce((a, t, i) => v >= t.lowerBound ? i : a, 0);
     const nu = (v) => { const s = usd(v), m = /([\d,.]+)([MB]?)$/.exec(s); return m && ix(m[1].replace(/,/g, "") * (m[2] ? m[2] == "M" ? 1e6 : 1e9 : 1)) != ix(v) ? "$" + Math.floor(v).toLocaleString("en-US") : s; };
@@ -469,7 +462,7 @@ const description = capCount > 1
     const recalc = () => {
       const N = Number(form.notional.value), L = Number(form.leverage.value);
       if (!form.checkValidity()) return;
-      const idx = ix(N), permitted = tiers[idx].maxLeverage, mmf = maintenanceMarginFraction(permitted);
+      const idx = ix(N), permitted = tiers[idx].maxLeverage, mmf = 1 / (2 * permitted);
       const eff = Math.min(L, permitted), im = N / eff, mm = N * mmf;
       const s = form.side.value == "short" ? -1 : 1, liq = markPx * (1 - s / L) / (1 - s * mmf);
       set("out-permitted", permitted + "×");

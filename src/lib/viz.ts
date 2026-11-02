@@ -36,11 +36,8 @@ function niceLimit(v: number): number {
   return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 2.5 ? 2.5 : n <= 5 ? 5 : 10) * mag;
 }
 
-/* STRETCHED, NOT SCALED (15 October 2026). With the figure free to take the column, a 600x120 box
-   scaled to 1500px stood 300px tall; there is no text inside, so it stretches across and keeps a
-   fixed height (svg.dist in Base.astro), with strokes that do not thicken. */
 const svgOpen = (w: number, h: number, title: string) =>
-  `<svg viewBox="0 0 ${w} ${h}" role="img" aria-label="${esc(title)}" preserveAspectRatio="none" class="dist">` +
+  `<svg viewBox="0 0 ${w} ${h}" role="img" aria-label="${esc(title)}" preserveAspectRatio="xMidYMid meet">` +
   `<title>${esc(title)}</title>`;
 
 /**
@@ -142,9 +139,6 @@ export interface DistributionResult {
   step: number;
   /** Zero's position as a percentage of the width, or null when zero is an end of the axis. */
   zeroAt: number | null;
-  /** How many values each bar holds, left to right, so the page can print them as HTML under the
-   *  bars: a height can be compared with its neighbour, a count can be quoted. */
-  counts: number[];
 }
 
 /**
@@ -263,7 +257,7 @@ export function distribution(values: number[], opts: DistributionOpts): Distribu
   /* Where zero falls as a share of the width, so a caller can put the label at the mark rather
      than in the middle of a row that is only sometimes symmetric. Null when zero is an end. */
   const zeroAt = signed && lo < 0 && hiZ > 0 ? ((0 - lo) / (hiZ - lo)) * 100 : null;
-  return { svg: svgOpen(w, h, title) + body + "</svg>", lo, hi: hiZ, over, step, zeroAt, counts };
+  return { svg: svgOpen(w, h, title) + body + "</svg>", lo, hi: hiZ, over, step, zeroAt };
 }
 
 /* THE OTHER THREE FIGURES ARE NOT HERE, AND THAT IS THE POINT OF WHAT THIS FILE LEARNED.

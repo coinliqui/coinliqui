@@ -19,11 +19,10 @@
    that has produced five separate defects on this project, each found by accident. The copies
    were the defect, so there is now one file and both sides import it. Callers keep importing
    these names from this module; only the implementation moved. See public/shared.js. */
-export { paysClass, paysLabel, carryCost, pct, signedPct, parsePrice, changeWords, moveCounts, ageWords, minutesSince, usd, nf, qty, compact, spreadOf, priceDp, axisDp, stopVerdict } from "../../public/shared.js";
+export { paysClass, paysLabel, paysArrow, carryCost, pct, changeWords, ageWords, minutesSince, usd, nf, qty, compact, spreadOf, priceDp, axisDp, stopVerdict } from "../../public/shared.js";
 /* Re-exporting a name does not bind it in this module's scope, which is why rawRate() threw
    ReferenceError on pct the moment it needed it. Imported as well as re-exported. */
-import { spreadOf, pct, usd, carryCost } from "../../public/shared.js";
-import { numberWord } from "../../public/shared.js";
+import { spreadOf, pct } from "../../public/shared.js";
 
 export const HOURS_PER_YEAR = 24 * 365; // 8760
 
@@ -33,15 +32,6 @@ export const HOURS_PER_YEAR = 24 * 365; // 8760
     above it" (production, 17 September 2026). */
 export const HL_BASE_APR = 0.0000125 * HOURS_PER_YEAR;
 export const isHlBaseApr = (apr: number) => Number.isFinite(apr) && Math.abs(apr - HL_BASE_APR) < 1e-9;
-
-/** A WEEK'S CARRY ON A $10,000 LONG, as words and digits decided together: `nil` when the printed
- *  figure is $0.00, so no page calls a sum a cost that its digits show as nothing. /coins/{coin}
- *  had the rule and /funding/{symbol} printed "costs $0.00 a week" (15 October 2026). */
-export function weekCarry(apr: number): { value: number; text: string; nil: boolean; verb: "costs" | "pays you" } {
-  const value = carryCost(10_000, apr, 7);
-  const text = usd(Math.abs(value), 2);
-  return { value, text, nil: text === usd(0, 2), verb: value < 0 ? "pays you" : "costs" };
-}
 
 export type Venue = "HlPerp" | "BinPerp" | "BybitPerp";
 
@@ -62,6 +52,7 @@ export const VENUE_LABEL: Record<Venue, string> = {
    One page knew each fact; its siblings typed a version of it.
    ========================================================================================= */
 const VENUE_ORDER: Venue[] = ["HlPerp", "BinPerp", "BybitPerp"];
+const NUM_WORD = ["no", "one", "two", "three"];
 const everyWords = (hours: number[]) =>
   hours.length === 1 && hours[0] === 1 ? "hourly"
     : `every ${hours.length === 1 ? hours[0] : `${hours.slice(0, -1).join(", ")} or ${hours[hours.length - 1]}`} hours` +
@@ -86,11 +77,11 @@ export function venueReachWords(perps: readonly { venues: readonly VenueFunding[
   const count = new Map<number, number>();
   for (const p of perps) count.set(p.venues.length, (count.get(p.venues.length) ?? 0) + 1);
   const most = VENUE_ORDER.length;
-  if ((count.get(most) ?? 0) === perps.length) return perps.length === 1 ? `it is quoted on all ${numberWord(most)} venues` : `all ${perps.length} are quoted on all ${numberWord(most)} venues`;
+  if ((count.get(most) ?? 0) === perps.length) return perps.length === 1 ? `it is quoted on all ${NUM_WORD[most]} venues` : `all ${perps.length} are quoted on all ${NUM_WORD[most]} venues`;
   const parts = [...count.entries()].sort((a, b) => b[0] - a[0]).map(([n, k]) =>
-    n === most ? `${k} ${k === 1 ? "is" : "are"} quoted on all ${numberWord(most)} venues`
+    n === most ? `${k} ${k === 1 ? "is" : "are"} quoted on all ${NUM_WORD[most]} venues`
       : n === 1 ? `${k} on ${VENUE_LABEL.HlPerp} alone`
-        : `${k} on ${numberWord(n)}`);
+        : `${k} on ${NUM_WORD[n] ?? n}`);
   return parts.length > 1 ? `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}` : parts[0];
 }
 

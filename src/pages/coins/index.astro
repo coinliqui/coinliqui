@@ -1,15 +1,14 @@
 ---
 import Base from "../../layouts/Base.astro";
 import Overview from "../../components/Overview.astro";
-import { getSnapshot, coldStart, findPerp, getLive, oldestStamp, currentMark } from "../../lib/hyperliquid.ts";
+import { getSnapshot, coldStart, findPerp, getLive, oldestStamp } from "../../lib/hyperliquid.ts";
 import { usd, pct, paysClass, paysLabel, carryCost, LEGEND_PAYS, isHlBaseApr } from "../../lib/funding.ts";
 import { extremeBy } from "../../lib/extreme.ts";
 import Spark from "../../components/Spark.astro";
-import More from "../../components/More.astro";
-import { readSparks, sparkScale, sparkDaysOf } from "../../lib/sparks.ts";
+import { readSparks, sparkScale, SPARK_POINTS, SPARK_STEP_MS } from "../../lib/sparks.ts";
 import { COINS, isLive } from "../../lib/coins.ts";
 
-import { priceDp, changeWords, moveCounts } from "../../lib/funding.ts";
+import { priceDp } from "../../lib/funding.ts";
 const env = (Astro.locals as any)?.runtime?.env;
 const snap = await getSnapshot(env?.SNAPSHOT, import.meta.env.DEV);
 if (!snap.available) return coldStart();
@@ -38,6 +37,7 @@ if (!snap.available) return coldStart();
    overlay freezes the mark alongside it rather than moving one half of a subtraction whose
    other half is pinned. */
 const live = await getLive(env?.SNAPSHOT);
+const markOf = (sym: string, fallback: number) => live?.mark?.[sym] ?? fallback;
 
 const rows = COINS.map((c) => {
   const perp = findPerp(snap.perps, c.symbol);
@@ -49,15 +49,16 @@ const rows = COINS.map((c) => {
     ...c,
     live: isLive(c),
     perp,
-    mark: perp ? currentMark(snap, live, perp).px : NaN,
-    chg: perp && perp.prevDayPx > 0 ? currentMark(snap, live, perp).px / perp.prevDayPx - 1 : NaN,
+    mark: perp ? markOf(c.symbol, perp.markPx) : NaN,
+    chg: perp && perp.prevDayPx > 0 ? markOf(c.symbol, perp.markPx) / perp.prevDayPx - 1 : NaN,
     ntl,
     apr: perp?.venues.find((v) => v.venue === "HlPerp")?.apr ?? NaN,
   };
 }).sort((a, b) => (b.ntl || 0) - (a.ntl || 0));
 
 const pending = rows.filter((r) => !r.live);
-const { up: stripUp, down: stripDown } = moveCounts(snap.perps.map((p) => p.change24h));
+const stripUp = snap.perps.filter((p) => Number.isFinite(p.change24h) && p.change24h > 0).length;
+const stripDown = snap.perps.filter((p) => Number.isFinite(p.change24h) && p.change24h < 0).length;
 
 /* THE STATED SITUATION. What this page claims to be for is "the thing a price table leaves out"
    — what the contract charges to hold the exposure — and a reader on a phone could not see that
@@ -83,8 +84,11 @@ const sparkOf = (sym: string) => (sparks.status === "ready" ? sparks.map.series[
 const sparkScaleAll = sparks.status === "ready"
   ? sparkScale(rows.map((r) => sparkOf(r.symbol)).filter((v): v is number[] => Array.isArray(v) && v.length > 1))
   : null;
-const sparkDays = sparkDaysOf(sparks);
+const sparkDays = sparks.status === "ready"
+  ? Math.max(1, Math.round((Math.min(sparks.covered, SPARK_POINTS) * SPARK_STEP_MS) / 86_400_000))
+  : 0;
 const dp = priceDp;
+const arrow = (n: number) => (n >= 0 ? "▲" : "▼");
 const fmtDate = (s: string) => new Date(s + "T00:00:00Z").toLocaleDateString("en-GB", { day: "numeric", month: "long", timeZone: "UTC" });
 
 const title = "Crypto perpetual prices, and what leverage costs on each";
@@ -145,7 +149,7 @@ const description = "Perpetual futures prices for the major coins on Hyperliquid
             <td class="num" data-repaint="mark" data-sym={r.symbol} data-dp={Number.isFinite(r.mark) ? dp(r.mark) : 2}>
               {Number.isFinite(r.mark) ? usd(r.mark, dp(r.mark)) : "—"}
             </td>
-            <td class:list={["num", Number.isFinite(r.apr) && paysClass(r.apr)]} style="font-weight:600" data-repaint={Number.isFinite(r.apr) ? "apr" : undefined} data-sym={r.symbol} data-venue="HlPerp">
+            <td class:list={["num", Number.isFinite(r.apr) && paysClass(r.apr)]} style="font-weight:600">
               {Number.isFinite(r.apr) ? pct(r.apr) : "—"}
             </td>
             {sparkScaleAll && (
@@ -156,7 +160,7 @@ const description = "Perpetual futures prices for the major coins on Hyperliquid
             {/* chgmark, not chg — see the note on the coin page hero. The spot kinds require a
                 payload block that no longer exists, so this cell never repainted. */}
             <td class="num" data-repaint="chgmark" data-sym={r.symbol} data-prev={r.perp?.prevDayPx}>
-              {changeWords(r.chg)}
+              {Number.isFinite(r.chg) ? `${arrow(r.chg)} ${(Math.abs(r.chg) * 100).toFixed(2)}%` : "—"}
             </td>
             <td class="num">{Number.isFinite(r.ntl) ? usd(r.ntl) : "—"}</td>
             <td class="num">{r.perp ? usd(r.perp.oiNotional) : "—"}</td>
@@ -167,7 +171,7 @@ const description = "Perpetual futures prices for the major coins on Hyperliquid
   </div>
   {/* THE LEGEND DEFINED A MARK THIS PAGE DOES NOT DRAW, AND DEFINED IT BACKWARDS. It read
       "▲ longs pay shorts · ▼ shorts pay longs" — but the only ▲▼ anywhere in this table come
-      from changeWords(r.chg) above, which is the 24-hour PRICE direction. So a reader looking at
+      from `arrow(r.chg)` above, which is the 24-hour PRICE direction. So a reader looking at
       Ethereum's "▼ 0.63%" beside a funding APR of +10.95% was told by the line underneath that
       the ▼ meant shorts pay longs, when it meant price fell and funding was the other way.
 
@@ -193,7 +197,6 @@ const description = "Perpetual futures prices for the major coins on Hyperliquid
   )}
 
   <h2 class="section">Why this is a perpetual price, not a spot price</h2>
-  <More label="Why there is no spot price or basis here">
   <p class="prose">
     Until 19 August 2026 this page led with a <strong>spot</strong> price from a third-party
     exchange, and printed the basis between that price and the perpetual. Both are gone. The terms
@@ -217,7 +220,6 @@ const description = "Perpetual futures prices for the major coins on Hyperliquid
     {" "}<a class="link" href="/data-sources">Data sources</a> lists every endpoint behind every
     figure here.
   </p>
-  </More>
 
   <style>
     .tick { color: var(--text-faint); font-weight: 400; margin-left: 8px; font-size: 12px; }

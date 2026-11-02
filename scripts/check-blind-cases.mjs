@@ -24,7 +24,7 @@
  */
 import { readFileSync } from "node:fs";
 import {
-  hiddenFromEveryone, collapsedTextShipped, levelsAgree, dateModifiedAgreement, breadcrumbAgreement, publishesAPerson,
+  hiddenFromEveryone, dateModifiedAgreement, breadcrumbAgreement, publishesAPerson,
   contradictoryStates, rawEnums, founderAgreement, readmeCounts,
   basisSelfConsistent, uncoveredRoutes, staleDerivedCells, botPolicyReasons,
   undefinedClasses, undefinedVars, unreadableText, colourLegend, colourLanguageDrift,
@@ -43,8 +43,6 @@ import {
   handRolledLegends,
   collapsedStateEscapesMobile,
   llmsHostsAgree,
-  registerAge,
-  wrongArticles,
 } from "./checks.mjs";
 
 /* Enough page for a check to have something to read. Deliberately minimal: a fixture that is
@@ -57,15 +55,6 @@ const PALETTE = {
 };
 
 const doc = (body, head = "") => `<!doctype html><html><head>${head}</head><body>${body}</body></html>`;
-/* A liquidation-map fixture for levelsAgree: twenty $1 rows from 110 down, mark 100. */
-const levels = (rows, value = "", said = "", withThen = false) => {
-  const curve = { hi: 110, band: 1, short: Array.from({ length: 20 }, (_, r) => (r < 10 ? 5 : 0)), long: Array.from({ length: 20 }, (_, r) => (r >= 10 ? 10 : 0)) };
-  /* a day earlier: half the longs */
-  const then = withThen ? { ...curve, long: curve.long.map((v) => v / 2) } : null;
-  const json = JSON.stringify({ curve, mark: 100, lo: 90, hi: 110, dp: 0, then }).replace(/"/g, "&quot;");
-  return doc(`<figure data-levels="${json}"></figure><form><input data-at-input value="${value}"><p data-at-out>${said}</p></form>` +
-    `<table class="tbl levels__tbl" data-astro-cid-x><tbody data-astro-cid-x>${rows.map(([mv, n, was]) => `<tr data-astro-cid-x><td class="num">${mv}</td><td class="num">x</td><td class="num">${n}</td>${was ? `<td class="num">${was}</td>` : ""}</tr>`).join("")}</tbody></table>`);
-};
 
 let bad0 = 0;
 const cases = [
@@ -75,59 +64,6 @@ const cases = [
     fire: () => hiddenFromEveryone(doc(
       `<style>.gone{display:none}</style><div class="gone">Not updating</div>`)),
     quiet: () => hiddenFromEveryone(doc(`<div>Updated 2 min ago</div>`)),
-    also: () => [
-      /* hiding a pseudo-element (the disclosure triangle) hides no text */
-      hiddenFromEveryone(doc(`<style>.more__sum::-webkit-details-marker{display:none}</style><summary class="more__sum">How this is modelled</summary>`)).length === 0,
-      /* and the same class hidden outright still fires */
-      hiddenFromEveryone(doc(`<style>.more__sum{display:none}</style><summary class="more__sum">How this is modelled</summary>`)).length > 0,
-    ],
-  },
-  {
-    check: "collapsedTextShipped",
-    why: "a 'see more' fold that loads its text on click ships nothing to a crawler, an extractor or a reader without JavaScript",
-    /* The regression exactly as it would be written: the fold kept, its body swapped for a
-       placeholder that fetches on open. */
-    fire: () => collapsedTextShipped(doc(
-      `<details class="more"><summary>How this is modelled</summary><div data-src="/api/more/liquidations"></div></details>`)),
-    quiet: () => collapsedTextShipped(doc(
-      `<details class="more"><summary>How this is modelled</summary><div><p>Total notional equals Hyperliquid open interest; leverage mix is assumed.</p></div></details>`)),
-    also: () => [
-      /* the fold removed altogether on a route that must carry one */
-      collapsedTextShipped(doc(`<button data-load-more>See more</button>`), { expect: true }).length > 0,
-      /* an empty fold is a placeholder too, even with no lazy attribute */
-      collapsedTextShipped(doc(`<details class="more"><summary>More</summary><div></div></details>`)).length > 0,
-      /* a nested toggle inside a fold does not cut the body short */
-      collapsedTextShipped(doc(`<details class="more"><summary>Tables</summary><details class="src"><summary>raw</summary><p>x</p></details><p>Every figure below is arithmetic on the published margin table.</p></details>`)).length === 0,
-      /* other details elements are not this check's business */
-      collapsedTextShipped(doc(`<details class="src"><summary>raw</summary></details>`)).length === 0,
-    ],
-  },
-  {
-    check: "levelsAgree",
-    why: "the map's table and the reader's price must be the published rows summed by the shared function, or the figure in the table and the one under the cursor disagree",
-    /* hi 110, rows of $1: shorts $5 a row above the mark at 100, longs $10 a row below it. A move
-       to 95 reaches the five long rows centred 99.5…95.5: $50. */
-    fire: () => levelsAgree(levels([["\u22125%", "$60"]])),
-    quiet: () => levelsAgree(levels([["\u22125%", "$50"], ["+5%", "$25"]], "95",
-      "A move to $95 (\u22125.00%) closes $50 of modelled longs on the way.")),
-    also: () => [
-      /* a move past the drawn range printed as though it were inside it */
-      levelsAgree(levels([["+15%", "$50"]])).length > 0,
-      /* and one past it, honestly marked, is still a move the axis failed to reach */
-      levelsAgree(levels([["+15%", "$50<sup>\u2020</sup>"]])).length > 0,
-      /* a reading worded apart from the shared sentence */
-      levelsAgree(levels([], "95", "A move to $95 closes $50.")).length > 0,
-      /* unparseable rows are said, not skipped silently */
-      levelsAgree(doc(`<figure data-levels="{oops"></figure>`)).length > 0,
-      /* a page without the map is not this check's business */
-      levelsAgree(doc(`<p>No map here.</p>`)).length === 0,
-      /* the day-earlier column read from somewhere other than the published day-earlier rows */
-      levelsAgree(levels([["\u22125%", "$50", "$70"]], "", "", true)).length > 0,
-      levelsAgree(levels([["\u22125%", "$50", "$25"]], "", "", true)).length === 0,
-      /* with day-earlier rows, the reader's reading carries the same move a day earlier */
-      levelsAgree(levels([], "95", "A move to $95 (\u22125.00%) closes $50 of modelled longs on the way. A day earlier the same move would have closed $25.", true)).length === 0,
-      levelsAgree(levels([], "95", "A move to $95 (\u22125.00%) closes $50 of modelled longs on the way.", true)).length > 0,
-    ],
   },
   {
     check: "contradictoryStates",
@@ -452,25 +388,6 @@ const cases = [
     ],
   },
   {
-    check: "wrongArticles",
-    why: "every /funding/{coin} description read \"What a ETH perpetual\" on 29 pages, and the one page the typography check reads is BTC, where the template is right",
-    fire: () => wrongArticles("What a ETH perpetual costs to hold, so a 8-day hold crosses two settlements"),
-    quiet: () => [
-      ...wrongArticles("What the ETH perpetual costs; an ETH long; a BTC long; a UNI lock; a 30-day hold; an 8-day hold; a 110× cap; an 11,000 ENS move; a URL"),
-      ...wrongArticles(""),
-    ],
-    /* BOTH DIRECTIONS, AND THE CASES IT MUST LEAVE ALONE. A ticker read as a word ("a LINK") or
-       whose first letter is ambiguous ("a FET" or "an FET") is a convention, not a fault. */
-    also: () => [
-      wrongArticles("an BTC perpetual").length === 1,
-      wrongArticles("a XRP perpetual").length === 1,
-      wrongArticles("an 18-hour window").length === 0 && wrongArticles("a 18-hour window").length === 1,
-      wrongArticles("a LINK perpetual and a FET perpetual and an LTC perpetual").length === 0,
-      wrongArticles("a 1,800 move and a 180 move").length === 0,
-      wrongArticles("a ETH, a ETH").length === 1,
-    ],
-  },
-  {
     check: "duplicateHeadMetadata",
     why: "two published URLs handing a crawler the same claim about what they are — the mirror of the /liquidations defect, where fifty different titles lived at one URL; one title at fifty URLs would have gone unnoticed the same way",
     fire: () => duplicateHeadMetadata([
@@ -705,17 +622,6 @@ const cases = [
     ],
   },
   {
-    check: "registerAge",
-    why: "the vesting register is read by hand, and a read two months old had called a lock untouched after 100,001 ENS left it",
-    fire: () => registerAge("2026-08-15T06:07Z", Date.parse("2026-10-15T17:00Z")),
-    quiet: () => registerAge("2026-10-15T17:47Z", Date.parse("2026-10-20T00:00Z")),
-    also: () => [
-      registerAge("not a date", Date.parse("2026-10-20T00:00Z")).length === 1,
-      registerAge("2026-09-01T00:00Z", Date.parse("2026-10-15T00:00Z")).length === 0,
-      registerAge("2026-09-01T00:00Z", Date.parse("2026-10-17T00:00Z")).length === 1,
-    ],
-  },
-  {
     check: "llmsHostsAgree",
     why: "llms.txt said the CSP names exactly one script host on a morning when it named two — a precise, checkable claim addressed to machines that will not ask a follow-up question, wrong for as long as nobody happened to reread the file",
     fire: () => llmsHostsAgree(
@@ -817,38 +723,19 @@ const cases = [
        funding.ts and chart.ts both re-export so callers keep their import paths and a re-export
        must never read as a duplicate. */
     fire: () => duplicateRuleImplementations([
-      ["public/shared.js", "export const sortedTiers = (t) => t;\nexport const plural = (n, o, m) => n;\nexport const numberWord = (n, z) => n;\nexport function moneyAt(a, e){}\nexport function printedMoney(s){}\nexport function nearPrinted(x, t){}\nexport function fitDecimals(ok){}\nexport const exactUsd = (x) => x;\nexport const fineNum = (x) => x;\nexport const maintenanceMarginFraction = (L) => 1 / (2 * L);\nexport function signedPct(x){}\nexport function moveCounts(x){}\nexport function shortDate(t){}\nexport function dateTimeUtc(t){}\nexport function cumulativeAt(c,m,p){}\nexport function atReading(){}\nexport function parsePrice(s){}\nconst MONTHS = [\"Jan\", \"Feb\", \"Mar\"];\nexport function usd(x) { return `$${x}`; }\nexport const pct = (x) => `${x}%`;\nexport function paysClass(a){return a>=0?'pays-l':'pays-s';}\nexport const paysLabel=(a)=>a>=0?'l':'s';\nexport const paysArrow=(a)=>a>=0?'u':'d';\nexport const carryCost=(n,a,d)=>n*a*d;\nexport function spreadOf(x){return x;}\nexport function changeWords(x){return `${x}`;}\nexport function ageWords(m){return `${m}`;}\nexport const minutesSince=(a)=>a;\nexport const nf=(n,d)=>`${n}`;\nexport function qty(n){return `${n}`;}\nexport function compact(v){return `$${v}`;}\nexport function aprSpread(x){return x;}"],
+      ["public/shared.js", "export function usd(x) { return `$${x}`; }\nexport const pct = (x) => `${x}%`;\nexport function paysClass(a){return a>=0?'pays-l':'pays-s';}\nexport const paysLabel=(a)=>a>=0?'l':'s';\nexport const paysArrow=(a)=>a>=0?'u':'d';\nexport const carryCost=(n,a,d)=>n*a*d;\nexport function spreadOf(x){return x;}\nexport function changeWords(x){return `${x}`;}\nexport function ageWords(m){return `${m}`;}\nexport const minutesSince=(a)=>a;\nexport const nf=(n,d)=>`${n}`;\nexport function qty(n){return `${n}`;}\nexport function compact(v){return `$${v}`;}\nexport function aprSpread(x){return x;}"],
       ["public/interact.js", "const usd = (x) => `$${x}`;"],
       ["src/lib/funding.ts", "export const HL_BASE_APR = 0.0000125 * 8760;"],
       ["src/pages/coins/index.astro", "const HL_BASE_APR = 0.0000125 * 8760;"],
     ]),
     quiet: () => duplicateRuleImplementations([
-      ["public/shared.js", "export const sortedTiers = (t) => t;\nexport const plural = (n, o, m) => n;\nexport const numberWord = (n, z) => n;\nexport function moneyAt(a, e){}\nexport function printedMoney(s){}\nexport function nearPrinted(x, t){}\nexport function fitDecimals(ok){}\nexport const exactUsd = (x) => x;\nexport const fineNum = (x) => x;\nexport const maintenanceMarginFraction = (L) => 1 / (2 * L);\nexport function signedPct(x){}\nexport function moveCounts(x){}\nexport function shortDate(t){}\nexport function dateTimeUtc(t){}\nexport function cumulativeAt(c,m,p){}\nexport function atReading(){}\nexport function parsePrice(s){}\nconst MONTHS = [\"Jan\", \"Feb\", \"Mar\"];\nexport function usd(x) { return `$${x}`; }\nexport const pct = (x) => `${x}%`;\nexport function paysClass(a){return a>=0?'pays-l':'pays-s';}\nexport const paysLabel=(a)=>a>=0?'l':'s';\nexport const paysArrow=(a)=>a>=0?'u':'d';\nexport const carryCost=(n,a,d)=>n*a*d;\nexport function spreadOf(x){return x;}\nexport function changeWords(x){return `${x}`;}\nexport function ageWords(m){return `${m}`;}\nexport const minutesSince=(a)=>a;\nexport const nf=(n,d)=>`${n}`;\nexport function qty(n){return `${n}`;}\nexport function compact(v){return `$${v}`;}\nexport function aprSpread(x){return x;}"],
-      ["src/lib/funding.ts", 'export { usd, pct, compact } from "../../public/shared.js";\nexport function weekCarry(a) {}\nexport const HL_BASE_APR = 0.0000125 * 8760;\nexport function settlementWords(p) {}\nexport function venueReachWords(p) {}'],
-      ["src/lib/series.ts", "export function fundingRegime(c, f, t) {}\nexport function xhairAttrs(c) {}\nexport function narrowChart(c) {}\nexport function slotBars(b) {}\nexport const drawnBars = (b, tf) => b;\nexport function barSpan(tf, n) {}\nexport function timeframeGapNote(m) {}"],
+      ["public/shared.js", "export function usd(x) { return `$${x}`; }\nexport const pct = (x) => `${x}%`;\nexport function paysClass(a){return a>=0?'pays-l':'pays-s';}\nexport const paysLabel=(a)=>a>=0?'l':'s';\nexport const paysArrow=(a)=>a>=0?'u':'d';\nexport const carryCost=(n,a,d)=>n*a*d;\nexport function spreadOf(x){return x;}\nexport function changeWords(x){return `${x}`;}\nexport function ageWords(m){return `${m}`;}\nexport const minutesSince=(a)=>a;\nexport const nf=(n,d)=>`${n}`;\nexport function qty(n){return `${n}`;}\nexport function compact(v){return `$${v}`;}\nexport function aprSpread(x){return x;}"],
+      ["src/lib/funding.ts", 'export { usd, pct, compact } from "../../public/shared.js";\nexport const HL_BASE_APR = 0.0000125 * 8760;\nexport function settlementWords(p) {}\nexport function venueReachWords(p) {}'],
+      ["src/lib/series.ts", "export function slotBars(b) {}\nexport const drawnBars = (b, tf) => b;\nexport function barSpan(tf, n) {}\nexport function candleStyleNote(c, m) {}\nexport function timeframeGapNote(m) {}"],
       ["src/lib/chart.ts", "export function timeTicks(t) {}"],
       ["src/lib/extreme.ts", "export function widestSpread(p) {}"],
-      ["src/lib/freshness.ts", "export function utcStamp(t) {}\nexport function isStale(a, l) {}"],
-      ["src/lib/liqmap.ts", "export function spanWords(m, f) {}\nexport function mapModel(o) {}\nexport function dayEarlierCut(h, q) {}"],
-      ["src/lib/oi-history.ts", "export async function readOiAt(db, s, at) {}\nexport async function oiMoves(db, s, n) {}"],
-      ["src/lib/sparks.ts", "export const sparkDaysOf = (s) => 0;"],
-      ["src/lib/coins.ts", "export const coinPageFor = (s) => null;"],
-      ["src/lib/margin.ts", "export function tableFor(p) {}\nexport function capOf(p) {}"],
-      ["src/lib/hyperliquid.ts", "export function currentMark(snap, live, perp) { return live?.mark?.[perp.symbol]; }"],
-      /* a comment quoting the shape it replaced is not the shape */
-      ["src/pages/x.astro", "/* was: [\"Jan\", \"Feb\", \"Mar\"] and d > 0 ? \"+\" : \"−\" */"],
+      ["src/lib/freshness.ts", "export function utcStamp(t) {}"],
     ]),
-    also: () => [
-      /* the inline shapes: a month table, a short-month locale date, a hand-made sign */
-      duplicateRuleImplementations([["src/pages/unlocks.astro", 'const MON = ["Jan", "Feb", "Mar"];']]).some((d) => d.includes("month table")),
-      duplicateRuleImplementations([["src/pages/unlocks.astro", 'd.toLocaleDateString("en-GB", { month: "short" })']]).some((d) => d.includes("short month")),
-      duplicateRuleImplementations([["src/pages/x.astro", '{d > 0 ? "+" : "−"}{x}%']]).some((d) => d.includes("hand-made sign")),
-      duplicateRuleImplementations([["src/pages/x.astro", '<td>{(r.corridor * 100).toFixed(2)}%</td>']]).some((d) => d.includes("formatted by hand")),
-      duplicateRuleImplementations([["src/pages/status.astro", 'const WORDS = ["no", "one", "two", "three"];']]).some((d) => d.includes("number words")),
-      duplicateRuleImplementations([["src/pages/coins/index.astro", 'const m = live?.mark?.[sym] ?? perp.markPx;']]).some((d) => d.includes("live mark")),
-      duplicateRuleImplementations([["src/pages/x.astro", 'const t = [...table.marginTiers].sort((a, b) => a.lowerBound - b.lowerBound);']]).some((d) => d.includes("sorted by hand")),
-      duplicateRuleImplementations([["src/pages/x.astro", '<td>{pct(1 / (2 * t.maxLeverage), 3)}</td>']]).some((d) => d.includes("maintenance margin written out")),
-    ],
   },
   {
     check: "fixtureGaps",
@@ -1040,7 +927,7 @@ for (const c of cases) {
 const EXEMPTION_COUNTS = {
   /* check name -> how many named exemptions it carries. A check absent from this map carries
      none, which is the state to aim for. */
-  "check-inventory: MANUAL_BY_DESIGN": 4,
+  "check-inventory: MANUAL_BY_DESIGN": 3,
   "coin-charts: EXPECTED_TFS": 0,
   "controlGroupOverflow": 0,
 };

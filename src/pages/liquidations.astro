@@ -20,16 +20,13 @@
    ========================================================================================= */
 import Base from "../layouts/Base.astro";
 import LiqMap from "../components/LiqMap.astro";
-import { getSnapshot, coldStart, requestedPerp, getLive, currentMark } from "../lib/hyperliquid.ts";
+import { getSnapshot, coldStart, requestedPerp } from "../lib/hyperliquid.ts";
 import { usd, pct, priceDp } from "../lib/funding.ts";
-import { maintenanceMarginFraction, corridorAt, type MarginTable, tableFor, sortedTiers } from "../lib/margin.ts";
-import { utcStamp } from "../lib/freshness.ts";
-import { readOiAt } from "../lib/oi-history.ts";
-import { mapTitle, mapDescription, mapState, resolveWindow, mapModel, dayEarlierCut, ladderQuery, sameView } from "../lib/liqmap.ts";
+import { maintenanceMarginFraction, corridorAt, type MarginTable } from "../lib/margin.ts";
+import { mapTitle, mapDescription, mapState, resolveWindow } from "../lib/liqmap.ts";
 import { getHourly } from "../lib/candles.ts";
 import { liqMapHref } from "../lib/routes.ts";
 import tables from "../data/margin-tables.json";
-import More from "../components/More.astro";
 
 const env = (Astro.locals as any)?.runtime?.env;
 const snap = await getSnapshot(env?.SNAPSHOT, import.meta.env.DEV);
@@ -80,9 +77,9 @@ if (wanted !== null) {
    nothing else. Fifty calls to buildLiqMap would have made this page the slowest on the
    site to serve the least important part of it. */
 const rows = snap.perps
-  .filter((p) => tableFor(p) !== undefined)
+  .filter((p) => Object.prototype.hasOwnProperty.call(TABLES, String(p.marginTableId)))
   .map((p) => {
-    const t = sortedTiers(tableFor(p)!)[0];
+    const t = [...TABLES[String(p.marginTableId)].marginTiers].sort((a, b) => a.lowerBound - b.lowerBound)[0];
     const L = t.maxLeverage;
     const { corridor } = corridorAt(p.markPx, L, maintenanceMarginFraction(L));
     return { p, L, corridor, href: liqMapHref(p.symbol), here: p.symbol === perp.symbol };
@@ -92,23 +89,14 @@ const rows = snap.perps
    mapState in src/lib/liqmap.ts — and handed to the component rather than read again. */
 const hourly = await getHourly(env?.SNAPSHOT, perp.symbol, import.meta.env.DEV);
 const win = resolveWindow(q);
-const cap = sortedTiers(table)[0].maxLeverage;
+const cap = [...table.marginTiers].sort((a, b) => a.lowerBound - b.lowerBound)[0].maxLeverage;
 const state = mapState(hourly?.d, win);
 const title = mapTitle(perp.symbol, state);
-/* The model runs here, once, so the description can carry a ?at= reading — see mapModel. */
-/* Open interest at the moment the day-earlier run's candles end (dayEarlierCut), for mapModel. */
-const lq = ladderQuery(q);
-const cut = dayEarlierCut(hourly, lq);
-const oiThen = cut === null ? null : await readOiAt((Astro.locals as any)?.runtime?.env?.DB, perp.symbol, cut);
-/* One mark for the model and every figure on the page, with its time — see currentMark. */
-const markNow = currentMark(snap, await getLive(env?.SNAPSHOT), perp);
-const ladder = mapModel({ hourly, q: lq, mark: markNow.px, oiNotional: perp.oiNotional, maxLeverage: cap, mmf: maintenanceMarginFraction(cap), oiThen });
-const model = sameView(q, lq) ? ladder : mapModel({ hourly, q: q, mark: markNow.px, oiNotional: perp.oiNotional, maxLeverage: cap, mmf: maintenanceMarginFraction(cap), oiThen: null });
-const description = mapDescription(perp.symbol, { state, maxLeverage: cap, days: win.days, reading: ladder.reading, asOf: utcStamp(snap.fetchedAt, 0) });
+const description = mapDescription(perp.symbol, { state, maxLeverage: cap, days: win.days });
 ---
 
 <Base title={title} description={description} fetchedAt={snap.fetchedAt}>
-  <LiqMap perp={perp} table={table} snap={snap} hourly={hourly} model={model} ladder={ladder} markNow={markNow} params={q} siblings={false} />
+  <LiqMap perp={perp} table={table} snap={snap} hourly={hourly} params={q} siblings={false} />
 
   <h2 class="section">A page for every covered contract</h2>
   {/* THE COUNT AND THE TABLE ARE ONE ARRAY, and for one morning they were two. This note said
@@ -129,16 +117,11 @@ const description = mapDescription(perp.symbol, { state, maxLeverage: cap, days:
       once, there, because this page does not read fifty candle series to count the exceptions. */}
   <p class="section-note" style="max-width:88ch">
     {rows.length} contracts have a published margin table, and each one has its own page at its own
-    address.
-  </p>
-  <More label="What the corridor column is">
-  <p class="section-note" style="max-width:88ch">
-    The corridor column is not modelled: it is the distance price has to travel before a
+    address. The corridor column is not modelled: it is the distance price has to travel before a
     position at that contract's maximum leverage is closed by the maintenance margin in the
     published table — the widest of them is the safest place to be wrong, and the narrowest is
     where a normal hour is enough.
   </p>
-  </More>
   <div class="panel">
     <table class="tbl" data-sortable>
       {/* ONE LINK PER ROW, AND THE ANCHOR TEXT IS THE QUERY. The first version put the bare
@@ -165,7 +148,7 @@ const description = mapDescription(perp.symbol, { state, maxLeverage: cap, days:
             <td class="num">{usd(r.p.markPx, priceDp(r.p.markPx))}</td>
             <td class="num">{usd(r.p.oiNotional)}</td>
             <td class="num">{r.L}×</td>
-            <td class="num">{pct(r.corridor)}</td>
+            <td class="num">{(r.corridor * 100).toFixed(2)}%</td>
           </tr>
         ))}
       </tbody>
@@ -176,11 +159,9 @@ const description = mapDescription(perp.symbol, { state, maxLeverage: cap, days:
       https://coinliqui.com/liquidations/pons?profile=balanced&win=30 — and this page does not load
       fifty candle series to find out which (see THE INDEX above), so the sentence states the
       condition instead of a count. */}
-  <More label="Where the tiers and each contract's assumptions are">
   <p class="section-note">
     Maintenance margin at tier 1 sets every corridor above; the tiers themselves are on each
     contract's own page, together with its map and the assumptions behind it wherever its hourly
     history can be read and is long enough to draw one.
   </p>
-  </More>
 </Base>

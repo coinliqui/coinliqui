@@ -1,6 +1,6 @@
 ---
 import Base from "../../layouts/Base.astro";
-import { getSnapshot, coldStart, requestedPerp, getLive, currentMark } from "../../lib/hyperliquid.ts";
+import { getSnapshot, coldStart, requestedPerp } from "../../lib/hyperliquid.ts";
 import { usd, pct, queryNum, stopVerdict } from "../../lib/funding.ts";
 import ASSETS from "../../data/assets.json";
 import { liquidationPrice, tierFor, maintenanceMarginFraction, type MarginTable, type Side, roomVerdict } from "../../lib/margin.ts";
@@ -9,7 +9,6 @@ import tables from "../../data/margin-tables.json";
 import Advisory from "../../components/Advisory.astro";
 import Figure from "../../components/Figure.astro";
 import Interests from "../../components/Interests.astro";
-import More from "../../components/More.astro";
 import { priceDp } from "../../lib/funding.ts";
 const snap = await getSnapshot((Astro.locals as any)?.runtime?.env?.SNAPSHOT, import.meta.env.DEV);
 // Cold store: 503 + Retry-After rather than a page rendered from nothing.
@@ -25,9 +24,6 @@ const picked = requestedPerp(snap.perps, wantedSymbol, tables as Record<string, 
 if (picked === null) return coldStart();
 if (picked === "unknown") return Astro.rewrite(`/404?symbol=${encodeURIComponent(wantedSymbol!)}`);
 const { perp, table } = picked;
-/* The mark the page computes from: the live one when there is one, as on the funding page that
-   links here (currentMark). */
-const markNow = currentMark(snap, await getLive((Astro.locals as any)?.runtime?.env?.SNAPSHOT), perp);
 const side = (q.get("side") === "short" ? "short" : "long") as Side;
 
 /* THE BOUNDS THE SERVER ENFORCES ARE THE BOUNDS THE FORM OFFERS, from one object.
@@ -47,7 +43,7 @@ const BOUNDS = {
 };
 const account = queryNum(q.get("account"), 25_000, BOUNDS.account);
 const riskPct = queryNum(q.get("risk"), 1, BOUNDS.risk);
-const entry = queryNum(q.get("entry"), markNow.px, BOUNDS.price);
+const entry = queryNum(q.get("entry"), perp.markPx, BOUNDS.price);
 /* PRICE PRECISION IS A FUNCTION OF MAGNITUDE, not a constant. Same rule as the contract
    pages: src/pages/funding/[symbol].astro:48. */
 const dp = priceDp(entry);
@@ -319,7 +315,7 @@ const description = `Risk-based position sizing for ${perp.symbol} perpetuals th
       Risk-based sizing, checked against the price at which the position is actually closed.
       <LedeSized data-when="liq stop tie wrongside">At <span id="l-lev">{slot.lev}</span><span id="l-clamp">{slot.clamp}</span> the liquidation sits <strong id="l-move">{slot.move}</strong> from the entry
         and the stop <span id="l-stopmove">{slot.stopMove}</span> away, so <span id="l-phrase">{slot.phrase}</span>.</LedeSized><LedeFlat data-when="flat">Your stop is the entry price, so there is no distance to size a position from.</LedeFlat>
-      Entry defaults to {perp.symbol}&rsquo;s mark price, {usd(markNow.px, priceDp(markNow.px))}.
+      Entry defaults to {perp.symbol}&rsquo;s mark price, {usd(perp.markPx, priceDp(perp.markPx))}.
     </p>
     <Advisory />
   </div>
@@ -503,16 +499,12 @@ const description = `Risk-based position sizing for ${perp.symbol} perpetuals th
   </div>
 
   <h2 class="section">Why sizing alone is not enough</h2>
-  {/* The live tier paragraph below stays open: it is the calculator's own answer, and it carries
-      a <template> for its other state, which a fold must not hide (collapsedTextShipped). */}
-  <More label="What the standard formula misses">
   <p class="prose">
     The standard formula — <code>risk budget ÷ distance to stop</code> — sizes the position so that
     <em>if the stop fills</em>, you lose exactly what you budgeted. It says nothing about whether
     the stop is reachable. Leverage sets the liquidation price independently, and when liquidation
     falls between entry and stop the exchange closes the position first. The stop is then decoration.
   </p>
-  </More>
   <p class="prose">
     {/* "SEE THAT GAP ON A LIVE CONTRACT" WENT TO BTC FROM EVERY CONTRACT. The href was the literal
         /funding/btc, so on /tools/position-size?symbol=CASHCAT (16 September 2026) "that gap" —
@@ -549,7 +541,7 @@ const description = `Risk-based position sizing for ${perp.symbol} perpetuals th
   </p>
 
   <p style="margin-top:24px">
-    <a class="link" href={`/tools/leverage?symbol=${perp.symbol}`}>What leverage {perp.symbol} actually allows →</a>
+    <a class="link" href="/tools/leverage">What leverage this contract actually allows →</a>
     · <a class="link" href={`/funding/${perp.symbol.toLowerCase()}`}>{perp.symbol} detail →</a>
   </p>
 
@@ -579,7 +571,7 @@ const description = `Risk-based position sizing for ${perp.symbol} perpetuals th
       BEFORE their figures are written, because a template's contents are unreachable to
       getElementById. The script carries no comments: is:inline ships them to every reader. */}
   <script is:inline type="module" define:vars={{ table, symbol: perp.symbol, sharedV: ASSETS["/shared.js"], scaleCfg: SCALE }}>
-    const { stopVerdict, usd, pct, priceDp, maintenanceMarginFraction, sortedTiers } = await import("/shared.js" + (sharedV ? `?v=${sharedV}` : ""));
+    const { stopVerdict, usd, pct, priceDp } = await import("/shared.js" + (sharedV ? `?v=${sharedV}` : ""));
     const form = document.querySelector(".calc");
     if (form) {
       const money = (x) => usd(x, 2);
@@ -587,7 +579,7 @@ const description = `Risk-based position sizing for ${perp.symbol} perpetuals th
       const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
       const setAll = (ids, v) => ids.forEach((i) => set(i, v));
       const fig = (s) => document.querySelector("#ps-fig " + s);
-      const tiers = sortedTiers(table);
+      const tiers = [...table.marginTiers].sort((a, b) => a.lowerBound - b.lowerBound);
       const recalc = () => {
         const A = Number(form.account.value), R = Number(form.risk.value);
         const E = Number(form.entry.value), S = Number(form.stop.value), L = Number(form.leverage.value);
@@ -600,7 +592,7 @@ const description = `Risk-based position sizing for ${perp.symbol} perpetuals th
         const notional = size * E;
         let idx = 0;
         tiers.forEach((t, i) => { if (notional >= t.lowerBound) idx = i; });
-        const maxLev = tiers[idx].maxLeverage, mmf = maintenanceMarginFraction(maxLev);
+        const maxLev = tiers[idx].maxLeverage, mmf = 1 / (2 * maxLev);
         const eff = Math.min(L, maxLev), clamped = L > maxLev;
         const liqAt = (l) => (isLong ? (E * (1 - 1 / l)) / (1 - mmf) : (E * (1 + 1 / l)) / (1 + mmf));
         const stopMove = Math.abs(S - E) / E;

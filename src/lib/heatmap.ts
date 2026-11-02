@@ -51,33 +51,18 @@ export function paintHeatMap(m: LiqMap, opts: { height?: number; mid?: number; m
 
   /* Run-length merge along each row: 150 x 180 is 27,000 cells, and the field is mostly
      runs of one colour. Merging takes the emitted rect count down by roughly 8x. */
-  /* ONE PATH PER COLOUR, each run a subpath, rather than a <rect> per run. About four thousand rects
-     with two-decimal attributes were 32 KB of /liquidations's 59 KB on the wire and left it under a
-     kilobyte from its budget (15 October 2026). A subpath states the same box in half the characters
-     and to a tenth of a unit, below anything visible at this size. The hover readout still reads the
-     fill of the shape under the cursor (public/interact.js), and a path's fill is its colour. */
   let cells = 0;
-  const runs = new Map<string, string[]>();
-  const f1 = (v: number) => (Math.round(v * 10) / 10).toString();
-  const hgt = f1(rh + 0.4);
   for (let r = 0; r < m.rows; r++) {
-    const y = f1(plotY + r * rh), g = m.grid[r];
+    const y = plotY + r * rh, g = m.grid[r];
     let c0 = 0;
     while (c0 < m.cols) {
       const i0 = rampIndex(g[c0], scale, gamma);
       let c1 = c0 + 1;
       while (c1 < m.cols && rampIndex(g[c1], scale, gamma) === i0) c1++;
-      if (i0 > 0) {
-        const w = f1((c1 - c0) * cw + 0.35);
-        const k = RAMP[i0];
-        if (!runs.has(k)) runs.set(k, []);
-        runs.get(k)!.push(`M${f1(plotX + c0 * cw)} ${y}h${w}v${hgt}h-${w}z`);
-        cells++;
-      }
+      if (i0 > 0) { s.push(rect(plotX + c0 * cw, y, (c1 - c0) * cw + 0.35, rh + 0.4, RAMP[i0])); cells++; }
       c0 = c1;
     }
   }
-  for (const [k, d] of runs) s.push(`<path d="${d.join("")}" fill="${k}"/>`);
 
   /* THE SCARS — where price traded through a standing level.
      Drawn as VERTICAL ticks, not filled cells. The field's whole grammar is horizontal: a
@@ -192,29 +177,26 @@ export function paintHeatMap(m: LiqMap, opts: { height?: number; mid?: number; m
  * actually lands on the ramp, so a reader can convert a colour back into dollars.
  */
 function legendSvg(scale: number, gamma: number, peak: number): string {
-  /* HTML, NOT SVG, SO ITS LABELS KEEP THEIR SIZE. The scale was a 560-unit SVG scaled to its box: at
-     375px it drew 317px wide and its labels shrank to about five pixels — "$20.0M" unreadable under
-     the picture it decodes (15 October 2026). A bar of hard-stopped swatches and text positioned in
-     percent scale with the layout and never with the font. The ticks still sit where each round
-     value lands on the ramp. Styles are global (.hscale in Base.astro): this is injected markup. */
-  void peak;
-  const n = RAMP.length;
-  /* A CSS length, not a figure a reader sees: a fraction of the bar's width. */
-  const cssAt = (f: number) => `${(100 * f).toFixed(2)}%`;
-  const stops = RAMP.map((c, i) => `${c} ${cssAt(i / n)} ${cssAt((i + 1) / n)}`).join(", ");
+  const w = 560, barY = 0, barH = 12;
+  const s: string[] = [];
+  const cw = (w - 2) / RAMP.length;
+  for (let i = 0; i < RAMP.length; i++) {
+    s.push(rect(1 + i * cw, barY, cw + 0.4, barH, RAMP[i]));
+  }
   const step = niceTicks(0, scale, 4).filter((v) => v > 0 && v < scale * 0.94);
-  /* A tick inside the end labels' room is dropped, not drawn over them: at 375px "$40.0M" sat on
-     "≥ $43.4M". The end label already names that part of the bar more exactly. */
-  const ticks = step.map((v) => ({ f: Math.min(1, (v / scale) ** gamma), v }))
-    .filter(({ f }) => f >= 0.14 && f <= 0.74)
-    .map(({ f, v }) => `<span class="hscale__tick" style="left:${cssAt(f)}">${compact(v)}</span>`);
+  s.push(text(1, 26, "none", INK.faint, FS_MICRO, "start"));
+  for (const v of step) {
+    const t = Math.min(1, (v / scale) ** gamma);
+    const x = 1 + t * (w - 2);
+    s.push(rect(x - 0.5, barH, 1, 3, "#4b535d"));
+    s.push(text(Math.min(w - 40, Math.max(26, x)), 26, compact(v), INK.dim, FS_MICRO, "middle"));
+  }
   /* The last swatch is open-ended — it covers everything from where it starts up to the peak.
      Printing the peak at the end of the bar implied the ramp finished there, so a cell at the
      top of the scale read 1.5x higher than the legend actually promised. */
-  const topStart = scale * ((n - 1.5) / (n - 1)) ** (1 / gamma);
-  return `<div class="hscale" role="img" aria-label="Intensity scale: none to at least ${compact(topStart)}">` +
-    `<div class="hscale__bar" style="background:linear-gradient(to right, ${stops})"></div>` +
-    `<div class="hscale__labels"><span class="hscale__end">none</span>${ticks.join("")}<span class="hscale__end hscale__end--r">≥ ${compact(topStart)}</span></div></div>`;
+  const topStart = scale * ((RAMP.length - 1.5) / (RAMP.length - 1)) ** (1 / gamma);
+  s.push(text(w, 26, `≥ ${compact(topStart)}`, INK.dim, FS_MICRO, "end"));
+  return `<svg viewBox="0 0 ${w} 30" width="${w}" height="30" role="img" aria-label="Intensity scale">${s.join("")}</svg>`;
 }
 
 export { rampValue };
