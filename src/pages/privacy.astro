@@ -184,6 +184,17 @@ const updated = "31 October 2026";
     your device, and nothing PostHog records identifies you.
   </p>
 
+  <h3 class="subsection" id="arrival-count">An arrival count on this site's own server</h3>
+  <p class="prose">
+    Each page ends with a one-pixel image from this site, <code>/arrive</code>. When your browser
+    loads it, the server adds one to a daily tally: the date, the page, the host of the site or the
+    <code>utm_source</code> the link came from, whether the page was typed or bookmarked, linked
+    from another site or reached from a page of this one, phone or desktop, and the two-letter
+    country Cloudflare reports. No script runs, no cookie is set, and no IP address, browser string
+    or identifier is written, so a row cannot be tied to a person. It counts only browsers that load
+    the page, which is what separates a reader from a program that fetches the page and leaves.
+  </p>
+
   <h2 class="section">Cookies and local storage</h2>
   <div class="panel" style="max-width:860px">
     <table class="tbl">

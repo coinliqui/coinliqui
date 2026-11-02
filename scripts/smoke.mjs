@@ -126,7 +126,7 @@ const ROUTES = [
      was covered. A gate that asks for one URL per template sees one path through it. */
   "/funding/notacoin", "/coins/notacoin",
   "/api/live.json", "/robots.txt", "/sitemap-index.xml", "/sitemap.xml",
-  "/search-index.json", "/rail",
+  "/search-index.json", "/rail", "/arrive",
   /* EVERY sitemap, not a sample. Six of these were never requested by anything until the
      coverage check below started comparing this list against the build manifest — so a 500 in
      one of them would have shipped green and been served to Googlebot. */
@@ -809,7 +809,8 @@ for (const path of ROUTES) {
          and names the dominant one; the ratio is printed because there is no defensible
          threshold for it, and only two conditions fail — see WEIGHT_LIMITS. */
       const weights = [];
-      for (const path of ROUTES.filter((r) => !/\.(xml|json|txt|ico)$/.test(r) && !EXPECT[r])) {
+      /* /arrive is the arrival image (src/lib/entries.ts), not a page with prose. */
+      for (const path of ROUTES.filter((r) => !/\.(xml|json|txt|ico)$/.test(r) && !EXPECT[r] && r !== "/arrive")) {
         const body = await (await fetch(`http://127.0.0.1:${PORT}${path}`)).text();
         weights.push([path, pageWeight(body)]);
       }

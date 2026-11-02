@@ -1508,5 +1508,45 @@ console.log("\n17. the URLs this site publishes about itself resolve to a signed
   }
 }
 
+/* THE ARRIVAL COUNT COUNTS A LOADED PAGE ONCE, AND A FETCHED ONE NOT AT ALL — src/lib/entries.ts.
+   A page fetched with a browser's headers and left (what the 30 October scraper did) must not move
+   today's selfcheck tally; the same page followed by its image must move it by exactly one. curl,
+   not fetch: Node's fetch overrides sec-fetch-mode. The selfcheck source is left out of every
+   figure scripts/entries.mjs prints. */
+console.log("\nA. the arrival count");
+{
+  const { execFileSync } = await import("node:child_process");
+  const day = new Date().toISOString().slice(0, 10);
+  const read = () => {
+    const raw = execFileSync("npx", ["wrangler", "d1", "execute", "coinliqui", "--remote", "--json", "--command",
+      `SELECT COALESCE(SUM(n),0) AS n FROM entry_day WHERE day='${day}' AND src='coinliqui-selfcheck'`], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+    return Number(JSON.parse(raw.slice(raw.indexOf("[")))[0].results[0].n);
+  };
+  const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36";
+  const page = `${ORIGIN}/liquidations?utm_source=coinliqui-selfcheck`;
+  const curl = (url, hs) => execFileSync("curl", ["-s", ...Object.entries(hs).flatMap(([k, v]) => ["-H", `${k}: ${v}`]), url], { encoding: "utf8" });
+  const navH = { "user-agent": UA, "sec-fetch-mode": "navigate", "sec-fetch-dest": "document", "sec-fetch-site": "cross-site" };
+  try {
+    const before = read();
+    curl(page, navH);                                   // the scraper: the page, nothing else
+    await new Promise((r) => setTimeout(r, 4000));
+    const afterFetch = read();
+    const html = curl(page, navH);                      // the reader: the page, then its image
+    const src = /<img class="arrive" src="([^"]+)"/.exec(html)?.[1]?.replace(/&amp;/g, "&");
+    if (src) curl(ORIGIN + src, { "user-agent": UA, "sec-fetch-dest": "image", "sec-fetch-mode": "no-cors", "sec-fetch-site": "same-origin", referer: page });
+    await new Promise((r) => setTimeout(r, 4000));
+    const afterLoad = read();
+    !src
+      ? bad("the page carries no arrival image for a browser navigation")
+      : afterFetch !== before
+        ? bad(`a page fetched and left moved the arrival count by ${afterFetch - before}; it must not move`)
+        : afterLoad - afterFetch === 1
+          ? ok(`a fetched page did not count; the same page loaded with its image counted once (${before} → ${afterLoad})`)
+          : bad(`one loaded page moved the arrival count by ${afterLoad - afterFetch} (expected exactly 1)`);
+  } catch (e) {
+    bad(`could not read entry_day: ${String(e?.message ?? e).slice(0, 160)}`);
+  }
+}
+
 console.log(`\n${failures ? `${failures} FAILURES` : "all checks passed"}\n`);
 process.exit(failures ? 1 : 0);

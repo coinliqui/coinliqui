@@ -1,4 +1,5 @@
 import { defineMiddleware } from "astro:middleware";
+import { classifyEntry, beaconUrl } from "./lib/entries.ts";
 
 /**
  * Two jobs, both about what the edge is allowed to tell the outside world.
@@ -28,6 +29,14 @@ export const onRequest = defineMiddleware(async (ctx, next) => {
       status: 301,
       headers: { location: p.replace(/\/+$/, "") + ctx.url.search, "cache-control": "public, max-age=86400" },
     });
+  }
+
+  /* AN ARRIVAL IS DECIDED HERE AND COUNTED LATER — see src/lib/entries.ts. The page carries the
+     decision as a 1x1 image (Base.astro); only a browser that loads the page asks for it. */
+  {
+    const canon = ctx.site?.origin;
+    const pre = canon ? classifyEntry(ctx.request, { status: 200, contentType: "text/html" }, canon) : null;
+    (ctx.locals as any).arrival = pre ? beaconUrl(pre) : null;
   }
 
   const res = await next();

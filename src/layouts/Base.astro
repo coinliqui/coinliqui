@@ -594,6 +594,7 @@ const schema = {
 
       h2.section { font-size: 16px; font-weight: 600; letter-spacing: -.01em; margin: var(--gap-section) 0 var(--gap-tight); }
       .section-note { font-size: var(--fs-sm); color: var(--text-faint); margin: 0 0 var(--gap-block); max-width: 80ch; }
+      .arrive { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
       /* THE OPENING STATEMENT OF A PROSE PAGE, defined once here rather than per page.
          It arrives from src/pages/methodology/liquidations.astro, which had it as a local
          `.lede`. That name was already taken by a completely different treatment on the
@@ -1525,5 +1526,11 @@ const schema = {
         the connection would be warmed during the paint that must not get slower, for a request
         that is not coming yet. */}
     <script type="module" src={`/analytics.js?v=${ASSETS["/analytics.js"]}`}></script>
+    {/* THE ARRIVAL CONFIRMATION — a 1x1 image a browser loads with the page and a page-fetching
+        scraper never asks for. Only on a page that answered 200, and only when the middleware
+        decided the request was a navigation. See src/lib/entries.ts. */}
+    {(Astro.locals as any).arrival && Astro.response.status === 200 && (
+      <img class="arrive" src={(Astro.locals as any).arrival} alt="" width="1" height="1" aria-hidden="true" />
+    )}
   </body>
 </html>
