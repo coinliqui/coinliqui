@@ -1532,7 +1532,7 @@ console.log("\nA. the arrival count");
     await new Promise((r) => setTimeout(r, 4000));
     const afterFetch = read();
     const html = curl(page, navH);                      // the reader: the page, then its image
-    const src = /<img class="arrive" src="([^"]+)"/.exec(html)?.[1]?.replace(/&amp;/g, "&");
+    const src = /<img class="arrive" src="([^"]+)"/.exec(html)?.[1]?.replace(/&amp;|&#38;/g, "&");   // Astro writes & in an attribute as &#38;
     if (src) curl(ORIGIN + src, { "user-agent": UA, "sec-fetch-dest": "image", "sec-fetch-mode": "no-cors", "sec-fetch-site": "same-origin", referer: page });
     await new Promise((r) => setTimeout(r, 4000));
     const afterLoad = read();
