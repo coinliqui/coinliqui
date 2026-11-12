@@ -27,6 +27,7 @@
     "preflight": "node scripts/credentials.mjs",
     "readers": "node scripts/readers.mjs",
     "entries": "node scripts/entries.mjs",
+    "posthog:setup": "node scripts/posthog-setup.mjs",
     "ai:series": "node scripts/ai-series.mjs",
     "gsc": "node --experimental-strip-types --disable-warning=ExperimentalWarning scripts/gsc.mjs",
     "verify": "node scripts/verify-live.mjs && node scripts/coin-charts.mjs && node scripts/behaviour-live.mjs && node --experimental-strip-types --disable-warning=ExperimentalWarning scripts/flips-parity.mjs",
