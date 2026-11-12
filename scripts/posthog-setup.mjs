@@ -3,7 +3,7 @@
  * POSTHOG'S SIDE OF THE ANALYTICS: THE DASHBOARD, THE FUNNELS AND THE COHORTS, AS CODE.
  *
  * public/analytics.js sends the events (12 November 2026); this script builds what reads them, in
- * project 328340 on the EU cloud. It is idempotent: every object is found by its name and updated
+ * project 328468 ("Coinliqui") on the EU cloud. It is idempotent: every object is found by its name and updated
  * in place, so running it twice leaves one of each, and editing a definition here and running it
  * again is how a funnel is changed.
  *
@@ -20,11 +20,14 @@
 import { readFileSync, existsSync } from "node:fs";
 
 const HOST = "https://eu.posthog.com";
-const PROJECT = 328340;
+/* 328468 "Coinliqui" is the project the site's public token writes to (checked 12 November 2026
+   against the project's own token). 328340 "Sites + Wobl" is another project in the same
+   organisation, shared by the owner's other sites; nothing from this site has gone there since 31 October. */
+const PROJECT = 328468;
 const dry = process.argv.includes("--dry");
 const key = process.env.POSTHOG_PERSONAL_API_KEY ??
   (existsSync(".dev.vars") ? /^POSTHOG_PERSONAL_API_KEY=(.+)$/m.exec(readFileSync(".dev.vars", "utf8"))?.[1]?.trim() : undefined);
-if (!key && !dry) {
+if (!key && !dry && !process.argv.includes("--plan")) {
   console.error("No POSTHOG_PERSONAL_API_KEY in the environment or .dev.vars. Create one at\n" +
     `${HOST}/settings/user-api-keys (scopes: insight, cohort, dashboard — write; project ${PROJECT}),\n` +
     "put POSTHOG_PERSONAL_API_KEY=phx_… in .dev.vars, and run this again. Or --dry to see the definitions.");
@@ -56,7 +59,10 @@ const upsert = async (kind, name, body) => {
 
 /* ---- the building blocks ---- */
 const prop = (key, value, operator = "exact") => ({ key, value: Array.isArray(value) ? value : [value], operator, type: "event" });
-const ev = (event, props = [], name) => ({ kind: "EventsNode", event, name: name ?? event, custom_name: name, properties: props });
+/* EVERY SERIES IS HELD TO THIS SITE'S HOST, so a preview host, localhost or another site that
+   borrowed the token never mixes into the figures. */
+const SITE = { key: "$host", value: ["coinliqui.com"], operator: "exact", type: "event" };
+const ev = (event, props = [], name) => ({ kind: "EventsNode", event, name: name ?? event, custom_name: name, properties: [SITE, ...props] });
 const pv = (pageTypes, name) => ev("$pageview", [prop("page_type", pageTypes)], name);
 const RANGE = { date_from: "-30d" };
 const trends = (series, extra = {}) => ({ kind: "InsightVizNode", source: { kind: "TrendsQuery", series, interval: "day", dateRange: RANGE, ...extra } });
@@ -70,8 +76,8 @@ const OWN = ["link_clicked", "outbound_clicked", "search_started", "search_resul
 
 /* ---- cohorts: visitor-days that did something ---- */
 const did = (event, times = 1) => times === 1
-  ? { type: "behavioral", key: event, value: "performed_event", event_type: "events", time_value: 30, time_interval: "day" }
-  : { type: "behavioral", key: event, value: "performed_event_multiple", event_type: "events", operator: "gte", operator_value: times, time_value: 30, time_interval: "day" };
+  ? { type: "behavioral", key: event, value: "performed_event", event_type: "events", time_value: 30, time_interval: "day", event_filters: [SITE] }
+  : { type: "behavioral", key: event, value: "performed_event_multiple", event_type: "events", operator: "gte", operator_value: times, time_value: 30, time_interval: "day", event_filters: [SITE] };
 const cohort = (description, ...criteria) => ({
   description, is_static: false,
   filters: { properties: { type: "OR", values: [{ type: "AND", values: criteria }] } },
@@ -84,7 +90,7 @@ const COHORTS = {
   "Watchlist users": cohort("Visitor-days that pinned or unpinned a coin.", did("watchlist_changed")),
   "Read 3+ pages": cohort("Visitor-days with three or more page views.", did("$pageview", 3)),
   "Bounced (1 page)": cohort("Visitor-days with exactly one page view that followed no internal link.",
-    { type: "behavioral", key: "$pageview", value: "performed_event_multiple", event_type: "events", operator: "exact", operator_value: 1, time_value: 30, time_interval: "day" },
+    { type: "behavioral", key: "$pageview", value: "performed_event_multiple", event_type: "events", operator: "exact", operator_value: 1, time_value: 30, time_interval: "day", event_filters: [SITE] },
     { ...did("link_clicked"), negation: true }),
 };
 
@@ -116,14 +122,21 @@ const INSIGHTS = [
   ["Funnel: learn → tool", funnel([pv("learn", "Guide"), pv(["tool", "liq_tool"], "Tool page"), ev("tool_result_viewed", [], "Tool answered")])],
 ];
 
-console.log(`\nPostHog project ${PROJECT} on ${HOST}${dry ? "  [dry run: nothing is sent]" : ""}\n`);
+const DASH = "Coinliqui — readers";
+const DASH_BODY = {
+  description: "Built by scripts/posthog-setup.mjs from the events in public/analytics.js, coinliqui.com only. Cookieless: a visitor is one browser for one day.",
+  pinned: true,
+};
+if (!process.argv.includes("--plan")) console.log(`\nPostHog project ${PROJECT} on ${HOST}${dry ? "  [dry run: nothing is sent]" : ""}\n`);
+/* --plan prints every definition as JSON, for a runner that holds a PostHog session instead of a key. */
+if (process.argv.includes("--plan")) {
+  console.log(JSON.stringify({ project: PROJECT, cohorts: COHORTS, dashboard: { name: DASH, ...DASH_BODY }, insights: INSIGHTS }));
+  process.exit(0);
+}
 const cohortIds = [];
 for (const [name, body] of Object.entries(COHORTS)) cohortIds.push((await upsert("cohorts", name, body)).id);
 
-const dash = await upsert("dashboards", "Coinliqui — readers", {
-  description: "Built by scripts/posthog-setup.mjs from the events in public/analytics.js. Cookieless: a visitor is one browser for one day.",
-  pinned: true,
-});
+const dash = await upsert("dashboards", DASH, DASH_BODY);
 for (const [name, query] of INSIGHTS) {
   const q = JSON.parse(JSON.stringify(query));
   if (q.source.breakdownFilter?.breakdown === "COHORTS") q.source.breakdownFilter.breakdown = cohortIds.filter(Boolean);
