@@ -751,7 +751,7 @@ for (const p of ["/", "/funding/btc"]) {
 /* 6b. WHAT THE ANALYTICS LOADER ASKS POSTHOG FOR, read from the file the live pages load.
    /privacy states each of these as a fact about the site, so each is asserted on the served,
    minified file rather than on the source: no cookie and no storage (cookieless_mode "always"),
-   no person profile, no recording, a page view and a page leave, the EU host, and the
+   one-day person profiles, no recording, a page view and a page leave, the EU host, and the
    before_send that cuts every URL to origin and path. A file that lost any one of them would
    still count readers and nothing on the page would look wrong. */
 console.log("\n6b. the analytics loader's options");
@@ -765,7 +765,8 @@ console.log("\n6b. the analytics loader's options");
       ["the public project token", /["']phc_[A-Za-z0-9]{20,}["']/],
       ["the EU event host", /api_host:\s*["']https:\/\/eu\.i\.posthog\.com["']/],
       ['cookieless_mode "always"', /cookieless_mode:\s*["']always["']/],
-      ['person_profiles "identified_only"', /person_profiles:\s*["']identified_only["']/],
+      ['person_profiles "always" (one-day profiles, 12 November 2026)', /person_profiles:\s*["']always["']/],
+      ["the site's own events", /link_clicked[\s\S]*tool_result_viewed[\s\S]*watchlist_changed/],
       ["session recording off", /disable_session_recording:\s*(?:!0|true)/],
       ["page views on", /capture_pageview:\s*(?:!0|true)/],
       ["page leaves on", /capture_pageleave:\s*(?:!0|true)/],
